@@ -59,7 +59,7 @@ const EnvelopeMakingCriteriaCard = ({
             />
           </div>
           <div>
-            <Text strong>Select fields to concatenate</Text>
+            <Text strong>Select sort fields</Text>
             <Select
               mode="multiple"
               disabled={!isEnabled("Envelope Breaking")}

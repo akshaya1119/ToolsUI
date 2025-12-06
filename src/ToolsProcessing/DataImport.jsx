@@ -7,6 +7,7 @@ import * as XLSX from 'xlsx';
 import { motion } from 'framer-motion';
 import API from '../hooks/api';
 import useStore from '../stores/ProjectData';
+import useDebounce from '../services/useDebounce';
 
 const { Text } = Typography;
 const { Option } = Select;
@@ -23,6 +24,7 @@ const DataImport = () => {
   const [conflictSelections, setConflictSelections] = useState({});
   const [showData, setShowData] = useState(false);
   const [existingData, setExistingData] = useState([]); // ✅ default to []
+  const [columns, setColumns] = useState([]); // ✅ default to []
   const [loading, setLoading] = useState(false); // ✅ added
   const [activeTab, setActiveTab] = useState("1");
   const token = localStorage.getItem('token');
@@ -37,7 +39,7 @@ const DataImport = () => {
   });
   const [searchText, setSearchText] = useState('');
   const [searchedColumn, setSearchedColumn] = useState('');
-  const toast = useToast()
+  const debouncedSearchText = useDebounce(searchText, 500);
   // Load projects
   useEffect(() => {
     if (!projectId) return;
@@ -45,16 +47,28 @@ const DataImport = () => {
     API.get(`/Fields`)
       .then(res => setExpectedFields(res.data))
       .catch(err => console.error("Failed to fetch fields", err));
-  }, [projectId]);
+  }, [projectId, pagination.current, pagination.pageSize, debouncedSearchText, searchedColumn]);
 
   const fetchExistingData = async (projectId) => {
     if (!projectId) return;
 
     setLoading(true);
     try {
-      const res = await API.get(`/NRDatas/GetByProjectId/${projectId}`);
-      setExistingData(res.data || []);
-      setShowData(res.data && res.data.length > 0);
+      const res = await API.get(`/NRDatas/GetByProjectId/${projectId}`, {
+        params: {
+          pageSize: pagination.pageSize,
+          pageNo: pagination.current,
+          search: searchText || null,
+          key: searchedColumn || null
+        },
+      });
+      setExistingData(res.data.items || []);
+      setColumns(res.data.columns)
+      setPagination(prev => ({
+        ...prev,
+        total: res.data.totalCount
+      }));
+      setShowData(res.data.items && res.data.items.length > 0);
     } catch (err) {
       console.error("Failed to fetch existing data", err);
       setExistingData([]);
@@ -346,39 +360,6 @@ const DataImport = () => {
     return date; // Return the original value if it's not a valid date
   };
 
-  const handleSearch = (selectedKeys, confirm, dataIndex) => {
-    confirm();
-    setSearchText(selectedKeys[0]);
-    setSearchedColumn(dataIndex);
-  };
-
-  // Render uploaded Excel preview
-  const renderUploadedData = () => {
-    if (!showData) return null;
-
-    const columns = fileHeaders.map(header => ({
-      title: header,
-      dataIndex: header,
-      key: header,
-    }));
-
-    return <Table columns={columns} dataSource={excelData} pagination={{
-      ...pagination,
-      showSizeChanger: true,
-      pageSizeOptions: ['10', '20', '50', '100'],
-      showQuickJumper: true,
-      onChange: (page, pageSize) => {
-        setPagination({ current: page, pageSize });
-      },
-    }} />;
-  };
-
-  const handleReset = clearFilters => {
-    clearFilters();
-    setSearchText('');
-    confirm();
-  };
-
   const getColumnSearchProps = dataIndex => ({
     filterDropdown: ({
       setSelectedKeys,
@@ -390,31 +371,19 @@ const DataImport = () => {
         <Input
           autoFocus
           placeholder={`Search ${dataIndex}`}
-          value={selectedKeys[0]}
-          onChange={e => setSelectedKeys(e.target.value ? [e.target.value] : [])}
-          onPressEnter={() => handleSearch(selectedKeys, confirm, dataIndex)}
+          value={searchText}
+          onChange={(e) => {
+            const val = e.target.value;
+            setSearchText(val);       // update search text
+            setSearchedColumn(dataIndex); // set key immediately
+          }}
           style={{ width: 188, marginBottom: 8, display: 'block' }}
         />
-        <div>
-          <Button
-            type="primary"
-            onClick={() => handleSearch(selectedKeys, confirm, dataIndex)}
-            icon={<SearchOutlined />}
-            size="small"
-            style={{ width: 90, marginRight: 8 }}
-          >
-            Search
-          </Button>
-          <Button onClick={() => handleReset(clearFilters, confirm)} size="small" style={{ width: 90 }}>
-            Reset
-          </Button>
-        </div>
       </div>
     ),
     filterIcon: filtered => (
       <SearchOutlined style={{ color: filtered ? '#1890ff' : undefined }} />
     ),
-    onFilter: (value, record) => record[dataIndex]?.toString().toLowerCase().includes(value.toLowerCase()),
     render: text =>
       searchedColumn === dataIndex ? (
         <span style={{ color: '#1890ff' }}>{text}</span>
@@ -423,39 +392,31 @@ const DataImport = () => {
       ),
   });
 
-  // Add sorting to your columns
+// columnsFromBackend = response.columns
+const enhancedColumns = columns.map(col => ({
+  title: col,
+  dataIndex: col,
+  key: col,
+  ellipsis: true,
+  ...getColumnSearchProps(col),  // search/filter props
+  sorter: (a, b) => {
+    const valA = a[col];
+    const valB = b[col];
 
-  // Columns for existing data
-  const columns = existingData.length
-    ? Object.keys(existingData[0]).map((col) => ({
-      title: col,
-      dataIndex: col,
-      key: col,
-      ellipsis: true,
-    }))
-    : [];
+    if (valA == null) return -1;
+    if (valB == null) return 1;
 
-  const enhancedColumns = columns.map(col => ({
-    ...col,
-    ...getColumnSearchProps(col.dataIndex),
-    sorter: (a, b) => {
-      const valA = a[col.dataIndex];
-      const valB = b[col.dataIndex];
+    // numeric check
+    if (!isNaN(valA) && !isNaN(valB)) return Number(valA) - Number(valB);
 
-      // Handle undefined or null values safely
-      if (valA == null) return -1;
-      if (valB == null) return 1;
+    // date check (optional)
+    if (Date.parse(valA) && Date.parse(valB)) return new Date(valA) - new Date(valB);
 
-      // If both values are numbers → numeric sort
-      if (!isNaN(valA) && !isNaN(valB)) {
-        return Number(valA) - Number(valB);
-      }
-      // Otherwise → alphabetical sort (case-insensitive)
-      return String(valA).localeCompare(String(valB), undefined, {
-        sensitivity: 'base',
-      });
-    },
-  }));
+    // default string sort
+    return String(valA).localeCompare(String(valB), undefined, { sensitivity: 'base' });
+  },
+}));
+
 
 
   const autoMapField = (expectedField, fileHeaders) => {
@@ -786,7 +747,6 @@ const DataImport = () => {
       </motion.div>
 
       {/* === DATA AND CONFLICTS SECTION === */}
-      {existingData.length > 0 && (
         <>
           <div
             style={{
@@ -860,7 +820,7 @@ const DataImport = () => {
                 style={{ marginTop: 8 }}
               >
                 <TabPane tab="Uploaded Data" key="1">
-                  {existingData.length > 0 ? (
+                  {enhancedColumns.length > 0 ? (
                     <Table
                       dataSource={existingData}
                       columns={enhancedColumns}
@@ -871,6 +831,7 @@ const DataImport = () => {
                         showQuickJumper: true,
                         onChange: (page, pageSize) => {
                           setPagination({ current: page, pageSize });
+                          fetchExistingData(projectId);
                         },
                       }}
                       rowKey="id"
@@ -890,7 +851,7 @@ const DataImport = () => {
             </Card>
           </motion.div>
         </>
-      )}
+      
     </div>
   );
 
