@@ -96,7 +96,7 @@ const ProjectDashboard = () => {
     const fileNames = {
       duplicate: "DuplicateTool.xlsx",
       extra: "ExtrasCalculation.xlsx",
-      envelope: "BreakingReport.xlsx",
+      envelope: "EnvelopeBreaking.xlsx",
       box: "BoxBreaking.xlsx",
     };
 
@@ -201,7 +201,7 @@ const ProjectDashboard = () => {
         const fileMap = {
           duplicate: `${url3}/${projectId}/DuplicateTool.xlsx`,
           extra: `${url3}/${projectId}/ExtrasCalculation.xlsx`,
-          envelope: `${url3}/${projectId}/BreakingReport.xlsx`,
+          envelope: `${url3}/${projectId}/EnvelopeBreaking.xlsx`,
           box: `${url3}/${projectId}/BoxBreaking.xlsx`,
         };
 
