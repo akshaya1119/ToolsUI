@@ -1,6 +1,6 @@
 import React, { useEffect } from "react";
 import { Card, Select, Radio, Form, InputNumber, Typography, Tag, Divider, Row, Col } from "antd";
-import { FolderAddFilled, LockFilled} from "@ant-design/icons";
+import { FolderAddFilled, LockFilled } from "@ant-design/icons";
 import AnimatedCard from "./AnimatedCard";
 import { cardStyle, iconStyle, PRIMARY_COLOR, EXTRA_ALIAS_NAME } from "./constants";
 
@@ -17,31 +17,6 @@ const ExtraProcessingCard = ({
   envelopeOptions,
 }) => {
 
-//   useEffect(() => {
-//   const defaultSelection = {};
-//   extraTypes.forEach((et) => {
-//     defaultSelection[et.type] = "Fixed";
-//   });
-//   setExtraTypeSelection(defaultSelection);
-// }, []);
-useEffect(() => {
-    const initialSelection = {};
-    extraTypes.forEach((et) => {
-      const existingConfig = extraProcessingConfig?.[et.type];
-      // ✅ If existing config has a known type, preserve it
-      if (existingConfig?.fixedQty !== undefined) {
-        initialSelection[et.type] = "Fixed";
-      } else if (existingConfig?.range !== undefined) {
-        initialSelection[et.type] = "Range";
-      } else if (existingConfig?.percentage !== undefined) {
-        initialSelection[et.type] = "Percentage";
-      } else {
-        // 🚫 No existing configuration → leave blank
-        initialSelection[et.type] = "";
-      }
-    });
-    setExtraTypeSelection(initialSelection);
-  }, [extraTypes, extraProcessingConfig, setExtraTypeSelection]);
 
   return (
     <AnimatedCard>
@@ -133,7 +108,7 @@ useEffect(() => {
 
             {/* Radio group for mode */}
             <Radio.Group
-              value={extraTypeSelection[et.type] }
+              value={extraTypeSelection[et.type]}
               onChange={(e) =>
                 setExtraTypeSelection((prev) => ({
                   ...prev,
@@ -149,7 +124,7 @@ useEffect(() => {
             </Radio.Group>
 
             {/* Inputs depending on type selection */}
-            {(extraTypeSelection[et.type]?? "Fixed") === "Fixed" && (
+            {(extraTypeSelection[et.type] ?? "Fixed") === "Fixed" && (
               <Form.Item style={{ marginTop: 12 }}>
                 <InputNumber
                   placeholder="Enter fixed quantity"
