@@ -1,5 +1,5 @@
 import React from "react";
-import { Card, Select, Typography, Tag, InputNumber } from "antd";
+import { Card, Select, Typography, Tag, InputNumber, Checkbox } from "antd";
 import { ContainerFilled, LockFilled } from "@ant-design/icons";
 import AnimatedCard from "./AnimatedCard";
 import { cardStyle, iconStyle, PRIMARY_COLOR } from "./constants";
@@ -14,6 +14,8 @@ const EnvelopeMakingCriteriaCard = ({
   setSelectedEnvelopeFields,
   startOmrEnvelopeNumber,
   setStartOmrEnvelopeNumber,
+  resetOmrSerialOnCentreChange,
+  setResetOmrSerialOnCentreChange,
 }) => {
   return (
     <AnimatedCard>
@@ -77,6 +79,15 @@ const EnvelopeMakingCriteriaCard = ({
                 </Option>
               ))}
             </Select>
+          </div>
+          <div style={{ gridColumn: "1 / -1", marginTop: 8 }}>
+            <Checkbox
+              disabled={!isEnabled("Envelope Breaking")}
+              checked={resetOmrSerialOnCentreChange}
+              onChange={(e) => setResetOmrSerialOnCentreChange(e.target.checked)}
+            >
+              <Text strong>Reset OMR Serial Number on Catch Change</Text>
+            </Checkbox>
           </div>
         </div>
       </Card>

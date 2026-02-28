@@ -22,6 +22,12 @@ const BoxBreakingCard = ({
   setSelectedDuplicatefields,
   selectedSortingField,
   setSelectedSortingField,
+  resetOnSymbolChange,
+  setResetOnSymbolChange,
+  isInnerBundlingDone,
+  setIsInnerBundlingDone,
+  innerBundlingCriteria,
+  setInnerBundlingCriteria,
 }) => {
   // Helper function to manage field concatenation criteria
   const handleBoxBreakingFields = (selectedFields) => {
@@ -49,6 +55,10 @@ const BoxBreakingCard = ({
     } else {
       setBoxBreakingCriteria(prev => prev.filter(i => i !== "duplicateFields"));
     }
+  };
+
+  const handleInnerBundling = (selectedFields) => {
+    setInnerBundlingCriteria(selectedFields);
   };
 
   { console.log(startBoxNumber) }
@@ -123,6 +133,17 @@ const BoxBreakingCard = ({
             </div>
 
           </div>
+
+          {/* Reset Box Number on Course Change */}
+          <div style={{ marginTop: 8 }}>
+            <Checkbox
+              checked={resetOnSymbolChange}
+              onChange={(e) => setResetOnSymbolChange(e.target.checked)}
+              disabled={!isEnabled("Box Breaking")}
+            >
+              Reset Box Number on Course Change
+            </Checkbox>
+          </div>
           {/* Select fields to concatenate */}
           <div>
             <Text strong>Fields on which Duplicates has to be removed</Text>
@@ -155,6 +176,35 @@ const BoxBreakingCard = ({
               placeholder="Select one or more fields"
               value={selectedSortingField}
               onChange={handleSorting}
+              optionFilterProp="children"
+            >
+              {fields.map((f) => (
+                <Option key={f.fieldId} value={f.fieldId}>
+                  {f.name}
+                </Option>
+              ))}
+            </Select>
+          </div>
+          {/* Inner Bundling */}
+          <div>
+            <div style={{ marginBottom: 4 }}>
+              <Checkbox
+                checked={isInnerBundlingDone}
+                onChange={(e) => setIsInnerBundlingDone(e.target.checked)}
+                disabled={!isEnabled("Box Breaking")}
+              >
+                <Text strong>Is Inner Bundling in this project?</Text>
+              </Checkbox>
+            </div>
+            <Select
+              mode="multiple"
+              disabled={!isEnabled("Box Breaking") || !isInnerBundlingDone}
+              allowClear
+              showSearch
+              style={{ width: "100%", marginTop: 4 }}
+              placeholder="Select fields for inner bundling criteria"
+              value={innerBundlingCriteria}
+              onChange={handleInnerBundling}
               optionFilterProp="children"
             >
               {fields.map((f) => (

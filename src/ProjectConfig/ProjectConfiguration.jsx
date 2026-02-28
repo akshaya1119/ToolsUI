@@ -35,6 +35,10 @@ const ProjectConfiguration = () => {
   const [startOmrEnvelopeNumber, setStartOmrEnvelopeNumber] = useState(0);
   const [selectedDuplicatefields, setSelectedDuplicatefields] = useState([]);
   const [selectedSortingField, setSelectedSortingField] = useState([]);
+  const [resetOnSymbolChange, setResetOnSymbolChange] = useState(false);
+  const [resetOmrSerialOnCentreChange, setResetOmrSerialOnCentreChange] = useState(false);
+  const [isInnerBundlingDone, setIsInnerBundlingDone] = useState(false);
+  const [innerBundlingCriteria, setInnerBundlingCriteria] = useState([]);
   const [duplicateConfig, setDuplicateConfig] = useState({
     duplicateCriteria: [],
     enhancement: 0,
@@ -175,6 +179,10 @@ const ProjectConfiguration = () => {
         projectConfig.duplicateRemoveFields || []
       );
       setSelectedSortingField(projectConfig.sortingBoxReport || []);
+      setResetOnSymbolChange(projectConfig.resetOnSymbolChange ?? false);
+      setResetOmrSerialOnCentreChange(projectConfig.resetOmrSerialOnCatchChange ?? false);
+      setIsInnerBundlingDone(projectConfig.isInnerBundlingDone ?? false);
+      setInnerBundlingCriteria(projectConfig.innerBundlingCriteria || []);
     } else {
       setEnabledModules([]);
       setInnerEnvelopes([]);
@@ -184,6 +192,10 @@ const ProjectConfiguration = () => {
       setBoxBreakingCriteria(["capacity"]);
       setSelectedDuplicatefields([]);
       setSelectedSortingField([]);
+      setResetOnSymbolChange(false);
+      setResetOmrSerialOnCentreChange(false);
+      setIsInnerBundlingDone(false);
+      setInnerBundlingCriteria([]);
     }
 
     // Process Extra Configurations
@@ -234,7 +246,11 @@ const ProjectConfiguration = () => {
     setStartOmrEnvelopeNumber();
     setSelectedCapacity();
     setSelectedDuplicatefields([]);
-    setSelectedSortingField([])
+    setSelectedSortingField([]);
+    setResetOnSymbolChange(false);
+    setResetOmrSerialOnCentreChange(false);
+    setIsInnerBundlingDone(false);
+    setInnerBundlingCriteria([]);
   };
 
   // Save logic using custom hook
@@ -253,6 +269,10 @@ const ProjectConfiguration = () => {
     startOmrEnvelopeNumber,
     selectedDuplicatefields,
     selectedSortingField,
+    resetOnSymbolChange,
+    resetOmrSerialOnCentreChange,
+    isInnerBundlingDone,
+    innerBundlingCriteria,
     extraProcessingConfig,
     duplicateConfig,
     fetchProjectConfigData,
@@ -316,6 +336,8 @@ const ProjectConfiguration = () => {
             setSelectedEnvelopeFields={setSelectedEnvelopeFields}
             setStartOmrEnvelopeNumber={setStartOmrEnvelopeNumber}
             startOmrEnvelopeNumber={startOmrEnvelopeNumber}
+            resetOmrSerialOnCentreChange={resetOmrSerialOnCentreChange}
+            setResetOmrSerialOnCentreChange={setResetOmrSerialOnCentreChange}
           />
 
           <ExtraProcessingCard
@@ -348,6 +370,12 @@ const ProjectConfiguration = () => {
             setSelectedDuplicatefields={setSelectedDuplicatefields}
             selectedSortingField={selectedSortingField}
             setSelectedSortingField={setSelectedSortingField}
+            resetOnSymbolChange={resetOnSymbolChange}
+            setResetOnSymbolChange={setResetOnSymbolChange}
+            isInnerBundlingDone={isInnerBundlingDone}
+            setIsInnerBundlingDone={setIsInnerBundlingDone}
+            innerBundlingCriteria={innerBundlingCriteria}
+            setInnerBundlingCriteria={setInnerBundlingCriteria}
           />
 
           <DuplicateTool
