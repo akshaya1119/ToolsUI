@@ -45,6 +45,8 @@ const ProjectConfiguration = () => {
     enhancementEnabled: false,
     enhancementType: "round",
   });
+  // Snapshot of imported configuration (null if no import done)
+  const [importedSnapshot, setImportedSnapshot] = useState(null);
   // Fetch data using custom hook
   const {
     toolModules,
@@ -72,9 +74,8 @@ const ProjectConfiguration = () => {
       const res = await API.get(`/ProjectConfigs/ByProject/${projectId}`);
       projectConfig = res.data;
       console.log("Parsed Project Config:", projectConfig);
-      setConfigExists(true); // Config exists
+      setConfigExists(true);
 
-      // Normalize duplicate config from project config
       duplicateConfigRes = {
         duplicateCriteria: Array.isArray(projectConfig.duplicateCriteria)
           ? projectConfig.duplicateCriteria
@@ -83,20 +84,16 @@ const ProjectConfiguration = () => {
         enhancementEnabled: Number(projectConfig.enhancement) > 0,
       };
       setDuplicateConfig(duplicateConfigRes);
-      console.log("Duplicate Tool Config (Mapped):", duplicateConfigRes);
 
     } catch (err) {
       if (err.response?.status === 404) {
         console.warn(`No existing configuration for ProjectId: ${projectId}`);
         setConfigExists(false);
-        setDuplicateConfig(duplicateConfigRes); // Set defaults
+        setDuplicateConfig(duplicateConfigRes);
       } else {
-        console.error(
-          "Failed to load project config",
-          err.response?.data || err.message
-        );
+        console.error("Failed to load project config", err.response?.data || err.message);
         setConfigExists(false);
-        return;
+        return null;
       }
     }
 
@@ -104,85 +101,94 @@ const ProjectConfiguration = () => {
     try {
       const extrasRes = await API.get(`/ExtrasConfigurations/ByProject/${projectId}`);
       extrasConfig = extrasRes.data;
-      console.log("Extras Config:", extrasConfig);
     } catch (err) {
-      if (err.response?.status === 404) {
-        console.warn(`No extra configuration for ProjectId: ${projectId}`);
-      } else {
-        console.error(
-          "Failed to load extras config",
-          err.response?.data || err.message
-        );
+      if (err.response?.status !== 404) {
+        console.error("Failed to load extras config", err.response?.data || err.message);
       }
     }
 
     // Fetch box capacities
+    let resolvedCapacity = null;
     try {
       const boxRes = await API.get(`/BoxCapacities`);
       const boxConfig = boxRes.data;
-      console.log("Box Capacities:", boxConfig);
       setBoxCapacities(boxConfig);
-
-      const selectedBoxCapacity = projectConfig?.boxCapacity;
-      setSelectedCapacity(
-        selectedBoxCapacity || (boxConfig.length > 0 ? boxConfig[0].id : null)
-      );
+      resolvedCapacity = projectConfig?.boxCapacity || (boxConfig.length > 0 ? boxConfig[0].id : null);
+      setSelectedCapacity(resolvedCapacity);
     } catch (err) {
-      console.error(
-        "Failed to load box capacities",
-        err.response?.data || err.message
-      );
+      console.error("Failed to load box capacities", err.response?.data || err.message);
     }
 
-    // Initialize project config states
+    // Build values locally (don't rely on state — state is async)
+    let parsedValues = {
+      enabledModules: [],
+      innerEnvelopes: [],
+      outerEnvelopes: [],
+      selectedEnvelopeFields: [],
+      startOmrEnvelopeNumber: 0,
+      resetOmrSerialOnCentreChange: false,
+      selectedBoxFields: [],
+      selectedCapacity: resolvedCapacity,
+      startBoxNumber: 0,
+      selectedDuplicatefields: [],
+      selectedSortingField: [],
+      resetOnSymbolChange: false,
+      isInnerBundlingDone: false,
+      innerBundlingCriteria: [],
+      duplicateConfig: duplicateConfigRes,
+      extraProcessingConfig: {},
+      extraTypeSelection: {},
+    };
+
     if (projectConfig && toolModules.length > 0) {
       const enabledNames = new Set();
-      const extraModuleNames = [
-        "Nodal Extra Calculation",
-        "University Extra Calculation",
-      ];
-
+      const extraModuleNames = ["Nodal Extra Calculation", "University Extra Calculation"];
       projectConfig.modules?.forEach((moduleId) => {
         const module = toolModules.find((m) => m.id === moduleId);
         if (module) {
-          if (extraModuleNames.includes(module.name)) {
-            enabledNames.add("Extra Configuration");
-          } else {
-            enabledNames.add(module.name);
-          }
+          if (extraModuleNames.includes(module.name)) enabledNames.add("Extra Configuration");
+          else enabledNames.add(module.name);
         }
       });
 
-      setEnabledModules(Array.from(enabledNames));
-
-      // Envelope Setup
       const envelopeParsed = JSON.parse(projectConfig.envelope || "{}");
-      setInnerEnvelopes(envelopeParsed.Inner ? [envelopeParsed.Inner] : []);
-      setOuterEnvelopes(envelopeParsed.Outer ? [envelopeParsed.Outer] : []);
+      const parsedInnerEnvelopes = envelopeParsed.Inner ? [envelopeParsed.Inner] : [];
+      const parsedOuterEnvelopes = envelopeParsed.Outer ? [envelopeParsed.Outer] : [];
+      const parsedBoxFields = fields
+        .filter((f) => projectConfig.boxBreakingCriteria?.includes(f.fieldId))
+        .map((f) => f.fieldId);
 
-      // Envelope Making Criteria
-      setSelectedEnvelopeFields(projectConfig.envelopeMakingCriteria || []);
-      setStartOmrEnvelopeNumber(projectConfig.omrSerialNumber);
-      // Box Breaking Criteria
-      setSelectedBoxFields(
-        fields
-          .filter((f) => projectConfig.boxBreakingCriteria?.includes(f.fieldId))
-          .map((f) => f.fieldId)
-      );
+      parsedValues = {
+        ...parsedValues,
+        enabledModules: Array.from(enabledNames),
+        innerEnvelopes: parsedInnerEnvelopes,
+        outerEnvelopes: parsedOuterEnvelopes,
+        selectedEnvelopeFields: projectConfig.envelopeMakingCriteria || [],
+        startOmrEnvelopeNumber: projectConfig.omrSerialNumber || 0,
+        selectedBoxFields: parsedBoxFields,
+        startBoxNumber: projectConfig.boxNumber || 0,
+        selectedDuplicatefields: projectConfig.duplicateRemoveFields || [],
+        selectedSortingField: projectConfig.sortingBoxReport || [],
+        resetOnSymbolChange: projectConfig.resetOnSymbolChange ?? false,
+        resetOmrSerialOnCentreChange: projectConfig.resetOmrSerialOnCatchChange ?? false,
+        isInnerBundlingDone: projectConfig.isInnerBundlingDone ?? false,
+        innerBundlingCriteria: projectConfig.innerBundlingCriteria || [],
+      };
 
-      setStartBoxNumber(projectConfig.boxNumber)
-      setBoxBreakingCriteria([
-        "capacity",
-        ...(projectConfig.boxBreakingCriteria || []),
-      ]);
-      setSelectedDuplicatefields(
-        projectConfig.duplicateRemoveFields || []
-      );
-      setSelectedSortingField(projectConfig.sortingBoxReport || []);
-      setResetOnSymbolChange(projectConfig.resetOnSymbolChange ?? false);
-      setResetOmrSerialOnCentreChange(projectConfig.resetOmrSerialOnCatchChange ?? false);
-      setIsInnerBundlingDone(projectConfig.isInnerBundlingDone ?? false);
-      setInnerBundlingCriteria(projectConfig.innerBundlingCriteria || []);
+      setEnabledModules(parsedValues.enabledModules);
+      setInnerEnvelopes(parsedValues.innerEnvelopes);
+      setOuterEnvelopes(parsedValues.outerEnvelopes);
+      setSelectedEnvelopeFields(parsedValues.selectedEnvelopeFields);
+      setStartOmrEnvelopeNumber(parsedValues.startOmrEnvelopeNumber);
+      setSelectedBoxFields(parsedValues.selectedBoxFields);
+      setStartBoxNumber(parsedValues.startBoxNumber);
+      setBoxBreakingCriteria(["capacity", ...(projectConfig.boxBreakingCriteria || [])]);
+      setSelectedDuplicatefields(parsedValues.selectedDuplicatefields);
+      setSelectedSortingField(parsedValues.selectedSortingField);
+      setResetOnSymbolChange(parsedValues.resetOnSymbolChange);
+      setResetOmrSerialOnCentreChange(parsedValues.resetOmrSerialOnCentreChange);
+      setIsInnerBundlingDone(parsedValues.isInnerBundlingDone);
+      setInnerBundlingCriteria(parsedValues.innerBundlingCriteria);
     } else {
       setEnabledModules([]);
       setInnerEnvelopes([]);
@@ -201,20 +207,12 @@ const ProjectConfiguration = () => {
     // Process Extra Configurations
     const extraProcessingParsed = {};
     const extraSelections = {};
-
     extrasConfig.forEach((item) => {
       const type = extraTypes.find((e) => e.extraTypeId === item.extraType)?.type;
       if (!type) return;
-
-      const env = item.envelopeType
-        ? JSON.parse(item.envelopeType)
-        : { Inner: "", Outer: "" };
-
+      const env = item.envelopeType ? JSON.parse(item.envelopeType) : { Inner: "", Outer: "" };
       extraProcessingParsed[type] = {
-        envelopeType: {
-          inner: env.Inner ? [env.Inner] : [],
-          outer: env.Outer ? [env.Outer] : [],
-        },
+        envelopeType: { inner: env.Inner ? [env.Inner] : [], outer: env.Outer ? [env.Outer] : [] },
         fixedQty: item.mode === "Fixed" ? parseFloat(item.value) : 0,
         range: item.mode === "Range" ? parseFloat(item.value) : 0,
         percentage: item.mode === "Percentage" ? parseFloat(item.value) : 0,
@@ -222,15 +220,20 @@ const ProjectConfiguration = () => {
       extraSelections[type] = item.mode;
     });
 
+    parsedValues.extraProcessingConfig = extraProcessingParsed;
+    parsedValues.extraTypeSelection = extraSelections;
     setExtraProcessingConfig(extraProcessingParsed);
     setExtraTypeSelection(extraSelections);
+
+    return parsedValues;
   };
 
-
   const handleImport = async (importProjectId) => {
-    await fetchProjectConfigData(importProjectId);
-    message.success("Configuration imported successfully! Review and save.");
-
+    const parsed = await fetchProjectConfigData(importProjectId);
+    if (parsed) {
+      setImportedSnapshot(parsed); // snapshot from freshly parsed data — not from stale state
+      message.success("Configuration imported successfully! Review and save.");
+    }
   };
 
   // Reset form function
@@ -251,6 +254,7 @@ const ProjectConfiguration = () => {
     setResetOmrSerialOnCentreChange(false);
     setIsInnerBundlingDone(false);
     setInnerBundlingCriteria([]);
+    setImportedSnapshot(null);
   };
 
   // Save logic using custom hook
@@ -285,6 +289,76 @@ const ProjectConfiguration = () => {
   // Helper function
   const isEnabled = (toolName) => enabledModules.includes(toolName);
 
+  // Per-module reset handlers — reverts to snapshot if import was done, else clears
+  const resetEnvelopeSetup = () => {
+    if (importedSnapshot && importedSnapshot !== "pending") {
+      setInnerEnvelopes(importedSnapshot.innerEnvelopes);
+      setOuterEnvelopes(importedSnapshot.outerEnvelopes);
+    } else {
+      setInnerEnvelopes([]);
+      setOuterEnvelopes([]);
+    }
+  };
+
+  const resetEnvelopeMakingCriteria = () => {
+    if (importedSnapshot && importedSnapshot !== "pending") {
+      setSelectedEnvelopeFields(importedSnapshot.selectedEnvelopeFields);
+      setStartOmrEnvelopeNumber(importedSnapshot.startOmrEnvelopeNumber);
+      setResetOmrSerialOnCentreChange(importedSnapshot.resetOmrSerialOnCentreChange);
+    } else {
+      setSelectedEnvelopeFields([]);
+      setStartOmrEnvelopeNumber(0);
+      setResetOmrSerialOnCentreChange(false);
+    }
+  };
+
+  const resetBoxBreaking = () => {
+    if (importedSnapshot && importedSnapshot !== "pending") {
+      setSelectedBoxFields(importedSnapshot.selectedBoxFields);
+      setSelectedCapacity(importedSnapshot.selectedCapacity);
+      setStartBoxNumber(importedSnapshot.startBoxNumber);
+      setSelectedDuplicatefields(importedSnapshot.selectedDuplicatefields);
+      setSelectedSortingField(importedSnapshot.selectedSortingField);
+      setResetOnSymbolChange(importedSnapshot.resetOnSymbolChange);
+      setIsInnerBundlingDone(importedSnapshot.isInnerBundlingDone);
+      setInnerBundlingCriteria(importedSnapshot.innerBundlingCriteria);
+      setBoxBreakingCriteria(["capacity", ...importedSnapshot.selectedBoxFields]);
+    } else {
+      setSelectedBoxFields([]);
+      setBoxBreakingCriteria(["capacity"]);
+      setSelectedCapacity(boxCapacities.length > 0 ? boxCapacities[0].id : null);
+      setStartBoxNumber(0);
+      setSelectedDuplicatefields([]);
+      setSelectedSortingField([]);
+      setResetOnSymbolChange(false);
+      setIsInnerBundlingDone(false);
+      setInnerBundlingCriteria([]);
+    }
+  };
+
+  const resetExtraProcessing = () => {
+    if (importedSnapshot && importedSnapshot !== "pending") {
+      setExtraProcessingConfig(importedSnapshot.extraProcessingConfig);
+      setExtraTypeSelection(importedSnapshot.extraTypeSelection);
+    } else {
+      setExtraProcessingConfig({});
+      setExtraTypeSelection({});
+    }
+  };
+
+  const resetDuplicateTool = () => {
+    if (importedSnapshot && importedSnapshot !== "pending") {
+      setDuplicateConfig(importedSnapshot.duplicateConfig);
+    } else {
+      setDuplicateConfig({
+        duplicateCriteria: [],
+        enhancement: 0,
+        enhancementEnabled: true,
+        enhancementType: "round",
+      });
+    }
+  };
+
   // Configuration status
   const envelopeConfigured = isEnabled("Envelope Breaking");
   const boxConfigured = isEnabled("Box Breaking");
@@ -295,6 +369,30 @@ const ProjectConfiguration = () => {
     if (!projectId) return;
     fetchProjectConfigData(projectId);
   }, [projectId, token, extraTypes, fields, showToast, toolModules]);
+
+  // Once state settles after import, finalize the snapshot
+  useEffect(() => {
+    if (importedSnapshot !== "pending") return;
+    setImportedSnapshot({
+      enabledModules,
+      innerEnvelopes,
+      outerEnvelopes,
+      selectedEnvelopeFields,
+      startOmrEnvelopeNumber,
+      resetOmrSerialOnCentreChange,
+      selectedBoxFields,
+      selectedCapacity,
+      startBoxNumber,
+      selectedDuplicatefields,
+      selectedSortingField,
+      resetOnSymbolChange,
+      isInnerBundlingDone,
+      innerBundlingCriteria,
+      duplicateConfig,
+      extraProcessingConfig,
+      extraTypeSelection,
+    });
+  }, [importedSnapshot]);
 
   useEffect(() => {
     console.log("Box Capacities Updated:", boxCapacities);
@@ -319,7 +417,13 @@ const ProjectConfiguration = () => {
             enabledModules={enabledModules}
             setEnabledModules={setEnabledModules}
           />
-
+          <DuplicateTool
+            isEnabled={isEnabled}
+            duplicateConfig={duplicateConfig}
+            setDuplicateConfig={setDuplicateConfig}
+            onReset={resetDuplicateTool}
+            importedSnapshot={importedSnapshot}
+          />
           <EnvelopeSetupCard
             isEnabled={isEnabled}
             innerEnvelopes={innerEnvelopes}
@@ -327,7 +431,27 @@ const ProjectConfiguration = () => {
             outerEnvelopes={outerEnvelopes}
             setOuterEnvelopes={setOuterEnvelopes}
             envelopeOptions={envelopeOptions}
+            onReset={resetEnvelopeSetup}
+            importedSnapshot={importedSnapshot}
           />
+
+
+
+          <ExtraProcessingCard
+            isEnabled={isEnabled}
+            extraTypes={extraTypes}
+            extraTypeSelection={extraTypeSelection}
+            setExtraTypeSelection={setExtraTypeSelection}
+            extraProcessingConfig={extraProcessingConfig}
+            setExtraProcessingConfig={setExtraProcessingConfig}
+            envelopeOptions={envelopeOptions}
+            onReset={resetExtraProcessing}
+            importedSnapshot={importedSnapshot}
+          />
+        </Col>
+
+        {/* RIGHT SIDE */}
+        <Col xs={24} md={8}>
 
           <EnvelopeMakingCriteriaCard
             isEnabled={isEnabled}
@@ -338,21 +462,9 @@ const ProjectConfiguration = () => {
             startOmrEnvelopeNumber={startOmrEnvelopeNumber}
             resetOmrSerialOnCentreChange={resetOmrSerialOnCentreChange}
             setResetOmrSerialOnCentreChange={setResetOmrSerialOnCentreChange}
+            onReset={resetEnvelopeMakingCriteria}
+            importedSnapshot={importedSnapshot}
           />
-
-          <ExtraProcessingCard
-            isEnabled={isEnabled}
-            extraTypes={extraTypes}
-            extraTypeSelection={extraTypeSelection}
-            setExtraTypeSelection={setExtraTypeSelection}
-            extraProcessingConfig={extraProcessingConfig}
-            setExtraProcessingConfig={setExtraProcessingConfig}
-            envelopeOptions={envelopeOptions}
-          />
-        </Col>
-
-        {/* RIGHT SIDE */}
-        <Col xs={24} md={8}>
           <BoxBreakingCard
             isEnabled={isEnabled}
             boxBreakingCriteria={boxBreakingCriteria}
@@ -376,13 +488,11 @@ const ProjectConfiguration = () => {
             setIsInnerBundlingDone={setIsInnerBundlingDone}
             innerBundlingCriteria={innerBundlingCriteria}
             setInnerBundlingCriteria={setInnerBundlingCriteria}
+            onReset={resetBoxBreaking}
+            importedSnapshot={importedSnapshot}
           />
 
-          <DuplicateTool
-            isEnabled={isEnabled}
-            duplicateConfig={duplicateConfig}
-            setDuplicateConfig={setDuplicateConfig}
-          />
+
 
           <ConfigSummaryCard
             enabledModules={enabledModules}

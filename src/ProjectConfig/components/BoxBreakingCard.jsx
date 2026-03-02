@@ -1,6 +1,6 @@
 import React from "react";
-import { Card, Select, Typography, Tag, Checkbox, InputNumber } from "antd";
-import { DatabaseFilled, LockFilled } from "@ant-design/icons";
+import { Card, Select, Typography, Tag, Checkbox, InputNumber, Button } from "antd";
+import { DatabaseFilled, LockFilled, UndoOutlined } from "@ant-design/icons";
 import AnimatedCard from "./AnimatedCard";
 import { cardStyle, iconStyle, PRIMARY_COLOR } from "./constants";
 
@@ -28,7 +28,15 @@ const BoxBreakingCard = ({
   setIsInnerBundlingDone,
   innerBundlingCriteria,
   setInnerBundlingCriteria,
+  onReset,
+  importedSnapshot,
 }) => {
+  const isDirty = (current, snapshotVal) => {
+    if (!importedSnapshot || importedSnapshot === "pending") return false;
+    return JSON.stringify(current) !== JSON.stringify(snapshotVal);
+  };
+  const DIRTY_STYLE = { borderLeft: "3px solid #faad14", paddingLeft: 6, borderRadius: 2 };
+  
   // Helper function to manage field concatenation criteria
   const handleBoxBreakingFields = (selectedFields) => {
     setSelectedBoxFields(selectedFields);
@@ -61,7 +69,16 @@ const BoxBreakingCard = ({
     setInnerBundlingCriteria(selectedFields);
   };
 
-  { console.log(startBoxNumber) }
+  const getDynamicSortLabel = (selectedIds) => {
+    if (!selectedIds || selectedIds.length === 0) {
+      return "Sort by this field then by this after comma separated";
+    }
+    const names = selectedIds.map(id => {
+      const field = fields.find(f => f.fieldId === id);
+      return field ? field.name : id;
+    });
+    return `Sort by ${names.join(" then by ")}`;
+  };
 
   return (
     <AnimatedCard>
@@ -79,11 +96,24 @@ const BoxBreakingCard = ({
           </div>
         }
         extra={
-          !isEnabled("Box Breaking") ? (
-            <Tag icon={<LockFilled style={{ color: PRIMARY_COLOR }} />}>
-              Disabled
-            </Tag>
-          ) : null
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {isEnabled("Box Breaking") && (
+              <Button
+                type="text"
+                size="small"
+                icon={<UndoOutlined />}
+                onClick={onReset}
+                style={{ color: PRIMARY_COLOR }}
+              >
+                Reset
+              </Button>
+            )}
+            {!isEnabled("Box Breaking") && (
+              <Tag icon={<LockFilled style={{ color: PRIMARY_COLOR }} />}>
+                Disabled
+              </Tag>
+            )}
+          </div>
         }
       >
         <div
@@ -97,7 +127,7 @@ const BoxBreakingCard = ({
         >
 
           {/* Breaking by Capacity checkbox and Select */}
-          <div className="flex gap-2">
+          <div className="flex gap-2" style={isDirty(selectedCapacity, importedSnapshot?.selectedCapacity) || isDirty(startBoxNumber, importedSnapshot?.startBoxNumber) ? DIRTY_STYLE : {}}>
             <div>
               <Checkbox
                 checked={true} // Always enabled
@@ -135,7 +165,7 @@ const BoxBreakingCard = ({
           </div>
 
           {/* Reset Box Number on Course Change */}
-          <div style={{ marginTop: 8 }}>
+          <div style={{ marginTop: 8, ...(isDirty(resetOnSymbolChange, importedSnapshot?.resetOnSymbolChange) ? DIRTY_STYLE : {}) }}>
             <Checkbox
               checked={resetOnSymbolChange}
               onChange={(e) => setResetOnSymbolChange(e.target.checked)}
@@ -145,7 +175,7 @@ const BoxBreakingCard = ({
             </Checkbox>
           </div>
           {/* Select fields to concatenate */}
-          <div>
+          <div style={isDirty(selectedDuplicatefields, importedSnapshot?.selectedDuplicatefields) ? DIRTY_STYLE : {}}>
             <Text strong>Fields on which Duplicates has to be removed</Text>
             <Select
               mode="multiple"
@@ -165,8 +195,8 @@ const BoxBreakingCard = ({
               ))}
             </Select>
           </div>
-          <div>
-            <Text strong>Sorting Report way</Text>
+          <div style={isDirty(selectedSortingField, importedSnapshot?.selectedSortingField) ? DIRTY_STYLE : {}}>
+            <Text strong>Sorting Report Fields</Text>
             <Select
               mode="multiple"
               disabled={!isEnabled("Box Breaking")}
@@ -184,9 +214,12 @@ const BoxBreakingCard = ({
                 </Option>
               ))}
             </Select>
+            <Text type="secondary" style={{ fontSize: '12px', display: 'block', marginTop: 2 }}>
+              {getDynamicSortLabel(selectedSortingField)}
+            </Text>
           </div>
           {/* Inner Bundling */}
-          <div>
+          <div style={isDirty(isInnerBundlingDone, importedSnapshot?.isInnerBundlingDone) || isDirty(innerBundlingCriteria, importedSnapshot?.innerBundlingCriteria) ? DIRTY_STYLE : {}}>
             <div style={{ marginBottom: 4 }}>
               <Checkbox
                 checked={isInnerBundlingDone}
@@ -214,7 +247,7 @@ const BoxBreakingCard = ({
               ))}
             </Select>
           </div>
-          <div>
+          <div style={isDirty(selectedBoxFields, importedSnapshot?.selectedBoxFields) ? DIRTY_STYLE : {}}>
             <Text strong>Select Box Breaking field</Text>
             <Select
               mode="multiple"
@@ -233,6 +266,7 @@ const BoxBreakingCard = ({
                 </Option>
               ))}
             </Select>
+
           </div>
         </div>
       </Card>

@@ -1,6 +1,6 @@
 import React from "react";
-import { Card, Select, Typography, Tag } from "antd";
-import { MailFilled , LockFilled } from "@ant-design/icons";
+import { Card, Select, Typography, Tag, Button } from "antd";
+import { MailFilled, LockFilled, UndoOutlined } from "@ant-design/icons";
 import AnimatedCard from "./AnimatedCard";
 import { cardStyle, iconStyle, PRIMARY_COLOR } from "./constants";
 
@@ -14,7 +14,14 @@ const EnvelopeSetupCard = ({
   outerEnvelopes,
   setOuterEnvelopes,
   envelopeOptions,
+  onReset,
+  importedSnapshot,
 }) => {
+  const isDirty = (current, snapshotVal) => {
+    if (!importedSnapshot || importedSnapshot === "pending") return false;
+    return JSON.stringify(current) !== JSON.stringify(snapshotVal);
+  };
+  const DIRTY_STYLE = { borderLeft: "3px solid #faad14", paddingLeft: 4 };
   return (
     <AnimatedCard>
       <Card
@@ -22,7 +29,7 @@ const EnvelopeSetupCard = ({
         title={
           <div>
             <span>
-              <MailFilled  style={iconStyle} /> Envelope Setup
+              <MailFilled style={iconStyle} /> Envelope Setup
             </span>
             <br />
             <Text type="secondary">
@@ -31,11 +38,24 @@ const EnvelopeSetupCard = ({
           </div>
         }
         extra={
-          !isEnabled("Envelope Breaking") ? (
-            <Tag icon={<LockFilled style={{ color: PRIMARY_COLOR }} />}>
-              Disabled
-            </Tag>
-          ) : null
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {isEnabled("Envelope Breaking") && (
+              <Button
+                type="text"
+                size="small"
+                icon={<UndoOutlined />}
+                onClick={onReset}
+                style={{ color: PRIMARY_COLOR }}
+              >
+                Reset
+              </Button>
+            )}
+            {!isEnabled("Envelope Breaking") && (
+              <Tag icon={<LockFilled style={{ color: PRIMARY_COLOR }} />}>
+                Disabled
+              </Tag>
+            )}
+          </div>
         }
       >
         <div
@@ -47,8 +67,12 @@ const EnvelopeSetupCard = ({
             marginTop: 12,
           }}
         >
-          <Text strong>Inner Envelopes</Text>
-          <Text strong>Outer Envelopes</Text>
+          <div style={isDirty(innerEnvelopes, importedSnapshot?.innerEnvelopes) ? DIRTY_STYLE : {}}>
+            <Text strong>Inner Envelopes</Text>
+          </div>
+          <div style={isDirty(outerEnvelopes, importedSnapshot?.outerEnvelopes) ? DIRTY_STYLE : {}}>
+            <Text strong>Outer Envelopes</Text>
+          </div>
 
           <Select
             mode="multiple"

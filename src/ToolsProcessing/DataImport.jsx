@@ -33,6 +33,7 @@ const DataImport = () => {
   const [skipItems, setSkipItems] = useState(false);
   const [quantity, setQuantity] = useState(0);
   const [fileList, setFileList] = useState([]);
+  const [requiredFieldNames, setRequiredFieldNames] = useState([]);
   const [pagination, setPagination] = useState({
     current: 1,
     pageSize: 10,
@@ -45,7 +46,47 @@ const DataImport = () => {
     if (!projectId) return;
     fetchExistingData(projectId);
     API.get(`/Fields`)
-      .then(res => setExpectedFields(res.data))
+      .then(res => {
+        setExpectedFields(res.data);
+        // Fetch project config and build required fields list
+        API.get(`/ProjectConfigs/ByProject/${projectId}`)
+          .then(configRes => {
+            const config = configRes.data;
+            const configuredFieldIds = new Set();
+
+            // Collect all field IDs referenced in the project configuration
+            (config.envelopeMakingCriteria || []).forEach(id => configuredFieldIds.add(id));
+            (config.boxBreakingCriteria || []).forEach(id => configuredFieldIds.add(id));
+            (config.duplicateRemoveFields || []).forEach(id => configuredFieldIds.add(id));
+            (config.sortingBoxReport || []).forEach(id => configuredFieldIds.add(id));
+            (config.innerBundlingCriteria || []).forEach(id => configuredFieldIds.add(id));
+
+            const duplicateCriteria = Array.isArray(config.duplicateCriteria)
+              ? config.duplicateCriteria
+              : JSON.parse(config.duplicateCriteria || "[]");
+            duplicateCriteria.forEach(id => configuredFieldIds.add(id));
+
+            // Resolve field IDs to field names
+            const fieldNames = res.data
+              .filter(f => configuredFieldIds.has(f.fieldId))
+              .map(f => f.name);
+
+            // NRQuantity is always mandatory
+            if (!fieldNames.includes("NRQuantity")) {
+              fieldNames.push("NRQuantity");
+            }
+
+            setRequiredFieldNames(fieldNames);
+          })
+          .catch(err => {
+            if (err.response?.status === 404) {
+              console.warn("No project config found, using default required fields");
+              setRequiredFieldNames(["NRQuantity"]);
+            } else {
+              console.error("Failed to fetch project config", err);
+            }
+          });
+      })
       .catch(err => console.error("Failed to fetch fields", err));
   }, [projectId, pagination.current, pagination.pageSize, debouncedSearchText, searchedColumn]);
 
@@ -313,7 +354,8 @@ const DataImport = () => {
 
   const handleUpload = () => {
     if (!areRequiredFieldsMapped()) {
-      showToast("Please map all required fields: CatchNo, CenterCode, NRQuantity", "error");
+      const fieldList = requiredFieldNames.length > 0 ? requiredFieldNames.join(", ") : "(none configured)";
+      showToast(`Please map all required fields: ${fieldList}`, "error");
       return;
     }
     let mappedData = getMappedData();
@@ -364,8 +406,8 @@ const DataImport = () => {
   };
 
   const areRequiredFieldsMapped = () => {
-    const requiredFields = ["CatchNo", "CenterCode", "NRQuantity"];
-    return requiredFields.every(fieldName => {
+    if (requiredFieldNames.length === 0) return true;
+    return requiredFieldNames.every(fieldName => {
       const field = expectedFields.find(f => f.name === fieldName);
       return field && fieldMappings[field.fieldId];
     });
@@ -373,7 +415,6 @@ const DataImport = () => {
 
   const getMappedData = () => {
     if (!excelData.length || !fileHeaders.length) return [];
-    const requiredFields = ["CatchNo", "CenterCode", "NRQuantity"];
     return excelData.map((row, rowIndex) => {
       const mappedRow = {};
       let isRowValid = true;
@@ -386,7 +427,7 @@ const DataImport = () => {
           if (field.name === "ExamDate" && value) {
             value = formatDateForBackend(parseDate(value));
           }
-          if (requiredFields.includes(field.name) && (value === null || value === "")) {
+          if (requiredFieldNames.includes(field.name) && (value === null || value === "")) {
             isRowValid = false;
           }
           mappedRow[field.name] = value;
@@ -663,6 +704,9 @@ const DataImport = () => {
                               }}
                             >
                               {expectedField.name}
+                              {requiredFieldNames.includes(expectedField.name) && (
+                                <span style={{ color: "#ff4d4f", marginLeft: 2 }}>*</span>
+                              )}
                             </Text>
                             {fieldMappings[expectedField.fieldId] && (
                               <CheckCircleOutlined

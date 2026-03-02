@@ -1,16 +1,22 @@
 import React, { useEffect, useState } from "react";
-import { Card, Select, Checkbox, InputNumber, Typography, Space, Tag } from "antd";
+import { Card, Select, Checkbox, InputNumber, Typography, Space, Tag, Button, Row, Col } from "antd";
 import API from "./../hooks/api";
 import useStore from "./../stores/ProjectData";
-import { CopyFilled, LockFilled } from "@ant-design/icons";
+import { CopyFilled, LockFilled, UndoOutlined } from "@ant-design/icons";
 import { iconStyle, PRIMARY_COLOR } from "../ProjectConfig/components/constants";
 
 const { Text } = Typography;
 const { Option } = Select;
 
-const DuplicateTool = ({ isEnabled, duplicateConfig = {}, setDuplicateConfig }) => {
+const DuplicateTool = ({ isEnabled, duplicateConfig = {}, setDuplicateConfig, onReset, importedSnapshot }) => {
   const projectId = useStore((state) => state.projectId);
   const [fields, setFields] = useState([]);
+
+  const isDirty = (current, snapshotVal) => {
+    if (!importedSnapshot || importedSnapshot === "pending") return false;
+    return JSON.stringify(current) !== JSON.stringify(snapshotVal);
+  };
+  const DIRTY_STYLE = { borderLeft: "3px solid #faad14", paddingLeft: 6, borderRadius: 2 };
 
   useEffect(() => {
     if (!projectId) return;
@@ -50,15 +56,30 @@ const DuplicateTool = ({ isEnabled, duplicateConfig = {}, setDuplicateConfig }) 
         </div>
       }
       extra={
-        !enabled ? (
-          <Tag icon={<LockFilled style={{ color: PRIMARY_COLOR }} />}>Disabled</Tag>
-        ) : null
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {enabled && (
+            <Button
+              type="text"
+              size="small"
+              icon={<UndoOutlined />}
+              onClick={onReset}
+              style={{ color: PRIMARY_COLOR }}
+            >
+              Reset
+            </Button>
+          )}
+          {!enabled && (
+            <Tag icon={<LockFilled style={{ color: PRIMARY_COLOR }} />}>Disabled</Tag>
+          )}
+        </div>
       }
       bordered
       style={{ marginTop: 16, boxShadow: "0 4px 8px rgba(0,0,0,0.1)" }}
     >
-      <Space direction="vertical" style={{ width: "100%" }} size="middle">
-        <div>
+      <Row gutter={24} style={{ width: "100%" }}>
+
+        {/* 3/4 Width */}
+        <Col span={18} style={isDirty(duplicateConfig?.duplicateCriteria, importedSnapshot?.duplicateConfig?.duplicateCriteria) ? DIRTY_STYLE : {}}>
           <Text strong>Select fields to concatenate</Text>
           <Select
             mode="multiple"
@@ -77,32 +98,24 @@ const DuplicateTool = ({ isEnabled, duplicateConfig = {}, setDuplicateConfig }) 
               </Option>
             ))}
           </Select>
-        </div>
+        </Col>
 
-        <div>
-          <Text strong>Enhancement Options</Text>
-          <Checkbox
-            checked={duplicateConfig?.enhancementEnabled}
+        {/* 1/4 Width */}
+        <Col span={6} style={isDirty(duplicateConfig?.enhancement, importedSnapshot?.duplicateConfig?.enhancement) ? DIRTY_STYLE : {}}>
+          <Text strong>Enhancement</Text>
+
+          <InputNumber
+            value={duplicateConfig?.enhancement || 0}
             disabled={!enabled}
-            onChange={(e) => handleEnhancementChange(e.target.checked)}
-            style={{ marginTop: 8 }}
-          >
-            Enable Enhancement
-          </Checkbox>
+            onChange={handlePercentChange}
+            style={{ marginTop: 8, width: "100%" }}
+            addonAfter="%"
+            min={0}
+            max={100}
+          />
+        </Col>
 
-          {duplicateConfig?.enhancementEnabled && (
-            <InputNumber
-              value={duplicateConfig?.enhancement || 0}
-              disabled={!enabled}
-              onChange={handlePercentChange}
-              style={{ marginTop: 8, width: "100%" }}
-              addonAfter="%"
-              min={0}
-              max={100}
-            />
-          )}
-        </div>
-      </Space>
+      </Row>
     </Card>
   );
 };
