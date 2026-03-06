@@ -41,6 +41,7 @@ const DataImport = () => {
   const [searchText, setSearchText] = useState('');
   const [searchedColumn, setSearchedColumn] = useState('');
   const debouncedSearchText = useDebounce(searchText, 500);
+  const [skippedRows, setSkippedRows] = useState([]);
   // Load projects
   useEffect(() => {
     if (!projectId) return;
@@ -359,6 +360,12 @@ const DataImport = () => {
       return;
     }
     let mappedData = getMappedData();
+    
+    // Show feedback about skipped rows
+    if (skippedRows.length > 0) {
+      showToast(`⚠️ ${skippedRows.length} rows skipped due to missing required fields`, "warning");
+    }
+    
     if (mappedData.length === 0) {
       showToast("Required fields cannot be empty. Check your Excel data.", "error");
       return;
@@ -389,7 +396,10 @@ const DataImport = () => {
     })
       .then(res => {
         console.log('Validation result:', res.data);
-        showToast("Validation successful", "success");
+        const message = skippedRows.length > 0 
+          ? `Validation successful! ${mappedData.length} rows uploaded, ${skippedRows.length} rows skipped.`
+          : "Validation successful";
+        showToast(message, "success");
         setExistingData(payload.data); // Set existing data immediately to show other parts of the screen
         resetForm();
         fetchExistingData();
@@ -415,9 +425,12 @@ const DataImport = () => {
 
   const getMappedData = () => {
     if (!excelData.length || !fileHeaders.length) return [];
-    return excelData.map((row, rowIndex) => {
+    const skipped = [];
+    const mapped = excelData.map((row, rowIndex) => {
       const mappedRow = {};
       let isRowValid = true;
+      const missingFields = [];
+      
       expectedFields.forEach((field) => {
         const column = fieldMappings[field.fieldId];  // e.g. "Name" or "Age"
         if (column) {
@@ -429,13 +442,27 @@ const DataImport = () => {
           }
           if (requiredFieldNames.includes(field.name) && (value === null || value === "")) {
             isRowValid = false;
+            missingFields.push(field.name);
           }
           mappedRow[field.name] = value;
         }
       });
-      return isRowValid ? mappedRow : null;
+      
+      if (!isRowValid) {
+        skipped.push({
+          rowNumber: rowIndex + 2, // +2 because row 1 is header, and we're 0-indexed
+          rowData: row,
+          missingFields: missingFields,
+          reason: `Missing required fields: ${missingFields.join(", ")}`
+        });
+        return null;
+      }
+      return mappedRow;
     })
       .filter(row => row !== null);
+    
+    setSkippedRows(skipped);
+    return mapped;
   };
 
   const formatDateForBackend = (date) => {
@@ -583,6 +610,45 @@ const DataImport = () => {
 
     // If it's neither, return the value as-is
     return value;
+  };
+
+  const downloadSkippedRowsReport = () => {
+    if (skippedRows.length === 0) {
+      showToast("No skipped rows to download", "info");
+      return;
+    }
+
+    // Prepare data for Excel
+    const reportData = skippedRows.map((item) => ({
+      "Row Number": item.rowNumber,
+      "Missing Fields": item.missingFields.join(", "),
+      "Reason": item.reason,
+      ...item.rowData, // Include all original row data
+    }));
+
+    // Create worksheet
+    const worksheet = XLSX.utils.json_to_sheet(reportData);
+    
+    // Set column widths
+    const columnWidths = [
+      { wch: 12 }, // Row Number
+      { wch: 30 }, // Missing Fields
+      { wch: 40 }, // Reason
+      ...fileHeaders.map(() => ({ wch: 15 })), // Original columns
+    ];
+    worksheet["!cols"] = columnWidths;
+
+    // Create workbook
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Skipped Rows");
+
+    // Generate filename with timestamp
+    const timestamp = new Date().toISOString().slice(0, 10);
+    const filename = `skipped_rows_report_${timestamp}.xlsx`;
+
+    // Download
+    XLSX.writeFile(workbook, filename);
+    showToast(`Downloaded report with ${skippedRows.length} skipped rows`, "success");
   };
 
   return (
@@ -769,7 +835,14 @@ const DataImport = () => {
                     <Button type="primary" onClick={handleUpload}>
                       Upload and Validate
                     </Button>
-
+                    {skippedRows.length > 0 && (
+                      <Button 
+                        onClick={downloadSkippedRowsReport}
+                        style={{ backgroundColor: "#faad14", borderColor: "#faad14", color: "#000" }}
+                      >
+                        📥 Download Skipped Rows ({skippedRows.length})
+                      </Button>
+                    )}
                   </Space>
                 )}
               </Card>
