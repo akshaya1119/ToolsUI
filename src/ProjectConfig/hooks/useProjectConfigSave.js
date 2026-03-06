@@ -15,6 +15,10 @@ export const useProjectConfigSave = (
   startOmrEnvelopeNumber,
   selectedDuplicatefields,
   selectedSortingField,
+  resetOnSymbolChange,
+  resetOmrSerialOnCentreChange,
+  isInnerBundlingDone,
+  innerBundlingCriteria,
   extraProcessingConfig,
   duplicateConfig,           // ✅ add duplicateConfig here
   fetchProjectConfigData,
@@ -39,7 +43,11 @@ export const useProjectConfigSave = (
         OMRSerialNumber: startOmrEnvelopeNumber,
         EnvelopeMakingCriteria: selectedEnvelopeFields,
         BoxCapacity: selectedCapacity,
-        SortingBoxReport:selectedSortingField,
+        SortingBoxReport: selectedSortingField,
+        ResetOnSymbolChange: resetOnSymbolChange,
+        ResetOmrSerialOnCentreChange: resetOmrSerialOnCentreChange,
+        IsInnerBundlingDone: isInnerBundlingDone,
+        InnerBundlingCriteria: innerBundlingCriteria,
         DuplicateCriteria: duplicateConfig?.duplicateCriteria || [], // ✅
         Enhancement: duplicateConfig?.enhancementEnabled
           ? duplicateConfig?.enhancement || 0
@@ -60,25 +68,25 @@ export const useProjectConfigSave = (
             Inner: String(config.envelopeType?.inner || ""),
             Outer: String(config.envelopeType?.outer || ""),
           };
-const fixed = Number(config.fixedQty || 0);
-    const range = Number(config.range || 0);
-    const percentage = Number(config.percentage || 0);
+          const fixed = Number(config.fixedQty || 0);
+          const range = Number(config.range || 0);
+          const percentage = Number(config.percentage || 0);
 
-    const allZero =
-      fixed === 0 &&
-      range === 0 &&
-      percentage === 0 &&
-      !normalizedEnvelope.Inner &&
-      !normalizedEnvelope.Outer;
+          const allZero =
+            fixed === 0 &&
+            range === 0 &&
+            percentage === 0 &&
+            !normalizedEnvelope.Inner &&
+            !normalizedEnvelope.Outer;
 
-    // 🚫 Skip if nothing configured
-    if (allZero) return null;
-    const value =
-      mode === "Fixed"
-        ? String(fixed)
-        : mode === "Range"
-        ? String(range)
-        : String(percentage);
+          // 🚫 Skip if nothing configured
+          if (allZero) return null;
+          const value =
+            mode === "Fixed"
+              ? String(fixed)
+              : mode === "Range"
+                ? String(range)
+                : String(percentage);
           return {
             id: 0,
             projectId: Number(projectId),

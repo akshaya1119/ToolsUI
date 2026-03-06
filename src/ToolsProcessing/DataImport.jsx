@@ -7,6 +7,7 @@ import * as XLSX from 'xlsx';
 import { motion } from 'framer-motion';
 import API from '../hooks/api';
 import useStore from '../stores/ProjectData';
+import useDebounce from '../services/useDebounce';
 
 const { Text } = Typography;
 const { Option } = Select;
@@ -23,6 +24,7 @@ const DataImport = () => {
   const [conflictSelections, setConflictSelections] = useState({});
   const [showData, setShowData] = useState(false);
   const [existingData, setExistingData] = useState([]); // ✅ default to []
+  const [columns, setColumns] = useState([]); // ✅ default to []
   const [loading, setLoading] = useState(false); // ✅ added
   const [activeTab, setActiveTab] = useState("1");
   const token = localStorage.getItem('token');
@@ -31,30 +33,83 @@ const DataImport = () => {
   const [skipItems, setSkipItems] = useState(false);
   const [quantity, setQuantity] = useState(0);
   const [fileList, setFileList] = useState([]);
+  const [requiredFieldNames, setRequiredFieldNames] = useState([]);
   const [pagination, setPagination] = useState({
     current: 1,
     pageSize: 10,
   });
   const [searchText, setSearchText] = useState('');
   const [searchedColumn, setSearchedColumn] = useState('');
-  const toast = useToast()
+  const debouncedSearchText = useDebounce(searchText, 500);
   // Load projects
   useEffect(() => {
     if (!projectId) return;
     fetchExistingData(projectId);
     API.get(`/Fields`)
-      .then(res => setExpectedFields(res.data))
+      .then(res => {
+        setExpectedFields(res.data);
+        // Fetch project config and build required fields list
+        API.get(`/ProjectConfigs/ByProject/${projectId}`)
+          .then(configRes => {
+            const config = configRes.data;
+            const configuredFieldIds = new Set();
+
+            // Collect all field IDs referenced in the project configuration
+            (config.envelopeMakingCriteria || []).forEach(id => configuredFieldIds.add(id));
+            (config.boxBreakingCriteria || []).forEach(id => configuredFieldIds.add(id));
+            (config.duplicateRemoveFields || []).forEach(id => configuredFieldIds.add(id));
+            (config.sortingBoxReport || []).forEach(id => configuredFieldIds.add(id));
+            (config.innerBundlingCriteria || []).forEach(id => configuredFieldIds.add(id));
+
+            const duplicateCriteria = Array.isArray(config.duplicateCriteria)
+              ? config.duplicateCriteria
+              : JSON.parse(config.duplicateCriteria || "[]");
+            duplicateCriteria.forEach(id => configuredFieldIds.add(id));
+
+            // Resolve field IDs to field names
+            const fieldNames = res.data
+              .filter(f => configuredFieldIds.has(f.fieldId))
+              .map(f => f.name);
+
+            // NRQuantity is always mandatory
+            if (!fieldNames.includes("NRQuantity")) {
+              fieldNames.push("NRQuantity");
+            }
+
+            setRequiredFieldNames(fieldNames);
+          })
+          .catch(err => {
+            if (err.response?.status === 404) {
+              console.warn("No project config found, using default required fields");
+              setRequiredFieldNames(["NRQuantity"]);
+            } else {
+              console.error("Failed to fetch project config", err);
+            }
+          });
+      })
       .catch(err => console.error("Failed to fetch fields", err));
-  }, [projectId]);
+  }, [projectId, pagination.current, pagination.pageSize, debouncedSearchText, searchedColumn]);
 
   const fetchExistingData = async (projectId) => {
     if (!projectId) return;
 
     setLoading(true);
     try {
-      const res = await API.get(`/NRDatas/GetByProjectId/${projectId}`);
-      setExistingData(res.data || []);
-      setShowData(res.data && res.data.length > 0);
+      const res = await API.get(`/NRDatas/GetByProjectId/${projectId}`, {
+        params: {
+          pageSize: pagination.pageSize,
+          pageNo: pagination.current,
+          search: searchText || null,
+          key: searchedColumn || null
+        },
+      });
+      setExistingData(res.data.items || []);
+      setColumns(res.data.columns)
+      setPagination(prev => ({
+        ...prev,
+        total: res.data.totalCount
+      }));
+      setShowData(res.data.items && res.data.items.length > 0);
     } catch (err) {
       console.error("Failed to fetch existing data", err);
       setExistingData([]);
@@ -216,17 +271,64 @@ const DataImport = () => {
       setFileHeaders(headers);
       setExcelData(rows);
       setShowData(true);
+
+      // Auto-map fields once after reading the file
+      if (expectedFields.length > 0) {
+        autoMapFields(headers, expectedFields);
+      }
     };
     reader.readAsArrayBuffer(file);
   };
 
-  // Upload file logic
   const beforeUpload = (file) => {
     setFileList([file]); // Show the selected file
     setFileHeaders([]);
     setFieldMappings({});
     proceedWithReading(file);
     return false; // prevent auto upload
+  };
+
+  const autoMapFields = (headers, expected) => {
+    const newMappings = {};
+    const normalize = (str) => str.trim().toLowerCase().replace(/\s+/g, "");
+
+    const keywordMappings = {
+      catchno: ["catch", "catch number"],
+      nodalcode: ["nodal", "nodal code"],
+      examdate: ["date", "exam date"],
+      examtime: ["time", "exam time"],
+      nrquantity: ["count", "Nr", "cnt"],
+      centercode: ["centre", "centre code"]
+    };
+
+    expected.forEach((expectedField) => {
+      const normalizedExpected = normalize(expectedField.name);
+
+      // Step 1: Try exact match
+      const exactMatch = headers.find(
+        (header) => normalize(header) === normalizedExpected
+      );
+
+      if (exactMatch) {
+        newMappings[expectedField.fieldId] = exactMatch;
+        return;
+      }
+
+      // Step 2: Try keyword-based matching
+      const possibleKeywords = keywordMappings[normalizedExpected] || [];
+      const keywordMatch = headers.find((header) => {
+        const normalizedHeader = normalize(header);
+        return possibleKeywords.some((keyword) =>
+          normalizedHeader.includes(normalize(keyword))
+        );
+      });
+
+      if (keywordMatch) {
+        newMappings[expectedField.fieldId] = keywordMatch;
+      }
+    });
+
+    setFieldMappings(newMappings);
   };
 
   const handleRemove = (file) => {
@@ -252,7 +354,8 @@ const DataImport = () => {
 
   const handleUpload = () => {
     if (!areRequiredFieldsMapped()) {
-      showToast("Please map all required fields: CatchNo, CenterCode, NRQuantity", "error");
+      const fieldList = requiredFieldNames.length > 0 ? requiredFieldNames.join(", ") : "(none configured)";
+      showToast(`Please map all required fields: ${fieldList}`, "error");
       return;
     }
     let mappedData = getMappedData();
@@ -303,8 +406,8 @@ const DataImport = () => {
   };
 
   const areRequiredFieldsMapped = () => {
-    const requiredFields = ["CatchNo", "CenterCode", "NRQuantity"];
-    return requiredFields.every(fieldName => {
+    if (requiredFieldNames.length === 0) return true;
+    return requiredFieldNames.every(fieldName => {
       const field = expectedFields.find(f => f.name === fieldName);
       return field && fieldMappings[field.fieldId];
     });
@@ -312,7 +415,6 @@ const DataImport = () => {
 
   const getMappedData = () => {
     if (!excelData.length || !fileHeaders.length) return [];
-    const requiredFields = ["CatchNo", "CenterCode", "NRQuantity"];
     return excelData.map((row, rowIndex) => {
       const mappedRow = {};
       let isRowValid = true;
@@ -325,7 +427,7 @@ const DataImport = () => {
           if (field.name === "ExamDate" && value) {
             value = formatDateForBackend(parseDate(value));
           }
-          if (requiredFields.includes(field.name) && (value === null || value === "")) {
+          if (requiredFieldNames.includes(field.name) && (value === null || value === "")) {
             isRowValid = false;
           }
           mappedRow[field.name] = value;
@@ -346,39 +448,6 @@ const DataImport = () => {
     return date; // Return the original value if it's not a valid date
   };
 
-  const handleSearch = (selectedKeys, confirm, dataIndex) => {
-    confirm();
-    setSearchText(selectedKeys[0]);
-    setSearchedColumn(dataIndex);
-  };
-
-  // Render uploaded Excel preview
-  const renderUploadedData = () => {
-    if (!showData) return null;
-
-    const columns = fileHeaders.map(header => ({
-      title: header,
-      dataIndex: header,
-      key: header,
-    }));
-
-    return <Table columns={columns} dataSource={excelData} pagination={{
-      ...pagination,
-      showSizeChanger: true,
-      pageSizeOptions: ['10', '20', '50', '100'],
-      showQuickJumper: true,
-      onChange: (page, pageSize) => {
-        setPagination({ current: page, pageSize });
-      },
-    }} />;
-  };
-
-  const handleReset = clearFilters => {
-    clearFilters();
-    setSearchText('');
-    confirm();
-  };
-
   const getColumnSearchProps = dataIndex => ({
     filterDropdown: ({
       setSelectedKeys,
@@ -390,31 +459,19 @@ const DataImport = () => {
         <Input
           autoFocus
           placeholder={`Search ${dataIndex}`}
-          value={selectedKeys[0]}
-          onChange={e => setSelectedKeys(e.target.value ? [e.target.value] : [])}
-          onPressEnter={() => handleSearch(selectedKeys, confirm, dataIndex)}
+          value={searchText}
+          onChange={(e) => {
+            const val = e.target.value;
+            setSearchText(val);       // update search text
+            setSearchedColumn(dataIndex); // set key immediately
+          }}
           style={{ width: 188, marginBottom: 8, display: 'block' }}
         />
-        <div>
-          <Button
-            type="primary"
-            onClick={() => handleSearch(selectedKeys, confirm, dataIndex)}
-            icon={<SearchOutlined />}
-            size="small"
-            style={{ width: 90, marginRight: 8 }}
-          >
-            Search
-          </Button>
-          <Button onClick={() => handleReset(clearFilters, confirm)} size="small" style={{ width: 90 }}>
-            Reset
-          </Button>
-        </div>
       </div>
     ),
     filterIcon: filtered => (
       <SearchOutlined style={{ color: filtered ? '#1890ff' : undefined }} />
     ),
-    onFilter: (value, record) => record[dataIndex]?.toString().toLowerCase().includes(value.toLowerCase()),
     render: text =>
       searchedColumn === dataIndex ? (
         <span style={{ color: '#1890ff' }}>{text}</span>
@@ -423,93 +480,32 @@ const DataImport = () => {
       ),
   });
 
-  // Add sorting to your columns
-
-  // Columns for existing data
-  const columns = existingData.length
-    ? Object.keys(existingData[0]).map((col) => ({
-      title: col,
-      dataIndex: col,
-      key: col,
-      ellipsis: true,
-    }))
-    : [];
-
+  // columnsFromBackend = response.columns
   const enhancedColumns = columns.map(col => ({
-    ...col,
-    ...getColumnSearchProps(col.dataIndex),
+    title: col,
+    dataIndex: col,
+    key: col,
+    ellipsis: true,
+    ...getColumnSearchProps(col),  // search/filter props
     sorter: (a, b) => {
-      const valA = a[col.dataIndex];
-      const valB = b[col.dataIndex];
+      const valA = a[col];
+      const valB = b[col];
 
-      // Handle undefined or null values safely
       if (valA == null) return -1;
       if (valB == null) return 1;
 
-      // If both values are numbers → numeric sort
-      if (!isNaN(valA) && !isNaN(valB)) {
-        return Number(valA) - Number(valB);
-      }
-      // Otherwise → alphabetical sort (case-insensitive)
-      return String(valA).localeCompare(String(valB), undefined, {
-        sensitivity: 'base',
-      });
+      // numeric check
+      if (!isNaN(valA) && !isNaN(valB)) return Number(valA) - Number(valB);
+
+      // date check (optional)
+      if (Date.parse(valA) && Date.parse(valB)) return new Date(valA) - new Date(valB);
+
+      // default string sort
+      return String(valA).localeCompare(String(valB), undefined, { sensitivity: 'base' });
     },
   }));
 
 
-  const autoMapField = (expectedField, fileHeaders) => {
-    // Skip if already manually mapped
-    if (fieldMappings[expectedField.fieldId]) return null;
-
-    const normalize = (str) => str.trim().toLowerCase().replace(/\s+/g, "");
-
-    const normalizedExpected = normalize(expectedField.name);
-
-    // Map expected field IDs to keywords (manual override)
-    const keywordMappings = {
-      catchno: ["catch", "catch number"],
-      nodalcode: ["nodal", "nodal code"],
-      examdate: ["date", "exam date"],
-      examtime: ["time", "exam time"],
-      nrquantity: ["count", "Nr", "cnt"],
-      centercode: ["centre", "centre code"]
-    };
-
-    // Step 1: Try exact match (normalized)
-    const exactMatch = fileHeaders.find(
-      (header) => normalize(header) === normalizedExpected
-    );
-
-    if (exactMatch) {
-      setFieldMappings((prev) => ({
-        ...prev,
-        [expectedField.fieldId]: exactMatch,
-      }));
-      return exactMatch;
-    }
-
-    // Step 2: Try keyword-based matching
-    const possibleKeywords = keywordMappings[normalizedExpected] || [];
-
-    const keywordMatch = fileHeaders.find((header) => {
-      const normalizedHeader = normalize(header);
-      return possibleKeywords.some((keyword) =>
-        normalizedHeader.includes(normalize(keyword))
-      );
-    });
-
-    if (keywordMatch) {
-      setFieldMappings((prev) => ({
-        ...prev,
-        [expectedField.fieldId]: keywordMatch,
-      }));
-      return keywordMatch;
-    }
-
-    // No match found
-    return null;
-  };
 
   const deleteNRData = async (closeModal) => {
     setLoading(true);
@@ -695,11 +691,6 @@ const DataImport = () => {
 
                 <Row gutter={[16, 16]}>
                   {expectedFields.map((expectedField) => {
-                    const autoMappedValue = autoMapField(
-                      expectedField,
-                      fileHeaders
-                    );
-
                     return (
                       <Col key={expectedField.fieldId} xs={24} md={8}>
                         <div style={{ marginBottom: 12 }}>
@@ -713,6 +704,9 @@ const DataImport = () => {
                               }}
                             >
                               {expectedField.name}
+                              {requiredFieldNames.includes(expectedField.name) && (
+                                <span style={{ color: "#ff4d4f", marginLeft: 2 }}>*</span>
+                              )}
                             </Text>
                             {fieldMappings[expectedField.fieldId] && (
                               <CheckCircleOutlined
@@ -732,8 +726,7 @@ const DataImport = () => {
                             }}
                             placeholder="Select matching column from file"
                             value={
-                              fieldMappings[expectedField.fieldId] ||
-                              autoMappedValue
+                              fieldMappings[expectedField.fieldId]
                             }
                             onChange={(value) => {
                               setFieldMappings((prev) => ({
@@ -786,111 +779,111 @@ const DataImport = () => {
       </motion.div>
 
       {/* === DATA AND CONFLICTS SECTION === */}
-      {existingData.length > 0 && (
-        <>
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              marginTop: 32,
-              marginBottom: 16,
-            }}
-          >
-            {/* Left side: Title */}
-            <Typography.Title level={4} style={{ margin: 0 }}>
-              Data & Conflicts
-            </Typography.Title>
+      <>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginTop: 32,
+            marginBottom: 16,
+          }}
+        >
+          {/* Left side: Title */}
+          <Typography.Title level={4} style={{ margin: 0 }}>
+            Data & Conflicts
+          </Typography.Title>
 
-            {/* Right side: Buttons */}
-            <div style={{ display: "flex", gap: 8 }}>
-              <Button
-                onClick={fetchConflictReport}
-                style={{
-                  backgroundColor: "#f0dc24ff",
-                  borderColor: "#FFEB3B",
-                  color: "#000",
-                }}
-              >
-                ⚠️ Load Conflict
-              </Button>
-
-              <Button
-                danger
-                style={{
-                  backgroundColor: "#ff4d4f", // full red background
-                  borderColor: "#ff4d4f",
-                  color: "#fff",
-                }}
-                onClick={() => {
-                  const modal = Modal.confirm({
-                    title: "Confirm Deletion",
-                    content: "Are you sure you want to delete NR data for this project?",
-                    okText: "Yes, Delete",
-                    cancelText: "Cancel",
-                    okButtonProps: { danger: true },
-                    onOk: async () => {
-                      await deleteNRData(() => modal.destroy());
-                    },
-                  });
-                }}
-              >
-                🗑️ Delete NR Data
-              </Button>
-            </div>
-          </div>
-
-
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            whileHover={{
-              scale: 1.01,
-              boxShadow: "0 10px 20px rgba(0, 0, 0, 0.1)",
-            }}
-            transition={{ duration: 0.3 }}
-          >
-            <Card
-              bordered
-              style={{ border: "1px solid #d9d9d9", boxShadow: "0 4px 8px rgba(0,0,0,0.1)" }}
+          {/* Right side: Buttons */}
+          <div style={{ display: "flex", gap: 8 }}>
+            <Button
+              onClick={fetchConflictReport}
+              style={{
+                backgroundColor: "#f0dc24ff",
+                borderColor: "#FFEB3B",
+                color: "#000",
+              }}
             >
-              <Tabs
-                activeKey={activeTab}
-                onChange={(key) => setActiveTab(key)}
-                style={{ marginTop: 8 }}
-              >
-                <TabPane tab="Uploaded Data" key="1">
-                  {existingData.length > 0 ? (
-                    <Table
-                      dataSource={existingData}
-                      columns={enhancedColumns}
-                      pagination={{
-                        ...pagination,
-                        showSizeChanger: true,
-                        pageSizeOptions: ['10', '20', '50', '100'],
-                        showQuickJumper: true,
-                        onChange: (page, pageSize) => {
-                          setPagination({ current: page, pageSize });
-                        },
-                      }}
-                      rowKey="id"
-                      scroll={{ x: "max-content" }}
-                      loading={loading}
-                    />
-                  ) : (
-                    <Typography.Text type="secondary">No data found</Typography.Text>
-                  )}
+              ⚠️ Load Conflict
+            </Button>
 
-                </TabPane>
+            <Button
+              danger
+              style={{
+                backgroundColor: "#ff4d4f", // full red background
+                borderColor: "#ff4d4f",
+                color: "#fff",
+              }}
+              onClick={() => {
+                const modal = Modal.confirm({
+                  title: "Confirm Deletion",
+                  content: "Are you sure you want to delete NR data for this project?",
+                  okText: "Yes, Delete",
+                  cancelText: "Cancel",
+                  okButtonProps: { danger: true },
+                  onOk: async () => {
+                    await deleteNRData(() => modal.destroy());
+                  },
+                });
+              }}
+            >
+              🗑️ Delete NR Data
+            </Button>
+          </div>
+        </div>
 
-                <TabPane tab="Conflict Report" key="2">
-                  {renderConflicts()}
-                </TabPane>
-              </Tabs>
-            </Card>
-          </motion.div>
-        </>
-      )}
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          whileHover={{
+            scale: 1.01,
+            boxShadow: "0 10px 20px rgba(0, 0, 0, 0.1)",
+          }}
+          transition={{ duration: 0.3 }}
+        >
+          <Card
+            bordered
+            style={{ border: "1px solid #d9d9d9", boxShadow: "0 4px 8px rgba(0,0,0,0.1)" }}
+          >
+            <Tabs
+              activeKey={activeTab}
+              onChange={(key) => setActiveTab(key)}
+              style={{ marginTop: 8 }}
+            >
+              <TabPane tab="Uploaded Data" key="1">
+                {enhancedColumns.length > 0 ? (
+                  <Table
+                    dataSource={existingData}
+                    columns={enhancedColumns}
+                    pagination={{
+                      ...pagination,
+                      showSizeChanger: true,
+                      pageSizeOptions: ['10', '20', '50', '100'],
+                      showQuickJumper: true,
+                      onChange: (page, pageSize) => {
+                        setPagination({ current: page, pageSize });
+                        fetchExistingData(projectId);
+                      },
+                    }}
+                    rowKey="id"
+                    scroll={{ x: "max-content" }}
+                    loading={loading}
+                  />
+                ) : (
+                  <Typography.Text type="secondary">No data found</Typography.Text>
+                )}
+
+              </TabPane>
+
+              <TabPane tab="Conflict Report" key="2">
+                {renderConflicts()}
+              </TabPane>
+            </Tabs>
+          </Card>
+        </motion.div>
+      </>
+
     </div>
   );
 

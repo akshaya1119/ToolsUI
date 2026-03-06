@@ -11,7 +11,7 @@ const token = localStorage.getItem("token");
 
 const possibleReports = [
   { fileName: "DuplicateTool.xlsx", title: "Duplicate Processing Report" },
-  { fileName: "BreakingReport.xlsx", title: "Envelope Breaking Report" },
+  { fileName: "EnvelopeBreaking.xlsx", title: "Envelope Breaking Report" },
   { fileName: "ExtrasCalculation.xlsx", title: "Extras Calculation Report" },
   { fileName: "BoxBreaking.xlsx", title: "Box Breaking Report" },
 ];
