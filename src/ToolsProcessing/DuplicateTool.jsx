@@ -74,7 +74,7 @@ const DuplicateTool = ({ isEnabled, duplicateConfig = {}, setDuplicateConfig, on
         </div>
       }
       bordered
-      style={{ marginTop: 16, boxShadow: "0 4px 8px rgba(0,0,0,0.1)" }}
+      style={{ marginTop: 16, marginBottom: 16, boxShadow: "0 4px 8px rgba(0,0,0,0.1)" }}
     >
       <Row gutter={24} style={{ width: "100%" }}>
 

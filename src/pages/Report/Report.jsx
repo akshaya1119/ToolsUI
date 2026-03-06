@@ -14,6 +14,8 @@ const possibleReports = [
   { fileName: "EnvelopeBreaking.xlsx", title: "Envelope Breaking Report" },
   { fileName: "ExtrasCalculation.xlsx", title: "Extras Calculation Report" },
   { fileName: "BoxBreaking.xlsx", title: "Box Breaking Report" },
+  { fileName: "CatchSummary.xlsx", title: "Catch Summary Report" },
+  { fileName: "EnvelopeSummary.xlsx", title: "Envelope Summary Report" },
 ];
 
 const Report = () => {

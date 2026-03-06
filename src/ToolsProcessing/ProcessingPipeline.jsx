@@ -49,6 +49,8 @@ const ProcessingPipeline = () => {
       extra: "ExtrasCalculation.xlsx",
       envelope: "EnvelopeBreaking.xlsx",
       box: "BoxBreaking.xlsx",
+      catchSummary: "CatchSummary.xlsx",
+      envelopeSummary: "EnvelopeSummary.xlsx",
     };
 
     const results = {};
@@ -95,6 +97,10 @@ const ProcessingPipeline = () => {
       order.push({ key: "envelope", title: "Envelope Breaking" });
     if (lowerNames.some((n) => n.includes("box")))
       order.push({ key: "box", title: "Box Breaking" });
+    if (lowerNames.some((n) => n.includes("catchSummary")))
+      order.push({ key: "catchSummary", title: "Catch Summary" });
+    if (lowerNames.some((n) => n.includes("envelopeSummary")))
+      order.push({ key: "envelopeSummary", title: "Envelope Summary" });
     console.log("Final order:", order);
     return order;
   };
@@ -172,6 +178,17 @@ const ProcessingPipeline = () => {
     message.success(res?.data?.message || "Box breaking completed");
   };
 
+  const runCatchSummary = async (projectId) => {
+    const res = await API.get(`/EnvelopeBreakages/CatchEnvelopeSummaryWithExtras?ProjectId=${projectId}`);
+    message.success(res?.data?.message || "Box breaking completed");
+  };
+
+  const runEnvelopeSummary = async (projectId) => {
+    const res = await API.get(`/EnvelopeBreakages/EnvelopeSummaryReport?ProjectId=${projectId}`);
+    message.success(res?.data?.message || "Box breaking completed");
+  };
+
+
   const updateStepStatus = (key, patch) => {
     setSteps((prev) => prev.map((s) => (s.key === key ? { ...s, ...patch } : s)));
   };
@@ -207,6 +224,8 @@ const ProcessingPipeline = () => {
         else if (step.key === "extra") await runExtras(projectId);
         else if (step.key === "envelope") await runEnvelope(projectId);
         else if (step.key === "box") await runBoxBreaking(projectId);
+        else if (step.key === "catchSummary") await runCatchSummary(projectId);
+        else if (step.key === "envelopeSummary") await runEnvelopeSummary(projectId);
 
         const durationMs = Date.now() - (stepTimers.get(step.key) || Date.now());
         const mm = String(Math.floor(durationMs / 60000)).padStart(2, "0");
