@@ -42,6 +42,7 @@ const DataImport = () => {
   const [searchedColumn, setSearchedColumn] = useState('');
   const debouncedSearchText = useDebounce(searchText, 500);
   const [skippedRows, setSkippedRows] = useState([]);
+  const [editableSkippedRows, setEditableSkippedRows] = useState([]); // user-edited cells
   // Load projects
   useEffect(() => {
     if (!projectId) return;
@@ -76,13 +77,16 @@ const DataImport = () => {
             if (!fieldNames.includes("NRQuantity")) {
               fieldNames.push("NRQuantity");
             }
+            if (!fieldNames.includes("Pages")) {
+              fieldNames.push("Pages");
+            }
 
             setRequiredFieldNames(fieldNames);
           })
           .catch(err => {
             if (err.response?.status === 404) {
               console.warn("No project config found, using default required fields");
-              setRequiredFieldNames(["NRQuantity"]);
+              setRequiredFieldNames(["NRQuantity", "Pages"]);
             } else {
               console.error("Failed to fetch project config", err);
             }
@@ -351,6 +355,8 @@ const DataImport = () => {
     setSkipItems(false)
     setQuantity(0);
     setKeepZeroQuantity(false);
+    setSkippedRows([]);
+    setEditableSkippedRows([]);
   };
 
   const handleUpload = () => {
@@ -359,24 +365,38 @@ const DataImport = () => {
       showToast(`Please map all required fields: ${fieldList}`, "error");
       return;
     }
+
     let mappedData = getMappedData();
-    
-    // Show feedback about skipped rows
-    if (skippedRows.length > 0) {
-      showToast(`⚠️ ${skippedRows.length} rows skipped due to missing required fields`, "warning");
+
+    // Merge user-edited skipped rows that now have all required fields
+    const completedEditedRows = editableSkippedRows.filter(row =>
+      requiredFieldNames.every(name => row[name] !== null && row[name] !== undefined && row[name] !== "")
+    ).map(row => {
+      // Remove internal tracking keys
+      const { _rowIndex, _missingFields, ...clean } = row;
+      return clean;
+    });
+
+    const stillIncomplete = editableSkippedRows.filter(row =>
+      requiredFieldNames.some(name => !row[name] && row[name] !== 0)
+    );
+
+    if (stillIncomplete.length > 0) {
+      showToast(`⚠️ ${stillIncomplete.length} rows still have empty required fields and will be skipped.`, "warning");
     }
-    
+
+    mappedData = [...mappedData, ...completedEditedRows];
+
     if (mappedData.length === 0) {
-      showToast("Required fields cannot be empty. Check your Excel data.", "error");
+      showToast("No valid rows to upload. Fill in the required fields in the rows below.", "error");
       return;
     }
-    setLoading(true)
+
+    setLoading(true);
 
     if (keepZeroQuantity) {
       mappedData = mappedData.map((row) => {
-        if (row.NRQuantity === 0) {
-          row.NRQuantity = quantity; // Replace with the updated quantity
-        }
+        if (row.NRQuantity === 0) row.NRQuantity = quantity;
         return row;
       });
     }
@@ -387,7 +407,7 @@ const DataImport = () => {
       projectId: Number(projectId),
       data: mappedData.map(row => ({
         ...row,
-        ExamDate: String(row.ExamDate), // Ensure quantity is a number,
+        ExamDate: String(row.ExamDate),
       }))
     };
 
@@ -396,11 +416,8 @@ const DataImport = () => {
     })
       .then(res => {
         console.log('Validation result:', res.data);
-        const message = skippedRows.length > 0 
-          ? `Validation successful! ${mappedData.length} rows uploaded, ${skippedRows.length} rows skipped.`
-          : "Validation successful";
-        showToast(message, "success");
-        setExistingData(payload.data); // Set existing data immediately to show other parts of the screen
+        showToast(`Validation successful! ${mappedData.length} rows uploaded.`, "success");
+        setExistingData(payload.data);
         resetForm();
         fetchExistingData();
       })
@@ -410,7 +427,7 @@ const DataImport = () => {
         resetForm();
       })
       .finally(() => {
-        setLoading(false); // Stop loading after the process is finished
+        setLoading(false);
         setFileList([]);
       });
   };
@@ -430,38 +447,40 @@ const DataImport = () => {
       const mappedRow = {};
       let isRowValid = true;
       const missingFields = [];
-      
+
       expectedFields.forEach((field) => {
-        const column = fieldMappings[field.fieldId];  // e.g. "Name" or "Age"
+        const column = fieldMappings[field.fieldId];
         if (column) {
           let value = row[column] ?? null;
-
-          // Check if the field is "ExamDate" and format the value as a valid date
           if (field.name === "ExamDate" && value) {
             value = formatDateForBackend(parseDate(value));
           }
-          if (requiredFieldNames.includes(field.name) && (value === null || value === "")) {
+          if (requiredFieldNames.includes(field.name) && (value === null || value === undefined || value === "")) {
             isRowValid = false;
             missingFields.push(field.name);
           }
           mappedRow[field.name] = value;
         }
       });
-      
+
       if (!isRowValid) {
         skipped.push({
-          rowNumber: rowIndex + 2, // +2 because row 1 is header, and we're 0-indexed
-          rowData: row,
-          missingFields: missingFields,
-          reason: `Missing required fields: ${missingFields.join(", ")}`
+          _rowIndex: rowIndex,
+          _missingFields: missingFields,
+          ...mappedRow,
         });
         return null;
       }
       return mappedRow;
-    })
-      .filter(row => row !== null);
-    
+    }).filter(row => row !== null);
+
     setSkippedRows(skipped);
+    // Initialise editable state from the skipped rows (preserve any prior edits for the same row index)    
+    setEditableSkippedRows(prev => {
+      const prevByIndex = {};
+      prev.forEach(r => { prevByIndex[r._rowIndex] = r; });
+      return skipped.map(r => prevByIndex[r._rowIndex] ?? { ...r });
+    });
     return mapped;
   };
 
@@ -612,6 +631,7 @@ const DataImport = () => {
     return value;
   };
 
+
   const downloadSkippedRowsReport = () => {
     if (skippedRows.length === 0) {
       showToast("No skipped rows to download", "info");
@@ -628,7 +648,7 @@ const DataImport = () => {
 
     // Create worksheet
     const worksheet = XLSX.utils.json_to_sheet(reportData);
-    
+
     // Set column widths
     const columnWidths = [
       { wch: 12 }, // Row Number
@@ -832,11 +852,16 @@ const DataImport = () => {
 
                 {isAnyFieldMapped() && (
                   <Space style={{ marginTop: 16, width: "100%", justifyContent: "space-between" }}>
-                    <Button type="primary" onClick={handleUpload}>
+                    <Button
+                      type="primary"
+                      onClick={handleUpload}
+                      disabled={!areRequiredFieldsMapped()}
+                      title={!areRequiredFieldsMapped() ? "Map all required fields (*) to enable upload" : ""}
+                    >
                       Upload and Validate
                     </Button>
                     {skippedRows.length > 0 && (
-                      <Button 
+                      <Button
                         onClick={downloadSkippedRowsReport}
                         style={{ backgroundColor: "#faad14", borderColor: "#faad14", color: "#000" }}
                       >

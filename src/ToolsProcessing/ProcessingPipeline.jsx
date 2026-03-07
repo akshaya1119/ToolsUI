@@ -49,8 +49,8 @@ const ProcessingPipeline = () => {
       extra: "ExtrasCalculation.xlsx",
       envelope: "EnvelopeBreaking.xlsx",
       box: "BoxBreaking.xlsx",
-      catchSummary: "CatchSummary.xlsx",
       envelopeSummary: "EnvelopeSummary.xlsx",
+      catchSummary: "CatchSummary.xlsx",
     };
 
     const results = {};
@@ -85,22 +85,28 @@ const ProcessingPipeline = () => {
 
 
   const computeRunOrder = (names = []) => {
-
     const lowerNames = names.map((n) => String(n).toLowerCase());
-    console.log(lowerNames)
+    console.log("Module names:", lowerNames);
     const order = [];
+
+    // Real module-based steps — use specific substrings to avoid cross-matching
     if (lowerNames.some((n) => n.includes("duplicate")))
       order.push({ key: "duplicate", title: "Duplicate Processing" });
     if (lowerNames.some((n) => n.includes("extra")))
       order.push({ key: "extra", title: "Extra Configuration" });
-    if (lowerNames.some((n) => n.includes("envelope")))
+    // Use exact phrase "envelope breaking" to avoid matching "envelope summary"
+    if (lowerNames.some((n) => n.includes("envelope breaking")))
       order.push({ key: "envelope", title: "Envelope Breaking" });
     if (lowerNames.some((n) => n.includes("box")))
       order.push({ key: "box", title: "Box Breaking" });
-    if (lowerNames.some((n) => n.includes("catchSummary")))
-      order.push({ key: "catchSummary", title: "Catch Summary" });
-    if (lowerNames.some((n) => n.includes("envelopeSummary")))
+
+    // Summary steps — always run after box breaking (not dependent on module names)
+    // Only add if explicitly enabled
+    if (lowerNames.some((n) => n.includes("envelope summary")))
       order.push({ key: "envelopeSummary", title: "Envelope Summary" });
+    if (lowerNames.some((n) => n.includes("catch summary")))
+      order.push({ key: "catchSummary", title: "Catch Summary Report" });
+
     console.log("Final order:", order);
     return order;
   };
@@ -224,8 +230,9 @@ const ProcessingPipeline = () => {
         else if (step.key === "extra") await runExtras(projectId);
         else if (step.key === "envelope") await runEnvelope(projectId);
         else if (step.key === "box") await runBoxBreaking(projectId);
-        else if (step.key === "catchSummary") await runCatchSummary(projectId);
         else if (step.key === "envelopeSummary") await runEnvelopeSummary(projectId);
+        else if (step.key === "catchSummary") await runCatchSummary(projectId);
+
 
         const durationMs = Date.now() - (stepTimers.get(step.key) || Date.now());
         const mm = String(Math.floor(durationMs / 60000)).padStart(2, "0");
@@ -249,12 +256,19 @@ const ProcessingPipeline = () => {
   };
 
   // Build table data
-  const data = (enabledModuleNames || []).map((name) => {
-    const normalized = String(name).toLowerCase();
-    const step = steps.find((s) => normalized.includes(s.key)) || {};
+  const data = steps.map((step) => {
+    const moduleName = enabledModuleNames.find((name) => {
+      const normalized = String(name).toLowerCase();
+      // Exact matching for summary steps
+      if (step.key === "envelopeSummary") return normalized.includes("envelope summary");
+      if (step.key === "catchSummary") return normalized.includes("catch summary");
+      // For other steps, use the key
+      return normalized.includes(step.key);
+    }) || step.title;
+    
     return {
-      key: name,
-      moduleName: name,
+      key: step.key,
+      moduleName: moduleName,
       status: step.status || "pending",
       report: step.fileUrl,
     };
