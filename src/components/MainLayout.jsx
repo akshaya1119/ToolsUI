@@ -1,16 +1,17 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import Navbar from "./Navbar";
 import Sidebar from "./Sidebar";
 import Footer from "./Footer";
 import { useNavigate } from "react-router-dom";
+import { useUserTokenActions } from "../stores/UserToken";
 
-export default function MainLayout({ children, setToken }) {
+export default function MainLayout({ children }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const navigate = useNavigate();
+  const { clearToken } = useUserTokenActions();
 
   const handleLogout = () => {
-    localStorage.removeItem("token");
-    setToken(null);
+    clearToken();
     navigate('/login')
   };  
 
