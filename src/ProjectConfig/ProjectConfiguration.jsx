@@ -36,7 +36,7 @@ const ProjectConfiguration = () => {
   const [selectedDuplicatefields, setSelectedDuplicatefields] = useState([]);
   const [selectedSortingField, setSelectedSortingField] = useState([]);
   const [resetOnSymbolChange, setResetOnSymbolChange] = useState(false);
-  const [resetOmrSerialOnCentreChange, setResetOmrSerialOnCentreChange] = useState(false);
+  const [resetOmrSerialOnCatchChange, setResetOmrSerialOnCatchChange] = useState(false);
   const [isInnerBundlingDone, setIsInnerBundlingDone] = useState(false);
   const [innerBundlingCriteria, setInnerBundlingCriteria] = useState([]);
   const [duplicateConfig, setDuplicateConfig] = useState({
@@ -78,12 +78,12 @@ const ProjectConfiguration = () => {
 
       duplicateConfigRes = {
         duplicateCriteria: Array.isArray(projectConfig.duplicateCriteria)
-          ? projectConfig.duplicateCriteria
+          ? [...projectConfig.duplicateCriteria]
           : JSON.parse(projectConfig.duplicateCriteria || "[]"),
         enhancement: Number(projectConfig.enhancement) || 0,
         enhancementEnabled: Number(projectConfig.enhancement) > 0,
       };
-      setDuplicateConfig(duplicateConfigRes);
+      setDuplicateConfig(JSON.parse(JSON.stringify(duplicateConfigRes)));
 
     } catch (err) {
       if (err.response?.status === 404) {
@@ -126,7 +126,7 @@ const ProjectConfiguration = () => {
       outerEnvelopes: [],
       selectedEnvelopeFields: [],
       startOmrEnvelopeNumber: 0,
-      resetOmrSerialOnCentreChange: false,
+      resetOmrSerialOnCatchChange: false,
       selectedBoxFields: [],
       selectedCapacity: resolvedCapacity,
       startBoxNumber: 0,
@@ -170,25 +170,25 @@ const ProjectConfiguration = () => {
         selectedDuplicatefields: projectConfig.duplicateRemoveFields || [],
         selectedSortingField: projectConfig.sortingBoxReport || [],
         resetOnSymbolChange: projectConfig.resetOnSymbolChange ?? false,
-        resetOmrSerialOnCentreChange: projectConfig.resetOmrSerialOnCatchChange ?? false,
+        resetOmrSerialOnCatchChange: projectConfig.resetOmrSerialOnCatchChange ?? false,
         isInnerBundlingDone: projectConfig.isInnerBundlingDone ?? false,
         innerBundlingCriteria: projectConfig.innerBundlingCriteria || [],
       };
 
-      setEnabledModules(parsedValues.enabledModules);
-      setInnerEnvelopes(parsedValues.innerEnvelopes);
-      setOuterEnvelopes(parsedValues.outerEnvelopes);
-      setSelectedEnvelopeFields(parsedValues.selectedEnvelopeFields);
+      setEnabledModules([...parsedValues.enabledModules]);
+      setInnerEnvelopes([...parsedValues.innerEnvelopes]);
+      setOuterEnvelopes([...parsedValues.outerEnvelopes]);
+      setSelectedEnvelopeFields([...parsedValues.selectedEnvelopeFields]);
       setStartOmrEnvelopeNumber(parsedValues.startOmrEnvelopeNumber);
-      setSelectedBoxFields(parsedValues.selectedBoxFields);
+      setSelectedBoxFields([...parsedValues.selectedBoxFields]);
       setStartBoxNumber(parsedValues.startBoxNumber);
       setBoxBreakingCriteria(["capacity", ...(projectConfig.boxBreakingCriteria || [])]);
-      setSelectedDuplicatefields(parsedValues.selectedDuplicatefields);
-      setSelectedSortingField(parsedValues.selectedSortingField);
+      setSelectedDuplicatefields([...parsedValues.selectedDuplicatefields]);
+      setSelectedSortingField([...parsedValues.selectedSortingField]);
       setResetOnSymbolChange(parsedValues.resetOnSymbolChange);
-      setResetOmrSerialOnCentreChange(parsedValues.resetOmrSerialOnCentreChange);
+      setResetOmrSerialOnCatchChange(parsedValues.resetOmrSerialOnCatchChange);
       setIsInnerBundlingDone(parsedValues.isInnerBundlingDone);
-      setInnerBundlingCriteria(parsedValues.innerBundlingCriteria);
+      setInnerBundlingCriteria([...parsedValues.innerBundlingCriteria]);
     } else {
       setEnabledModules([]);
       setInnerEnvelopes([]);
@@ -199,7 +199,7 @@ const ProjectConfiguration = () => {
       setSelectedDuplicatefields([]);
       setSelectedSortingField([]);
       setResetOnSymbolChange(false);
-      setResetOmrSerialOnCentreChange(false);
+      setResetOmrSerialOnCatchChange(false);
       setIsInnerBundlingDone(false);
       setInnerBundlingCriteria([]);
     }
@@ -220,10 +220,10 @@ const ProjectConfiguration = () => {
       extraSelections[type] = item.mode;
     });
 
-    parsedValues.extraProcessingConfig = extraProcessingParsed;
-    parsedValues.extraTypeSelection = extraSelections;
-    setExtraProcessingConfig(extraProcessingParsed);
-    setExtraTypeSelection(extraSelections);
+    parsedValues.extraProcessingConfig = JSON.parse(JSON.stringify(extraProcessingParsed));
+    parsedValues.extraTypeSelection = JSON.parse(JSON.stringify(extraSelections));
+    setExtraProcessingConfig(JSON.parse(JSON.stringify(extraProcessingParsed)));
+    setExtraTypeSelection(JSON.parse(JSON.stringify(extraSelections)));
 
     return parsedValues;
   };
@@ -244,16 +244,23 @@ const ProjectConfiguration = () => {
     setSelectedBoxFields([]);
     setSelectedEnvelopeFields([]);
     setExtraTypeSelection({});
+    setExtraProcessingConfig({});
     setBoxCapacities([]);
-    setStartBoxNumber();
-    setStartOmrEnvelopeNumber();
-    setSelectedCapacity();
+    setStartBoxNumber(0);
+    setStartOmrEnvelopeNumber(0);
+    setSelectedCapacity(null);
     setSelectedDuplicatefields([]);
     setSelectedSortingField([]);
     setResetOnSymbolChange(false);
-    setResetOmrSerialOnCentreChange(false);
+    setResetOmrSerialOnCatchChange(false);
     setIsInnerBundlingDone(false);
     setInnerBundlingCriteria([]);
+    setDuplicateConfig({
+      duplicateCriteria: [],
+      enhancement: 0,
+      enhancementEnabled: false,
+      enhancementType: "round",
+    });
     setImportedSnapshot(null);
   };
 
@@ -274,7 +281,7 @@ const ProjectConfiguration = () => {
     selectedDuplicatefields,
     selectedSortingField,
     resetOnSymbolChange,
-    resetOmrSerialOnCentreChange,
+    resetOmrSerialOnCatchChange,
     isInnerBundlingDone,
     innerBundlingCriteria,
     extraProcessingConfig,
@@ -292,8 +299,8 @@ const ProjectConfiguration = () => {
   // Per-module reset handlers — reverts to snapshot if import was done, else clears
   const resetEnvelopeSetup = () => {
     if (importedSnapshot && importedSnapshot !== "pending") {
-      setInnerEnvelopes(importedSnapshot.innerEnvelopes);
-      setOuterEnvelopes(importedSnapshot.outerEnvelopes);
+      setInnerEnvelopes([...importedSnapshot.innerEnvelopes]);
+      setOuterEnvelopes([...importedSnapshot.outerEnvelopes]);
     } else {
       setInnerEnvelopes([]);
       setOuterEnvelopes([]);
@@ -302,26 +309,26 @@ const ProjectConfiguration = () => {
 
   const resetEnvelopeMakingCriteria = () => {
     if (importedSnapshot && importedSnapshot !== "pending") {
-      setSelectedEnvelopeFields(importedSnapshot.selectedEnvelopeFields);
+      setSelectedEnvelopeFields([...importedSnapshot.selectedEnvelopeFields]);
       setStartOmrEnvelopeNumber(importedSnapshot.startOmrEnvelopeNumber);
-      setResetOmrSerialOnCentreChange(importedSnapshot.resetOmrSerialOnCentreChange);
+      setResetOmrSerialOnCatchChange(importedSnapshot.resetOmrSerialOnCatchChange);
     } else {
       setSelectedEnvelopeFields([]);
       setStartOmrEnvelopeNumber(0);
-      setResetOmrSerialOnCentreChange(false);
+      setResetOmrSerialOnCatchChange(false);
     }
   };
 
   const resetBoxBreaking = () => {
     if (importedSnapshot && importedSnapshot !== "pending") {
-      setSelectedBoxFields(importedSnapshot.selectedBoxFields);
+      setSelectedBoxFields([...importedSnapshot.selectedBoxFields]);
       setSelectedCapacity(importedSnapshot.selectedCapacity);
       setStartBoxNumber(importedSnapshot.startBoxNumber);
-      setSelectedDuplicatefields(importedSnapshot.selectedDuplicatefields);
-      setSelectedSortingField(importedSnapshot.selectedSortingField);
+      setSelectedDuplicatefields([...importedSnapshot.selectedDuplicatefields]);
+      setSelectedSortingField([...importedSnapshot.selectedSortingField]);
       setResetOnSymbolChange(importedSnapshot.resetOnSymbolChange);
       setIsInnerBundlingDone(importedSnapshot.isInnerBundlingDone);
-      setInnerBundlingCriteria(importedSnapshot.innerBundlingCriteria);
+      setInnerBundlingCriteria([...importedSnapshot.innerBundlingCriteria]);
       setBoxBreakingCriteria(["capacity", ...importedSnapshot.selectedBoxFields]);
     } else {
       setSelectedBoxFields([]);
@@ -338,8 +345,8 @@ const ProjectConfiguration = () => {
 
   const resetExtraProcessing = () => {
     if (importedSnapshot && importedSnapshot !== "pending") {
-      setExtraProcessingConfig(importedSnapshot.extraProcessingConfig);
-      setExtraTypeSelection(importedSnapshot.extraTypeSelection);
+      setExtraProcessingConfig(JSON.parse(JSON.stringify(importedSnapshot.extraProcessingConfig)));
+      setExtraTypeSelection(JSON.parse(JSON.stringify(importedSnapshot.extraTypeSelection)));
     } else {
       setExtraProcessingConfig({});
       setExtraTypeSelection({});
@@ -348,12 +355,12 @@ const ProjectConfiguration = () => {
 
   const resetDuplicateTool = () => {
     if (importedSnapshot && importedSnapshot !== "pending") {
-      setDuplicateConfig(importedSnapshot.duplicateConfig);
+      setDuplicateConfig(JSON.parse(JSON.stringify(importedSnapshot.duplicateConfig)));
     } else {
       setDuplicateConfig({
         duplicateCriteria: [],
         enhancement: 0,
-        enhancementEnabled: true,
+        enhancementEnabled: false,
         enhancementType: "round",
       });
     }
@@ -374,23 +381,23 @@ const ProjectConfiguration = () => {
   useEffect(() => {
     if (importedSnapshot !== "pending") return;
     setImportedSnapshot({
-      enabledModules,
-      innerEnvelopes,
-      outerEnvelopes,
-      selectedEnvelopeFields,
+      enabledModules: [...enabledModules],
+      innerEnvelopes: [...innerEnvelopes],
+      outerEnvelopes: [...outerEnvelopes],
+      selectedEnvelopeFields: [...selectedEnvelopeFields],
       startOmrEnvelopeNumber,
-      resetOmrSerialOnCentreChange,
-      selectedBoxFields,
+      resetOmrSerialOnCatchChange,
+      selectedBoxFields: [...selectedBoxFields],
       selectedCapacity,
       startBoxNumber,
-      selectedDuplicatefields,
-      selectedSortingField,
+      selectedDuplicatefields: [...selectedDuplicatefields],
+      selectedSortingField: [...selectedSortingField],
       resetOnSymbolChange,
       isInnerBundlingDone,
-      innerBundlingCriteria,
-      duplicateConfig,
-      extraProcessingConfig,
-      extraTypeSelection,
+      innerBundlingCriteria: [...innerBundlingCriteria],
+      duplicateConfig: JSON.parse(JSON.stringify(duplicateConfig)),
+      extraProcessingConfig: JSON.parse(JSON.stringify(extraProcessingConfig)),
+      extraTypeSelection: JSON.parse(JSON.stringify(extraTypeSelection)),
     });
   }, [importedSnapshot]);
 
@@ -460,8 +467,8 @@ const ProjectConfiguration = () => {
             setSelectedEnvelopeFields={setSelectedEnvelopeFields}
             setStartOmrEnvelopeNumber={setStartOmrEnvelopeNumber}
             startOmrEnvelopeNumber={startOmrEnvelopeNumber}
-            resetOmrSerialOnCentreChange={resetOmrSerialOnCentreChange}
-            setResetOmrSerialOnCentreChange={setResetOmrSerialOnCentreChange}
+            resetOmrSerialOnCatchChange={resetOmrSerialOnCatchChange}
+            setResetOmrSerialOnCatchChange={setResetOmrSerialOnCatchChange}
             onReset={resetEnvelopeMakingCriteria}
             importedSnapshot={importedSnapshot}
           />

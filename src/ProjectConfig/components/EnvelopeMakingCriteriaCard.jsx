@@ -14,8 +14,8 @@ const EnvelopeMakingCriteriaCard = ({
   setSelectedEnvelopeFields,
   startOmrEnvelopeNumber,
   setStartOmrEnvelopeNumber,
-  resetOmrSerialOnCentreChange,
-  setResetOmrSerialOnCentreChange,
+  resetOmrSerialOnCatchChange,
+  setResetOmrSerialOnCatchChange,
   onReset,
   importedSnapshot,
 }) => {
@@ -109,12 +109,12 @@ const EnvelopeMakingCriteriaCard = ({
           </div>
 
           {/* Reset OMR - 50% */}
-          <div style={{ flex: "1 1 48%", ...(isDirty(resetOmrSerialOnCentreChange, importedSnapshot?.resetOmrSerialOnCentreChange) ? DIRTY_STYLE : {}) }}>
+          <div style={{ flex: "1 1 48%", ...(isDirty(resetOmrSerialOnCatchChange, importedSnapshot?.resetOmrSerialOnCatchChange) ? DIRTY_STYLE : {}) }}>
             <Checkbox
               disabled={!isEnabled("Envelope Breaking")}
-              checked={resetOmrSerialOnCentreChange}
+              checked={resetOmrSerialOnCatchChange}
               onChange={(e) =>
-                setResetOmrSerialOnCentreChange(e.target.checked)
+                setResetOmrSerialOnCatchChange(e.target.checked)
               }
             >
               <Text strong>Reset OMR Serial on Catch Change</Text>

@@ -15,15 +15,6 @@ export default function Dashboard() {
   const setProject = useStore((state) => state.setProject);
   const navigate = useNavigate();
 
-  const getRecentActivity = async () => {
-    try {
-      const response = await API.get('Projects/RecentProjects');
-      setRecentProjects(response.data);
-    } catch (error) {
-      console.error('Error fetching recent activity:', error);
-    }
-  }
-
   const getProjects = async () => {
     try {
       const response = await API.get('/Projects/UserId');
@@ -66,7 +57,6 @@ export default function Dashboard() {
   useEffect(() => {
     getProjects();
     getCorrectionGroups();
-    getRecentActivity();
   }, []);
 
   const handleCardClick = (projectId, projectName) => {
@@ -127,28 +117,7 @@ export default function Dashboard() {
               )))}
           </div>
         </div>
-        <div>
-          <h3 className="text-2xl font-semibold text-gray-800 mb-4">Recent Activity</h3>
-          <div className="bg-white p-4 rounded-lg shadow-md">
-            <ul>
-              {recentProjects.length === 0 ? (
-                <li className="py-2 text-gray-500">No recent activity found.</li>
-              ) : (
-                recentProjects.map((recent) => {
-                  const project = projects.find((p) => p.id === recent.projectId);
-                  return (
-                    <li key={recent.projectId} className="border-b py-2">
-                      <p className="font-semibold">{project ? project.name : 'Unknown Project'}</p>
-                      <p className="text-sm text-gray-500">
-                        Last accessed: {(recent.timeAgo)}
-                      </p>
-                    </li>
-                  );
-                })
-              )}
-            </ul>
-          </div>
-        </div>
+        
       </div>
     </>
   );

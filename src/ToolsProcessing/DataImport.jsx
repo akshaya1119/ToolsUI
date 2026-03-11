@@ -77,16 +77,13 @@ const DataImport = () => {
             if (!fieldNames.includes("NRQuantity")) {
               fieldNames.push("NRQuantity");
             }
-            if (!fieldNames.includes("Pages")) {
-              fieldNames.push("Pages");
-            }
 
             setRequiredFieldNames(fieldNames);
           })
           .catch(err => {
             if (err.response?.status === 404) {
               console.warn("No project config found, using default required fields");
-              setRequiredFieldNames(["NRQuantity", "Pages"]);
+              setRequiredFieldNames(["NRQuantity"]);
             } else {
               console.error("Failed to fetch project config", err);
             }
@@ -360,35 +357,13 @@ const DataImport = () => {
   };
 
   const handleUpload = () => {
-    if (!areRequiredFieldsMapped()) {
-      const fieldList = requiredFieldNames.length > 0 ? requiredFieldNames.join(", ") : "(none configured)";
-      showToast(`Please map all required fields: ${fieldList}`, "error");
-      return;
-    }
-
     let mappedData = getMappedData();
 
-    // Merge user-edited skipped rows that now have all required fields
-    const completedEditedRows = editableSkippedRows.filter(row =>
-      requiredFieldNames.every(name => row[name] !== null && row[name] !== undefined && row[name] !== "")
-    ).map(row => {
-      // Remove internal tracking keys
-      const { _rowIndex, _missingFields, ...clean } = row;
-      return clean;
-    });
-
-    const stillIncomplete = editableSkippedRows.filter(row =>
-      requiredFieldNames.some(name => !row[name] && row[name] !== 0)
-    );
-
-    if (stillIncomplete.length > 0) {
-      showToast(`⚠️ ${stillIncomplete.length} rows still have empty required fields and will be skipped.`, "warning");
-    }
-
-    mappedData = [...mappedData, ...completedEditedRows];
+    // Remove the internal _rowIndex from all rows before sending to API
+    mappedData = mappedData.map(({ _rowIndex, _missingFields, ...cleanRow }) => cleanRow);
 
     if (mappedData.length === 0) {
-      showToast("No valid rows to upload. Fill in the required fields in the rows below.", "error");
+      showToast("No valid rows to upload. Please map correctly and upload a file with data.", "error");
       return;
     }
 
@@ -423,7 +398,14 @@ const DataImport = () => {
       })
       .catch(err => {
         console.error("Validation failed", err);
-        showToast("Validation failed", "error");
+
+        const errorMessage =
+          err?.response?.data?.message ||
+          err?.response?.data ||
+          err?.message ||
+          "Validation failed";
+
+        showToast(errorMessage, "error");
         resetForm();
       })
       .finally(() => {
@@ -463,15 +445,21 @@ const DataImport = () => {
         }
       });
 
+      // Skip rows that are completely empty across all mapped columns
+      const hasAnyValue = Object.values(mappedRow).some(v => v !== null && v !== undefined && v !== "");
+      if (!hasAnyValue) return null;
+
+      // If missing required fields, push to skipped to show in the UI table
       if (!isRowValid) {
         skipped.push({
           _rowIndex: rowIndex,
           _missingFields: missingFields,
           ...mappedRow,
         });
-        return null;
       }
-      return mappedRow;
+
+      // ALWAYS return the row (with its index so we can merge edits later)
+      return { _rowIndex: rowIndex, ...mappedRow };
     }).filter(row => row !== null);
 
     setSkippedRows(skipped);
@@ -776,78 +764,86 @@ const DataImport = () => {
                 </Text>
 
                 <Row gutter={[16, 16]}>
-                  {expectedFields.map((expectedField) => {
-                    return (
-                      <Col key={expectedField.fieldId} xs={24} md={8}>
-                        <div style={{ marginBottom: 12 }}>
-                          <div style={{ display: "flex", alignItems: "center" }}>
-                            <Text
+                  {[...expectedFields]
+                    .sort((a, b) => {
+                      const aReq = requiredFieldNames.includes(a.name);
+                      const bReq = requiredFieldNames.includes(b.name);
+                      if (aReq && !bReq) return -1;
+                      if (!aReq && bReq) return 1;
+                      return 0;
+                    })
+                    .map((expectedField) => {
+                      return (
+                        <Col key={expectedField.fieldId} xs={24} md={8}>
+                          <div style={{ marginBottom: 12 }}>
+                            <div style={{ display: "flex", alignItems: "center" }}>
+                              <Text
+                                style={{
+                                  marginRight: 8,
+                                  color: fieldMappings[expectedField.fieldId]
+                                    ? "#006400"
+                                    : "inherit",
+                                }}
+                              >
+                                {expectedField.name}
+                                {requiredFieldNames.includes(expectedField.name) && (
+                                  <span style={{ color: "#ff4d4f", marginLeft: 2 }}>*</span>
+                                )}
+                              </Text>
+                              {fieldMappings[expectedField.fieldId] && (
+                                <CheckCircleOutlined
+                                  style={{ color: "#006400", fontSize: 16 }}
+                                />
+                              )}
+                            </div>
+                            <Select
                               style={{
-                                marginRight: 8,
-                                color: fieldMappings[expectedField.fieldId]
+                                width: "100%",
+                                borderColor: fieldMappings[expectedField.fieldId]
                                   ? "#006400"
-                                  : "inherit",
+                                  : undefined,
+                                boxShadow: fieldMappings[expectedField.fieldId]
+                                  ? "0 0 5px #006400"
+                                  : undefined,
+                              }}
+                              placeholder="Select matching column from file"
+                              value={
+                                fieldMappings[expectedField.fieldId]
+                              }
+                              onChange={(value) => {
+                                setFieldMappings((prev) => ({
+                                  ...prev,
+                                  [expectedField.fieldId]: value,
+                                }));
+                              }}
+                              allowClear
+                              onClear={() => {
+                                setFieldMappings((prev) => {
+                                  const updated = { ...prev };
+                                  delete updated[expectedField.fieldId];
+                                  return updated;
+                                });
                               }}
                             >
-                              {expectedField.name}
-                              {requiredFieldNames.includes(expectedField.name) && (
-                                <span style={{ color: "#ff4d4f", marginLeft: 2 }}>*</span>
-                              )}
-                            </Text>
-                            {fieldMappings[expectedField.fieldId] && (
-                              <CheckCircleOutlined
-                                style={{ color: "#006400", fontSize: 16 }}
-                              />
-                            )}
+                              {fileHeaders
+                                .filter(
+                                  (header) =>
+                                    !Object.values(fieldMappings).includes(header) ||
+                                    fieldMappings[expectedField.fieldId] === header
+                                )
+                                .map((header, index) => (
+                                  <Select.Option
+                                    key={`${header}-${index}`}
+                                    value={header}
+                                  >
+                                    {header}
+                                  </Select.Option>
+                                ))}
+                            </Select>
                           </div>
-                          <Select
-                            style={{
-                              width: "100%",
-                              borderColor: fieldMappings[expectedField.fieldId]
-                                ? "#006400"
-                                : undefined,
-                              boxShadow: fieldMappings[expectedField.fieldId]
-                                ? "0 0 5px #006400"
-                                : undefined,
-                            }}
-                            placeholder="Select matching column from file"
-                            value={
-                              fieldMappings[expectedField.fieldId]
-                            }
-                            onChange={(value) => {
-                              setFieldMappings((prev) => ({
-                                ...prev,
-                                [expectedField.fieldId]: value,
-                              }));
-                            }}
-                            allowClear
-                            onClear={() => {
-                              setFieldMappings((prev) => {
-                                const updated = { ...prev };
-                                delete updated[expectedField.fieldId];
-                                return updated;
-                              });
-                            }}
-                          >
-                            {fileHeaders
-                              .filter(
-                                (header) =>
-                                  !Object.values(fieldMappings).includes(header) ||
-                                  fieldMappings[expectedField.fieldId] === header
-                              )
-                              .map((header, index) => (
-                                <Select.Option
-                                  key={`${header}-${index}`}
-                                  value={header}
-                                >
-                                  {header}
-                                </Select.Option>
-                              ))}
-                          </Select>
-                        </div>
-                      </Col>
-                    );
-                  })}
+                        </Col>
+                      );
+                    })}
                 </Row>
 
                 {isAnyFieldMapped() && (
@@ -855,17 +851,15 @@ const DataImport = () => {
                     <Button
                       type="primary"
                       onClick={handleUpload}
-                      disabled={!areRequiredFieldsMapped()}
-                      title={!areRequiredFieldsMapped() ? "Map all required fields (*) to enable upload" : ""}
                     >
-                      Upload and Validate
+                      Upload Data
                     </Button>
                     {skippedRows.length > 0 && (
                       <Button
                         onClick={downloadSkippedRowsReport}
                         style={{ backgroundColor: "#faad14", borderColor: "#faad14", color: "#000" }}
                       >
-                        📥 Download Skipped Rows ({skippedRows.length})
+                        📥 Download Missing Data Report ({skippedRows.length})
                       </Button>
                     )}
                   </Space>

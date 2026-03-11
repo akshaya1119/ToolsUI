@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Progress,
   Badge,
@@ -8,7 +8,7 @@ import {
   Tag,
   Typography,
   message,
-  Space,
+  Checkbox,
 } from "antd";
 import { motion } from "framer-motion";
 import API from "../hooks/api";
@@ -23,7 +23,8 @@ const ProcessingPipeline = () => {
   const [loadingModules, setLoadingModules] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [steps, setSteps] = useState([]);
-  const [fileExistsMap, setFileExistsMap] = useState({});
+  const [selectedModules, setSelectedModules] = useState([]);
+  const [projectConfig, setProjectConfig] = useState(null);
   const projectId = useStore((state) => state.projectId);
 
   const currentStep = useMemo(
@@ -70,7 +71,7 @@ const ProcessingPipeline = () => {
             updateStepStatus(key, {
               status: "completed",
               fileUrl,
-              duration: "--:--", // Optional: or you can leave as null
+              duration: "--:--",
             });
           }
         } catch (err) {
@@ -79,8 +80,6 @@ const ProcessingPipeline = () => {
         }
       })
     );
-
-    setFileExistsMap(results);
   };
 
 
@@ -114,13 +113,18 @@ const ProcessingPipeline = () => {
   useEffect(() => {
     if (!projectId) {
       setEnabledModuleNames([]);
+      setProjectConfig(null);
       return;
     }
     const loadEnabled = async () => {
       try {
         setLoadingModules(true);
-        const cfgRes = await API.get(`/ProjectConfigs/ByProject/${projectId}`);
+        const cfgRes = await API.get(`/ProjectConfigs/${projectId}`);
         const cfg = Array.isArray(cfgRes.data) ? cfgRes.data[0] : cfgRes.data;
+
+        // Store full config for display
+        setProjectConfig(cfg);
+
         let moduleEntries = cfg?.modules || [];
 
         // If IDs, map to names
@@ -143,11 +147,13 @@ const ProcessingPipeline = () => {
           fileUrl: null,
         }));
         setSteps(initialSteps);
+        setSelectedModules([]);
         await checkReportExistence(projectId);
       } catch (err) {
         console.error("Failed to load enabled modules", err);
         setEnabledModuleNames([]);
         setSteps([]);
+        setProjectConfig(null);
       } finally {
         setLoadingModules(false);
       }
@@ -199,18 +205,80 @@ const ProcessingPipeline = () => {
     setSteps((prev) => prev.map((s) => (s.key === key ? { ...s, ...patch } : s)));
   };
 
+  const handleModuleSelection = (moduleKey, checked) => {
+    setSelectedModules((prev) => {
+      if (checked) {
+        return [...prev, moduleKey];
+      } else {
+        return prev.filter((key) => key !== moduleKey);
+      }
+    });
+  };
+
+  const handleSelectAll = (checked) => {
+    if (checked) {
+      setSelectedModules(steps.map((s) => s.key));
+    } else {
+      setSelectedModules([]);
+    }
+  };
+
+  const getConfigForModule = (moduleKey) => {
+    if (!projectConfig) return null;
+
+    const getNames = (criteria) => {
+      if (!criteria) return ["Not configured"]; // return as array
+      if (Array.isArray(criteria)) return criteria.map(String);
+      if (criteria.names && Array.isArray(criteria.names)) return criteria.names.map(String);
+      return [String(criteria)];
+    };
+
+    const configMap = {
+      duplicate: {
+        value:
+          [`Duplicate Remove: ${getNames(projectConfig.duplicateCriteria).join(", ")}`,
+           `Enhancement: ${projectConfig.enhancement}`
+          ],
+      },
+      extra: {
+        value: projectConfig.enhancement
+          ? [`Enhancement: ${projectConfig.enhancement}`]
+          : ["Not configured"],
+      },
+      envelope: {
+        value: [`Sorting: ${getNames(projectConfig.envelopeMakingCriteria)}`],
+      },
+      box: {
+        value: [
+          `Box Breaking: ${getNames(projectConfig.boxBreakingCriteria).join(", ")}`,
+          `Sorting Way: ${getNames(projectConfig.sortingBoxReport).join(", ")}`,
+          `Duplicate Removal: ${getNames(projectConfig.duplicateRemoveFields).join(", ")}`,
+        ],
+      },
+      envelopeSummary: {
+        value: ["Summary Report"],
+      },
+      catchSummary: {
+        value: ["Summary Report"],
+      },
+    };
+
+    return configMap[moduleKey];
+  };
+
   const handleAudit = async () => {
     if (!projectId) {
       message.warning("Please select a project");
       return;
     }
-    const order = computeRunOrder(enabledModuleNames);
-    console.log(order.length)
-    if (!order.length) {
-      message.info("No enabled modules to process for this project.");
+
+    if (selectedModules.length === 0) {
+      message.warning("Please select at least one module to run");
       return;
     }
-    const initialSteps = order.map((o) => ({
+
+    const allOrder = computeRunOrder(enabledModuleNames);
+    const initialSteps = allOrder.map((o) => ({
       key: o.key,
       title: o.title,
       status: "pending",
@@ -222,7 +290,33 @@ const ProcessingPipeline = () => {
     const stepTimers = new Map();
 
     try {
-      for (const step of order) {
+      for (const step of allOrder) {
+        // Check if all previous steps are completed
+        const stepIndex = allOrder.findIndex((s) => s.key === step.key);
+        let canRun = true;
+
+        if (stepIndex > 0) {
+          for (let i = 0; i < stepIndex; i++) {
+            const prevStep = steps.find((s) => s.key === allOrder[i].key);
+            if (!prevStep || prevStep.status !== "completed") {
+              canRun = false;
+              break;
+            }
+          }
+        }
+
+        // If previous steps not completed, skip this step
+        if (!canRun) {
+          updateStepStatus(step.key, { status: "skipped" });
+          continue;
+        }
+
+        // If this step wasn't selected, skip it
+        if (!selectedModules.includes(step.key)) {
+          updateStepStatus(step.key, { status: "skipped" });
+          continue;
+        }
+
         updateStepStatus(step.key, { status: "in-progress" });
         stepTimers.set(step.key, Date.now());
 
@@ -232,7 +326,6 @@ const ProcessingPipeline = () => {
         else if (step.key === "box") await runBoxBreaking(projectId);
         else if (step.key === "envelopeSummary") await runEnvelopeSummary(projectId);
         else if (step.key === "catchSummary") await runCatchSummary(projectId);
-
 
         const durationMs = Date.now() - (stepTimers.get(step.key) || Date.now());
         const mm = String(Math.floor(durationMs / 60000)).padStart(2, "0");
@@ -265,7 +358,7 @@ const ProcessingPipeline = () => {
       // For other steps, use the key
       return normalized.includes(step.key);
     }) || step.title;
-    
+
     return {
       key: step.key,
       moduleName: moduleName,
@@ -276,10 +369,72 @@ const ProcessingPipeline = () => {
 
   const columns = [
     {
+      title: () => (
+        <Checkbox
+          checked={selectedModules.length === steps.length && steps.length > 0}
+          indeterminate={selectedModules.length > 0 && selectedModules.length < steps.length}
+          onChange={(e) => handleSelectAll(e.target.checked)}
+          disabled={isProcessing || steps.length === 0}
+        >
+          Select
+        </Checkbox>
+      ),
+      dataIndex: "select",
+      key: "select",
+      width: 100,
+      render: (_, record, index) => {
+        let disabled = isProcessing;
+
+        // For sequential selection: check if previous step is selected
+        if (index > 0) {
+          const prevStepKey = steps[index - 1].key;
+          if (!selectedModules.includes(prevStepKey)) {
+            disabled = true;
+          }
+        }
+
+        return (
+          <Checkbox
+            checked={selectedModules.includes(record.key)}
+            onChange={(e) => handleModuleSelection(record.key, e.target.checked)}
+            disabled={disabled}
+          />
+        );
+      },
+    },
+    {
       title: "Module Name",
       dataIndex: "moduleName",
       key: "moduleName",
       render: (text) => <b>{text}</b>,
+    },
+    {
+      title: "Configuration",
+      dataIndex: "configuration",
+      key: "configuration",
+      render: (_, record) => {
+        const config = getConfigForModule(record.key);
+        if (!config) return <Text type="secondary">—</Text>;
+
+        // For box breaking and duplicate, show each item on new line; for others, join on one line
+        const isMultiLine = (record.key === "box" || record.key === "duplicate") && Array.isArray(config.value) && config.value.length > 1;
+
+        return (
+          <div style={{ fontSize: "12px" }}>
+            {isMultiLine ? (
+              config.value.map((item, idx) => (
+                <div key={idx} style={{ color: "#666", marginBottom: idx < config.value.length - 1 ? 8 : 0 }}>
+                  {item}
+                </div>
+              ))
+            ) : (
+              <div style={{ color: "#666" }}>
+                {Array.isArray(config.value) ? config.value.join(", ") : config.value}
+              </div>
+            )}
+          </div>
+        );
+      },
     },
     {
       title: "Status",
@@ -291,6 +446,7 @@ const ProcessingPipeline = () => {
           "in-progress": "blue",
           failed: "red",
           pending: "orange",
+          skipped: "default",
         };
         return <Tag color={colorMap[status] || "default"}>{status}</Tag>;
       },
@@ -323,8 +479,8 @@ const ProcessingPipeline = () => {
           ) : (
             <Badge status="default" text="Idle" color="gray" />
           )}
-          <Button type="primary" onClick={handleAudit} disabled={!projectId || isProcessing}>
-            Start
+          <Button type="primary" onClick={handleAudit} disabled={!projectId || isProcessing || selectedModules.length === 0}>
+            Start {selectedModules.length > 0 && `(${selectedModules.length} selected)`}
           </Button>
         </div>
       </div>

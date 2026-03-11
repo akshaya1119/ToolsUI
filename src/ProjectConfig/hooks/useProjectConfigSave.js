@@ -16,7 +16,7 @@ export const useProjectConfigSave = (
   selectedDuplicatefields,
   selectedSortingField,
   resetOnSymbolChange,
-  resetOmrSerialOnCentreChange,
+  resetOmrSerialOnCatchChange,
   isInnerBundlingDone,
   innerBundlingCriteria,
   extraProcessingConfig,
@@ -45,7 +45,7 @@ export const useProjectConfigSave = (
         BoxCapacity: selectedCapacity,
         SortingBoxReport: selectedSortingField,
         ResetOnSymbolChange: resetOnSymbolChange,
-        ResetOmrSerialOnCentreChange: resetOmrSerialOnCentreChange,
+        ResetOmrSerialOnCatchChange: resetOmrSerialOnCatchChange,
         IsInnerBundlingDone: isInnerBundlingDone,
         InnerBundlingCriteria: innerBundlingCriteria,
         DuplicateCriteria: duplicateConfig?.duplicateCriteria || [], // ✅
@@ -56,7 +56,15 @@ export const useProjectConfigSave = (
 
       await API.post(`/ProjectConfigs`, projectConfigPayload);
 
-      // 2️⃣ Save ExtrasConfigurations
+      // 2️⃣ Delete existing ExtrasConfigurations first
+      try {
+        await API.delete(`/ExtrasConfigurations/${projectId}`);
+      } catch (err) {
+        // Ignore if no existing configs
+        console.log("No existing extras config to delete");
+      }
+
+      // 3️⃣ Save ExtrasConfigurations
       const extrasPayloads = Object.entries(extraTypeSelection)
         .map(([typeName, mode]) => {
           const et = extraTypes.find((t) => t.type === typeName);
@@ -65,8 +73,12 @@ export const useProjectConfigSave = (
           const config = extraProcessingConfig[typeName] || {};
 
           const normalizedEnvelope = {
-            Inner: String(config.envelopeType?.inner || ""),
-            Outer: String(config.envelopeType?.outer || ""),
+            Inner: Array.isArray(config.envelopeType?.inner) 
+              ? config.envelopeType.inner[0] || "" 
+              : config.envelopeType?.inner || "",
+            Outer: Array.isArray(config.envelopeType?.outer) 
+              ? config.envelopeType.outer[0] || "" 
+              : config.envelopeType?.outer || "",
           };
           const fixed = Number(config.fixedQty || 0);
           const range = Number(config.range || 0);
