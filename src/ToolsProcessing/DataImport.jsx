@@ -8,6 +8,7 @@ import { motion } from 'framer-motion';
 import API from '../hooks/api';
 import useStore from '../stores/ProjectData';
 import useDebounce from '../services/useDebounce';
+import MissingData from '../components/MissingData';
 
 const { Text } = Typography;
 const { Option } = Select;
@@ -970,6 +971,9 @@ const DataImport = () => {
 
               <TabPane tab="Conflict Report" key="2">
                 {renderConflicts()}
+              </TabPane>
+              <TabPane tab="Fill Missing Data" key="3">
+                <MissingData />
               </TabPane>
             </Tabs>
           </Card>
