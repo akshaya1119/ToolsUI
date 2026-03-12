@@ -19,21 +19,39 @@ const Project = () => {
     const [selectedUserIds, setSelectedUserIds] = useState([]); // For multiple user selection
     const token = localStorage.getItem("token");
     const url = import.meta.env.VITE_API_BASE_URL;
-
+    const [pagination, setPagination] = useState({
+        current: 1,
+        pageSize: 10,
+        total: 0
+    });
     useEffect(() => {
-        fetchProjects(); // Call the function on component mount
-        fetchProjectNames(); // Fetch project names (from /Project API)
-        getUsers(); // Fetch users with roleId 3
+        fetchProjects(pagination.current, pagination.pageSize);
+        fetchProjectNames();
+        getUsers();
     }, []);
-
     // Fetch project records from /Projects API
-    const fetchProjects = async () => {
+    const fetchProjects = async (page = 1, pageSize = 10) => {
+        setLoading(true);
+
         try {
-            const res = await API.get("/Projects");
-            setProjects(res.data); // Set the projects data
+            const res = await API.get(`/Projects?page=${page}&pageSize=${pageSize}`);
+
+            setProjects(res.data.data || []); // API returns Data
+            setPagination({
+                current: res.data.page,
+                pageSize: res.data.pageSize,
+                total: res.data.totalRecords
+            });
+
         } catch (err) {
             console.error("Failed to fetch projects", err);
         }
+
+        setLoading(false);
+    };
+
+    const handleTableChange = (pagination) => {
+        fetchProjects(pagination.current, pagination.pageSize);
     };
 
     // Fetch project names from /Project API
@@ -194,6 +212,13 @@ const Project = () => {
                 columns={columns}
                 rowKey="projectId"
                 loading={loading}
+                pagination={{
+                    current: pagination.current,
+                    pageSize: pagination.pageSize,
+                    total: pagination.total,
+                    showSizeChanger: true,
+                }}
+                onChange={handleTableChange}
             />
 
             <Modal

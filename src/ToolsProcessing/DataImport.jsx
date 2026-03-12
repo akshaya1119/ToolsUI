@@ -42,6 +42,7 @@ const DataImport = () => {
   const [searchedColumn, setSearchedColumn] = useState('');
   const debouncedSearchText = useDebounce(searchText, 500);
   const [skippedRows, setSkippedRows] = useState([]);
+  const [editableSkippedRows, setEditableSkippedRows] = useState([]); // user-edited cells
   // Load projects
   useEffect(() => {
     if (!projectId) return;
@@ -351,32 +352,26 @@ const DataImport = () => {
     setSkipItems(false)
     setQuantity(0);
     setKeepZeroQuantity(false);
+    setSkippedRows([]);
+    setEditableSkippedRows([]);
   };
 
   const handleUpload = () => {
-    if (!areRequiredFieldsMapped()) {
-      const fieldList = requiredFieldNames.length > 0 ? requiredFieldNames.join(", ") : "(none configured)";
-      showToast(`Please map all required fields: ${fieldList}`, "error");
-      return;
-    }
     let mappedData = getMappedData();
-    
-    // Show feedback about skipped rows
-    if (skippedRows.length > 0) {
-      showToast(`⚠️ ${skippedRows.length} rows skipped due to missing required fields`, "warning");
-    }
-    
+
+    // Remove the internal _rowIndex from all rows before sending to API
+    mappedData = mappedData.map(({ _rowIndex, _missingFields, ...cleanRow }) => cleanRow);
+
     if (mappedData.length === 0) {
-      showToast("Required fields cannot be empty. Check your Excel data.", "error");
+      showToast("No valid rows to upload. Please map correctly and upload a file with data.", "error");
       return;
     }
-    setLoading(true)
+
+    setLoading(true);
 
     if (keepZeroQuantity) {
       mappedData = mappedData.map((row) => {
-        if (row.NRQuantity === 0) {
-          row.NRQuantity = quantity; // Replace with the updated quantity
-        }
+        if (row.NRQuantity === 0) row.NRQuantity = quantity;
         return row;
       });
     }
@@ -387,7 +382,7 @@ const DataImport = () => {
       projectId: Number(projectId),
       data: mappedData.map(row => ({
         ...row,
-        ExamDate: String(row.ExamDate), // Ensure quantity is a number,
+        ExamDate: String(row.ExamDate),
       }))
     };
 
@@ -396,21 +391,25 @@ const DataImport = () => {
     })
       .then(res => {
         console.log('Validation result:', res.data);
-        const message = skippedRows.length > 0 
-          ? `Validation successful! ${mappedData.length} rows uploaded, ${skippedRows.length} rows skipped.`
-          : "Validation successful";
-        showToast(message, "success");
-        setExistingData(payload.data); // Set existing data immediately to show other parts of the screen
+        showToast(`Validation successful! ${mappedData.length} rows uploaded.`, "success");
+        setExistingData(payload.data);
         resetForm();
         fetchExistingData();
       })
       .catch(err => {
         console.error("Validation failed", err);
-        showToast("Validation failed", "error");
+
+        const errorMessage =
+          err?.response?.data?.message ||
+          err?.response?.data ||
+          err?.message ||
+          "Validation failed";
+
+        showToast(errorMessage, "error");
         resetForm();
       })
       .finally(() => {
-        setLoading(false); // Stop loading after the process is finished
+        setLoading(false);
         setFileList([]);
       });
   };
@@ -430,38 +429,46 @@ const DataImport = () => {
       const mappedRow = {};
       let isRowValid = true;
       const missingFields = [];
-      
+
       expectedFields.forEach((field) => {
-        const column = fieldMappings[field.fieldId];  // e.g. "Name" or "Age"
+        const column = fieldMappings[field.fieldId];
         if (column) {
           let value = row[column] ?? null;
-
-          // Check if the field is "ExamDate" and format the value as a valid date
           if (field.name === "ExamDate" && value) {
             value = formatDateForBackend(parseDate(value));
           }
-          if (requiredFieldNames.includes(field.name) && (value === null || value === "")) {
+          if (requiredFieldNames.includes(field.name) && (value === null || value === undefined || value === "")) {
             isRowValid = false;
             missingFields.push(field.name);
           }
           mappedRow[field.name] = value;
         }
       });
-      
+
+      // Skip rows that are completely empty across all mapped columns
+      const hasAnyValue = Object.values(mappedRow).some(v => v !== null && v !== undefined && v !== "");
+      if (!hasAnyValue) return null;
+
+      // If missing required fields, push to skipped to show in the UI table
       if (!isRowValid) {
         skipped.push({
-          rowNumber: rowIndex + 2, // +2 because row 1 is header, and we're 0-indexed
-          rowData: row,
-          missingFields: missingFields,
-          reason: `Missing required fields: ${missingFields.join(", ")}`
+          _rowIndex: rowIndex,
+          _missingFields: missingFields,
+          ...mappedRow,
         });
-        return null;
       }
-      return mappedRow;
-    })
-      .filter(row => row !== null);
-    
+
+      // ALWAYS return the row (with its index so we can merge edits later)
+      return { _rowIndex: rowIndex, ...mappedRow };
+    }).filter(row => row !== null);
+
     setSkippedRows(skipped);
+    // Initialise editable state from the skipped rows (preserve any prior edits for the same row index)    
+    setEditableSkippedRows(prev => {
+      const prevByIndex = {};
+      prev.forEach(r => { prevByIndex[r._rowIndex] = r; });
+      return skipped.map(r => prevByIndex[r._rowIndex] ?? { ...r });
+    });
     return mapped;
   };
 
@@ -612,6 +619,7 @@ const DataImport = () => {
     return value;
   };
 
+
   const downloadSkippedRowsReport = () => {
     if (skippedRows.length === 0) {
       showToast("No skipped rows to download", "info");
@@ -628,7 +636,7 @@ const DataImport = () => {
 
     // Create worksheet
     const worksheet = XLSX.utils.json_to_sheet(reportData);
-    
+
     // Set column widths
     const columnWidths = [
       { wch: 12 }, // Row Number
@@ -756,91 +764,102 @@ const DataImport = () => {
                 </Text>
 
                 <Row gutter={[16, 16]}>
-                  {expectedFields.map((expectedField) => {
-                    return (
-                      <Col key={expectedField.fieldId} xs={24} md={8}>
-                        <div style={{ marginBottom: 12 }}>
-                          <div style={{ display: "flex", alignItems: "center" }}>
-                            <Text
+                  {[...expectedFields]
+                    .sort((a, b) => {
+                      const aReq = requiredFieldNames.includes(a.name);
+                      const bReq = requiredFieldNames.includes(b.name);
+                      if (aReq && !bReq) return -1;
+                      if (!aReq && bReq) return 1;
+                      return 0;
+                    })
+                    .map((expectedField) => {
+                      return (
+                        <Col key={expectedField.fieldId} xs={24} md={8}>
+                          <div style={{ marginBottom: 12 }}>
+                            <div style={{ display: "flex", alignItems: "center" }}>
+                              <Text
+                                style={{
+                                  marginRight: 8,
+                                  color: fieldMappings[expectedField.fieldId]
+                                    ? "#006400"
+                                    : "inherit",
+                                }}
+                              >
+                                {expectedField.name}
+                                {requiredFieldNames.includes(expectedField.name) && (
+                                  <span style={{ color: "#ff4d4f", marginLeft: 2 }}>*</span>
+                                )}
+                              </Text>
+                              {fieldMappings[expectedField.fieldId] && (
+                                <CheckCircleOutlined
+                                  style={{ color: "#006400", fontSize: 16 }}
+                                />
+                              )}
+                            </div>
+                            <Select
                               style={{
-                                marginRight: 8,
-                                color: fieldMappings[expectedField.fieldId]
+                                width: "100%",
+                                borderColor: fieldMappings[expectedField.fieldId]
                                   ? "#006400"
-                                  : "inherit",
+                                  : undefined,
+                                boxShadow: fieldMappings[expectedField.fieldId]
+                                  ? "0 0 5px #006400"
+                                  : undefined,
+                              }}
+                              placeholder="Select matching column from file"
+                              value={
+                                fieldMappings[expectedField.fieldId]
+                              }
+                              onChange={(value) => {
+                                setFieldMappings((prev) => ({
+                                  ...prev,
+                                  [expectedField.fieldId]: value,
+                                }));
+                              }}
+                              allowClear
+                              onClear={() => {
+                                setFieldMappings((prev) => {
+                                  const updated = { ...prev };
+                                  delete updated[expectedField.fieldId];
+                                  return updated;
+                                });
                               }}
                             >
-                              {expectedField.name}
-                              {requiredFieldNames.includes(expectedField.name) && (
-                                <span style={{ color: "#ff4d4f", marginLeft: 2 }}>*</span>
-                              )}
-                            </Text>
-                            {fieldMappings[expectedField.fieldId] && (
-                              <CheckCircleOutlined
-                                style={{ color: "#006400", fontSize: 16 }}
-                              />
-                            )}
+                              {fileHeaders
+                                .filter(
+                                  (header) =>
+                                    !Object.values(fieldMappings).includes(header) ||
+                                    fieldMappings[expectedField.fieldId] === header
+                                )
+                                .map((header, index) => (
+                                  <Select.Option
+                                    key={`${header}-${index}`}
+                                    value={header}
+                                  >
+                                    {header}
+                                  </Select.Option>
+                                ))}
+                            </Select>
                           </div>
-                          <Select
-                            style={{
-                              width: "100%",
-                              borderColor: fieldMappings[expectedField.fieldId]
-                                ? "#006400"
-                                : undefined,
-                              boxShadow: fieldMappings[expectedField.fieldId]
-                                ? "0 0 5px #006400"
-                                : undefined,
-                            }}
-                            placeholder="Select matching column from file"
-                            value={
-                              fieldMappings[expectedField.fieldId]
-                            }
-                            onChange={(value) => {
-                              setFieldMappings((prev) => ({
-                                ...prev,
-                                [expectedField.fieldId]: value,
-                              }));
-                            }}
-                            allowClear
-                            onClear={() => {
-                              setFieldMappings((prev) => {
-                                const updated = { ...prev };
-                                delete updated[expectedField.fieldId];
-                                return updated;
-                              });
-                            }}
-                          >
-                            {fileHeaders
-                              .filter(
-                                (header) =>
-                                  !Object.values(fieldMappings).includes(header) ||
-                                  fieldMappings[expectedField.fieldId] === header
-                              )
-                              .map((header, index) => (
-                                <Select.Option
-                                  key={`${header}-${index}`}
-                                  value={header}
-                                >
-                                  {header}
-                                </Select.Option>
-                              ))}
-                          </Select>
-                        </div>
-                      </Col>
-                    );
-                  })}
+                        </Col>
+                      );
+                    })}
                 </Row>
 
                 {isAnyFieldMapped() && (
                   <Space style={{ marginTop: 16, width: "100%", justifyContent: "space-between" }}>
-                    <Button type="primary" onClick={handleUpload}>
-                      Upload and Validate
+                    <Button
+                      type="primary"
+                      onClick={handleUpload}
+                    >
+                      Upload Data
                     </Button>
                     {skippedRows.length > 0 && (
-                      <Button 
+                      <Button
                         onClick={downloadSkippedRowsReport}
                         style={{ backgroundColor: "#faad14", borderColor: "#faad14", color: "#000" }}
                       >
-                        📥 Download Skipped Rows ({skippedRows.length})
+                        📥 Download Missing Data Report ({skippedRows.length})
                       </Button>
                     )}
                   </Space>
