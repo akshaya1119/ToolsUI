@@ -291,7 +291,12 @@ const ProcessingPipeline = () => {
 
     try {
       for (const step of allOrder) {
-        // Check if all previous steps are completed
+        // If this step is not selected, skip it
+        if (!selectedModules.includes(step.key)) {
+          continue;
+        }
+
+        // Check if all previous steps (in the sequence) are completed
         const stepIndex = allOrder.findIndex((s) => s.key === step.key);
         let canRun = true;
 
@@ -305,16 +310,10 @@ const ProcessingPipeline = () => {
           }
         }
 
-        // If previous steps not completed, skip this step
+        // If previous steps not completed, stop here
         if (!canRun) {
-          updateStepStatus(step.key, { status: "skipped" });
-          continue;
-        }
-
-        // If this step wasn't selected, skip it
-        if (!selectedModules.includes(step.key)) {
-          updateStepStatus(step.key, { status: "skipped" });
-          continue;
+          message.warning(`Cannot run ${step.title}. Previous steps must be completed first.`);
+          break;
         }
 
         updateStepStatus(step.key, { status: "in-progress" });
@@ -385,11 +384,18 @@ const ProcessingPipeline = () => {
       render: (_, record, index) => {
         let disabled = isProcessing;
 
-        // For sequential selection: check if previous step is selected
+        // For sequential selection: check if all previous steps are either completed or not selected
         if (index > 0) {
-          const prevStepKey = steps[index - 1].key;
-          if (!selectedModules.includes(prevStepKey)) {
-            disabled = true;
+          for (let i = 0; i < index; i++) {
+            const prevStep = steps[i];
+            const isPrevSelected = selectedModules.includes(prevStep.key);
+            const isPrevCompleted = prevStep.status === "completed";
+            
+            // If previous step is selected but not completed, disable this checkbox
+            if (isPrevSelected && !isPrevCompleted) {
+              disabled = true;
+              break;
+            }
           }
         }
 
@@ -398,6 +404,7 @@ const ProcessingPipeline = () => {
             checked={selectedModules.includes(record.key)}
             onChange={(e) => handleModuleSelection(record.key, e.target.checked)}
             disabled={disabled}
+            title={disabled ? "Complete previous selected steps first" : ""}
           />
         );
       },
