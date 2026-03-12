@@ -16,6 +16,7 @@ const Project = () => {
     const [modalVisible, setModalVisible] = useState(false);
     const [name, setName] = useState("");
     const [selectedProjectId, setSelectedProjectId] = useState(null);
+    const selectedProject = projectNames.find(p => p.projectId === selectedProjectId);
     const [selectedUserIds, setSelectedUserIds] = useState([]); // For multiple user selection
     const token = localStorage.getItem("token");
     const url = import.meta.env.VITE_API_BASE_URL;
@@ -102,7 +103,9 @@ const Project = () => {
         try {
             const payload = {
                 projectId: selectedProjectId,
-                userAssigned: selectedUserIds, // Send the list of user IDs
+                userAssigned: selectedUserIds,
+                groupId: selectedProject?.groupId,
+                typeId: selectedProject?.typeId, // Send the list of user IDs
             };
 
             if (editingItem) {
