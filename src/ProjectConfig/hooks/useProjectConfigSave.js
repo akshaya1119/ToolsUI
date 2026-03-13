@@ -13,14 +13,16 @@ export const useProjectConfigSave = (
   selectedCapacity,
   startBoxNumber,
   startOmrEnvelopeNumber,
+  resetOmrSerialOnCatchChange,
+  startBookletSerialNumber,
+  resetBookletSerialOnCatchChange,
   selectedDuplicatefields,
   selectedSortingField,
   resetOnSymbolChange,
-  resetOmrSerialOnCatchChange,
   isInnerBundlingDone,
   innerBundlingCriteria,
   extraProcessingConfig,
-  duplicateConfig,           // ✅ add duplicateConfig here
+  duplicateConfig,
   fetchProjectConfigData,
   showToast,
   resetForm
@@ -37,21 +39,21 @@ export const useProjectConfigSave = (
           Inner: innerEnvelopes.join(","),
           Outer: outerEnvelopes.join(","),
         }),
-        BoxBreakingCriteria: selectedBoxFields,
-        DuplicateRemoveFields: selectedDuplicatefields,
-        BoxNumber: startBoxNumber,
-        OMRSerialNumber: startOmrEnvelopeNumber,
-        EnvelopeMakingCriteria: selectedEnvelopeFields,
-        BoxCapacity: selectedCapacity,
-        SortingBoxReport: selectedSortingField,
-        ResetOnSymbolChange: resetOnSymbolChange,
-        ResetOmrSerialOnCatchChange: resetOmrSerialOnCatchChange,
-        IsInnerBundlingDone: isInnerBundlingDone,
-        InnerBundlingCriteria: innerBundlingCriteria,
-        DuplicateCriteria: duplicateConfig?.duplicateCriteria || [], // ✅
-        Enhancement: duplicateConfig?.enhancementEnabled
-          ? duplicateConfig?.enhancement || 0
-          : 0, // ✅
+        boxBreakingCriteria: selectedBoxFields,
+        duplicateRemoveFields: selectedDuplicatefields,
+        boxNumber: startBoxNumber,
+        omrSerialNumber: startOmrEnvelopeNumber,
+        resetOmrSerialOnCatchChange: resetOmrSerialOnCatchChange,
+        bookletSerialNumber: startBookletSerialNumber,
+        resetBookletSerialOnCatchChange: resetBookletSerialOnCatchChange,
+        envelopeMakingCriteria: selectedEnvelopeFields,
+        boxCapacity: selectedCapacity,
+        sortingBoxReport: selectedSortingField,
+        resetOnSymbolChange: resetOnSymbolChange,
+        isInnerBundlingDone: isInnerBundlingDone,
+        innerBundlingCriteria: innerBundlingCriteria,
+        duplicateCriteria: duplicateConfig?.duplicateCriteria || [],
+        enhancement: duplicateConfig?.enhancement || 0,
       };
 
       await API.post(`/ProjectConfigs`, projectConfigPayload);
