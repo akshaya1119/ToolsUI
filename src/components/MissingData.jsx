@@ -16,7 +16,6 @@ import {
 import {
     CheckCircleOutlined,
     DownloadOutlined,
-    FileExcelOutlined,
     UploadOutlined,
 } from "@ant-design/icons";
 import { motion } from "framer-motion";
@@ -30,10 +29,11 @@ import { useToast } from "../hooks/useToast";
 const { Text, Title } = Typography;
 
 const PRIMARY_COLOR = "#1677ff";
-const TIME_FORMAT = "hh:mm:ss A";
+const TIME_FORMAT = "h:mm:ss A";
 const TIME_PARSE_FORMATS = [
     TIME_FORMAT,
     "hh:mm A",
+    "h:mm A",
     "HH:mm:ss",
     "HH:mm",
 ];
@@ -542,7 +542,7 @@ const MissingData = () => {
                         value={parseTimeValue(editingDraft.examTime)}
                         style={{ width: "100%" }}
                         changeOnScroll
-                        needConfirm={false}
+                        needConfirm
                         onChange={(time) =>
                             setEditingDraft((prev) => ({
                                 ...prev,
@@ -827,7 +827,7 @@ const MissingData = () => {
                                                     style={{ width: "100%" }}
                                                     value={parseTimeValue(bulkValues.examTime)}
                                                     changeOnScroll
-                                                    needConfirm={false}
+                                                    needConfirm
                                                     onChange={(time) =>
                                                         setBulkValues((prev) => ({
                                                             ...prev,
