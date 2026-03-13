@@ -9,6 +9,8 @@ import API from '../hooks/api';
 import useStore from '../stores/ProjectData';
 import useDebounce from '../services/useDebounce';
 import MissingData from '../components/MissingData';
+import DataImportConflictReport from '../components/DataImportConflictReport';
+import { buildFrontendConflictReport } from '../utils/dataImportConflicts';
 
 const { Text } = Typography;
 const { Option } = Select;
@@ -23,6 +25,7 @@ const DataImport = () => {
   const [excelData, setExcelData] = useState([]);
   const [conflicts, setConflicts] = useState(null);
   const [conflictSelections, setConflictSelections] = useState({});
+  const [ignoredConflictKeys, setIgnoredConflictKeys] = useState([]);
   const [showData, setShowData] = useState(false);
   const [existingData, setExistingData] = useState([]); // ✅ default to []
   const [columns, setColumns] = useState([]); // ✅ default to []
@@ -107,7 +110,7 @@ const DataImport = () => {
         },
       });
       setExistingData(res.data.items || []);
-      setColumns(res.data.columns)
+      setColumns((res.data.columns || []).filter((column) => column !== "NRDatas"))
       setPagination(prev => ({
         ...prev,
         total: res.data.totalCount
@@ -126,12 +129,21 @@ const DataImport = () => {
     setActiveTab("2");
     setLoading(true);
     try {
-      const res = await API.get(`/NRDatas/ErrorReport?ProjectId=${projectId}`);
-      if (res.data?.duplicatesFound) {
-        setConflicts(res.data);
+      const res = await API.get(`/NRDatas/GetByProjectId/${projectId}`, {
+        params: {
+          pageSize: 100000,
+          pageNo: 1,
+        },
+      });
+      const report = buildFrontendConflictReport(res.data?.items || [], requiredFieldNames);
+      const errors = report?.errors || [];
+
+      if (errors.length > 0) {
+        setConflicts(report);
+        setIgnoredConflictKeys([]);
         showToast("Conflict report loaded", "success");
       } else {
-        setConflicts([]);
+        setConflicts({ errors: [] });
         showToast("No conflicts found", "info");
       }
     } catch (err) {
@@ -142,25 +154,36 @@ const DataImport = () => {
     }
   };
 
-  const handleSave = async (record) => {
-    const selectedValue = conflictSelections[record.catchNo];
+  const handleSave = async (record, selectedValue) => {
+    const normalizedValue =
+      selectedValue === undefined || selectedValue === null
+        ? ""
+        : String(selectedValue).trim();
 
-    if (!selectedValue) {
-      showToast('Please select a value before saving.', "warning");
+    if (normalizedValue === "") {
+      showToast('Please enter or select a value before saving.', "warning");
       return;
     }
 
-    const payload = {
-      catchNo: record.catchNo,
-      uniqueField: record.uniqueField,
-      selectedValue: selectedValue
-    };
-
     try {
-      await API.put(`/NRDatas?ProjectId=${projectId}`, payload, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      showToast(`Resolved conflict for ${record.catchNo}`, "success");
+      const targetCatchNos = Array.from(new Set([
+        record.catchNo,
+        ...(record.catchNos || []),
+      ].filter(Boolean)));
+
+      await Promise.all(targetCatchNos.map((catchNo) => {
+        const payload = {
+          catchNo,
+          uniqueField: record.targetField,
+          selectedValue: normalizedValue,
+        };
+
+        return API.put(`/NRDatas?ProjectId=${projectId}`, payload, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+      }));
+
+      showToast(`Resolved conflict for ${record.catchNo || record.sourceValue || record.targetField}`, "success");
       fetchConflictReport();
     } catch (error) {
       console.error('Error saving resolution:', error);
@@ -168,15 +191,25 @@ const DataImport = () => {
     }
   };
   // Update state when user selects a value from dropdown
-  const handleSelectionChange = (catchNo, value) => {
+  const handleSelectionChange = (conflictKey, value) => {
     setConflictSelections((prev) => ({
       ...prev,
-      [catchNo]: value,
+      [conflictKey]: value,
     }));
   };
 
+  const handleIgnoreConflict = (conflictKey) => {
+    setIgnoredConflictKeys((prev) => [...new Set([...prev, conflictKey])]);
+    setConflictSelections((prev) => {
+      const updated = { ...prev };
+      delete updated[conflictKey];
+      return updated;
+    });
+    showToast("Conflict ignored for this view", "info");
+  };
 
-  const renderConflicts = () => {
+
+  const renderLegacyConflicts = () => {
     if (!conflicts) return <Text type="secondary">Click "Load Conflict Report" to see conflicts.</Text>;
     if (!Array.isArray(conflicts.errors) || conflicts.errors.length === 0) {
       return <Text type="success">No conflicts found 🎉</Text>;
@@ -244,6 +277,48 @@ const DataImport = () => {
           }}
           rowKey="catchNo"
         /></div>
+    );
+  };
+
+  const renderConflicts = () => {
+    if (!conflicts) return <Text type="secondary">Click "Load Conflict Report" to see conflicts.</Text>;
+
+    const errors = conflicts?.errors || [];
+    if (errors.length === 0) {
+      return <Text type="success">No conflicts found</Text>;
+    }
+
+    const filteredErrors = errors.filter((error) => {
+      const keyParts = [
+        error?.conflictType || error?.ConflictType,
+        error?.catchNo || error?.CatchNo,
+        error?.centreCode || error?.CentreCode,
+        error?.nodalCode || error?.NodalCode,
+        error?.collegeName || error?.CollegeName,
+        error?.collegeCode || error?.CollegeCode,
+        error?.collegeKeyType || error?.CollegeKeyType,
+        error?.field || error?.Field,
+        error?.uniqueField || error?.UniqueField,
+        ...((error?.conflictingValues || error?.ConflictingValues || []).filter(Boolean)),
+      ];
+
+      return !ignoredConflictKeys.includes(keyParts.filter(Boolean).join('|'));
+    });
+
+    return (
+      <div>
+        <Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
+          Resolve the conflicts below. Ignore appears only for the conflict types you allowed.
+        </Text>
+        <DataImportConflictReport
+          conflicts={{ errors: filteredErrors }}
+          conflictSelections={conflictSelections}
+          onSelectionChange={handleSelectionChange}
+          onResolve={handleSave}
+          onIgnore={handleIgnoreConflict}
+          loading={loading}
+        />
+      </div>
     );
   };
 
@@ -350,6 +425,7 @@ const DataImport = () => {
     setExcelData([]);
     setExpectedFields([]);
     setConflicts(null);
+    setIgnoredConflictKeys([]);
     setSkipItems(false)
     setQuantity(0);
     setKeepZeroQuantity(false);
