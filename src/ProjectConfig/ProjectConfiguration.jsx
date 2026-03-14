@@ -1,15 +1,18 @@
 import React, { useState, useEffect } from "react";
 import { Row, Col, Typography, message } from "antd";
+import { useNavigate } from "react-router-dom";
 import { useToast } from "../hooks/useToast";
 import useStore from "../stores/ProjectData";
-import { useProjectConfigData } from "./hooks/useProjectConfigData"; // Custom hook for fetching config data
+import { useProjectConfigData } from "./hooks/useProjectConfigData";
 import { useProjectConfigSave } from "./hooks/useProjectConfigSave";
+import { useConfigChangeDetection } from "./hooks/useConfigChangeDetection";
 import ModuleSelectionCard from "./components/ModuleSelectionCard";
 import EnvelopeSetupCard from "./components/EnvelopeSetupCard";
 import EnvelopeMakingCriteriaCard from "./components/EnvelopeMakingCriteriaCard";
 import ExtraProcessingCard from "./components/ExtraProcessingCard";
 import BoxBreakingCard from "./components/BoxBreakingCard";
 import ConfigSummaryCard from "./components/ConfigSummaryCard";
+import ConfigChangeModal from "./components/ConfigChangeModal";
 import { EXTRA_ALIAS_NAME } from "./components/constants";
 import DuplicateTool from "../ToolsProcessing/DuplicateTool";
 import API from "../hooks/api";
@@ -17,6 +20,7 @@ import ImportConfig from "./components/ImportConfig";
 
 const ProjectConfiguration = () => {
   const { showToast } = useToast();
+  const navigate = useNavigate();
   const projectId = useStore((state) => state.projectId);
   const token = localStorage.getItem("token");
 
@@ -47,9 +51,10 @@ const ProjectConfiguration = () => {
     enhancementEnabled: false,
     enhancementType: "round",
   });
-  // Snapshot of imported configuration (null if no import done)
   const [importedSnapshot, setImportedSnapshot] = useState(null);
-  // Fetch data using custom hook
+  const [showChangeModal, setShowChangeModal] = useState(false);
+  const [isRerunning, setIsRerunning] = useState(false);
+  const [changeData, setChangeData] = useState(null);
   const {
     toolModules,
     envelopeOptions,
@@ -59,6 +64,29 @@ const ProjectConfiguration = () => {
     extraTypeSelection,
     setExtraTypeSelection,
   } = useProjectConfigData(token);
+
+  // Change detection hook
+  const { hasChanges, changedFields, resetChangeDetection } = useConfigChangeDetection(
+    enabledModules,
+    innerEnvelopes,
+    outerEnvelopes,
+    selectedBoxFields,
+    selectedEnvelopeFields,
+    extraTypeSelection,
+    selectedCapacity,
+    startBoxNumber,
+    startOmrEnvelopeNumber,
+    resetOmrSerialOnCatchChange,
+    startBookletSerialNumber,
+    resetBookletSerialOnCatchChange,
+    selectedDuplicatefields,
+    selectedSortingField,
+    resetOnSymbolChange,
+    isInnerBundlingDone,
+    innerBundlingCriteria,
+    extraProcessingConfig,
+    duplicateConfig
+  );
 
   const fetchProjectConfigData = async (projectId) => {
     console.log("Fetching config data for project:", projectId);
@@ -320,7 +348,14 @@ const ProjectConfiguration = () => {
     duplicateConfig,
     fetchProjectConfigData,
     showToast,
-    resetForm
+    resetForm,
+    (saveData) => {
+      // Callback when config is successfully saved
+      if (saveData && saveData.affectedReports && saveData.affectedReports.length > 0) {
+        setChangeData(saveData);
+        setShowChangeModal(true);
+      }
+    }
   );
   console.log(selectedCapacity);
   console.log("Type of selectedCapacity:", typeof selectedCapacity);
@@ -443,8 +478,50 @@ const ProjectConfiguration = () => {
     console.log("Box Capacities Updated:", boxCapacities);
   }, [boxCapacities]);
 
+  const handleConfirmRerun = async () => {
+    setIsRerunning(true);
+    try {
+      setShowChangeModal(false);
+      
+      // Store the affected reports in sessionStorage for ProcessingPipeline to pick up
+      if (changeData) {
+        sessionStorage.setItem(
+          "configChangeData",
+          JSON.stringify({
+            projectId,
+            affectedReports: changeData.affectedReports,
+            changedModules: changeData.changedModules,
+            changes: changeData.changes,
+          })
+        );
+      }
+      
+      // Navigate to ProcessingPipeline
+      navigate("/ProcessingPipeline");
+      message.success("Navigating to Processing Pipeline to re-run reports");
+    } catch (err) {
+      console.error("Error during rerun:", err);
+      message.error("Failed to initiate report re-run");
+    } finally {
+      setIsRerunning(false);
+    }
+  };
+
+  const handleCancelModal = () => {
+    setShowChangeModal(false);
+  };
+
   return (
     <div style={{ padding: 16 }}>
+      <ConfigChangeModal
+        visible={showChangeModal}
+        changedFields={changeData?.changedModules || []}
+        affectedReports={changeData?.affectedReports || []}
+        onConfirm={handleConfirmRerun}
+        onCancel={handleCancelModal}
+        loading={isRerunning}
+      />
+      
       {/* === PAGE HEADER === */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
         <Typography.Title level={3} style={{ margin: 0 }}>

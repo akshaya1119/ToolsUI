@@ -9,6 +9,7 @@ import {
   Typography,
   message,
   Checkbox,
+  Alert,
 } from "antd";
 import { motion } from "framer-motion";
 import API from "../hooks/api";
@@ -25,6 +26,8 @@ const ProcessingPipeline = () => {
   const [steps, setSteps] = useState([]);
   const [selectedModules, setSelectedModules] = useState([]);
   const [projectConfig, setProjectConfig] = useState(null);
+  const [configChanged, setConfigChanged] = useState(false);
+  const [changedFieldsInfo, setChangedFieldsInfo] = useState([]);
   const projectId = useStore((state) => state.projectId);
 
   const currentStep = useMemo(
@@ -160,6 +163,29 @@ const ProcessingPipeline = () => {
     };
 
     loadEnabled();
+  }, [projectId]);
+
+  // Listen for configuration changes from sessionStorage
+  useEffect(() => {
+    const configChangeData = sessionStorage.getItem("configChangeData");
+    if (configChangeData) {
+      try {
+        const data = JSON.parse(configChangeData);
+        if (data.projectId === projectId && data.affectedReports) {
+          // Auto-select the affected reports
+          setSelectedModules(data.affectedReports);
+          setConfigChanged(true);
+          setChangedFieldsInfo(data.changedModules || []);
+          
+          // Clear the sessionStorage
+          sessionStorage.removeItem("configChangeData");
+          
+          message.info(`${data.affectedReports.length} report(s) selected for re-processing`);
+        }
+      } catch (err) {
+        console.error("Failed to parse config change data", err);
+      }
+    }
   }, [projectId]);
 
   // Run order helper
@@ -393,6 +419,10 @@ const ProcessingPipeline = () => {
       }
       await checkReportExistence(projectId);
       message.success("Data processing completed");
+      
+      // Clear selections and close alert after successful processing
+      setSelectedModules([]);
+      setConfigChanged(false);
     } catch (err) {
       console.error("Processing failed", err);
       message.error(err?.response?.data?.message || err?.message || "Processing failed");
@@ -513,6 +543,18 @@ const ProcessingPipeline = () => {
 
   return (
     <div className=" p-4">
+      {configChanged && (
+        <Alert
+          message="Configuration Updated"
+          description={`The following settings have changed: ${changedFieldsInfo.join(", ")}. Please re-run the reports to ensure accuracy.`}
+          type="warning"
+          showIcon
+          closable
+          onClose={() => setConfigChanged(false)}
+          style={{ marginBottom: 16 }}
+        />
+      )}
+      
       <div className="flex justify-between items-center mb-4">
         <Typography.Title level={3} style={{ marginBottom: 24 }}>
           Project Configuration

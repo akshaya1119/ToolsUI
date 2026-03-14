@@ -1,4 +1,5 @@
 import API from "../../hooks/api";
+import { compareConfigurations, getReportDependencies } from "./useConfigComparison";
 
 export const useProjectConfigSave = (
   projectId,
@@ -25,9 +26,20 @@ export const useProjectConfigSave = (
   duplicateConfig,
   fetchProjectConfigData,
   showToast,
-  resetForm
+  resetForm,
+  onConfigSaved = null
 ) => {
   const handleSave = async () => {
+    // First, fetch existing config to compare
+    let existingConfig = null;
+    try {
+      const res = await API.get(`/ProjectConfigs/ByProject/${projectId}`);
+      existingConfig = res.data;
+    } catch (err) {
+      if (err.response?.status !== 404) {
+        console.warn("Could not fetch existing config for comparison");
+      }
+    }
     try {
       // 1️⃣ Save ProjectConfigs including Duplicate Tool
       const projectConfigPayload = {
@@ -57,6 +69,13 @@ export const useProjectConfigSave = (
       };
 
       await API.post(`/ProjectConfigs`, projectConfigPayload);
+
+      // Compare configurations to identify changes
+      const changes = compareConfigurations(existingConfig, projectConfigPayload, enabledModules);
+      const affectedReportsWithDeps = getReportDependencies(changes.affectedReports, enabledModules);
+
+      console.log("Configuration Changes:", changes);
+      console.log("Affected Reports with Dependencies:", affectedReportsWithDeps);
 
       // 2️⃣ Delete existing ExtrasConfigurations first
       try {
@@ -145,6 +164,16 @@ export const useProjectConfigSave = (
       showToast("Configuration saved successfully!", "success");
       fetchProjectConfigData(projectId);
       resetForm();
+      
+      // Trigger callback with change information
+      if (onConfigSaved) {
+        onConfigSaved({
+          changes,
+          affectedReports: affectedReportsWithDeps,
+          changedModules: changes.changedModules,
+        });
+      }
+      
       console.log("Saved:", { projectConfigPayload, extrasPayloads });
     } catch (err) {
       console.error("Failed to save configuration", err);
