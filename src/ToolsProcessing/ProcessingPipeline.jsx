@@ -296,6 +296,15 @@ const ProcessingPipeline = () => {
     setSteps(initialSteps);
     setIsProcessing(true);
     const stepTimers = new Map();
+    const completedSteps = new Set();
+    const fileNames = {
+      duplicate: "DuplicateTool.xlsx",
+      extra: "ExtrasCalculation.xlsx",
+      envelope: "EnvelopeBreaking.xlsx",
+      box: "BoxBreaking.xlsx",
+      envelopeSummary: "EnvelopeSummary.xlsx",
+      catchSummary: "CatchSummary.xlsx",
+    };
 
     try {
       for (const step of allOrder) {
@@ -304,14 +313,18 @@ const ProcessingPipeline = () => {
           continue;
         }
 
-        // Check if all previous steps (in the sequence) are completed
+        // Check if all previous steps (in the sequence) are either completed or not selected
         const stepIndex = allOrder.findIndex((s) => s.key === step.key);
         let canRun = true;
 
         if (stepIndex > 0) {
           for (let i = 0; i < stepIndex; i++) {
-            const prevStep = steps.find((s) => s.key === allOrder[i].key);
-            if (!prevStep || prevStep.status !== "completed") {
+            const prevStepKey = allOrder[i].key;
+            const isPrevSelected = selectedModules.includes(prevStepKey);
+            const isPrevCompleted = completedSteps.has(prevStepKey);
+            
+            // If previous step is selected but not completed, we can't run this step
+            if (isPrevSelected && !isPrevCompleted) {
               canRun = false;
               break;
             }
@@ -324,31 +337,64 @@ const ProcessingPipeline = () => {
           break;
         }
 
+        // Check if report already exists
+        const fileName = fileNames[step.key];
+        let reportExists = false;
+        
+        if (fileName) {
+          try {
+            const res = await API.get(
+              `/EnvelopeBreakages/Reports/Exists?projectId=${projectId}&fileName=${fileName}`
+            );
+            reportExists = res.data.exists;
+          } catch (err) {
+            console.error(`Failed to check file existence: ${fileName}`, err);
+          }
+        }
+
+        // If report already exists, mark as completed and skip processing
+        if (reportExists) {
+          const fileUrl = `${url3}/${projectId}/${fileName}?DateTime=${new Date().toISOString()}`;
+          updateStepStatus(step.key, {
+            status: "completed",
+            fileUrl,
+            duration: "00:00",
+          });
+          completedSteps.add(step.key);
+          continue;
+        }
+
+        // Process the step
         updateStepStatus(step.key, { status: "in-progress" });
         stepTimers.set(step.key, Date.now());
 
-        if (step.key === "duplicate") await runDuplicate(projectId);
-        else if (step.key === "extra") await runExtras(projectId);
-        else if (step.key === "envelope") await runEnvelope(projectId);
-        else if (step.key === "box") await runBoxBreaking(projectId);
-        else if (step.key === "envelopeSummary") await runEnvelopeSummary(projectId);
-        else if (step.key === "catchSummary") await runCatchSummary(projectId);
+        try {
+          if (step.key === "duplicate") await runDuplicate(projectId);
+          else if (step.key === "extra") await runExtras(projectId);
+          else if (step.key === "envelope") await runEnvelope(projectId);
+          else if (step.key === "box") await runBoxBreaking(projectId);
+          else if (step.key === "envelopeSummary") await runEnvelopeSummary(projectId);
+          else if (step.key === "catchSummary") await runCatchSummary(projectId);
 
-        const durationMs = Date.now() - (stepTimers.get(step.key) || Date.now());
-        const mm = String(Math.floor(durationMs / 60000)).padStart(2, "0");
-        const ss = String(Math.floor((durationMs % 60000) / 1000)).padStart(2, "0");
-        updateStepStatus(step.key, {
-          status: "completed",
-          duration: `${mm}:${ss}`,
-          fileUrl: null,
-        });
+          const durationMs = Date.now() - (stepTimers.get(step.key) || Date.now());
+          const mm = String(Math.floor(durationMs / 60000)).padStart(2, "0");
+          const ss = String(Math.floor((durationMs % 60000) / 1000)).padStart(2, "0");
+          updateStepStatus(step.key, {
+            status: "completed",
+            duration: `${mm}:${ss}`,
+            fileUrl: null,
+          });
+          completedSteps.add(step.key);
+        } catch (stepErr) {
+          console.error(`Step ${step.key} failed`, stepErr);
+          updateStepStatus(step.key, { status: "failed" });
+          throw stepErr;
+        }
       }
       await checkReportExistence(projectId);
       message.success("Data processing completed");
     } catch (err) {
       console.error("Processing failed", err);
-      const failing = steps.find((s) => s.status === "in-progress") || null;
-      if (failing) updateStepStatus(failing.key, { status: "failed" });
       message.error(err?.response?.data?.message || err?.message || "Processing failed");
     } finally {
       setIsProcessing(false);
@@ -392,27 +438,11 @@ const ProcessingPipeline = () => {
       render: (_, record, index) => {
         let disabled = isProcessing;
 
-        // For sequential selection: check if all previous steps are either completed or not selected
-        if (index > 0) {
-          for (let i = 0; i < index; i++) {
-            const prevStep = steps[i];
-            const isPrevSelected = selectedModules.includes(prevStep.key);
-            const isPrevCompleted = prevStep.status === "completed";
-            
-            // If previous step is selected but not completed, disable this checkbox
-            if (isPrevSelected && !isPrevCompleted) {
-              disabled = true;
-              break;
-            }
-          }
-        }
-
         return (
           <Checkbox
             checked={selectedModules.includes(record.key)}
             onChange={(e) => handleModuleSelection(record.key, e.target.checked)}
             disabled={disabled}
-            title={disabled ? "Complete previous selected steps first" : ""}
           />
         );
       },
