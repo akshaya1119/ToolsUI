@@ -229,7 +229,7 @@ const normalizeConflict = (item) => {
   }
 
   if (conflictType === "zero_nr_quantity") {
-    details.resolveKind = "ignore-only";
+    details.resolveKind = "input";
     details.summary = `NRQuantity is 0 for ${catchNos.length} catch number(s).`;
     return details;
   }
@@ -364,6 +364,11 @@ const DataImportConflictReport = ({
                   >
                     Resolve
                   </Button>
+                  {conflict.canIgnore && (
+                    <Button onClick={() => onIgnore(conflict.key)}>
+                      Ignore
+                    </Button>
+                  )}
                 </Space>
               )}
 
@@ -378,6 +383,10 @@ const DataImportConflictReport = ({
                   </Button>
                   <Text type="secondary">Ignore is allowed only because NRQuantity is 0.</Text>
                 </Space>
+              )}
+
+              {conflict.conflictType === "zero_nr_quantity" && (
+                <Text type="secondary">Ignore is allowed only because NRQuantity is 0.</Text>
               )}
             </Space>
           </Card>

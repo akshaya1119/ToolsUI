@@ -233,7 +233,7 @@ export const buildFrontendConflictReport = (rows, requiredFieldNames = []) => {
       Field: "NRQuantity",
       CatchNos: zeroQuantityCatchNos,
       CanIgnore: true,
-      CanResolve: false,
+      CanResolve: true,
     });
   }
 
