@@ -169,6 +169,7 @@ const DataImport = () => {
         catchNo: record.catchNo,
         catchNos: record.catchNos || [],
         rowIds: record.rowIds || [],
+        importRowNos: record.importRowNos || [],
         uniqueField: record.uniqueField,
         field: record.field,
         selectedValue: normalizedValue,
@@ -210,6 +211,7 @@ const DataImport = () => {
         catchNo: conflict.catchNo,
         catchNos: conflict.catchNos || [],
         rowIds: conflict.rowIds || [],
+        importRowNos: conflict.importRowNos || [],
         uniqueField: conflict.uniqueField,
         field: conflict.field,
         centreCode: conflict.centreCode,
@@ -447,8 +449,11 @@ const DataImport = () => {
   const handleUpload = () => {
     let mappedData = getMappedData();
 
-    // Remove the internal _rowIndex from all rows before sending to API
-    mappedData = mappedData.map(({ _rowIndex, _missingFields, ...cleanRow }) => cleanRow);
+    // Keep the original Excel row number in NRDatas JSON for conflict display.
+    mappedData = mappedData.map(({ _rowIndex, _missingFields, ...cleanRow }) => ({
+      ...cleanRow,
+      ImportRowNo: String(Number(_rowIndex) + 2),
+    }));
 
     if (mappedData.length === 0) {
       showToast("No valid rows to upload. Please map correctly and upload a file with data.", "error");

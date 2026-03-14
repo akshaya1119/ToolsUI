@@ -1,5 +1,5 @@
 import React from "react";
-import { Button, Card, Input, Select, Space, Tag, Typography } from "antd";
+import { Button, Input, Select, Space, Tag, Typography } from "antd";
 import {
   ApartmentOutlined,
   CheckCircleOutlined,
@@ -38,51 +38,50 @@ const DataImportConflictCard = ({
   const canRenderIgnore = conflict.canIgnore && typeof onIgnore === "function";
 
   return (
-    <Card
-      key={conflict.key}
+    <div
       style={{
-        borderLeft: `6px solid ${conflict.meta.color}`,
-        background: conflict.meta.background,
-        boxShadow: "0 4px 10px rgba(0,0,0,0.06)",
-      }}
-      styles={{
-        body: { padding: 16 },
+        border: `1px solid ${conflict.meta.accent}`,
+        borderLeft: `4px solid ${conflict.meta.color}`,
+        borderRadius: 10,
+        background: "#fff",
+        padding: 12,
       }}
     >
-      <Space direction="vertical" size={12} style={{ width: "100%" }}>
-        <Space wrap>
-          <Tag color={conflict.meta.color} style={{ padding: "4px 10px" }}>
-            <Space size={6}>
-              {CONFLICT_ICONS[conflict.conflictType] || <WarningOutlined />}
-              <span>{conflict.meta.title}</span>
+      <Space direction="vertical" size={10} style={{ width: "100%" }}>
+        <Space wrap size={[8, 8]} style={{ width: "100%", justifyContent: "space-between" }}>
+          <Space wrap size={[8, 8]}>
+            <Tag color={conflict.meta.color} style={{ padding: "2px 8px", marginInlineEnd: 0 }}>
+              <Space size={6}>
+                {CONFLICT_ICONS[conflict.conflictType] || <WarningOutlined />}
+                <span>{conflict.meta.title}</span>
+              </Space>
+            </Tag>
+            <Tag color={statusConfig.color} style={{ marginInlineEnd: 0 }}>{statusConfig.label}</Tag>
+          </Space>
+
+          {(conflict.catchNo || conflict.rowIds?.length > 0 || conflict.centreCode || conflict.nodalCode || conflict.collegeCode) && (
+            <Space wrap size={[6, 6]}>
+              {conflict.catchNo && <Tag style={{ marginInlineEnd: 0 }}>Catch No: {conflict.catchNo}</Tag>}
+              {conflict.rowIds?.length > 0 && <Tag style={{ marginInlineEnd: 0 }}>Row Id: {conflict.rowIds.join(", ")}</Tag>}
+              {conflict.centreCode && <Tag style={{ marginInlineEnd: 0 }}>Centre: {conflict.centreCode}</Tag>}
+              {conflict.nodalCode && <Tag style={{ marginInlineEnd: 0 }}>Nodal: {conflict.nodalCode}</Tag>}
+              {conflict.collegeCode && <Tag style={{ marginInlineEnd: 0 }}>College Code: {conflict.collegeCode}</Tag>}
             </Space>
-          </Tag>
-          <Tag color={statusConfig.color}>{statusConfig.label}</Tag>
-          {conflict.catchNo && <Tag>Catch No: {conflict.catchNo}</Tag>}
-          {conflict.rowIds?.length > 0 && <Tag>Row Id: {conflict.rowIds.join(", ")}</Tag>}
-          {conflict.centreCode && <Tag>Centre: {conflict.centreCode}</Tag>}
-          {conflict.nodalCode && <Tag>Nodal: {conflict.nodalCode}</Tag>}
-          {conflict.collegeName && <Tag>College: {conflict.collegeName}</Tag>}
-          {conflict.collegeCode && <Tag>College Code: {conflict.collegeCode}</Tag>}
-          {conflict.field && <Tag>Field: {conflict.field}</Tag>}
-          {conflict.uniqueField && <Tag>Resolve Field: {conflict.uniqueField}</Tag>}
+          )}
         </Space>
 
-        <div
-          style={{
-            border: `1px solid ${conflict.meta.accent}`,
-            borderRadius: 10,
-            padding: 12,
-            background: "rgba(255,255,255,0.65)",
-          }}
-        >
-          <Text strong>{conflict.summary}</Text>
-        </div>
+        <Text strong>{conflict.summary}</Text>
+
+        <Space wrap size={[6, 6]}>
+          {conflict.collegeName && <Tag style={{ marginInlineEnd: 0 }}>College: {conflict.collegeName}</Tag>}
+          {conflict.field && <Tag style={{ marginInlineEnd: 0 }}>Field: {conflict.field}</Tag>}
+          {conflict.uniqueField && <Tag style={{ marginInlineEnd: 0 }}>Resolve Field: {conflict.uniqueField}</Tag>}
+        </Space>
 
         {conflict.valuesForSelection?.length > 0 && (
-          <Space wrap>
+          <Space wrap size={[6, 6]}>
             {conflict.valuesForSelection.map((value) => (
-              <Tag key={`${conflict.key}-${value}`} bordered>
+              <Tag key={`${conflict.key}-${value}`} bordered style={{ marginInlineEnd: 0 }}>
                 {value}
               </Tag>
             ))}
@@ -90,13 +89,15 @@ const DataImportConflictCard = ({
         )}
 
         {conflict.catchNos?.length > 0 && (
-          <Text type="secondary">Catch Nos: {conflict.catchNos.join(", ")}</Text>
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            Catch Nos: {conflict.catchNos.join(", ")}
+          </Text>
         )}
 
         {conflict.resolveKind === "select" && (
-          <Space wrap>
+          <Space wrap size={[8, 8]}>
             <Select
-              style={{ width: 260 }}
+              style={{ width: 220 }}
               placeholder="Select value to keep"
               value={selectedValue}
               onChange={(value) => onSelectionChange(conflict.key, value)}
@@ -107,6 +108,7 @@ const DataImportConflictCard = ({
             />
             <Button
               type="primary"
+              size="small"
               icon={<CheckCircleOutlined />}
               disabled={!selectedValue}
               loading={loading}
@@ -115,7 +117,7 @@ const DataImportConflictCard = ({
               Resolve
             </Button>
             {canRenderIgnore && (
-              <Button disabled={isIgnored} onClick={() => onIgnore(conflict)}>
+              <Button size="small" disabled={isIgnored} onClick={() => onIgnore(conflict)}>
                 {isIgnored ? "Ignored" : "Ignore"}
               </Button>
             )}
@@ -123,15 +125,16 @@ const DataImportConflictCard = ({
         )}
 
         {conflict.resolveKind === "input" && (
-          <Space wrap>
+          <Space wrap size={[8, 8]}>
             <Input
-              style={{ width: 260 }}
+              style={{ width: 220 }}
               placeholder={`Enter ${conflict.targetField}`}
               value={selectedValue}
               onChange={(event) => onSelectionChange(conflict.key, event.target.value)}
             />
             <Button
               type="primary"
+              size="small"
               icon={<CheckCircleOutlined />}
               disabled={selectedValue === undefined || selectedValue === null || String(selectedValue).trim() === ""}
               loading={loading}
@@ -140,7 +143,7 @@ const DataImportConflictCard = ({
               Resolve
             </Button>
             {canRenderIgnore && (
-              <Button disabled={isIgnored} onClick={() => onIgnore(conflict)}>
+              <Button size="small" disabled={isIgnored} onClick={() => onIgnore(conflict)}>
                 {isIgnored ? "Ignored" : "Ignore"}
               </Button>
             )}
@@ -159,7 +162,7 @@ const DataImportConflictCard = ({
           <Text type="secondary">Ignore is not available for this conflict type.</Text>
         )}
       </Space>
-    </Card>
+    </div>
   );
 };
 

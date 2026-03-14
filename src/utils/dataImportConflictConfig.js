@@ -15,7 +15,7 @@ export const CONFLICT_TYPE_CONFIG = {
   },
   center_multiple_nodals: {
     title: "Centre to Multiple Nodals",
-    groupLabel: "Centre/Nodal Conflicts",
+    groupLabel: "College/Centre/Nodal Mapping Conflicts",
     color: "#fa8c16",
     background: "#fff7e6",
     accent: "#ffd591",
@@ -23,7 +23,7 @@ export const CONFLICT_TYPE_CONFIG = {
   },
   college_multiple_nodals: {
     title: "College to Multiple Nodals",
-    groupLabel: "College Mapping Conflicts",
+    groupLabel: "College/Centre/Nodal Mapping Conflicts",
     color: "#eb2f96",
     background: "#fff0f6",
     accent: "#ffadd2",
@@ -31,7 +31,7 @@ export const CONFLICT_TYPE_CONFIG = {
   },
   college_multiple_centers: {
     title: "College to Multiple Centres",
-    groupLabel: "College Mapping Conflicts",
+    groupLabel: "College/Centre/Nodal Mapping Conflicts",
     color: "#2f54eb",
     background: "#f0f5ff",
     accent: "#adc6ff",
@@ -47,7 +47,7 @@ export const CONFLICT_TYPE_CONFIG = {
   },
   zero_nr_quantity: {
     title: "Zero NR Quantity",
-    groupLabel: "Quantity Conflicts",
+    groupLabel: "Required Field Conflicts",
     color: "#13c2c2",
     background: "#e6fffb",
     accent: "#87e8de",
@@ -55,11 +55,11 @@ export const CONFLICT_TYPE_CONFIG = {
   },
   nodal_code_digit_mismatch: {
     title: "Nodal Digit Mismatch",
-    groupLabel: "Nodal Code Conflicts",
+    groupLabel: "College/Centre/Nodal Mapping Conflicts",
     color: "#d4380d",
     background: "#fff2e8",
     accent: "#ffbb96",
-    resolveKind: "select",
+    resolveKind: "input",
   },
   default: {
     title: "Conflict",
