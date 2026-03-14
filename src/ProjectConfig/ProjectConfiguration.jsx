@@ -222,12 +222,29 @@ const ProjectConfiguration = () => {
       const type = extraTypes.find((e) => e.extraTypeId === item.extraType)?.type;
       if (!type) return;
       const env = item.envelopeType ? JSON.parse(item.envelopeType) : { Inner: "", Outer: "" };
-      extraProcessingParsed[type] = {
+      
+      let config = {
         envelopeType: { inner: env.Inner ? [env.Inner] : [], outer: env.Outer ? [env.Outer] : [] },
         fixedQty: item.mode === "Fixed" ? parseFloat(item.value) : 0,
-        range: item.mode === "Range" ? parseFloat(item.value) : 0,
         percentage: item.mode === "Percentage" ? parseFloat(item.value) : 0,
       };
+
+      // Handle Range mode with RangeConfig
+      if (item.mode === "Range" && item.rangeConfig) {
+        try {
+          const rangeData = JSON.parse(item.rangeConfig);
+          config.range = rangeData.ranges || [];
+          config.rangeType = rangeData.rangeType || "Fixed";
+        } catch (e) {
+          config.range = [];
+          config.rangeType = "Fixed";
+        }
+      } else {
+        config.range = [];
+        config.rangeType = "Fixed";
+      }
+
+      extraProcessingParsed[type] = config;
       extraSelections[type] = item.mode;
     });
 
