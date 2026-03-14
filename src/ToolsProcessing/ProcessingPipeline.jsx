@@ -208,7 +208,15 @@ const ProcessingPipeline = () => {
   const handleModuleSelection = (moduleKey, checked) => {
     setSelectedModules((prev) => {
       if (checked) {
-        return [...prev, moduleKey];
+        // Find the index of the clicked module
+        const clickedIndex = steps.findIndex((s) => s.key === moduleKey);
+        
+        // Get all module keys from start to clicked index
+        const keysToSelect = steps.slice(0, clickedIndex + 1).map((s) => s.key);
+        
+        // Merge with existing selections and remove duplicates
+        const merged = Array.from(new Set([...prev, ...keysToSelect]));
+        return merged;
       } else {
         return prev.filter((key) => key !== moduleKey);
       }

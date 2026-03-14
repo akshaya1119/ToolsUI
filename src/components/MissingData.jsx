@@ -5,6 +5,7 @@ import {
     Card,
     Checkbox,
     DatePicker,
+    Input,
     InputNumber,
     Select,
     Space,
@@ -16,6 +17,7 @@ import {
 import {
     CheckCircleOutlined,
     DownloadOutlined,
+    SearchOutlined,
     UploadOutlined,
 } from "@ant-design/icons";
 import { motion } from "framer-motion";
@@ -100,6 +102,17 @@ const compareTableValues = (a, b) => {
     });
 };
 
+const isMeaningfulValue = (value) => {
+    if (value === undefined || value === null) return false;
+    if (typeof value === "number") return !Number.isNaN(value) && value !== 0;
+
+    const normalized = String(value).trim().toLowerCase();
+    return normalized !== "" && normalized !== "0" && normalized !== "undefined" && normalized !== "null";
+};
+
+const renderDisplayValue = (value) =>
+    isMeaningfulValue(value) ? value : <Text type="secondary">-</Text>;
+
 const summaryItems = (loadingTemplateData, templateRows, reviewRows, completedCount) => [
     {
         label: "Unique Catch Numbers",
@@ -143,6 +156,8 @@ const MissingData = () => {
         examTime: "",
     });
     const [showBulkUpdate, setShowBulkUpdate] = useState(false);
+    const [searchText, setSearchText] = useState("");
+    const [searchedColumn, setSearchedColumn] = useState("");
     const [tablePagination, setTablePagination] = useState({
         current: 1,
         pageSize: 10,
@@ -450,22 +465,124 @@ const MissingData = () => {
 
         const payload = missingDataRows.map((row) => ({
             catchNo: row.catchNo,
-            pages: row.pages === "" ? null : Number(row.pages),
-            examDate: row.examDate || null,
-            examTime: row.examTime || null,
+            pages: isMeaningfulValue(row.pages) ? Number(row.pages) : null,
+            examDate: isMeaningfulValue(row.examDate) ? String(row.examDate).trim() : null,
+            examTime: isMeaningfulValue(row.examTime) ? String(row.examTime).trim() : null,
         }));
+
+        const rowsToSubmit = payload.filter(
+            (row) =>
+                isMeaningfulValue(row.pages) ||
+                isMeaningfulValue(row.examDate) ||
+                isMeaningfulValue(row.examTime)
+        );
+
+        if (!rowsToSubmit.length) {
+            showToast("At least one Pages, ExamDate, or ExamTime value is required", "warning");
+            return;
+        }
 
         setSubmitting(true);
         try {
-            console.log("Missing data payload to backend:", {
+            await API.post("/NRDatas/missing-data", {
                 projectId,
-                data: payload,
+                data: rowsToSubmit,
             });
-            showToast("Missing data payload logged in console", "success");
+            showToast("Missing data saved successfully", "success");
+            await loadCatchTemplateData();
+            setFileList([]);
+            setSelectedRowKeys([]);
+            setSelectedCatchNumbers([]);
+            setEditingRowKey(null);
+            setShowBulkUpdate(false);
+            setTablePagination((prev) => ({
+                ...prev,
+                current: 1,
+            }));
+        } catch (error) {
+            console.error("Failed to save missing data", error);
+            const errorMessage =
+                error?.response?.data?.message ||
+                error?.response?.data ||
+                "Failed to save missing data";
+            showToast(
+                typeof errorMessage === "string" ? errorMessage : "Failed to save missing data",
+                "error"
+            );
         } finally {
             setSubmitting(false);
         }
     };
+
+    const getColumnSearchProps = (dataIndex) => ({
+        filterDropdown: ({ setSelectedKeys, selectedKeys, confirm, clearFilters }) => (
+            <div style={{ padding: 8 }}>
+                <Input
+                    autoFocus
+                    placeholder={`Search ${dataIndex}`}
+                    value={selectedKeys[0] || ""}
+                    onChange={(event) => {
+                        const value = event.target.value;
+                        setSelectedKeys(value ? [value] : []);
+                        setSearchText(value);
+                        setSearchedColumn(dataIndex);
+                    }}
+                    onPressEnter={() => confirm()}
+                    style={{ width: 188, marginBottom: 8, display: "block" }}
+                />
+                <Space>
+                    <Button
+                        type="primary"
+                        size="small"
+                        onClick={() => confirm()}
+                    >
+                        Search
+                    </Button>
+                    <Button
+                        size="small"
+                        onClick={() => {
+                            clearFilters?.();
+                            setSearchText("");
+                            setSearchedColumn("");
+                            confirm({ closeDropdown: true });
+                        }}
+                    >
+                        Reset
+                    </Button>
+                </Space>
+            </div>
+        ),
+        filterIcon: (filtered) => (
+            <SearchOutlined style={{ color: filtered ? "#1890ff" : undefined }} />
+        ),
+        onFilter: (value, record) => {
+            const rawValue =
+                dataIndex === "status"
+                    ? (
+                        isMeaningfulValue(record.pages) &&
+                        isMeaningfulValue(record.examDate) &&
+                        isMeaningfulValue(record.examTime)
+                            ? "Ready"
+                            : "Pending"
+                    )
+                    : record?.[dataIndex];
+
+            if (!isMeaningfulValue(rawValue)) {
+                return false;
+            }
+
+            return String(rawValue)
+                .toLowerCase()
+                .includes(String(value).toLowerCase());
+        },
+        filterDropdownProps: {
+            onOpenChange: (open) => {
+                if (!open && searchedColumn === dataIndex && !searchText) {
+                    setSearchedColumn("");
+                }
+            },
+        },
+    });
 
     const columns = [
         {
@@ -473,14 +590,17 @@ const MissingData = () => {
             dataIndex: "catchNo",
             key: "catchNo",
             width: 160,
+            ...getColumnSearchProps("catchNo"),
             sorter: (a, b) => compareTableValues(a.catchNo, b.catchNo),
-            render: (value) => <Text strong>{value}</Text>,
+            render: (value) =>
+                isMeaningfulValue(value) ? <Text strong>{value}</Text> : <Text type="secondary">-</Text>,
         },
         {
             title: "Pages",
             dataIndex: "pages",
             key: "pages",
             width: 110,
+            ...getColumnSearchProps("pages"),
             sorter: (a, b) => compareTableValues(a.pages, b.pages),
             render: (value, record) => (
                 editingRowKey === record.catchNo ? (
@@ -498,7 +618,7 @@ const MissingData = () => {
                         }
                     />
                 ) : (
-                    value || <Text type="secondary">-</Text>
+                    renderDisplayValue(value)
                 )
             ),
         },
@@ -507,6 +627,7 @@ const MissingData = () => {
             dataIndex: "examDate",
             key: "examDate",
             width: 140,
+            ...getColumnSearchProps("examDate"),
             sorter: (a, b) => compareTableValues(a.examDate, b.examDate),
             render: (value, record) => (
                 editingRowKey === record.catchNo ? (
@@ -523,7 +644,7 @@ const MissingData = () => {
                         }
                     />
                 ) : (
-                    value || <Text type="secondary">-</Text>
+                    renderDisplayValue(value)
                 )
             ),
         },
@@ -532,6 +653,7 @@ const MissingData = () => {
             dataIndex: "examTime",
             key: "examTime",
             width: 130,
+            ...getColumnSearchProps("examTime"),
             sorter: (a, b) => compareTableValues(a.examTime, b.examTime),
             render: (value, record) => (
                 editingRowKey === record.catchNo ? (
@@ -551,24 +673,26 @@ const MissingData = () => {
                         }
                     />
                 ) : (
-                    value || <Text type="secondary">-</Text>
+                    renderDisplayValue(value)
                 )
             ),
         },
         {
             title: "Status",
+            dataIndex: "status",
             key: "status",
             width: 110,
+            ...getColumnSearchProps("status"),
             sorter: (a, b) =>
                 compareTableValues(
-                    a.pages !== "" && a.examDate !== "" && a.examTime !== "" ? "Ready" : "Pending",
-                    b.pages !== "" && b.examDate !== "" && b.examTime !== "" ? "Ready" : "Pending"
+                    isMeaningfulValue(a.pages) && isMeaningfulValue(a.examDate) && isMeaningfulValue(a.examTime) ? "Ready" : "Pending",
+                    isMeaningfulValue(b.pages) && isMeaningfulValue(b.examDate) && isMeaningfulValue(b.examTime) ? "Ready" : "Pending"
                 ),
             render: (_, record) => {
                 const isComplete =
-                    record.pages !== "" &&
-                    record.examDate !== "" &&
-                    record.examTime !== "";
+                    isMeaningfulValue(record.pages) &&
+                    isMeaningfulValue(record.examDate) &&
+                    isMeaningfulValue(record.examTime);
 
                 return isComplete ? (
                     <Text style={{ color: "#389e0d", fontWeight: 600 }}>

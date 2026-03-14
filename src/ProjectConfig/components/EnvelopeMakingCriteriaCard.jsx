@@ -16,6 +16,10 @@ const EnvelopeMakingCriteriaCard = ({
   setStartOmrEnvelopeNumber,
   resetOmrSerialOnCatchChange,
   setResetOmrSerialOnCatchChange,
+  startBookletSerialNumber,
+  setStartBookletSerialNumber,
+  resetBookletSerialOnCatchChange,
+  setResetBookletSerialOnCatchChange,
   onReset,
   importedSnapshot,
 }) => {
@@ -130,6 +134,32 @@ const EnvelopeMakingCriteriaCard = ({
               value={startOmrEnvelopeNumber}
               onChange={(value) => setStartOmrEnvelopeNumber(value)}
               placeholder="Enter Start OMR Serial Number"
+              style={{ width: "100%", marginTop: 4 }}
+            />
+          </div>
+
+          {/* Reset Booklet Serial - 50% */}
+          <div style={{ flex: "1 1 48%", ...(isDirty(resetBookletSerialOnCatchChange, importedSnapshot?.resetBookletSerialOnCatchChange) ? DIRTY_STYLE : {}) }}>
+            <Checkbox
+              disabled={!isEnabled("Envelope Breaking")}
+              checked={resetBookletSerialOnCatchChange}
+              onChange={(e) =>
+                setResetBookletSerialOnCatchChange(e.target.checked)
+              }
+            >
+              <Text strong>Reset Booklet Serial on Catch Change</Text>
+            </Checkbox>
+          </div>
+
+          {/* Starting Booklet Serial - 50% */}
+          <div style={{ flex: "1 1 48%", ...(isDirty(startBookletSerialNumber, importedSnapshot?.startBookletSerialNumber) ? DIRTY_STYLE : {}) }}>
+            <Text strong>Starting Booklet Serial Number</Text>
+            <InputNumber
+              min={1}
+              disabled={!isEnabled("Envelope Breaking")}
+              value={startBookletSerialNumber}
+              onChange={(value) => setStartBookletSerialNumber(value)}
+              placeholder="Enter Start Booklet Serial Number"
               style={{ width: "100%", marginTop: 4 }}
             />
           </div>

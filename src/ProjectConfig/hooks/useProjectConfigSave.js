@@ -13,14 +13,16 @@ export const useProjectConfigSave = (
   selectedCapacity,
   startBoxNumber,
   startOmrEnvelopeNumber,
+  resetOmrSerialOnCatchChange,
+  startBookletSerialNumber,
+  resetBookletSerialOnCatchChange,
   selectedDuplicatefields,
   selectedSortingField,
   resetOnSymbolChange,
-  resetOmrSerialOnCatchChange,
   isInnerBundlingDone,
   innerBundlingCriteria,
   extraProcessingConfig,
-  duplicateConfig,           // ✅ add duplicateConfig here
+  duplicateConfig,
   fetchProjectConfigData,
   showToast,
   resetForm
@@ -37,21 +39,21 @@ export const useProjectConfigSave = (
           Inner: innerEnvelopes.join(","),
           Outer: outerEnvelopes.join(","),
         }),
-        BoxBreakingCriteria: selectedBoxFields,
-        DuplicateRemoveFields: selectedDuplicatefields,
-        BoxNumber: startBoxNumber,
-        OMRSerialNumber: startOmrEnvelopeNumber,
-        EnvelopeMakingCriteria: selectedEnvelopeFields,
-        BoxCapacity: selectedCapacity,
-        SortingBoxReport: selectedSortingField,
-        ResetOnSymbolChange: resetOnSymbolChange,
-        ResetOmrSerialOnCatchChange: resetOmrSerialOnCatchChange,
-        IsInnerBundlingDone: isInnerBundlingDone,
-        InnerBundlingCriteria: innerBundlingCriteria,
-        DuplicateCriteria: duplicateConfig?.duplicateCriteria || [], // ✅
-        Enhancement: duplicateConfig?.enhancementEnabled
-          ? duplicateConfig?.enhancement || 0
-          : 0, // ✅
+        boxBreakingCriteria: selectedBoxFields,
+        duplicateRemoveFields: selectedDuplicatefields,
+        boxNumber: startBoxNumber,
+        omrSerialNumber: startOmrEnvelopeNumber,
+        resetOmrSerialOnCatchChange: resetOmrSerialOnCatchChange,
+        bookletSerialNumber: startBookletSerialNumber,
+        resetBookletSerialOnCatchChange: resetBookletSerialOnCatchChange,
+        envelopeMakingCriteria: selectedEnvelopeFields,
+        boxCapacity: selectedCapacity,
+        sortingBoxReport: selectedSortingField,
+        resetOnSymbolChange: resetOnSymbolChange,
+        isInnerBundlingDone: isInnerBundlingDone,
+        innerBundlingCriteria: innerBundlingCriteria,
+        duplicateCriteria: duplicateConfig?.duplicateCriteria || [],
+        enhancement: duplicateConfig?.enhancement || 0,
       };
 
       await API.post(`/ProjectConfigs`, projectConfigPayload);
@@ -81,32 +83,54 @@ export const useProjectConfigSave = (
               : config.envelopeType?.outer || "",
           };
           const fixed = Number(config.fixedQty || 0);
-          const range = Number(config.range || 0);
           const percentage = Number(config.percentage || 0);
 
-          const allZero =
-            fixed === 0 &&
-            range === 0 &&
-            percentage === 0 &&
-            !normalizedEnvelope.Inner &&
-            !normalizedEnvelope.Outer;
+          // Check if anything is configured based on mode
+          let hasValue = false;
+          if (mode === "Fixed") {
+            hasValue = fixed > 0;
+          } else if (mode === "Range") {
+            hasValue = Array.isArray(config.range) && config.range.length > 0;
+          } else if (mode === "Percentage") {
+            hasValue = percentage > 0;
+          }
 
-          // 🚫 Skip if nothing configured
-          if (allZero) return null;
-          const value =
-            mode === "Fixed"
-              ? String(fixed)
-              : mode === "Range"
-                ? String(range)
-                : String(percentage);
-          return {
+          const hasEnvelope = normalizedEnvelope.Inner || normalizedEnvelope.Outer;
+          
+          // Skip if nothing configured
+          if (!hasValue && !hasEnvelope) return null;
+
+          const payload = {
             id: 0,
             projectId: Number(projectId),
             extraType: et.extraTypeId,
             mode,
-            value,
             envelopeType: JSON.stringify(normalizedEnvelope),
           };
+
+          // Add value based on mode
+          if (mode === "Fixed") {
+            payload.value = String(fixed);
+          } else if (mode === "Range") {
+            payload.value = ""; // Empty value for range mode
+            // Calculate from values for each range
+            const rangesWithFrom = (config.range || []).map((r, idx) => {
+              const from = idx === 0 ? 0 : (config.range[idx - 1]?.to ?? 0) + 1;
+              return {
+                from,
+                to: r.to,
+                value: r.value,
+              };
+            });
+            payload.rangeConfig = JSON.stringify({
+              rangeType: config.rangeType || "Fixed",
+              ranges: rangesWithFrom,
+            });
+          } else if (mode === "Percentage") {
+            payload.value = String(percentage);
+          }
+
+          return payload;
         })
         .filter(Boolean);
 
