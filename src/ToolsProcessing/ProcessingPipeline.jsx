@@ -10,6 +10,7 @@ import {
   message,
   Checkbox,
   Alert,
+  Modal,
 } from "antd";
 import { motion } from "framer-motion";
 import API from "../hooks/api";
@@ -28,6 +29,7 @@ const ProcessingPipeline = () => {
   const [projectConfig, setProjectConfig] = useState(null);
   const [configChanged, setConfigChanged] = useState(false);
   const [changedFieldsInfo, setChangedFieldsInfo] = useState([]);
+  const [dependencyModal, setDependencyModal] = useState({ visible: false, unprocessedSteps: [], selectedStep: null });
   const projectId = useStore((state) => state.projectId);
 
   const currentStep = useMemo(
@@ -312,6 +314,38 @@ const ProcessingPipeline = () => {
     }
 
     const allOrder = computeRunOrder(enabledModuleNames);
+    
+    // Check for unprocessed dependencies
+    const selectedIndices = selectedModules.map(key => allOrder.findIndex(s => s.key === key));
+    const maxSelectedIndex = Math.max(...selectedIndices);
+    
+    const unprocessedSteps = [];
+    for (let i = 0; i < maxSelectedIndex; i++) {
+      const stepKey = allOrder[i].key;
+      const isSelected = selectedModules.includes(stepKey);
+      const isCompleted = steps.find(s => s.key === stepKey)?.status === "completed";
+      
+      if (!isSelected && !isCompleted) {
+        unprocessedSteps.push(allOrder[i]);
+      }
+    }
+
+    // If there are unprocessed dependencies, show modal
+    if (unprocessedSteps.length > 0) {
+      setDependencyModal({
+        visible: true,
+        unprocessedSteps,
+        selectedStep: selectedModules[selectedModules.length - 1],
+      });
+      return;
+    }
+
+    // Proceed with processing
+    await processModules(selectedModules);
+  };
+
+  const processModules = async (modulesToProcess) => {
+    const allOrder = computeRunOrder(enabledModuleNames);
     const initialSteps = allOrder.map((o) => ({
       key: o.key,
       title: o.title,
@@ -335,7 +369,7 @@ const ProcessingPipeline = () => {
     try {
       for (const step of allOrder) {
         // If this step is not selected, skip it
-        if (!selectedModules.includes(step.key)) {
+        if (!modulesToProcess.includes(step.key)) {
           continue;
         }
 
@@ -346,7 +380,7 @@ const ProcessingPipeline = () => {
         if (stepIndex > 0) {
           for (let i = 0; i < stepIndex; i++) {
             const prevStepKey = allOrder[i].key;
-            const isPrevSelected = selectedModules.includes(prevStepKey);
+            const isPrevSelected = modulesToProcess.includes(prevStepKey);
             const isPrevCompleted = completedSteps.has(prevStepKey);
             
             // If previous step is selected but not completed, we can't run this step
@@ -428,6 +462,36 @@ const ProcessingPipeline = () => {
       message.error(err?.response?.data?.message || err?.message || "Processing failed");
     } finally {
       setIsProcessing(false);
+    }
+  };
+
+  const handleDependencyModalOk = (includeDependent) => {
+    setDependencyModal({ visible: false, unprocessedSteps: [], selectedStep: null });
+    
+    if (includeDependent) {
+      // Add unprocessed steps to selected modules
+      const allOrder = computeRunOrder(enabledModuleNames);
+      const selectedStep = dependencyModal.selectedStep;
+      const selectedIndex = allOrder.findIndex(s => s.key === selectedStep);
+      
+      const modulesToAdd = [];
+      for (let i = 0; i < selectedIndex; i++) {
+        const stepKey = allOrder[i].key;
+        const isCompleted = steps.find(s => s.key === stepKey)?.status === "completed";
+        
+        if (!isCompleted && !selectedModules.includes(stepKey)) {
+          modulesToAdd.push(stepKey);
+        }
+      }
+      
+      const newSelectedModules = [...selectedModules, ...modulesToAdd];
+      setSelectedModules(newSelectedModules);
+      
+      // Process all modules including dependencies
+      processModules(newSelectedModules);
+    } else {
+      // Process only the selected module
+      processModules(selectedModules);
     }
   };
 
@@ -608,6 +672,36 @@ const ProcessingPipeline = () => {
           )}
         </Card>
       </motion.div>
+
+      <Modal
+        title="Unprocessed Dependencies Detected"
+        open={dependencyModal.visible}
+        onCancel={() => setDependencyModal({ visible: false, unprocessedSteps: [], selectedStep: null })}
+        footer={[
+          <Button key="skip" onClick={() => handleDependencyModalOk(false)}>
+            Process Only Selected
+          </Button>,
+          <Button key="include" type="primary" onClick={() => handleDependencyModalOk(true)}>
+            Process All Dependencies
+          </Button>,
+        ]}
+      >
+        <p style={{ marginBottom: 16 }}>
+          The following reports have not been processed yet and are required before running your selected module:
+        </p>
+        <ul style={{ marginBottom: 16 }}>
+          {dependencyModal.unprocessedSteps.map((step) => (
+            <li key={step.key}>{step.title}</li>
+          ))}
+        </ul>
+        <p>
+          <strong>What would you like to do?</strong>
+        </p>
+        <ul style={{ marginLeft: 20 }}>
+          <li><strong>Process Only Selected:</strong> Run only your selected module (may fail if dependencies are missing)</li>
+          <li><strong>Process All Dependencies:</strong> Run all unprocessed dependencies first, then your selected module</li>
+        </ul>
+      </Modal>
     </div>
   );
 };
