@@ -321,9 +321,7 @@ const DataImport = () => {
     }
     return (
       <div>
-        <Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
-          Resolve the conflicts below. Ignore appears only for the conflict types you allowed, and ignored items remain visible with their status.
-        </Text>
+        
         <DataImportConflictReport
           conflicts={{ errors }}
           conflictSelections={conflictSelections}

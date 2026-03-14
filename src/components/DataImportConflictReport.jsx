@@ -177,7 +177,7 @@ const DataImportConflictReport = ({
       <Alert
         type="info"
         showIcon
-        message="Each conflict type has its own color and status so it can be identified quickly."
+        message="Each conflict type has its own color and status so it can be identified quickly. Ignored items remain visible with their status."
       />
       <Tabs
         items={Object.entries(groupedConflicts).map(([groupLabel, items]) => ({
