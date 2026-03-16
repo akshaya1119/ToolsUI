@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import '@ant-design/v5-patch-for-react-19'
-import { Row, Col, Card, Select, Upload, Button, Typography, Space, Table, Tabs, Divider, Checkbox, Input, Modal, Radio } from 'antd';
+import { Row, Col, Card, Select, Upload, Button, Typography, Space, Table, Tabs, Checkbox, Input, Modal, Radio } from 'antd';
 import { useToast } from '../hooks/useToast';
 import { CheckCircleOutlined, UploadOutlined, ToolOutlined, SearchOutlined } from '@ant-design/icons';
 import * as XLSX from 'xlsx';
@@ -34,6 +34,7 @@ const DataImport = () => {
   const [keepZeroQuantity, setKeepZeroQuantity] = useState(false);
   const [skipItems, setSkipItems] = useState(false);
   const [quantity, setQuantity] = useState(0);
+  const [isCorrectedNrdataReport, setIsCorrectedNrdataReport] = useState(false);
   const [fileList, setFileList] = useState([]);
   const [requiredFieldNames, setRequiredFieldNames] = useState([]);
   const [pagination, setPagination] = useState({
@@ -48,6 +49,9 @@ const DataImport = () => {
   const [selectedUploadedCatchNos, setSelectedUploadedCatchNos] = useState([]);
   const [mergeModalOpen, setMergeModalOpen] = useState(false);
   const [mergeModalSeparator, setMergeModalSeparator] = useState("/");
+  const [mergeModuleId, setMergeModuleId] = useState(null);
+  const [modules, setModules] = useState([]);
+  const [loadingModules, setLoadingModules] = useState(false);
   const [uploadedTableSorter, setUploadedTableSorter] = useState({ field: null, order: null });
   // Load projects
   useEffect(() => {
@@ -301,9 +305,15 @@ const DataImport = () => {
     try {
       setLoading(true);
 
+      const selectedModule = (modules || []).find((m) => m?.id === mergeModuleId) || null;
+      console.log("Merge payload module:", {
+        moduleId: selectedModule?.id ?? null,
+      });
+
       const res = await API.post(`/NRDatas/merge-catchnos?ProjectId=${projectId}`, {
         catchNos: selectedUploadedCatchNos,
         separator: separator || "/",
+        moduleId: selectedModule?.id ?? null
       }, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -337,6 +347,7 @@ const DataImport = () => {
     }
 
     setMergeModalSeparator("/");
+    setMergeModuleId(null);
     setMergeModalOpen(true);
   };
 
@@ -344,6 +355,27 @@ const DataImport = () => {
     setMergeModalOpen(false);
     await handleMergeSelectedRows(mergeModalSeparator);
   };
+
+  const loadModules = async () => {
+    try {
+      setLoadingModules(true);
+      const res = await API.get(`/Modules`);
+      setModules(Array.isArray(res.data) ? res.data : []);
+    } catch (err) {
+      console.error("Failed to load modules:", err);
+      setModules([]);
+      showToast("Failed to load modules", "error");
+    } finally {
+      setLoadingModules(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!mergeModalOpen) return;
+    if ((modules || []).length > 0) return;
+    loadModules();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mergeModalOpen]);
 
   const selectedUploadedRowKeys = existingData
     .filter((row) => selectedUploadedCatchNos.includes(row.CatchNo))
@@ -364,77 +396,7 @@ const DataImport = () => {
   };
 
 
-  // const renderLegacyConflicts = () => {
-  //   if (!conflicts) return <Text type="secondary">Click "Load Conflict Report" to see conflicts.</Text>;
-  //   if (!Array.isArray(conflicts.errors) || conflicts.errors.length === 0) {
-  //     return <Text type="success">No conflicts found 🎉</Text>;
-  //   }
-
-  //   const columns = [
-  //     { title: "Catch No", dataIndex: "catchNo", key: "catchNo" },
-  //     { title: "Conflicting Field", dataIndex: "uniqueField", key: "uniqueField" },
-  //     { title: "Value 1", dataIndex: "value1", key: "value1" },
-  //     { title: "Value 2", dataIndex: "value2", key: "value2" },
-  //     {
-  //       title: "Resolve Conflicts",
-  //       key: "resolveconflicts",
-  //       render: (_, record) => {
-  //         const selectedValue = conflictSelections[record.catchNo];
-  //         return (
-  //           <Space direction="vertical" style={{ width: "100%" }}>
-  //             <Select
-  //               style={{ width: "100%" }}
-  //               placeholder="Select value to keep"
-  //               value={selectedValue}
-  //               onChange={(value) => handleSelectionChange(record.catchNo, value)} // ✅ now works
-  //             >
-  //               <Option value={record.value1}>{record.value1}</Option>
-  //               <Option value={record.value2}>{record.value2}</Option>
-  //             </Select>
-
-  //             <Button
-  //               type="primary"
-  //               onClick={() => handleSave(record)}
-  //               disabled={!selectedValue}  // ✅ will now enable correctly
-  //             >
-  //               Save
-  //             </Button>
-  //           </Space>
-  //         );
-  //       },
-  //     },
-  //   ];
-
-  //   const dataSource = conflicts.errors.map((error, index) => ({
-  //     key: index,
-  //     catchNo: error.catchNo,
-  //     uniqueField: error.uniqueField,
-  //     value1: error.conflictingValues[0],
-  //     value2: error.conflictingValues[1],
-  //   }));
-
-  //   return (
-  //     <div>
-  //       <Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>Resolve any conflicts found in the data</Text>
-  //       <Text className='mb-3' type="secondary">Please resolve all conflicts before further processing</Text>
-
-  //       <Table
-  //         columns={columns}
-  //         dataSource={dataSource}
-  //         pagination={{
-  //           ...pagination,
-  //           showSizeChanger: true,
-  //           pageSizeOptions: ['10', '20', '50', '100'],
-  //           showQuickJumper: true,
-  //           onChange: (page, pageSize) => {
-  //             setPagination({ current: page, pageSize });
-  //           },
-  //         }}
-  //         rowKey="catchNo"
-  //       /></div>
-  //   );
-  // };
-
+ 
   const renderConflicts = () => {
     if (!conflicts) return <Text type="secondary">Click "Load Conflict Report" to see conflicts.</Text>;
 
@@ -563,6 +525,7 @@ const DataImport = () => {
     setSkipItems(false)
     setQuantity(0);
     setKeepZeroQuantity(false);
+    setIsCorrectedNrdataReport(false);
     setSkippedRows([]);
     setEditableSkippedRows([]);
   };
@@ -594,6 +557,7 @@ const DataImport = () => {
     }
     const payload = {
       projectId: Number(projectId),
+      isCorrectedNrdataReport,
       data: mappedData.map(row => ({
         ...row,
         ExamDate: String(row.ExamDate),
@@ -859,9 +823,9 @@ const DataImport = () => {
   };
 
   return (
-    <div style={{ padding: 24 }}>
+    <div style={{ padding: 0 }}>
       {/* === PAGE HEADER === */}
-      <Typography.Title level={3} style={{ marginBottom: 24 }}>
+      <Typography.Title level={3} style={{ marginBottom: 8 }}>
         Data Import
       </Typography.Title>
 
@@ -886,15 +850,25 @@ const DataImport = () => {
             </div>
           }
           bordered={true}
+          styles={{ body: { paddingTop: 12, paddingBottom: 12 } }}
           style={{
             width: "100%",
             boxShadow: "0 4px 8px rgba(0,0,0,0.1)",
-            marginBottom: 24,
+            marginBottom: 2,
+            paddingBottom: 0,
             backgroundColor: "#f5f5f5"
           }}
         >
           <Row gutter={[16, 16]}>
             <Col xs={24} md={12}>
+              <div style={{ padding: 12, border: "1px solid #d9d9d9", borderRadius: 10, background: "#fff" }}>
+                <Space direction="vertical" size={10} style={{ width: "100%" }}>
+                  <div>
+                    <Text strong>File Upload</Text>
+                    <Text type="secondary" style={{ display: "block", fontSize: 12, lineHeight: 1.3 }}>
+                      Upload a corrected NRData report if you have already fixed your source file.
+                    </Text>
+                  </div>
               <Upload.Dragger
                 name="file"
                 accept=".xls,.xlsx,.csv"
@@ -905,12 +879,26 @@ const DataImport = () => {
               >
                 <p className="ant-upload-drag-icon">📤</p>
                 <p className="ant-upload-text">Upload Excel or CSV file</p>
+                <Text type="secondary" style={{ display: "block" }}>
+                  Drag and drop or click to choose a file.
+                </Text>
                 <Button icon={<UploadOutlined />}>Choose File</Button>
               </Upload.Dragger>
+
+              
+                </Space>
+              </div>
             </Col>
 
             <Col xs={24} md={12}>
-              <Space direction="vertical" style={{ width: "100%" }}>
+              <div style={{ padding: 12, border: "1px solid #d9d9d9", borderRadius: 10, background: "#fff" }}>
+                <Space direction="vertical" size={10} style={{ width: "100%" }}>
+                  <div>
+                    <Text strong>Zero Quantity Handling</Text>
+                    <Text type="secondary" style={{ display: "block", fontSize: 12, lineHeight: 1.3 }}>
+                      Choose how to handle rows where NRQuantity is 0 before upload.
+                    </Text>
+                  </div>
                 <Checkbox
                   checked={keepZeroQuantity}
                   onChange={handleKeepZeroQuantityChange}
@@ -931,11 +919,19 @@ const DataImport = () => {
                 <Checkbox checked={skipItems} onChange={handleSkipItemsChange}>
                   Skip items with 0 quantity
                 </Checkbox>
-              </Space>
+                <Checkbox
+                  checked={isCorrectedNrdataReport}
+                  onChange={(e) => setIsCorrectedNrdataReport(e.target.checked)}
+                >
+                  This is a corrected NRData report
+                </Checkbox>
+                <Text type="secondary" style={{ display: "block", fontSize: 12, lineHeight: 1.3, marginTop: 4 }}>
+                  Enable this when the file is a corrected NRData report. We send this flag along with the upload request.
+                </Text>
+                </Space>
+              </div>
             </Col>
           </Row>
-
-          <Divider />
 
           {/* === FIELD MAPPING SECTION === */}
           {fileHeaders.length > 0 && (
@@ -950,6 +946,7 @@ const DataImport = () => {
             >
               <Card
                 title="Field Mapping"
+                styles={{ body: { paddingTop: 12, paddingBottom: 12 } }}
                 style={{
                   border: "1px solid #d9d9d9",
                   boxShadow: "0 4px 8px rgba(0,0,0,0.1)",
@@ -1135,6 +1132,7 @@ const DataImport = () => {
         >
           <Card
             bordered
+            styles={{ body: { paddingTop: 12, paddingBottom: 12 } }}
             style={{ border: "1px solid #d9d9d9", boxShadow: "0 4px 8px rgba(0,0,0,0.1)" }}
           >
             <Tabs
@@ -1265,6 +1263,23 @@ const DataImport = () => {
                   <Radio value="/">Catch1/Catch2</Radio>
                   <Radio value="-">Catch1-Catch2</Radio>
                 </Radio.Group>
+              </Space>
+              <Space direction="vertical" size={12} style={{ width: "100%", marginTop: 16 }}>
+                <Text type="secondary">
+                  Which module you want to run after the merge:
+                </Text>
+                <Select
+                  style={{ width: "100%" }}
+                  placeholder={loadingModules ? "Loading modules..." : "Select a module (optional)"}
+                  value={mergeModuleId}
+                  loading={loadingModules}
+                  allowClear
+                  onChange={(value) => setMergeModuleId(value)}
+                  options={(modules || []).map((m) => ({
+                    value: m.id,
+                    label: m.name,
+                  }))}
+                />
               </Space>
             </Modal>
           </Card>
