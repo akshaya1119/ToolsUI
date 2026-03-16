@@ -1062,7 +1062,6 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
             isMasterConfig={isMasterConfig}
             selectedType={selectedType}
             selectedGroup={selectedGroup}
-            hasChanges={hasChanges}
           />
         </Col>
       </Row>
