@@ -11,11 +11,17 @@ const ConfigSummaryCard = ({
   envelopeConfigured,
   boxConfigured,
   extraConfigured,
-  duplicateConfigured, // <-- new prop
+  duplicateConfigured,
   handleSave,
   projectId,
   isMasterConfig,
+  selectedType,
+  selectedGroup,
 }) => {
+
+  // In project config mode, type/group come from localStorage (set when project was selected on dashboard)
+  const effectiveType = selectedType ?? localStorage.getItem("selectedType");
+  const effectiveGroup = selectedGroup ?? localStorage.getItem("selectedGroup");
 
   const isAnyConfigMade = envelopeConfigured || boxConfigured || extraConfigured || duplicateConfigured;
   const summaryItems = [
@@ -84,30 +90,22 @@ const ConfigSummaryCard = ({
             </List.Item>
           )}
         />
+        {/* Save Configuration — only for project config mode (not master config) */}
         <Button
           type="primary"
           block
-          onClick={handleSave}
-          disabled={!projectId || !isAnyConfigMade}
+          onClick={() => handleSave()}
+          disabled={isMasterConfig || !projectId || !isAnyConfigMade}
           className="mt-4 mb-2"
         >
           Save Configuration
         </Button>
+        {/* Save as Master Configuration — only for project config mode, requires type & group */}
         <Button
           type="default"
           block
-          onClick={() => {
-            const groupId = localStorage.getItem("selectedGroup");
-            const typeId = localStorage.getItem("selectedType");
-
-            if (!groupId || !typeId) {
-              message.warning("Group or Type not selected in Dashboard");
-              return;
-            }
-
-            handleSave(true, parseInt(typeId), parseInt(groupId));
-          }}
-          disabled={!isAnyConfigMade || isMasterConfig}
+          onClick={() => handleSave(true, effectiveType, effectiveGroup)}
+          disabled={isMasterConfig || !isAnyConfigMade || !effectiveType || !effectiveGroup}
           style={{ marginTop: '8px' }}
         >
           Save as Master Configuration
@@ -118,3 +116,4 @@ const ConfigSummaryCard = ({
 };
 
 export default ConfigSummaryCard;
+

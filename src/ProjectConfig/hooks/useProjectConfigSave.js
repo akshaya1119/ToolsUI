@@ -190,11 +190,7 @@ export const useProjectConfigSave = (
 
       showToast("Configuration saved successfully!", "success");
       resetForm();
-      if (!isMasterConfig) {
-        fetchProjectConfigData(projectId);
-      } else {
-        fetchProjectConfigData(null, typeId, groupId);
-      }
+      fetchProjectConfigData(projectId);
 
       // Trigger callback with change information
       if (onConfigSaved && !isMasterConfig) {
