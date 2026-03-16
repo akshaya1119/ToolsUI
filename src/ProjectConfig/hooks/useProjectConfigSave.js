@@ -32,7 +32,7 @@ export const useProjectConfigSave = (
   typeId = null,
   groupId = null
 ) => {
-  const handleSave = async (overrideIsMasterConfig = false, overrideTypeId = null, overrideGroupId = null) => {
+  const handleSave = async (overrideIsMasterConfig = false, overrideTypeId = null, overrideGroupId = null, skipChangeDetection = false) => {
     let existingConfig = null;
     const finalIsMasterConfig = overrideIsMasterConfig || isMasterConfig;
     const finalTypeId = overrideTypeId || typeId;
@@ -227,8 +227,9 @@ export const useProjectConfigSave = (
       resetForm();
       fetchProjectConfigData(projectId);
 
-      // Only trigger callback (which shows modal) if NOT saving as master config
-      if (onConfigSaved && !overrideIsMasterConfig && !isMasterConfig) {
+      // Trigger callback with change information only if not skipping change detection
+      // (i.e., when saving as master config, don't show the modal)
+      if (onConfigSaved && !isMasterConfig && !skipChangeDetection) {
         console.log("Calling onConfigSaved callback with:", {
           changes,
           affectedReports: affectedReportsWithDeps,
@@ -240,7 +241,7 @@ export const useProjectConfigSave = (
           changedModules: changes.changedModules,
         });
       } else {
-        console.log("Skipping modal for master config save or no callback provided");
+        console.log("No onConfigSaved callback provided or in master config mode or skipping change detection");
       }
 
       console.log("Saved:", { projectConfigPayload, extrasPayloads });
