@@ -88,8 +88,43 @@ export const useProjectConfigSave = (
 
       await API.post(projectConfigEndpoint, projectConfigPayload);
 
+      // Prepare extras config for comparison
+      const newExtrasConfig = Object.entries(extraTypeSelection)
+        .filter(([typeName]) => extraTypes.find((t) => t.type === typeName))
+        .reduce((acc, [typeName]) => {
+          acc[typeName] = extraProcessingConfig[typeName] || {};
+          return acc;
+        }, {});
+
+      // Get existing extras config for comparison
+      let existingExtrasConfig = null;
+      if (existingConfig) {
+        try {
+          const extrasConfigEndpoint = isMasterConfig 
+            ? `/MExtraConfigs/ByTypeGroup/${typeId}/${groupId}` 
+            : `/ExtrasConfigurations/ByProject/${projectId}`;
+          const extrasRes = await API.get(extrasConfigEndpoint);
+          const extrasData = extrasRes.data || [];
+          
+          existingExtrasConfig = {};
+          extrasData.forEach((item) => {
+            const type = extraTypes.find((e) => e.extraTypeId === item.extraType)?.type;
+            if (type) {
+              existingExtrasConfig[type] = {
+                mode: item.mode,
+                value: item.value,
+                envelopeType: item.envelopeType,
+                rangeConfig: item.rangeConfig,
+              };
+            }
+          });
+        } catch (err) {
+          console.log("No existing extras config to compare");
+        }
+      }
+
       // Compare configurations to identify changes
-      const changes = compareConfigurations(existingConfig, projectConfigPayload, enabledModules);
+      const changes = compareConfigurations(existingConfig, projectConfigPayload, enabledModules, existingExtrasConfig, newExtrasConfig);
       const affectedReportsWithDeps = getReportDependencies(changes.affectedReports, enabledModules);
 
       console.log("Existing Config:", existingConfig);
