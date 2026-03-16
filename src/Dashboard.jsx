@@ -29,12 +29,17 @@ export default function Dashboard() {
       const projectNameResponses = await Promise.all(projectNameRequests);
 
       // Combine ID and name in one object
-      const combinedProjects = response.data.map((project, index) => ({
-        id: project.projectId,
-        name: projectNameResponses[index].data.name,
-        timeAgo: project.timeAgo, // ✅ Now this works!
-      }));
-
+      const combinedProjects = response.data.map((project, index) => {
+        const projData = projectNameResponses[index].data;
+        console.log(projData)
+        return {
+          id: project.projectId,
+          name: projData.name,
+          timeAgo: project.timeAgo,
+          groupId: projData.groupId,
+          typeId: projData.typeId,
+        };
+      });
 
       setProjects(combinedProjects);  // Store array of { id, name }
     } catch (err) {
@@ -59,11 +64,13 @@ export default function Dashboard() {
     getCorrectionGroups();
   }, []);
 
-  const handleCardClick = (projectId, projectName) => {
+  const handleCardClick = (projectId, projectName, groupId, typeId) => {
     // Save selected projectId and projectName in localStorage
     localStorage.setItem("selectedProjectId", projectId);
+    localStorage.setItem("selectedGroup", groupId || "");
+    localStorage.setItem("selectedType", typeId || "");
     localStorage.setItem("selectedProjectName", projectName);
-    setProject(projectName, projectId);
+    setProject(projectName, projectId, groupId || "", typeId || "");
     navigate("/projectdashboard");
   };
 
@@ -107,7 +114,7 @@ export default function Dashboard() {
                 <div
                   key={project.id}
                   className="bg-white p-6 rounded-lg shadow-md border-l-4 border-gray-400 hover:shadow-xl hover:bg-gray-50 transition-all duration-300 cursor-pointer"
-                  onClick={() => handleCardClick(project.id, project.name)}
+                  onClick={() => handleCardClick(project.id, project.name, project.groupId, project.typeId)}
                 >
                   <h3 className="text-gray-800 text-lg font-semibold mb-2 truncate"
                     title={project.name}
@@ -117,7 +124,7 @@ export default function Dashboard() {
               )))}
           </div>
         </div>
-        
+
       </div>
     </>
   );
