@@ -4,7 +4,7 @@
  * Only includes dependent reports if they are enabled in the configuration
  * If no existing config, treats all enabled modules as changed
  */
-export const compareConfigurations = (existingConfig, newConfig, enabledModules = []) => {
+export const compareConfigurations = (existingConfig, newConfig, enabledModules = [], existingExtrasConfig = null, newExtrasConfig = null) => {
   const changes = {
     changedModules: [],
     affectedReports: [],
@@ -36,6 +36,18 @@ export const compareConfigurations = (existingConfig, newConfig, enabledModules 
         }
       });
     });
+
+    // Check if extras are configured
+    if (newExtrasConfig && Object.keys(newExtrasConfig).length > 0) {
+      if (!changes.changedModules.includes("Extra Configuration")) {
+        changes.changedModules.push("Extra Configuration");
+      }
+      ["extra", "envelope", "box", "envelopeSummary", "catchSummary"].forEach((report) => {
+        if (!changes.affectedReports.includes(report)) {
+          changes.affectedReports.push(report);
+        }
+      });
+    }
 
     return changes;
   }
@@ -122,6 +134,10 @@ export const compareConfigurations = (existingConfig, newConfig, enabledModules 
     },
   };
 
+  // Check for extras configuration changes
+  // Extras are handled separately, so we need to detect if extraTypeSelection or extraProcessingConfig changed
+  // This is passed separately to the comparison function, so we'll handle it after the main field checks
+
   // Check each field for changes
   Object.keys(fieldToModuleMap).forEach((field) => {
     const oldValue = existingConfig[field];
@@ -149,6 +165,30 @@ export const compareConfigurations = (existingConfig, newConfig, enabledModules 
       });
     }
   });
+
+  // Check for extras configuration changes
+  const oldExtrasStr = JSON.stringify(existingExtrasConfig || {});
+  const newExtrasStr = JSON.stringify(newExtrasConfig || {});
+  
+  if (oldExtrasStr !== newExtrasStr) {
+    if (!changes.changedModules.includes("Extra Configuration")) {
+      changes.changedModules.push("Extra Configuration");
+    }
+    
+    const extrasReports = ["extra", "envelope", "box", "envelopeSummary", "catchSummary"];
+    extrasReports.forEach((report) => {
+      if (!changes.affectedReports.includes(report)) {
+        changes.affectedReports.push(report);
+      }
+    });
+    
+    changes.details.extrasConfiguration = {
+      moduleName: "Extra Configuration",
+      oldValue: existingExtrasConfig,
+      newValue: newExtrasConfig,
+      affectedReports: extrasReports,
+    };
+  }
 
   return changes;
 };

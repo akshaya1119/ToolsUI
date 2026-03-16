@@ -57,6 +57,7 @@ const ProcessingPipeline = () => {
       box: "BoxBreaking.xlsx",
       envelopeSummary: "EnvelopeSummary.xlsx",
       catchSummary: "CatchSummary.xlsx",
+      catchOmrSerialing: "CatchWiseBookletAndOmrSerialing.xlsx",
     };
 
     const results = {};
@@ -110,6 +111,8 @@ const ProcessingPipeline = () => {
       order.push({ key: "envelopeSummary", title: "Envelope Summary" });
     if (lowerNames.some((n) => n.includes("catch summary")))
       order.push({ key: "catchSummary", title: "Catch Summary Report" });
+    if (lowerNames.some((n) => n.includes("catchomrserialing") || n.includes("catch omr serialing")))
+      order.push({ key: "catchOmrSerialing", title: "Catch OMR Serialing" });
 
     console.log("Final order:", order);
     return order;
@@ -178,10 +181,10 @@ const ProcessingPipeline = () => {
           setSelectedModules(data.affectedReports);
           setConfigChanged(true);
           setChangedFieldsInfo(data.changedModules || []);
-          
+
           // Clear the sessionStorage
           sessionStorage.removeItem("configChangeData");
-          
+
           message.info(`${data.affectedReports.length} report(s) selected for re-processing`);
         }
       } catch (err) {
@@ -228,6 +231,11 @@ const ProcessingPipeline = () => {
     message.success(res?.data?.message || "Box breaking completed");
   };
 
+  const runCatchOmrSerialing = async (projectId) => {
+    const res = await API.get(`/EnvelopeBreakageProcessing/CatchWithOmrSerialing?ProjectId=${projectId}`);
+    message.success(res?.data?.message || "Catch OMR Serialing completed");
+  };
+
 
   const updateStepStatus = (key, patch) => {
     setSteps((prev) => prev.map((s) => (s.key === key ? { ...s, ...patch } : s)));
@@ -238,10 +246,10 @@ const ProcessingPipeline = () => {
       if (checked) {
         // Find the index of the clicked module
         const clickedIndex = steps.findIndex((s) => s.key === moduleKey);
-        
+
         // Get all module keys from start to clicked index
         const keysToSelect = steps.slice(0, clickedIndex + 1).map((s) => s.key);
-        
+
         // Merge with existing selections and remove duplicates
         const merged = Array.from(new Set([...prev, ...keysToSelect]));
         return merged;
@@ -273,7 +281,7 @@ const ProcessingPipeline = () => {
       duplicate: {
         value:
           [`Duplicate Remove: ${getNames(projectConfig.duplicateCriteria).join(", ")}`,
-           `Enhancement: ${projectConfig.enhancement}`
+          `Enhancement: ${projectConfig.enhancement}`
           ],
       },
       extra: {
@@ -297,6 +305,9 @@ const ProcessingPipeline = () => {
       catchSummary: {
         value: ["Summary Report"],
       },
+      catchOmrSerialing: {
+        value: ["Catch Wise Booklet & OMR Serialing"],
+      },
     };
 
     return configMap[moduleKey];
@@ -314,17 +325,17 @@ const ProcessingPipeline = () => {
     }
 
     const allOrder = computeRunOrder(enabledModuleNames);
-    
+
     // Check for unprocessed dependencies
     const selectedIndices = selectedModules.map(key => allOrder.findIndex(s => s.key === key));
     const maxSelectedIndex = Math.max(...selectedIndices);
-    
+
     const unprocessedSteps = [];
     for (let i = 0; i < maxSelectedIndex; i++) {
       const stepKey = allOrder[i].key;
       const isSelected = selectedModules.includes(stepKey);
       const isCompleted = steps.find(s => s.key === stepKey)?.status === "completed";
-      
+
       if (!isSelected && !isCompleted) {
         unprocessedSteps.push(allOrder[i]);
       }
@@ -364,6 +375,7 @@ const ProcessingPipeline = () => {
       box: "BoxBreaking.xlsx",
       envelopeSummary: "EnvelopeSummary.xlsx",
       catchSummary: "CatchSummary.xlsx",
+      catchOmrSerialing: "CatchWiseBookletAndOmrSerialing.xlsx",
     };
 
     try {
@@ -382,7 +394,7 @@ const ProcessingPipeline = () => {
             const prevStepKey = allOrder[i].key;
             const isPrevSelected = modulesToProcess.includes(prevStepKey);
             const isPrevCompleted = completedSteps.has(prevStepKey);
-            
+
             // If previous step is selected but not completed, we can't run this step
             if (isPrevSelected && !isPrevCompleted) {
               canRun = false;
@@ -400,7 +412,7 @@ const ProcessingPipeline = () => {
         // Check if report already exists
         const fileName = fileNames[step.key];
         let reportExists = false;
-        
+
         if (fileName) {
           try {
             const res = await API.get(
@@ -435,6 +447,7 @@ const ProcessingPipeline = () => {
           else if (step.key === "box") await runBoxBreaking(projectId);
           else if (step.key === "envelopeSummary") await runEnvelopeSummary(projectId);
           else if (step.key === "catchSummary") await runCatchSummary(projectId);
+          else if (step.key === "catchOmrSerialing") await runCatchOmrSerialing(projectId);
 
           const durationMs = Date.now() - (stepTimers.get(step.key) || Date.now());
           const mm = String(Math.floor(durationMs / 60000)).padStart(2, "0");
@@ -453,7 +466,7 @@ const ProcessingPipeline = () => {
       }
       await checkReportExistence(projectId);
       message.success("Data processing completed");
-      
+
       // Clear selections and close alert after successful processing
       setSelectedModules([]);
       setConfigChanged(false);
@@ -467,26 +480,26 @@ const ProcessingPipeline = () => {
 
   const handleDependencyModalOk = (includeDependent) => {
     setDependencyModal({ visible: false, unprocessedSteps: [], selectedStep: null });
-    
+
     if (includeDependent) {
       // Add unprocessed steps to selected modules
       const allOrder = computeRunOrder(enabledModuleNames);
       const selectedStep = dependencyModal.selectedStep;
       const selectedIndex = allOrder.findIndex(s => s.key === selectedStep);
-      
+
       const modulesToAdd = [];
       for (let i = 0; i < selectedIndex; i++) {
         const stepKey = allOrder[i].key;
         const isCompleted = steps.find(s => s.key === stepKey)?.status === "completed";
-        
+
         if (!isCompleted && !selectedModules.includes(stepKey)) {
           modulesToAdd.push(stepKey);
         }
       }
-      
+
       const newSelectedModules = [...selectedModules, ...modulesToAdd];
       setSelectedModules(newSelectedModules);
-      
+
       // Process all modules including dependencies
       processModules(newSelectedModules);
     } else {
@@ -618,7 +631,7 @@ const ProcessingPipeline = () => {
           style={{ marginBottom: 16 }}
         />
       )}
-      
+
       <div className="flex justify-between items-center mb-4">
         <Typography.Title level={3} style={{ marginBottom: 24 }}>
           Project Configuration

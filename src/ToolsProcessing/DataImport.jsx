@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import '@ant-design/v5-patch-for-react-19'
-import { Row, Col, Card, Select, Upload, Button, Typography, Space, Table, Tabs, Divider, Checkbox, Input, Modal } from 'antd';
+import { Row, Col, Card, Select, Upload, Button, Typography, Space, Table, Tabs, Checkbox, Input, Modal, Radio } from 'antd';
 import { useToast } from '../hooks/useToast';
 import { CheckCircleOutlined, UploadOutlined, ToolOutlined, SearchOutlined } from '@ant-design/icons';
 import * as XLSX from 'xlsx';
@@ -9,6 +9,7 @@ import API from '../hooks/api';
 import useStore from '../stores/ProjectData';
 import useDebounce from '../services/useDebounce';
 import MissingData from '../components/MissingData';
+import DataImportConflictReport from '../components/DataImportConflictReport';
 
 const { Text } = Typography;
 const { Option } = Select;
@@ -33,6 +34,7 @@ const DataImport = () => {
   const [keepZeroQuantity, setKeepZeroQuantity] = useState(false);
   const [skipItems, setSkipItems] = useState(false);
   const [quantity, setQuantity] = useState(0);
+  const [isCorrectedNrdataReport, setIsCorrectedNrdataReport] = useState(false);
   const [fileList, setFileList] = useState([]);
   const [requiredFieldNames, setRequiredFieldNames] = useState([]);
   const [pagination, setPagination] = useState({
@@ -44,10 +46,16 @@ const DataImport = () => {
   const debouncedSearchText = useDebounce(searchText, 500);
   const [skippedRows, setSkippedRows] = useState([]);
   const [editableSkippedRows, setEditableSkippedRows] = useState([]); // user-edited cells
+  const [selectedUploadedCatchNos, setSelectedUploadedCatchNos] = useState([]);
+  const [mergeModalOpen, setMergeModalOpen] = useState(false);
+  const [mergeModalSeparator, setMergeModalSeparator] = useState("/");
+  const [mergeModuleId, setMergeModuleId] = useState(null);
+  const [modules, setModules] = useState([]);
+  const [loadingModules, setLoadingModules] = useState(false);
+  const [uploadedTableSorter, setUploadedTableSorter] = useState({ field: null, order: null });
   // Load projects
   useEffect(() => {
     if (!projectId) return;
-    fetchExistingData(projectId);
     API.get(`/Fields`)
       .then(res => {
         setExpectedFields(res.data);
@@ -91,7 +99,20 @@ const DataImport = () => {
           });
       })
       .catch(err => console.error("Failed to fetch fields", err));
-  }, [projectId, pagination.current, pagination.pageSize, debouncedSearchText, searchedColumn]);
+  }, [projectId]);
+
+  useEffect(() => {
+    if (!projectId) return;
+    fetchExistingData(projectId);
+  }, [
+    projectId,
+    pagination.current,
+    pagination.pageSize,
+    debouncedSearchText,
+    searchedColumn,
+    uploadedTableSorter.field,
+    uploadedTableSorter.order,
+  ]);
 
   const fetchExistingData = async (projectId) => {
     if (!projectId) return;
@@ -103,20 +124,27 @@ const DataImport = () => {
           pageSize: pagination.pageSize,
           pageNo: pagination.current,
           search: searchText || null,
-          key: searchedColumn || null
+          key: searchedColumn || null,
+          sortField: uploadedTableSorter.field || null,
+          sortOrder: uploadedTableSorter.order || null,
         },
       });
-      setExistingData(res.data.items || []);
-      setColumns(res.data.columns)
+      setExistingData((res.data.items || []).map((item) => ({
+        ...item,
+        id: item.id ?? item.Id,
+      })));
+      setColumns((res.data.columns || []).filter((column) => column !== "NRDatas" && column !== "Id"))
       setPagination(prev => ({
         ...prev,
         total: res.data.totalCount
       }));
       setShowData(res.data.items && res.data.items.length > 0);
+      setSelectedUploadedCatchNos([]);
     } catch (err) {
       console.error("Failed to fetch existing data", err);
       setExistingData([]);
       setShowData(false);
+      setSelectedUploadedCatchNos([]);
     } finally {
       setLoading(false);
     }
@@ -126,12 +154,21 @@ const DataImport = () => {
     setActiveTab("2");
     setLoading(true);
     try {
-      const res = await API.get(`/NRDatas/ErrorReport?ProjectId=${projectId}`);
-      if (res.data?.duplicatesFound) {
-        setConflicts(res.data);
+      const res = await API.get(`/NRDatas/ErrorReport`, {
+        params: {
+          ProjectId: projectId,
+        },
+      });
+      const report = {
+        errors: res.data?.errors || res.data?.Errors || [],
+      };
+      const errors = report.errors;
+
+      if (errors.length > 0) {
+        setConflicts(report);
         showToast("Conflict report loaded", "success");
       } else {
-        setConflicts([]);
+        setConflicts({ errors: [] });
         showToast("No conflicts found", "info");
       }
     } catch (err) {
@@ -142,108 +179,243 @@ const DataImport = () => {
     }
   };
 
-  const handleSave = async (record) => {
-    const selectedValue = conflictSelections[record.catchNo];
+  const handleSave = async (record, selectedValue) => {
+    const normalizedValue =
+      selectedValue === undefined || selectedValue === null
+        ? ""
+        : String(selectedValue).trim();
 
-    if (!selectedValue) {
-      showToast('Please select a value before saving.', "warning");
+    if (normalizedValue === "") {
+      showToast('Please enter or select a value before saving.', "warning");
       return;
     }
 
-    const payload = {
-      catchNo: record.catchNo,
-      uniqueField: record.uniqueField,
-      selectedValue: selectedValue
-    };
+    if (record.conflictType === "zero_nr_quantity") {
+      const parsedValue = Number(normalizedValue);
+      const minNrQuantity = record.minNrQuantity;
+      const maxNrQuantity = record.maxNrQuantity;
+
+      if (!Number.isFinite(parsedValue) || !Number.isInteger(parsedValue)) {
+        showToast("Please enter a valid whole number for NRQuantity.", "warning");
+        return;
+      }
+
+      if (parsedValue <= 0) {
+        showToast("NRQuantity must be greater than 0.", "warning");
+        return;
+      }
+
+      if (
+        minNrQuantity !== undefined &&
+        minNrQuantity !== null &&
+        maxNrQuantity !== undefined &&
+        maxNrQuantity !== null &&
+        (parsedValue < minNrQuantity || parsedValue > maxNrQuantity)
+      ) {
+        showToast(`NRQuantity must be between ${minNrQuantity} and ${maxNrQuantity}.`, "warning");
+        return;
+      }
+    }
 
     try {
+      const payload = {
+        conflictType: record.conflictType,
+        catchNo: record.catchNo,
+        catchNos: record.catchNos || [],
+        rowIds: record.rowIds || [],
+        importRowNos: record.importRowNos || [],
+        uniqueField: record.uniqueField,
+        field: record.field,
+        selectedValue: normalizedValue,
+        centreCode: record.centreCode,
+        nodalCode: record.nodalCode,
+        nodalCodeGroup: record.nodalCodeGroup,
+        collegeName: record.collegeName,
+        collegeCode: record.collegeCode,
+        collegeKeyType: record.collegeKeyType,
+        conflictingValues: record.conflictingValues || [],
+        nodalCodes: record.nodalCodes || [],
+        centerCodes: record.centerCodes || [],
+      };
+
       await API.put(`/NRDatas?ProjectId=${projectId}`, payload, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      showToast(`Resolved conflict for ${record.catchNo}`, "success");
-      fetchConflictReport();
+
+      showToast(`Resolved conflict for ${record.catchNo || record.sourceValue || record.targetField}`, "success");
+      await fetchConflictReport();
+      await fetchExistingData(projectId);
     } catch (error) {
       console.error('Error saving resolution:', error);
       showToast('Failed to resolve conflict', "error");
     }
   };
   // Update state when user selects a value from dropdown
-  const handleSelectionChange = (catchNo, value) => {
+  const handleSelectionChange = (conflictKey, value) => {
     setConflictSelections((prev) => ({
       ...prev,
-      [catchNo]: value,
+      [conflictKey]: value,
     }));
   };
 
+  const handleIgnoreConflict = async (conflict) => {
+    try {
+      await API.put(`/NRDatas/conflicts/status?ProjectId=${projectId}`, {
+        conflictType: conflict.conflictType,
+        catchNo: conflict.catchNo,
+        catchNos: conflict.catchNos || [],
+        rowIds: conflict.rowIds || [],
+        importRowNos: conflict.importRowNos || [],
+        uniqueField: conflict.uniqueField,
+        field: conflict.field,
+        centreCode: conflict.centreCode,
+        nodalCode: conflict.nodalCode,
+        nodalCodeGroup: conflict.nodalCodeGroup,
+        collegeName: conflict.collegeName,
+        collegeCode: conflict.collegeCode,
+        collegeKeyType: conflict.collegeKeyType,
+        conflictingValues: conflict.conflictingValues || [],
+        nodalCodes: conflict.nodalCodes || [],
+        centerCodes: conflict.centerCodes || [],
+        status: "ignored",
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
 
-  const renderConflicts = () => {
-    if (!conflicts) return <Text type="secondary">Click "Load Conflict Report" to see conflicts.</Text>;
-    if (!Array.isArray(conflicts.errors) || conflicts.errors.length === 0) {
-      return <Text type="success">No conflicts found 🎉</Text>;
+      setConflictSelections((prev) => {
+        const updated = { ...prev };
+        delete updated[conflict.key];
+        return updated;
+      });
+
+      await fetchConflictReport();
+      showToast("Conflict ignored", "success");
+    } catch (error) {
+      console.error("Error ignoring conflict:", error);
+      showToast("Failed to ignore conflict", "error");
+    }
+  };
+
+  const handleMergeSelectedRows = async (separator) => {
+    if (selectedUploadedCatchNos.length !== 2) {
+      showToast("Please select rows from exactly 2 catch numbers.", "warning");
+      return;
     }
 
-    const columns = [
-      { title: "Catch No", dataIndex: "catchNo", key: "catchNo" },
-      { title: "Conflicting Field", dataIndex: "uniqueField", key: "uniqueField" },
-      { title: "Value 1", dataIndex: "value1", key: "value1" },
-      { title: "Value 2", dataIndex: "value2", key: "value2" },
-      {
-        title: "Resolve Conflicts",
-        key: "resolveconflicts",
-        render: (_, record) => {
-          const selectedValue = conflictSelections[record.catchNo];
-          return (
-            <Space direction="vertical" style={{ width: "100%" }}>
-              <Select
-                style={{ width: "100%" }}
-                placeholder="Select value to keep"
-                value={selectedValue}
-                onChange={(value) => handleSelectionChange(record.catchNo, value)} // ✅ now works
-              >
-                <Option value={record.value1}>{record.value1}</Option>
-                <Option value={record.value2}>{record.value2}</Option>
-              </Select>
+    try {
+      setLoading(true);
 
-              <Button
-                type="primary"
-                onClick={() => handleSave(record)}
-                disabled={!selectedValue}  // ✅ will now enable correctly
-              >
-                Save
-              </Button>
-            </Space>
-          );
-        },
-      },
-    ];
+      const selectedModule = (modules || []).find((m) => m?.id === mergeModuleId) || null;
+      console.log("Merge payload module:", {
+        moduleId: selectedModule?.id ?? null,
+      });
 
-    const dataSource = conflicts.errors.map((error, index) => ({
-      key: index,
-      catchNo: error.catchNo,
-      uniqueField: error.uniqueField,
-      value1: error.conflictingValues[0],
-      value2: error.conflictingValues[1],
+      const res = await API.post(`/NRDatas/merge-catchnos?ProjectId=${projectId}`, {
+        catchNos: selectedUploadedCatchNos,
+        separator: separator || "/",
+        moduleId: selectedModule?.id ?? null
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      showToast(res.data?.message || "Selected rows merged successfully.", "success");
+      setSelectedUploadedCatchNos([]);
+      await fetchExistingData(projectId);
+      await fetchConflictReport();
+      setActiveTab("1");
+    } catch (error) {
+      console.error("Error merging catch numbers:", error);
+      const errorMessage =
+        error?.response?.data?.message ||
+        error?.response?.data ||
+        error?.message ||
+        "Failed to merge selected rows";
+      showToast(errorMessage, "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const openMergeModal = () => {
+    if (activeTab !== "1") {
+      setActiveTab("1");
+    }
+
+    if (selectedUploadedCatchNos.length !== 2) {
+      showToast("Please select rows from exactly 2 catch numbers.", "warning");
+      return;
+    }
+
+    setMergeModalSeparator("/");
+    setMergeModuleId(null);
+    setMergeModalOpen(true);
+  };
+
+  const confirmMerge = async () => {
+    setMergeModalOpen(false);
+    await handleMergeSelectedRows(mergeModalSeparator);
+  };
+
+  const loadModules = async () => {
+    try {
+      setLoadingModules(true);
+      const res = await API.get(`/Modules`);
+      setModules(Array.isArray(res.data) ? res.data : []);
+    } catch (err) {
+      console.error("Failed to load modules:", err);
+      setModules([]);
+      showToast("Failed to load modules", "error");
+    } finally {
+      setLoadingModules(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!mergeModalOpen) return;
+    if ((modules || []).length > 0) return;
+    loadModules();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mergeModalOpen]);
+
+  const selectedUploadedRowKeys = existingData
+    .filter((row) => selectedUploadedCatchNos.includes(row.CatchNo))
+    .map((row) => row.id);
+
+  const handleUploadedTableChange = (nextPagination, filters, sorter) => {
+    setPagination((prev) => ({
+      ...prev,
+      current: nextPagination.current,
+      pageSize: nextPagination.pageSize,
     }));
 
+    const normalizedSorter = Array.isArray(sorter) ? sorter[0] : sorter;
+    setUploadedTableSorter({
+      field: normalizedSorter?.field ?? null,
+      order: normalizedSorter?.order ?? null,
+    });
+  };
+
+
+ 
+  const renderConflicts = () => {
+    if (!conflicts) return <Text type="secondary">Click "Load Conflict Report" to see conflicts.</Text>;
+
+    const errors = conflicts?.errors || [];
+    if (errors.length === 0) {
+      return <Text type="success">No conflicts found</Text>;
+    }
     return (
       <div>
-        <Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>Resolve any conflicts found in the data</Text>
-        <Text className='mb-3' type="secondary">Please resolve all conflicts before further processing</Text>
-
-        <Table
-          columns={columns}
-          dataSource={dataSource}
-          pagination={{
-            ...pagination,
-            showSizeChanger: true,
-            pageSizeOptions: ['10', '20', '50', '100'],
-            showQuickJumper: true,
-            onChange: (page, pageSize) => {
-              setPagination({ current: page, pageSize });
-            },
-          }}
-          rowKey="catchNo"
-        /></div>
+        
+        <DataImportConflictReport
+          conflicts={{ errors }}
+          conflictSelections={conflictSelections}
+          onSelectionChange={handleSelectionChange}
+          onResolve={handleSave}
+          onIgnore={handleIgnoreConflict}
+          loading={loading}
+        />
+      </div>
     );
   };
 
@@ -353,6 +525,7 @@ const DataImport = () => {
     setSkipItems(false)
     setQuantity(0);
     setKeepZeroQuantity(false);
+    setIsCorrectedNrdataReport(false);
     setSkippedRows([]);
     setEditableSkippedRows([]);
   };
@@ -360,8 +533,11 @@ const DataImport = () => {
   const handleUpload = () => {
     let mappedData = getMappedData();
 
-    // Remove the internal _rowIndex from all rows before sending to API
-    mappedData = mappedData.map(({ _rowIndex, _missingFields, ...cleanRow }) => cleanRow);
+    // Keep the original Excel row number in NRDatas JSON for conflict display.
+    mappedData = mappedData.map(({ _rowIndex, _missingFields, ...cleanRow }) => ({
+      ...cleanRow,
+      ImportRowNo: String(Number(_rowIndex) + 2),
+    }));
 
     if (mappedData.length === 0) {
       showToast("No valid rows to upload. Please map correctly and upload a file with data.", "error");
@@ -381,6 +557,7 @@ const DataImport = () => {
     }
     const payload = {
       projectId: Number(projectId),
+      isCorrectedNrdataReport,
       data: mappedData.map(row => ({
         ...row,
         ExamDate: String(row.ExamDate),
@@ -393,9 +570,8 @@ const DataImport = () => {
       .then(res => {
         console.log('Validation result:', res.data);
         showToast(`Validation successful! ${mappedData.length} rows uploaded.`, "success");
-        setExistingData(payload.data);
         resetForm();
-        fetchExistingData();
+        fetchExistingData(projectId);
       })
       .catch(err => {
         console.error("Validation failed", err);
@@ -415,13 +591,13 @@ const DataImport = () => {
       });
   };
 
-  const areRequiredFieldsMapped = () => {
-    if (requiredFieldNames.length === 0) return true;
-    return requiredFieldNames.every(fieldName => {
-      const field = expectedFields.find(f => f.name === fieldName);
-      return field && fieldMappings[field.fieldId];
-    });
-  };
+  // const areRequiredFieldsMapped = () => {
+  //   if (requiredFieldNames.length === 0) return true;
+  //   return requiredFieldNames.every(fieldName => {
+  //     const field = expectedFields.find(f => f.name === fieldName);
+  //     return field && fieldMappings[field.fieldId];
+  //   });
+  // };
 
   const getMappedData = () => {
     if (!excelData.length || !fileHeaders.length) return [];
@@ -522,22 +698,8 @@ const DataImport = () => {
     key: col,
     ellipsis: true,
     ...getColumnSearchProps(col),  // search/filter props
-    sorter: (a, b) => {
-      const valA = a[col];
-      const valB = b[col];
-
-      if (valA == null) return -1;
-      if (valB == null) return 1;
-
-      // numeric check
-      if (!isNaN(valA) && !isNaN(valB)) return Number(valA) - Number(valB);
-
-      // date check (optional)
-      if (Date.parse(valA) && Date.parse(valB)) return new Date(valA) - new Date(valB);
-
-      // default string sort
-      return String(valA).localeCompare(String(valB), undefined, { sensitivity: 'base' });
-    },
+    sorter: true,
+    sortOrder: uploadedTableSorter.field === col ? uploadedTableSorter.order : null,
   }));
 
 
@@ -661,9 +823,9 @@ const DataImport = () => {
   };
 
   return (
-    <div style={{ padding: 24 }}>
+    <div style={{ padding: 0 }}>
       {/* === PAGE HEADER === */}
-      <Typography.Title level={3} style={{ marginBottom: 24 }}>
+      <Typography.Title level={3} style={{ marginBottom: 8 }}>
         Data Import
       </Typography.Title>
 
@@ -688,15 +850,25 @@ const DataImport = () => {
             </div>
           }
           bordered={true}
+          styles={{ body: { paddingTop: 12, paddingBottom: 12 } }}
           style={{
             width: "100%",
             boxShadow: "0 4px 8px rgba(0,0,0,0.1)",
-            marginBottom: 24,
+            marginBottom: 2,
+            paddingBottom: 0,
             backgroundColor: "#f5f5f5"
           }}
         >
           <Row gutter={[16, 16]}>
             <Col xs={24} md={12}>
+              <div style={{ padding: 12, border: "1px solid #d9d9d9", borderRadius: 10, background: "#fff" }}>
+                <Space direction="vertical" size={10} style={{ width: "100%" }}>
+                  <div>
+                    <Text strong>File Upload</Text>
+                    <Text type="secondary" style={{ display: "block", fontSize: 12, lineHeight: 1.3 }}>
+                      Upload a corrected NRData report if you have already fixed your source file.
+                    </Text>
+                  </div>
               <Upload.Dragger
                 name="file"
                 accept=".xls,.xlsx,.csv"
@@ -707,12 +879,26 @@ const DataImport = () => {
               >
                 <p className="ant-upload-drag-icon">📤</p>
                 <p className="ant-upload-text">Upload Excel or CSV file</p>
+                <Text type="secondary" style={{ display: "block" }}>
+                  Drag and drop or click to choose a file.
+                </Text>
                 <Button icon={<UploadOutlined />}>Choose File</Button>
               </Upload.Dragger>
+
+              
+                </Space>
+              </div>
             </Col>
 
             <Col xs={24} md={12}>
-              <Space direction="vertical" style={{ width: "100%" }}>
+              <div style={{ padding: 12, border: "1px solid #d9d9d9", borderRadius: 10, background: "#fff" }}>
+                <Space direction="vertical" size={10} style={{ width: "100%" }}>
+                  <div>
+                    <Text strong>Zero Quantity Handling</Text>
+                    <Text type="secondary" style={{ display: "block", fontSize: 12, lineHeight: 1.3 }}>
+                      Choose how to handle rows where NRQuantity is 0 before upload.
+                    </Text>
+                  </div>
                 <Checkbox
                   checked={keepZeroQuantity}
                   onChange={handleKeepZeroQuantityChange}
@@ -733,11 +919,19 @@ const DataImport = () => {
                 <Checkbox checked={skipItems} onChange={handleSkipItemsChange}>
                   Skip items with 0 quantity
                 </Checkbox>
-              </Space>
+                <Checkbox
+                  checked={isCorrectedNrdataReport}
+                  onChange={(e) => setIsCorrectedNrdataReport(e.target.checked)}
+                >
+                  This is a corrected NRData report
+                </Checkbox>
+                <Text type="secondary" style={{ display: "block", fontSize: 12, lineHeight: 1.3, marginTop: 4 }}>
+                  Enable this when the file is a corrected NRData report. We send this flag along with the upload request.
+                </Text>
+                </Space>
+              </div>
             </Col>
           </Row>
-
-          <Divider />
 
           {/* === FIELD MAPPING SECTION === */}
           {fileHeaders.length > 0 && (
@@ -752,6 +946,7 @@ const DataImport = () => {
             >
               <Card
                 title="Field Mapping"
+                styles={{ body: { paddingTop: 12, paddingBottom: 12 } }}
                 style={{
                   border: "1px solid #d9d9d9",
                   boxShadow: "0 4px 8px rgba(0,0,0,0.1)",
@@ -937,32 +1132,104 @@ const DataImport = () => {
         >
           <Card
             bordered
+            styles={{ body: { paddingTop: 12, paddingBottom: 12 } }}
             style={{ border: "1px solid #d9d9d9", boxShadow: "0 4px 8px rgba(0,0,0,0.1)" }}
           >
             <Tabs
               activeKey={activeTab}
               onChange={(key) => setActiveTab(key)}
               style={{ marginTop: 8 }}
+              tabBarExtraContent={
+                <Button
+                  type="primary"
+                  size="small"
+                  disabled={activeTab !== "1" || selectedUploadedCatchNos.length !== 2}
+                  loading={loading}
+                  onClick={openMergeModal}
+                >
+                  Merge Catch Numbers
+                </Button>
+              }
             >
               <TabPane tab="Uploaded Data" key="1">
                 {enhancedColumns.length > 0 ? (
-                  <Table
-                    dataSource={existingData}
-                    columns={enhancedColumns}
-                    pagination={{
-                      ...pagination,
-                      showSizeChanger: true,
-                      pageSizeOptions: ['10', '20', '50', '100'],
-                      showQuickJumper: true,
-                      onChange: (page, pageSize) => {
-                        setPagination({ current: page, pageSize });
-                        fetchExistingData(projectId);
-                      },
-                    }}
-                    rowKey="id"
-                    scroll={{ x: "max-content" }}
-                    loading={loading}
-                  />
+                  <Space direction="vertical" size={12} style={{ width: "100%" }}>
+                   
+                    <Table
+                      dataSource={existingData}
+                      columns={enhancedColumns}
+                      pagination={{
+                        ...pagination,
+                        showSizeChanger: true,
+                        pageSizeOptions: ['10', '20', '50', '100'],
+                        showQuickJumper: true,
+                      }}
+                      rowKey="id"
+                      rowSelection={{
+                        selectedRowKeys: selectedUploadedRowKeys,
+                        onSelect: (record, selected) => {
+                          const catchNo = record.CatchNo;
+                          if (!catchNo) {
+                            return;
+                          }
+
+                          setSelectedUploadedCatchNos((prev) => {
+                            if (selected) {
+                              if (prev.includes(catchNo)) {
+                                return prev;
+                              }
+
+                              if (prev.length >= 2) {
+                                showToast("You can select rows from only 2 catch numbers at a time.", "warning");
+                                return prev;
+                              }
+
+                              return [...prev, catchNo];
+                            }
+
+                            return prev.filter((item) => item !== catchNo);
+                          });
+                        },
+                        onSelectAll: (selected, selectedRows, changeRows) => {
+                          setSelectedUploadedCatchNos((prev) => {
+                            let next = [...prev];
+
+                            changeRows.forEach((row) => {
+                              const catchNo = row.CatchNo;
+                              if (!catchNo) {
+                                return;
+                              }
+
+                              if (selected) {
+                                if (!next.includes(catchNo) && next.length < 2) {
+                                  next.push(catchNo);
+                                }
+                              } else {
+                                next = next.filter((item) => item !== catchNo);
+                              }
+                            });
+
+                            const uniqueCatchNos = Array.from(new Set(next));
+                            if (selected && uniqueCatchNos.length > 2) {
+                              showToast("You can select rows from only 2 catch numbers at a time.", "warning");
+                              return uniqueCatchNos.slice(0, 2);
+                            }
+
+                            return uniqueCatchNos;
+                          });
+                        },
+                        getCheckboxProps: (record) => ({
+                          disabled:
+                            Boolean(record.CatchNo) &&
+                            selectedUploadedCatchNos.length >= 2 &&
+                            !selectedUploadedCatchNos.includes(record.CatchNo),
+                        }),
+                      }}
+                      scroll={{ x: "max-content" }}
+                      loading={loading}
+                      onChange={handleUploadedTableChange}
+                    />
+                  </Space>
                 ) : (
                   <Typography.Text type="secondary">No data found</Typography.Text>
                 )}
@@ -976,6 +1243,45 @@ const DataImport = () => {
                 <MissingData />
               </TabPane>
             </Tabs>
+
+            <Modal
+              title="Merge Catch Numbers"
+              open={mergeModalOpen}
+              okText="Merge"
+              onOk={confirmMerge}
+              onCancel={() => setMergeModalOpen(false)}
+              okButtonProps={{ disabled: selectedUploadedCatchNos.length !== 2, loading }}
+            >
+              <Space direction="vertical" size={12} style={{ width: "100%" }}>
+                <Text type="secondary">
+                  Choose how to join the catch numbers:
+                </Text>
+                <Radio.Group
+                  value={mergeModalSeparator}
+                  onChange={(event) => setMergeModalSeparator(event.target.value)}
+                >
+                  <Radio value="/">Catch1/Catch2</Radio>
+                  <Radio value="-">Catch1-Catch2</Radio>
+                </Radio.Group>
+              </Space>
+              <Space direction="vertical" size={12} style={{ width: "100%", marginTop: 16 }}>
+                <Text type="secondary">
+                  Which module you want to run after the merge:
+                </Text>
+                <Select
+                  style={{ width: "100%" }}
+                  placeholder={loadingModules ? "Loading modules..." : "Select a module (optional)"}
+                  value={mergeModuleId}
+                  loading={loadingModules}
+                  allowClear
+                  onChange={(value) => setMergeModuleId(value)}
+                  options={(modules || []).map((m) => ({
+                    value: m.id,
+                    label: m.name,
+                  }))}
+                />
+              </Space>
+            </Modal>
           </Card>
         </motion.div>
       </>

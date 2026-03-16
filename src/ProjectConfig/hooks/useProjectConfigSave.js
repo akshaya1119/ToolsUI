@@ -32,8 +32,12 @@ export const useProjectConfigSave = (
   typeId = null,
   groupId = null
 ) => {
-  const handleSave = async () => {
+  const handleSave = async (overrideIsMasterConfig = false, overrideTypeId = null, overrideGroupId = null, skipChangeDetection = false) => {
     let existingConfig = null;
+    const finalIsMasterConfig = overrideIsMasterConfig || isMasterConfig;
+    const finalTypeId = overrideTypeId || typeId;
+    const finalGroupId = overrideGroupId || groupId;
+
     try {
       const res = await API.get(`/ProjectConfigs/ByProject/${projectId}`);
       existingConfig = res.data;
@@ -44,24 +48,25 @@ export const useProjectConfigSave = (
     }
     try {
       // Validation for master config mode
-      if (isMasterConfig && (!typeId || !groupId)) {
+      if (finalIsMasterConfig && (!finalTypeId || !finalGroupId)) {
         showToast("Please select Type and Group first", "error");
         return;
       }
 
       // Validation for project config mode
-      if (!isMasterConfig && !projectId) {
+      if (!finalIsMasterConfig && !projectId) {
         showToast("Project ID is required", "error");
         return;
       }
 
+      console.log(finalGroupId)
       // Determine which endpoint to use
-      const projectConfigEndpoint = isMasterConfig ? '/MProjectConfigs' : '/ProjectConfigs';
-      const extraConfigEndpoint = isMasterConfig ? '/MExtraConfigs' : '/ExtrasConfigurations';
+      const projectConfigEndpoint = finalIsMasterConfig ? '/MProjectConfigs' : '/ProjectConfigs';
+      const extraConfigEndpoint = finalIsMasterConfig ? '/MExtraConfigs' : '/ExtrasConfigurations';
 
       // 1️⃣ Save ProjectConfigs including Duplicate Tool
       const projectConfigPayload = {
-        ...(isMasterConfig ? { typeId: Number(typeId), groupId: Number(groupId) } : { projectId: Number(projectId) }),
+        ...(finalIsMasterConfig ? { typeId: Number(finalTypeId), groupId: Number(finalGroupId) } : { projectId: Number(projectId) }),
         modules: enabledModules.map(
           (m) => toolModules.find((tm) => tm.name === m)?.id
         ),
@@ -88,8 +93,43 @@ export const useProjectConfigSave = (
 
       await API.post(projectConfigEndpoint, projectConfigPayload);
 
+      // Prepare extras config for comparison
+      const newExtrasConfig = Object.entries(extraTypeSelection)
+        .filter(([typeName]) => extraTypes.find((t) => t.type === typeName))
+        .reduce((acc, [typeName]) => {
+          acc[typeName] = extraProcessingConfig[typeName] || {};
+          return acc;
+        }, {});
+
+      // Get existing extras config for comparison
+      let existingExtrasConfig = null;
+      if (existingConfig) {
+        try {
+          const extrasConfigEndpoint = isMasterConfig 
+            ? `/MExtraConfigs/ByTypeGroup/${typeId}/${groupId}` 
+            : `/ExtrasConfigurations/ByProject/${projectId}`;
+          const extrasRes = await API.get(extrasConfigEndpoint);
+          const extrasData = extrasRes.data || [];
+          
+          existingExtrasConfig = {};
+          extrasData.forEach((item) => {
+            const type = extraTypes.find((e) => e.extraTypeId === item.extraType)?.type;
+            if (type) {
+              existingExtrasConfig[type] = {
+                mode: item.mode,
+                value: item.value,
+                envelopeType: item.envelopeType,
+                rangeConfig: item.rangeConfig,
+              };
+            }
+          });
+        } catch (err) {
+          console.log("No existing extras config to compare");
+        }
+      }
+
       // Compare configurations to identify changes
-      const changes = compareConfigurations(existingConfig, projectConfigPayload, enabledModules);
+      const changes = compareConfigurations(existingConfig, projectConfigPayload, enabledModules, existingExtrasConfig, newExtrasConfig);
       const affectedReportsWithDeps = getReportDependencies(changes.affectedReports, enabledModules);
 
       console.log("Existing Config:", existingConfig);
@@ -98,7 +138,7 @@ export const useProjectConfigSave = (
       console.log("Affected Reports with Dependencies:", affectedReportsWithDeps);
 
       // 2️⃣ Delete existing ExtrasConfigurations first (only for non-master mode)
-      if (!isMasterConfig) {
+      if (!finalIsMasterConfig) {
         try {
           await API.delete(`/ExtrasConfigurations/${projectId}`);
         } catch (err) {
@@ -116,11 +156,11 @@ export const useProjectConfigSave = (
           const config = extraProcessingConfig[typeName] || {};
 
           const normalizedEnvelope = {
-            Inner: Array.isArray(config.envelopeType?.inner) 
-              ? config.envelopeType.inner[0] || "" 
+            Inner: Array.isArray(config.envelopeType?.inner)
+              ? config.envelopeType.inner[0] || ""
               : config.envelopeType?.inner || "",
-            Outer: Array.isArray(config.envelopeType?.outer) 
-              ? config.envelopeType.outer[0] || "" 
+            Outer: Array.isArray(config.envelopeType?.outer)
+              ? config.envelopeType.outer[0] || ""
               : config.envelopeType?.outer || "",
           };
           const fixed = Number(config.fixedQty || 0);
@@ -137,13 +177,13 @@ export const useProjectConfigSave = (
           }
 
           const hasEnvelope = normalizedEnvelope.Inner || normalizedEnvelope.Outer;
-          
+
           // Skip if nothing configured
           if (!hasValue && !hasEnvelope) return null;
 
           const payload = {
             id: 0,
-            ...(isMasterConfig ? { typeId: Number(typeId), groupId: Number(groupId) } : { projectId: Number(projectId) }),
+            ...(finalIsMasterConfig ? { typeId: Number(finalTypeId), groupId: Number(finalGroupId) } : { projectId: Number(projectId) }),
             extraType: et.extraTypeId,
             mode,
             envelopeType: JSON.stringify(normalizedEnvelope),
@@ -184,13 +224,12 @@ export const useProjectConfigSave = (
       }
 
       showToast("Configuration saved successfully!", "success");
-      if (!isMasterConfig) {
-        fetchProjectConfigData(projectId);
-      }
       resetForm();
-      
-      // Trigger callback with change information
-      if (onConfigSaved) {
+      fetchProjectConfigData(projectId);
+
+      // Trigger callback with change information only if not skipping change detection
+      // (i.e., when saving as master config, don't show the modal)
+      if (onConfigSaved && !isMasterConfig && !skipChangeDetection) {
         console.log("Calling onConfigSaved callback with:", {
           changes,
           affectedReports: affectedReportsWithDeps,
@@ -202,9 +241,9 @@ export const useProjectConfigSave = (
           changedModules: changes.changedModules,
         });
       } else {
-        console.log("No onConfigSaved callback provided");
+        console.log("No onConfigSaved callback provided or in master config mode or skipping change detection");
       }
-      
+
       console.log("Saved:", { projectConfigPayload, extrasPayloads });
     } catch (err) {
       console.error("Failed to save configuration", err);

@@ -15,7 +15,8 @@ const possibleReports = [
   { fileName: "ExtrasCalculation.xlsx", title: "Extras Calculation Report" },
   { fileName: "BoxBreaking.xlsx", title: "Box Breaking Report" },
   { fileName: "EnvelopeSummary.xlsx", title: "Envelope Summary Report" },
-   { fileName: "CatchSummary.xlsx", title: "Catch Summary Report" },
+  { fileName: "CatchSummary.xlsx", title: "Catch Summary Report" },
+  { fileName: "CatchWiseBookletAndOmrSerialing.xlsx", title: "Catch OMR Serialing Report" },
 ];
 
 const Report = () => {
@@ -130,72 +131,72 @@ const Report = () => {
   };
 
   const renderReportsList = () => {
-  if (!selectedProjectId) {
-    return <Text type="secondary">Please select a project to see available reports.</Text>;
-  }
+    if (!selectedProjectId) {
+      return <Text type="secondary">Please select a project to see available reports.</Text>;
+    }
 
-  if (loading) {
-    return <Spin tip="Checking available reports..." />;
-  }
+    if (loading) {
+      return <Spin tip="Checking available reports..." />;
+    }
 
-  return (
-    <List
-      header={<Title level={4}>Available Reports for: {selectedProjectName}</Title>}
-      bordered
-      dataSource={possibleReports}
-      renderItem={(report) => {
-        const isAvailable = availableReports[report.fileName];
-        const fileUrl = `${url3}/${selectedProjectId}/${report.fileName}`;
+    return (
+      <List
+        header={<Title level={4}>Available Reports for: {selectedProjectName}</Title>}
+        bordered
+        dataSource={possibleReports}
+        renderItem={(report) => {
+          const isAvailable = availableReports[report.fileName];
+          const fileUrl = `${url3}/${selectedProjectId}/${report.fileName}`;
 
-        return isAvailable ? (
-          <List.Item
-            actions={[
-              <a key="download" href={fileUrl} download target="_blank" rel="noopener noreferrer">
-                <Button type="primary">Download</Button>
-              </a>
-            ]}
-          >
-            <List.Item.Meta
-              title={report.title}
-              description="Ready for download."
-            />
-            <Tag color="green">Available</Tag>
-          </List.Item>
-        ) : null; // ❌ Do not render item if report is not available
-      }}
-    />
-  );
-};
+          return isAvailable ? (
+            <List.Item
+              actions={[
+                <a key="download" href={fileUrl} download target="_blank" rel="noopener noreferrer">
+                  <Button type="primary">Download</Button>
+                </a>
+              ]}
+            >
+              <List.Item.Meta
+                title={report.title}
+                description="Ready for download."
+              />
+              <Tag color="green">Available</Tag>
+            </List.Item>
+          ) : null; // ❌ Do not render item if report is not available
+        }}
+      />
+    );
+  };
 
 
   return (
     <div style={{ padding: 20 }}>
-      <Typography.Title level={3} style={{ marginBottom: 24}}>
+      <Typography.Title level={3} style={{ marginBottom: 24 }}>
         Reports
       </Typography.Title>
       <>
-      <Row align="middle" justify="space-between" style={{ marginBottom: 24 }}>
-        <Col xs={24} sm={8}>
-        <Title level={3}>Select a Project</Title>
-        </Col>
-        <Col xs={24} sm={16}>
-        <Select
-          style={{ width: 300, marginBottom: 20 }}
-          placeholder="Select a project"
-          onChange={handleProjectChange}
-          value={selectedProjectName}
-          allowClear
-          loading={loading && projects.length === 0}
-        >
-          {projects.map((project) => (
-            <Select.Option key={project.id} value={project.id}>
-              {project.name}
-            </Select.Option>
-          ))}
-        </Select>
-        </Col>
-      </Row>
-        
+        <Row align="middle" justify="space-between" style={{ marginBottom: 24 }}>
+          <Col xs={24} sm={8}>
+            <Title level={3}>Select a Project</Title>
+          </Col>
+          <Col xs={24} sm={16}>
+            <Select
+              style={{ width: 300, marginBottom: 20 }}
+              placeholder="Select a project"
+              onChange={handleProjectChange}
+              value={selectedProjectName}
+              allowClear
+              loading={loading && projects.length === 0}
+            >
+              {projects.map((project) => (
+                <Select.Option key={project.id} value={project.id}>
+                  {project.name}
+                </Select.Option>
+              ))}
+            </Select>
+          </Col>
+        </Row>
+
         {renderProjectDashboard()}
       </>
       {renderReportsList()}

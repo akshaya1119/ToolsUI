@@ -129,10 +129,10 @@ const EnvelopeMakingCriteriaCard = ({
           <div style={{ flex: "1 1 48%", ...(isDirty(startOmrEnvelopeNumber, importedSnapshot?.startOmrEnvelopeNumber) ? DIRTY_STYLE : {}) }}>
             <Text strong>Starting OMR Serial Number</Text>
             <InputNumber
-              min={1}
+              min={0}
               disabled={!isEnabled("Envelope Breaking")}
               value={startOmrEnvelopeNumber}
-              onChange={(value) => setStartOmrEnvelopeNumber(value)}
+              onChange={(value) => setStartOmrEnvelopeNumber(value ?? 0)}
               placeholder="Enter Start OMR Serial Number"
               style={{ width: "100%", marginTop: 4 }}
             />
@@ -155,10 +155,10 @@ const EnvelopeMakingCriteriaCard = ({
           <div style={{ flex: "1 1 48%", ...(isDirty(startBookletSerialNumber, importedSnapshot?.startBookletSerialNumber) ? DIRTY_STYLE : {}) }}>
             <Text strong>Starting Booklet Serial Number</Text>
             <InputNumber
-              min={1}
+              min={0}
               disabled={!isEnabled("Envelope Breaking")}
               value={startBookletSerialNumber}
-              onChange={(value) => setStartBookletSerialNumber(value)}
+              onChange={(value) => setStartBookletSerialNumber(value ?? 0)}
               placeholder="Enter Start Booklet Serial Number"
               style={{ width: "100%", marginTop: 4 }}
             />

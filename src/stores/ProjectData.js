@@ -6,17 +6,21 @@ const useStore = create((set) => ({
   projectId: localStorage.getItem("selectedProjectId") || "",
 
   // Action to set project name and id
-  setProject: (name, id) => {
+  setProject: (name, id, groupId, typeId) => {
     localStorage.setItem("selectedProjectName", name);
     localStorage.setItem("selectedProjectId", id);
-    set({ projectName: name, projectId: id });
+    localStorage.setItem("selectedGroup", groupId);
+    localStorage.setItem("selectedType", typeId);
+    set({ projectName: name, projectId: id, groupId, typeId });
   },
 
   // Action to reset project data
   resetProject: () => {
     localStorage.removeItem("selectedProjectName");
     localStorage.removeItem("selectedProjectId");
-    set({ projectName: "", projectId: "" });
+    localStorage.removeItem("selectedGroup");
+    localStorage.removeItem("selectedType");
+    set({ projectName: "", projectId: "", groupId: "", typeId: "" });
   },
 }));
 
