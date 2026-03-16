@@ -1,5 +1,5 @@
 import React from "react";
-import { Button, Input, Select, Space, Tag, Typography } from "antd";
+import { AutoComplete, Button, Input, Space, Tag, Typography } from "antd";
 import {
   ApartmentOutlined,
   CheckCircleOutlined,
@@ -36,6 +36,16 @@ const DataImportConflictCard = ({
   const statusConfig = STATUS_TAG_CONFIG[conflict.status] || STATUS_TAG_CONFIG[CONFLICT_STATUS.PENDING];
   const isIgnored = conflict.status === CONFLICT_STATUS.IGNORED;
   const canRenderIgnore = conflict.canIgnore && typeof onIgnore === "function";
+  const normalizedSelectedValue =
+    selectedValue === undefined || selectedValue === null ? undefined : String(selectedValue);
+  const zeroQuantityHelp =
+    conflict.conflictType === "zero_nr_quantity" &&
+    conflict.minNrQuantity !== undefined &&
+    conflict.minNrQuantity !== null &&
+    conflict.maxNrQuantity !== undefined &&
+    conflict.maxNrQuantity !== null
+      ? `Min: ${conflict.minNrQuantity}, Max: ${conflict.maxNrQuantity}`
+      : null;
 
   return (
     <div
@@ -95,32 +105,35 @@ const DataImportConflictCard = ({
         )}
 
         {conflict.resolveKind === "select" && (
-          <Space wrap size={[8, 8]}>
-            <Select
+          <Space direction="vertical" size={6}>
+            <AutoComplete
               style={{ width: 220 }}
-              placeholder="Select value to keep"
-              value={selectedValue}
+              placeholder={conflict.conflictType === "zero_nr_quantity" ? "Select or type NRQuantity" : "Select or type value"}
+              value={normalizedSelectedValue}
               onChange={(value) => onSelectionChange(conflict.key, value)}
               options={(conflict.valuesForSelection || []).map((value) => ({
                 value,
                 label: value,
               }))}
             />
-            <Button
-              type="primary"
-              size="small"
-              icon={<CheckCircleOutlined />}
-              disabled={!selectedValue}
-              loading={loading}
-              onClick={() => onResolve(conflict, selectedValue)}
-            >
-              Resolve
-            </Button>
-            {canRenderIgnore && (
-              <Button size="small" disabled={isIgnored} onClick={() => onIgnore(conflict)}>
-                {isIgnored ? "Ignored" : "Ignore"}
+            {zeroQuantityHelp ? <Text type="secondary" style={{ fontSize: 12 }}>{zeroQuantityHelp}</Text> : null}
+            <Space wrap size={[8, 8]}>
+              <Button
+                type="primary"
+                size="small"
+                icon={<CheckCircleOutlined />}
+                disabled={normalizedSelectedValue === undefined || normalizedSelectedValue.trim() === ""}
+                loading={loading}
+                onClick={() => onResolve(conflict, normalizedSelectedValue.trim())}
+              >
+                Resolve
               </Button>
-            )}
+              {canRenderIgnore && (
+                <Button size="small" disabled={isIgnored} onClick={() => onIgnore(conflict)}>
+                  {isIgnored ? "Ignored" : "Ignore"}
+                </Button>
+              )}
+            </Space>
           </Space>
         )}
 

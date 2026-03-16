@@ -1,5 +1,5 @@
 import React from "react";
-import { Alert, Button, Collapse, Empty, Input, Select, Space, Table, Tabs, Tag, Typography } from "antd";
+import { AutoComplete, Button, Collapse, Empty, Input, Space, Table, Tabs, Tag, Typography } from "antd";
 import { CheckCircleOutlined } from "@ant-design/icons";
 import {
   CONFLICT_STATUS,
@@ -143,6 +143,8 @@ const normalizeConflict = (item) => {
   const centerCodes = toArray(getValue(item, "centerCodes", "CenterCodes"));
   const canIgnore = Boolean(getValue(item, "canIgnore", "CanIgnore"));
   const status = (getValue(item, "status", "Status") || CONFLICT_STATUS.PENDING).toLowerCase();
+  const minNrQuantity = getValue(item, "minNrQuantity", "MinNrQuantity");
+  const maxNrQuantity = getValue(item, "maxNrQuantity", "MaxNrQuantity");
 
   const details = {
     key: getConflictKey(item),
@@ -164,6 +166,8 @@ const normalizeConflict = (item) => {
     importRowNos,
     nodalCodes,
     centerCodes,
+    minNrQuantity,
+    maxNrQuantity,
     meta,
     targetField: uniqueField || field,
     sourceField: null,
@@ -229,8 +233,18 @@ const normalizeConflict = (item) => {
   }
 
   if (conflictType === "zero_nr_quantity") {
-    details.valuesForSelection = ["0"];
-    details.summary = details.summary || `NRQuantity is 0 for ${catchNos.length} catch number(s).`;
+    details.valuesForSelection = Array.from(
+      new Set(
+        [minNrQuantity, maxNrQuantity]
+          .filter((value) => value !== undefined && value !== null)
+          .map((value) => String(value))
+      )
+    );
+    const quantityRange =
+      minNrQuantity !== undefined && minNrQuantity !== null && maxNrQuantity !== undefined && maxNrQuantity !== null
+        ? ` Use a value between ${minNrQuantity} and ${maxNrQuantity}.`
+        : "";
+    details.summary = details.summary || `NRQuantity is 0 for ${catchNos.length} catch number(s).${quantityRange}`;
     return details;
   }
 
@@ -281,32 +295,76 @@ const renderValueTags = (values, key) => {
   );
 };
 
+const renderResolvedFieldValues = (conflict) => {
+  if (conflict.conflictType === "zero_nr_quantity") {
+    const currentValue = { label: "Current", value: "0" };
+    const rangeValues = [
+      conflict.minNrQuantity !== undefined && conflict.minNrQuantity !== null
+        ? { label: "Min", value: String(conflict.minNrQuantity) }
+        : null,
+      conflict.maxNrQuantity !== undefined && conflict.maxNrQuantity !== null
+        ? { label: "Max", value: String(conflict.maxNrQuantity) }
+        : null,
+    ].filter(Boolean);
+
+    return (
+      <Space direction="vertical" size={4}>
+        <Tag key={`${conflict.key}-${currentValue.label}-${currentValue.value}`} bordered style={{ marginInlineEnd: 0, width: "fit-content", paddingInline: 5, lineHeight: "16px", fontSize: 11 }}>
+          {currentValue.label}: {currentValue.value}
+        </Tag>
+        {rangeValues.length > 0 ? (
+          <Space wrap size={[4, 4]}>
+            {rangeValues.map((item) => (
+              <Tag key={`${conflict.key}-${item.label}-${item.value}`} bordered style={{ marginInlineEnd: 0, paddingInline: 5, lineHeight: "16px", fontSize: 11 }}>
+                {item.label}: {item.value}
+              </Tag>
+            ))}
+          </Space>
+        ) : null}
+      </Space>
+    );
+  }
+
+  return renderValueTags(conflict.valuesForSelection, conflict.key);
+};
+
 const renderActionCell = (conflict, selectedValue, loading, onSelectionChange, onResolve, onIgnore) => {
   const isIgnored = conflict.status === CONFLICT_STATUS.IGNORED;
   const canRenderIgnore = conflict.canIgnore && typeof onIgnore === "function";
+  const normalizedSelectedValue =
+    selectedValue === undefined || selectedValue === null ? undefined : String(selectedValue);
+  const zeroQuantityHelp =
+    conflict.conflictType === "zero_nr_quantity" &&
+    conflict.minNrQuantity !== undefined &&
+    conflict.minNrQuantity !== null &&
+    conflict.maxNrQuantity !== undefined &&
+    conflict.maxNrQuantity !== null
+      ? `Min: ${conflict.minNrQuantity}, Max: ${conflict.maxNrQuantity}`
+      : null;
 
   if (conflict.resolveKind === "select") {
     return (
       <Space direction="vertical" size={6}>
-        <Select
+        <AutoComplete
           size="small"
           style={{ width: 160 }}
-          placeholder="Select value to keep"
-          value={selectedValue}
+          placeholder={conflict.conflictType === "zero_nr_quantity" ? "Select or type NRQuantity" : "Select or type value"}
+          value={normalizedSelectedValue}
           onChange={(value) => onSelectionChange(conflict.key, value)}
           options={(conflict.valuesForSelection || []).map((value) => ({
             value,
             label: value,
           }))}
         />
+        {zeroQuantityHelp ? <Text type="secondary" style={{ fontSize: 11 }}>{zeroQuantityHelp}</Text> : null}
         <Space wrap size={[4, 4]}>
           <Button
             type="primary"
             size="small"
             icon={<CheckCircleOutlined />}
-            disabled={!selectedValue}
+            disabled={normalizedSelectedValue === undefined || normalizedSelectedValue.trim() === ""}
             loading={loading}
-            onClick={() => onResolve(conflict, selectedValue)}
+            onClick={() => onResolve(conflict, normalizedSelectedValue.trim())}
           >
             Resolve
           </Button>
@@ -396,7 +454,7 @@ const buildColumns = (conflictSelections, onSelectionChange, onResolve, onIgnore
     title: resolvedFieldLabel || "Resolved Field",
     key: "resolvedField",
     width: 240,
-    render: (_, conflict) => renderValueTags(conflict.valuesForSelection, conflict.key),
+    render: (_, conflict) => renderResolvedFieldValues(conflict),
   },
   {
     title: "Action",
