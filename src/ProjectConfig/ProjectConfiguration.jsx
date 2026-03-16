@@ -1,17 +1,21 @@
 import React, { useState, useEffect } from "react";
+
 import { Row, Col, Typography, message, Card, Select, Space, Button } from "antd";
 import { ReloadOutlined } from "@ant-design/icons";
 import axios from "axios";
+import { useNavigate } from "react-router-dom";
 import { useToast } from "../hooks/useToast";
 import useStore from "../stores/ProjectData";
-import { useProjectConfigData } from "./hooks/useProjectConfigData"; // Custom hook for fetching config data
+import { useProjectConfigData } from "./hooks/useProjectConfigData";
 import { useProjectConfigSave } from "./hooks/useProjectConfigSave";
+import { useConfigChangeDetection } from "./hooks/useConfigChangeDetection";
 import ModuleSelectionCard from "./components/ModuleSelectionCard";
 import EnvelopeSetupCard from "./components/EnvelopeSetupCard";
 import EnvelopeMakingCriteriaCard from "./components/EnvelopeMakingCriteriaCard";
 import ExtraProcessingCard from "./components/ExtraProcessingCard";
 import BoxBreakingCard from "./components/BoxBreakingCard";
 import ConfigSummaryCard from "./components/ConfigSummaryCard";
+import ConfigChangeModal from "./components/ConfigChangeModal";
 import { EXTRA_ALIAS_NAME } from "./components/constants";
 import DuplicateTool from "../ToolsProcessing/DuplicateTool";
 import API from "../hooks/api";
@@ -19,6 +23,7 @@ import ImportConfig from "./components/ImportConfig";
 
 const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, selectedGroup = null, onTypeChange = null, onGroupChange = null, typeOptions: propTypeOptions = [], groupOptions: propGroupOptions = [], onReset = null, onResetAll = null }) => {
   const { showToast } = useToast();
+  const navigate = useNavigate();
   const projectId = useStore((state) => state.projectId);
   const url = import.meta.env.VITE_API_BASE_URL;
 
@@ -129,9 +134,10 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
     enhancementEnabled: false,
     enhancementType: "round",
   });
-  // Snapshot of imported configuration (null if no import done)
   const [importedSnapshot, setImportedSnapshot] = useState(null);
-  // Fetch data using custom hook
+  const [showChangeModal, setShowChangeModal] = useState(false);
+  const [isRerunning, setIsRerunning] = useState(false);
+  const [changeData, setChangeData] = useState(null);
   const {
     toolModules,
     envelopeOptions,
@@ -142,15 +148,40 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
     setExtraTypeSelection,
   } = useProjectConfigData(token);
 
+
+
+   
+  // Change detection hook
+  const { hasChanges, changedFields, resetChangeDetection } = useConfigChangeDetection(
+    enabledModules,
+    innerEnvelopes,
+    outerEnvelopes,
+    selectedBoxFields,
+    selectedEnvelopeFields,
+    extraTypeSelection,
+    selectedCapacity,
+    startBoxNumber,
+    startOmrEnvelopeNumber,
+    resetOmrSerialOnCatchChange,
+    startBookletSerialNumber,
+    resetBookletSerialOnCatchChange,
+    selectedDuplicatefields,
+    selectedSortingField,
+    resetOnSymbolChange,
+    isInnerBundlingDone,
+    innerBundlingCriteria,
+    extraProcessingConfig,
+    duplicateConfig
+  );
+
   const fetchProjectConfigData = async (projectId, typeId = null, groupId = null) => {
-    // In master config mode, don't fetch if typeId or groupId is missing
     if (isMasterConfig && (!typeId || !groupId)) {
       console.log("Master config mode: waiting for type and group selection");
       resetForm();
-      return null;
+      return;
     }
 
-    console.log("Fetching config data for:", isMasterConfig ? `typeId: ${typeId}, groupId: ${groupId}` : `projectId: ${projectId}`);
+    console.log("Fetching config data for project:", projectId);
 
     let projectConfig = null;
     let extrasConfig = [];
@@ -418,6 +449,17 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
     fetchProjectConfigData,
     showToast,
     resetForm,
+    (saveData) => {
+      // Callback when config is successfully saved
+      console.log("ConfigChangeModal callback triggered with saveData:", saveData);
+      if (saveData && saveData.affectedReports && saveData.affectedReports.length > 0) {
+        console.log("Setting change data and showing modal");
+        setChangeData(saveData);
+        setShowChangeModal(true);
+      } else {
+        console.log("No affected reports or saveData is empty");
+      }
+    },
     isMasterConfig,
     selectedType,
     selectedGroup
@@ -551,13 +593,55 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
     console.log("Box Capacities Updated:", boxCapacities);
   }, [boxCapacities]);
 
+  const handleConfirmRerun = async () => {
+    setIsRerunning(true);
+    try {
+      setShowChangeModal(false);
+      
+      // Store the affected reports in sessionStorage for ProcessingPipeline to pick up
+      if (changeData) {
+        sessionStorage.setItem(
+          "configChangeData",
+          JSON.stringify({
+            projectId,
+            affectedReports: changeData.affectedReports,
+            changedModules: changeData.changedModules,
+            changes: changeData.changes,
+          })
+        );
+      }
+      
+      // Navigate to ProcessingPipeline
+      navigate("/ProcessingPipeline");
+      message.success("Navigating to Processing Pipeline to re-run reports");
+    } catch (err) {
+      console.error("Error during rerun:", err);
+      message.error("Failed to initiate report re-run");
+    } finally {
+      setIsRerunning(false);
+    }
+  };
+
+  const handleCancelModal = () => {
+    setShowChangeModal(false);
+  };
+
   return (
     <div style={{ padding: 16 }}>
-      {/* === PAGE HEADER WITH TYPE/GROUP SELECTION (Master Config Mode) === */}
+    
+      <ConfigChangeModal
+        visible={showChangeModal}
+        changedFields={changeData?.changedModules || []}
+        affectedReports={changeData?.affectedReports || []}
+        onConfirm={handleConfirmRerun}
+        onCancel={handleCancelModal}
+        loading={isRerunning}
+      />
+      
+        {/* === PAGE HEADER WITH TYPE/GROUP SELECTION (Master Config Mode) === */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px', gap: 16 }}>
         <Typography.Title level={3} style={{ margin: 0, minWidth: 'fit-content' }}>
-          {isMasterConfig ? 'Master Configuration' : 'Project Configuration'}
-        </Typography.Title>
+          {isMasterConfig ? 'Master Configuration' : 'Project Configuration'}</Typography.Title>
 
         {isMasterConfig && (
           <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', flex: 1, maxWidth: 500 }}>

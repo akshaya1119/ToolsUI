@@ -1,4 +1,5 @@
 import API from "../../hooks/api";
+import { compareConfigurations, getReportDependencies } from "./useConfigComparison";
 
 export const useProjectConfigSave = (
   projectId,
@@ -26,11 +27,21 @@ export const useProjectConfigSave = (
   fetchProjectConfigData,
   showToast,
   resetForm,
+  onConfigSaved = null,
   isMasterConfig = false,
   typeId = null,
   groupId = null
 ) => {
   const handleSave = async () => {
+    let existingConfig = null;
+    try {
+      const res = await API.get(`/ProjectConfigs/ByProject/${projectId}`);
+      existingConfig = res.data;
+    } catch (err) {
+      if (err.response?.status !== 404) {
+        console.warn("Could not fetch existing config for comparison");
+      }
+    }
     try {
       // Validation for master config mode
       if (isMasterConfig && (!typeId || !groupId)) {
@@ -76,6 +87,15 @@ export const useProjectConfigSave = (
       };
 
       await API.post(projectConfigEndpoint, projectConfigPayload);
+
+      // Compare configurations to identify changes
+      const changes = compareConfigurations(existingConfig, projectConfigPayload, enabledModules);
+      const affectedReportsWithDeps = getReportDependencies(changes.affectedReports, enabledModules);
+
+      console.log("Existing Config:", existingConfig);
+      console.log("New Config Payload:", projectConfigPayload);
+      console.log("Configuration Changes:", changes);
+      console.log("Affected Reports with Dependencies:", affectedReportsWithDeps);
 
       // 2️⃣ Delete existing ExtrasConfigurations first (only for non-master mode)
       if (!isMasterConfig) {
@@ -168,6 +188,23 @@ export const useProjectConfigSave = (
         fetchProjectConfigData(projectId);
       }
       resetForm();
+      
+      // Trigger callback with change information
+      if (onConfigSaved) {
+        console.log("Calling onConfigSaved callback with:", {
+          changes,
+          affectedReports: affectedReportsWithDeps,
+          changedModules: changes.changedModules,
+        });
+        onConfigSaved({
+          changes,
+          affectedReports: affectedReportsWithDeps,
+          changedModules: changes.changedModules,
+        });
+      } else {
+        console.log("No onConfigSaved callback provided");
+      }
+      
       console.log("Saved:", { projectConfigPayload, extrasPayloads });
     } catch (err) {
       console.error("Failed to save configuration", err);
