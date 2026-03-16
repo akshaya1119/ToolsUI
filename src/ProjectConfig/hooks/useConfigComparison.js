@@ -2,6 +2,7 @@
  * Compares posted configuration with existing configuration
  * Returns only the modules/fields that have actually changed
  * Only includes dependent reports if they are enabled in the configuration
+ * If no existing config, treats all enabled modules as changed
  */
 export const compareConfigurations = (existingConfig, newConfig, enabledModules = []) => {
   const changes = {
@@ -10,7 +11,32 @@ export const compareConfigurations = (existingConfig, newConfig, enabledModules 
     details: {},
   };
 
-  if (!existingConfig || !newConfig) {
+  if (!newConfig) {
+    return changes;
+  }
+
+  // If no existing config, treat all enabled modules as changed
+  if (!existingConfig) {
+    const enabledModulesLower = (enabledModules || []).map((m) => String(m).toLowerCase());
+    
+    // Map enabled modules to their affected reports
+    const moduleToReportsMap = {
+      "duplicate tool": ["duplicate", "envelope", "box", "envelopeSummary", "catchSummary"],
+      "extra configuration": ["extra", "envelope", "box", "envelopeSummary", "catchSummary"],
+      "envelope breaking": ["envelope", "envelopeSummary", "catchSummary"],
+      "box breaking": ["box", "catchSummary"],
+    };
+
+    enabledModules.forEach((module) => {
+      changes.changedModules.push(module);
+      const reports = moduleToReportsMap[String(module).toLowerCase()] || [];
+      reports.forEach((report) => {
+        if (!changes.affectedReports.includes(report)) {
+          changes.affectedReports.push(report);
+        }
+      });
+    });
+
     return changes;
   }
 
