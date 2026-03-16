@@ -1,14 +1,34 @@
 import React, { useEffect, useState } from "react";
-import { Card, Select, Checkbox, InputNumber, Typography, Space, Tag, Button, Row, Col } from "antd";
+import {
+  Card,
+  Select,
+  Checkbox,
+  InputNumber,
+  Typography,
+  Space,
+  Tag,
+  Button,
+  Row,
+  Col,
+} from "antd";
 import API from "./../hooks/api";
 import useStore from "./../stores/ProjectData";
 import { CopyFilled, LockFilled, UndoOutlined } from "@ant-design/icons";
-import { iconStyle, PRIMARY_COLOR } from "../ProjectConfig/components/constants";
+import {
+  iconStyle,
+  PRIMARY_COLOR,
+} from "../ProjectConfig/components/constants";
 
 const { Text } = Typography;
 const { Option } = Select;
 
-const DuplicateTool = ({ isEnabled, duplicateConfig = {}, setDuplicateConfig, onReset, importedSnapshot }) => {
+const DuplicateTool = ({
+  isEnabled,
+  duplicateConfig = {},
+  setDuplicateConfig,
+  onReset,
+  importedSnapshot,
+}) => {
   const projectId = useStore((state) => state.projectId);
   const [fields, setFields] = useState([]);
 
@@ -16,7 +36,11 @@ const DuplicateTool = ({ isEnabled, duplicateConfig = {}, setDuplicateConfig, on
     if (!importedSnapshot || importedSnapshot === "pending") return false;
     return JSON.stringify(current) !== JSON.stringify(snapshotVal);
   };
-  const DIRTY_STYLE = { borderLeft: "3px solid #faad14", paddingLeft: 6, borderRadius: 2 };
+  const DIRTY_STYLE = {
+    borderLeft: "3px solid #faad14",
+    paddingLeft: 6,
+    borderRadius: 2,
+  };
 
   useEffect(() => {
     if (!projectId) return;
@@ -27,8 +51,32 @@ const DuplicateTool = ({ isEnabled, duplicateConfig = {}, setDuplicateConfig, on
 
   const enabled = isEnabled("Duplicate Tool");
 
+  const getFieldName = (fieldId) => {
+    return fields.find((f) => f.fieldId === fieldId)?.name || fieldId;
+  };
+
+  const getSelectedFieldsDisplay = () => {
+    if (
+      !duplicateConfig?.duplicateCriteria ||
+      duplicateConfig.duplicateCriteria.length === 0
+    ) {
+      return "No fields selected";
+    }
+    return duplicateConfig.duplicateCriteria
+      .map((id) => getFieldName(id))
+      .join(" + ");
+  };
+
   const handleFieldChange = (value) => {
-    setDuplicateConfig((prev) => ({ ...prev, duplicateCriteria: value }));
+    const orderedValue = value.sort((a, b) => {
+      const indexA = fields.findIndex((f) => f.fieldId === a);
+      const indexB = fields.findIndex((f) => f.fieldId === b);
+      return indexA - indexB;
+    });
+    setDuplicateConfig((prev) => ({
+      ...prev,
+      duplicateCriteria: orderedValue,
+    }));
   };
 
   const handleEnhancementChange = (checked) => {
@@ -56,7 +104,7 @@ const DuplicateTool = ({ isEnabled, duplicateConfig = {}, setDuplicateConfig, on
         </div>
       }
       extra={
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           {enabled && (
             <Button
               type="text"
@@ -69,17 +117,32 @@ const DuplicateTool = ({ isEnabled, duplicateConfig = {}, setDuplicateConfig, on
             </Button>
           )}
           {!enabled && (
-            <Tag icon={<LockFilled style={{ color: PRIMARY_COLOR }} />}>Disabled</Tag>
+            <Tag icon={<LockFilled style={{ color: PRIMARY_COLOR }} />}>
+              Disabled
+            </Tag>
           )}
         </div>
       }
       bordered
-      style={{ marginTop: 16, marginBottom: 16, boxShadow: "0 4px 8px rgba(0,0,0,0.1)" }}
+      style={{
+        marginTop: 16,
+        marginBottom: 16,
+        boxShadow: "0 4px 8px rgba(0,0,0,0.1)",
+      }}
     >
       <Row gutter={24} style={{ width: "100%" }}>
-
         {/* 3/4 Width */}
-        <Col span={18} style={isDirty(duplicateConfig?.duplicateCriteria, importedSnapshot?.duplicateConfig?.duplicateCriteria) ? DIRTY_STYLE : {}}>
+        <Col
+          span={18}
+          style={
+            isDirty(
+              duplicateConfig?.duplicateCriteria,
+              importedSnapshot?.duplicateConfig?.duplicateCriteria,
+            )
+              ? DIRTY_STYLE
+              : {}
+          }
+        >
           <Text strong>Select fields to concatenate</Text>
           <Select
             mode="multiple"
@@ -98,10 +161,26 @@ const DuplicateTool = ({ isEnabled, duplicateConfig = {}, setDuplicateConfig, on
               </Option>
             ))}
           </Select>
+          <Text
+            type="secondary"
+            style={{ fontSize: "12px", display: "block", marginTop: 6 }}
+          >
+            Concatenation order: {getSelectedFieldsDisplay()}
+          </Text>
         </Col>
 
         {/* 1/4 Width */}
-        <Col span={6} style={isDirty(duplicateConfig?.enhancement, importedSnapshot?.duplicateConfig?.enhancement) ? DIRTY_STYLE : {}}>
+        <Col
+          span={6}
+          style={
+            isDirty(
+              duplicateConfig?.enhancement,
+              importedSnapshot?.duplicateConfig?.enhancement,
+            )
+              ? DIRTY_STYLE
+              : {}
+          }
+        >
           <Text strong>Enhancement</Text>
 
           <InputNumber
@@ -114,7 +193,6 @@ const DuplicateTool = ({ isEnabled, duplicateConfig = {}, setDuplicateConfig, on
             max={100}
           />
         </Col>
-
       </Row>
     </Card>
   );
