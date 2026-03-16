@@ -17,6 +17,7 @@ const ConfigSummaryCard = ({
   isMasterConfig,
   selectedType,
   selectedGroup,
+  hasChanges = false,
 }) => {
 
   // In project config mode, type/group come from localStorage (set when project was selected on dashboard)
@@ -95,7 +96,7 @@ const ConfigSummaryCard = ({
           type="primary"
           block
           onClick={() => handleSave()}
-          disabled={isMasterConfig || !projectId || !isAnyConfigMade}
+          disabled={isMasterConfig || !projectId || !isAnyConfigMade || !hasChanges}
           className="mt-4 mb-2"
         >
           Save Configuration

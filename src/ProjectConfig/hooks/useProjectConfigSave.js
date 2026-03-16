@@ -227,8 +227,8 @@ export const useProjectConfigSave = (
       resetForm();
       fetchProjectConfigData(projectId);
 
-      // Trigger callback with change information
-      if (onConfigSaved && !isMasterConfig) {
+      // Only trigger callback (which shows modal) if NOT saving as master config
+      if (onConfigSaved && !overrideIsMasterConfig && !isMasterConfig) {
         console.log("Calling onConfigSaved callback with:", {
           changes,
           affectedReports: affectedReportsWithDeps,
@@ -240,7 +240,7 @@ export const useProjectConfigSave = (
           changedModules: changes.changedModules,
         });
       } else {
-        console.log("No onConfigSaved callback provided or in master config mode");
+        console.log("Skipping modal for master config save or no callback provided");
       }
 
       console.log("Saved:", { projectConfigPayload, extrasPayloads });
