@@ -79,10 +79,16 @@ const ProjectDashboard = () => {
       order.push({ key: "duplicate", title: "Duplicate Processing" });
     if (lowerNames.some((n) => n.includes("extra")))
       order.push({ key: "extra", title: "Extra Configuration" });
-    if (lowerNames.some((n) => n.includes("envelope")))
+    if (lowerNames.some((n) => n.includes("envelope breaking")))
       order.push({ key: "envelope", title: "Envelope Breaking" });
     if (lowerNames.some((n) => n.includes("box")))
       order.push({ key: "box", title: "Box Breaking" });
+    if (lowerNames.some((n) => n.includes("envelope summary")))
+      order.push({ key: "envelopeSummary", title: "Envelope Summary" });
+    if (lowerNames.some((n) => n.includes("catch summary")))
+      order.push({ key: "catchSummary", title: "Catch Summary Report" });
+    if (lowerNames.some((n) => n.includes("catchomrserialing") || n.includes("catch omr serialing")))
+      order.push({ key: "catchOmrSerialing", title: "Catch OMR Serialing" });
     return order;
   };
 
@@ -98,6 +104,9 @@ const ProjectDashboard = () => {
       extra: "ExtrasCalculation.xlsx",
       envelope: "EnvelopeBreaking.xlsx",
       box: "BoxBreaking.xlsx",
+      envelopeSummary: "EnvelopeSummary.xlsx",
+      catchSummary: "CatchSummary.xlsx",
+      catchOmrSerialing: "CatchWiseBookletAndOmrSerialing.xlsx",
     };
 
     await Promise.all(
@@ -189,6 +198,18 @@ const ProjectDashboard = () => {
           await API.get(
             `/EnvelopeBreakages/Replication?ProjectId=${projectId}`
           );
+        else if (step.key === "envelopeSummary")
+          await API.get(
+            `/EnvelopeBreakages/EnvelopeSummaryReport?ProjectId=${projectId}`
+          );
+        else if (step.key === "catchSummary")
+          await API.get(
+            `/EnvelopeBreakages/CatchEnvelopeSummaryWithExtras?ProjectId=${projectId}`
+          );
+        else if (step.key === "catchOmrSerialing")
+          await API.get(
+            `/EnvelopeBreakageProcessing/CatchWithOmrSerialing?ProjectId=${projectId}`
+          );
 
         const durationMs =
           Date.now() - (stepTimers.get(step.key) || Date.now());
@@ -203,6 +224,9 @@ const ProjectDashboard = () => {
           extra: `${url3}/${projectId}/ExtrasCalculation.xlsx`,
           envelope: `${url3}/${projectId}/EnvelopeBreaking.xlsx`,
           box: `${url3}/${projectId}/BoxBreaking.xlsx`,
+          envelopeSummary: `${url3}/${projectId}/EnvelopeSummary.xlsx`,
+          catchSummary: `${url3}/${projectId}/CatchSummary.xlsx`,
+          catchOmrSerialing: `${url3}/${projectId}/CatchWiseBookletAndOmrSerialing.xlsx`,
         };
 
         updateStepStatus(step.key, {

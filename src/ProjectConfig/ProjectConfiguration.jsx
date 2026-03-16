@@ -121,11 +121,13 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
   const [startBoxNumber, setStartBoxNumber] = useState(0);
   const [startOmrEnvelopeNumber, setStartOmrEnvelopeNumber] = useState(0);
   const [startBookletSerialNumber, setStartBookletSerialNumber] = useState(0);
-  const [resetBookletSerialOnCatchChange, setResetBookletSerialOnCatchChange] = useState(false);
+  const [resetBookletSerialOnCatchChange, setResetBookletSerialOnCatchChange] =
+    useState(false);
   const [selectedDuplicatefields, setSelectedDuplicatefields] = useState([]);
   const [selectedSortingField, setSelectedSortingField] = useState([]);
   const [resetOnSymbolChange, setResetOnSymbolChange] = useState(false);
-  const [resetOmrSerialOnCatchChange, setResetOmrSerialOnCatchChange] = useState(false);
+  const [resetOmrSerialOnCatchChange, setResetOmrSerialOnCatchChange] =
+    useState(false);
   const [isInnerBundlingDone, setIsInnerBundlingDone] = useState(false);
   const [innerBundlingCriteria, setInnerBundlingCriteria] = useState([]);
   const [duplicateConfig, setDuplicateConfig] = useState({
@@ -150,29 +152,30 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
 
 
 
-   
+
   // Change detection hook
-  const { hasChanges, changedFields, resetChangeDetection } = useConfigChangeDetection(
-    enabledModules,
-    innerEnvelopes,
-    outerEnvelopes,
-    selectedBoxFields,
-    selectedEnvelopeFields,
-    extraTypeSelection,
-    selectedCapacity,
-    startBoxNumber,
-    startOmrEnvelopeNumber,
-    resetOmrSerialOnCatchChange,
-    startBookletSerialNumber,
-    resetBookletSerialOnCatchChange,
-    selectedDuplicatefields,
-    selectedSortingField,
-    resetOnSymbolChange,
-    isInnerBundlingDone,
-    innerBundlingCriteria,
-    extraProcessingConfig,
-    duplicateConfig
-  );
+  const { hasChanges, changedFields, resetChangeDetection } =
+    useConfigChangeDetection(
+      enabledModules,
+      innerEnvelopes,
+      outerEnvelopes,
+      selectedBoxFields,
+      selectedEnvelopeFields,
+      extraTypeSelection,
+      selectedCapacity,
+      startBoxNumber,
+      startOmrEnvelopeNumber,
+      resetOmrSerialOnCatchChange,
+      startBookletSerialNumber,
+      resetBookletSerialOnCatchChange,
+      selectedDuplicatefields,
+      selectedSortingField,
+      resetOnSymbolChange,
+      isInnerBundlingDone,
+      innerBundlingCriteria,
+      extraProcessingConfig,
+      duplicateConfig,
+    );
 
   const fetchProjectConfigData = async (projectId, typeId = null, groupId = null) => {
     if (isMasterConfig && (!typeId || !groupId)) {
@@ -192,11 +195,11 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
     };
 
     // Determine endpoints based on mode
-    const projectConfigEndpoint = isMasterConfig 
-      ? `/MProjectConfigs/ByTypeGroup/${typeId}/${groupId}` 
+    const projectConfigEndpoint = isMasterConfig
+      ? `/MProjectConfigs/ByTypeGroup/${typeId}/${groupId}`
       : `/ProjectConfigs/ByProject/${projectId}`;
-    const extrasConfigEndpoint = isMasterConfig 
-      ? `/MExtraConfigs/ByTypeGroup/${typeId}/${groupId}` 
+    const extrasConfigEndpoint = isMasterConfig
+      ? `/MExtraConfigs/ByTypeGroup/${typeId}/${groupId}`
       : `/ExtrasConfigurations/ByProject/${projectId}`;
 
     // Fetch project config
@@ -214,14 +217,16 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
         enhancementEnabled: Number(projectConfig.enhancement) > 0,
       };
       setDuplicateConfig(JSON.parse(JSON.stringify(duplicateConfigRes)));
-
     } catch (err) {
       if (err.response?.status === 404) {
         console.warn(`No existing configuration for ${isMasterConfig ? `typeId: ${typeId}, groupId: ${groupId}` : `projectId: ${projectId}`}`);
         setConfigExists(false);
         setDuplicateConfig(duplicateConfigRes);
       } else {
-        console.error("Failed to load project config", err.response?.data || err.message);
+        console.error(
+          "Failed to load project config",
+          err.response?.data || err.message,
+        );
         setConfigExists(false);
         return null;
       }
@@ -233,7 +238,10 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
       extrasConfig = extrasRes.data;
     } catch (err) {
       if (err.response?.status !== 404) {
-        console.error("Failed to load extras config", err.response?.data || err.message);
+        console.error(
+          "Failed to load extras config",
+          err.response?.data || err.message,
+        );
       }
     }
 
@@ -243,10 +251,15 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
       const boxRes = await API.get(`/BoxCapacities`);
       const boxConfig = boxRes.data;
       setBoxCapacities(boxConfig);
-      resolvedCapacity = projectConfig?.boxCapacity || (boxConfig.length > 0 ? boxConfig[0].id : null);
+      resolvedCapacity =
+        projectConfig?.boxCapacity ||
+        (boxConfig.length > 0 ? boxConfig[0].id : null);
       setSelectedCapacity(resolvedCapacity);
     } catch (err) {
-      console.error("Failed to load box capacities", err.response?.data || err.message);
+      console.error(
+        "Failed to load box capacities",
+        err.response?.data || err.message,
+      );
     }
 
     // Build values locally (don't rely on state — state is async)
@@ -274,39 +287,61 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
 
     if (projectConfig && toolModules.length > 0) {
       const enabledNames = new Set();
-      const extraModuleNames = ["Nodal Extra Calculation", "University Extra Calculation"];
+      const extraModuleNames = [
+        "Nodal Extra Calculation",
+        "University Extra Calculation",
+      ];
       projectConfig.modules?.forEach((moduleId) => {
         const module = toolModules.find((m) => m.id === moduleId);
         if (module) {
-          if (extraModuleNames.includes(module.name)) enabledNames.add("Extra Configuration");
+          if (extraModuleNames.includes(module.name))
+            enabledNames.add("Extra Configuration");
           else enabledNames.add(module.name);
         }
       });
 
       const envelopeParsed = JSON.parse(projectConfig.envelope || "{}");
-      const parsedInnerEnvelopes = envelopeParsed.Inner ? [envelopeParsed.Inner] : [];
-      const parsedOuterEnvelopes = envelopeParsed.Outer ? [envelopeParsed.Outer] : [];
-      const parsedBoxFields = fields
-        .filter((f) => projectConfig.boxBreakingCriteria?.includes(f.fieldId))
-        .map((f) => f.fieldId);
+      const parsedInnerEnvelopes = envelopeParsed.Inner
+        ? [envelopeParsed.Inner]
+        : [];
+      const parsedOuterEnvelopes = envelopeParsed.Outer
+        ? [envelopeParsed.Outer]
+        : [];
+      const parsedBoxFields = (projectConfig.boxBreakingCriteria || [])
+        .filter((fieldId) => fields.some((f) => f.fieldId === fieldId))
+        .map((fieldId) => fieldId);
+      const parsedEnvelopeFields = (
+        projectConfig.envelopeMakingCriteria || []
+      ).filter((fieldId) => fields.some((f) => f.fieldId === fieldId));
+      const parsedDuplicateFields = (
+        projectConfig.duplicateRemoveFields || []
+      ).filter((fieldId) => fields.some((f) => f.fieldId === fieldId));
+      const parsedSortingFields = (projectConfig.sortingBoxReport || []).filter(
+        (fieldId) => fields.some((f) => f.fieldId === fieldId),
+      );
+      const parsedInnerBundlingCriteria = (
+        projectConfig.innerBundlingCriteria || []
+      ).filter((fieldId) => fields.some((f) => f.fieldId === fieldId));
 
       parsedValues = {
         ...parsedValues,
         enabledModules: Array.from(enabledNames),
         innerEnvelopes: parsedInnerEnvelopes,
         outerEnvelopes: parsedOuterEnvelopes,
-        selectedEnvelopeFields: projectConfig.envelopeMakingCriteria || [],
+        selectedEnvelopeFields: parsedEnvelopeFields,
         startOmrEnvelopeNumber: projectConfig.omrSerialNumber || 0,
-        resetOmrSerialOnCatchChange: projectConfig.resetOmrSerialOnCatchChange ?? false,
+        resetOmrSerialOnCatchChange:
+          projectConfig.resetOmrSerialOnCatchChange ?? false,
         startBookletSerialNumber: projectConfig.bookletSerialNumber || 0,
-        resetBookletSerialOnCatchChange: projectConfig.resetBookletSerialOnCatchChange ?? false,
+        resetBookletSerialOnCatchChange:
+          projectConfig.resetBookletSerialOnCatchChange ?? false,
         selectedBoxFields: parsedBoxFields,
         startBoxNumber: projectConfig.boxNumber || 0,
-        selectedDuplicatefields: projectConfig.duplicateRemoveFields || [],
-        selectedSortingField: projectConfig.sortingBoxReport || [],
+        selectedDuplicatefields: parsedDuplicateFields,
+        selectedSortingField: parsedSortingFields,
         resetOnSymbolChange: projectConfig.resetOnSymbolChange ?? false,
         isInnerBundlingDone: projectConfig.isInnerBundlingDone ?? false,
-        innerBundlingCriteria: projectConfig.innerBundlingCriteria || [],
+        innerBundlingCriteria: parsedInnerBundlingCriteria,
       };
 
       setEnabledModules([...parsedValues.enabledModules]);
@@ -316,10 +351,15 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
       setStartOmrEnvelopeNumber(parsedValues.startOmrEnvelopeNumber);
       setResetOmrSerialOnCatchChange(parsedValues.resetOmrSerialOnCatchChange);
       setStartBookletSerialNumber(parsedValues.startBookletSerialNumber);
-      setResetBookletSerialOnCatchChange(parsedValues.resetBookletSerialOnCatchChange);
+      setResetBookletSerialOnCatchChange(
+        parsedValues.resetBookletSerialOnCatchChange,
+      );
       setSelectedBoxFields([...parsedValues.selectedBoxFields]);
       setStartBoxNumber(parsedValues.startBoxNumber);
-      setBoxBreakingCriteria(["capacity", ...(projectConfig.boxBreakingCriteria || [])]);
+      setBoxBreakingCriteria([
+        "capacity",
+        ...(projectConfig.boxBreakingCriteria || []),
+      ]);
       setSelectedDuplicatefields([...parsedValues.selectedDuplicatefields]);
       setSelectedSortingField([...parsedValues.selectedSortingField]);
       setResetOnSymbolChange(parsedValues.resetOnSymbolChange);
@@ -347,12 +387,19 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
     const extraProcessingParsed = {};
     const extraSelections = {};
     extrasConfig.forEach((item) => {
-      const type = extraTypes.find((e) => e.extraTypeId === item.extraType)?.type;
+      const type = extraTypes.find(
+        (e) => e.extraTypeId === item.extraType,
+      )?.type;
       if (!type) return;
-      const env = item.envelopeType ? JSON.parse(item.envelopeType) : { Inner: "", Outer: "" };
-      
+      const env = item.envelopeType
+        ? JSON.parse(item.envelopeType)
+        : { Inner: "", Outer: "" };
+
       let config = {
-        envelopeType: { inner: env.Inner ? [env.Inner] : [], outer: env.Outer ? [env.Outer] : [] },
+        envelopeType: {
+          inner: env.Inner ? [env.Inner] : [],
+          outer: env.Outer ? [env.Outer] : [],
+        },
         fixedQty: item.mode === "Fixed" ? parseFloat(item.value) : 0,
         percentage: item.mode === "Percentage" ? parseFloat(item.value) : 0,
       };
@@ -376,16 +423,228 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
       extraSelections[type] = item.mode;
     });
 
-    parsedValues.extraProcessingConfig = JSON.parse(JSON.stringify(extraProcessingParsed));
-    parsedValues.extraTypeSelection = JSON.parse(JSON.stringify(extraSelections));
+    parsedValues.extraProcessingConfig = JSON.parse(
+      JSON.stringify(extraProcessingParsed),
+    );
+    parsedValues.extraTypeSelection = JSON.parse(
+      JSON.stringify(extraSelections),
+    );
     setExtraProcessingConfig(JSON.parse(JSON.stringify(extraProcessingParsed)));
     setExtraTypeSelection(JSON.parse(JSON.stringify(extraSelections)));
 
     return parsedValues;
   };
 
-  const handleImport = async (importProjectId) => {
-    const parsed = await fetchProjectConfigData(importProjectId);
+  const handleImport = async (importData) => {
+    let parsed = null;
+
+    if (importData.projectId) {
+      parsed = await fetchProjectConfigData(importData.projectId);
+    } else if (importData.typeId && importData.groupId) {
+      // Temporarily bypass the isMasterConfig check inside fetchProjectConfigData
+      // and call the endpoints directly to get the imported snapshot
+      const fetchGroupTypeConfigParams = async (typeId, groupId) => {
+        let projectConfig = null;
+        let extrasConfig = [];
+        let duplicateConfigRes = {
+          duplicateCriteria: [],
+          enhancement: 0,
+          enhancementEnabled: false,
+        };
+
+        try {
+          const res = await API.get(`/MProjectConfigs/ByTypeGroup/${typeId}/${groupId}`);
+          projectConfig = res.data;
+
+          duplicateConfigRes = {
+            duplicateCriteria: Array.isArray(projectConfig.duplicateCriteria)
+              ? [...projectConfig.duplicateCriteria]
+              : JSON.parse(projectConfig.duplicateCriteria || "[]"),
+            enhancement: Number(projectConfig.enhancement) || 0,
+            enhancementEnabled: Number(projectConfig.enhancement) > 0,
+          };
+          setDuplicateConfig(JSON.parse(JSON.stringify(duplicateConfigRes)));
+        } catch (err) {
+          if (err.response?.status === 404) {
+            message.warning("No Master Configuration found for this Group and Type");
+          } else {
+            message.error("Error fetching Master Configuration");
+          }
+          return null;
+        }
+
+        try {
+          const extrasRes = await API.get(`/MExtraConfigs/ByTypeGroup/${typeId}/${groupId}`);
+          extrasConfig = extrasRes.data;
+        } catch (err) {
+          console.warn("Failed to load Master extras config");
+        }
+
+        // Use existing fetch flow structure to build `parsedValues`
+        // We inject the temporarily fetched data
+
+        // This is a cleaner approach: just override the parameters
+        const originalIsMasterConfig = isMasterConfig;
+
+        let parsedValues = {
+          enabledModules: [],
+          innerEnvelopes: [],
+          outerEnvelopes: [],
+          selectedEnvelopeFields: [],
+          startOmrEnvelopeNumber: 0,
+          resetOmrSerialOnCatchChange: false,
+          startBookletSerialNumber: 0,
+          resetBookletSerialOnCatchChange: false,
+          selectedBoxFields: [],
+          selectedCapacity: selectedCapacity,
+          startBoxNumber: 0,
+          selectedDuplicatefields: [],
+          selectedSortingField: [],
+          resetOnSymbolChange: false,
+          isInnerBundlingDone: false,
+          innerBundlingCriteria: [],
+          duplicateConfig: duplicateConfigRes,
+          extraProcessingConfig: {},
+          extraTypeSelection: {},
+        };
+
+        if (projectConfig && toolModules.length > 0) {
+          const enabledNames = new Set();
+          const extraModuleNames = [
+            "Nodal Extra Calculation",
+            "University Extra Calculation",
+          ];
+          projectConfig.modules?.forEach((moduleId) => {
+            const module = toolModules.find((m) => m.id === moduleId);
+            if (module) {
+              if (extraModuleNames.includes(module.name))
+                enabledNames.add("Extra Configuration");
+              else enabledNames.add(module.name);
+            }
+          });
+
+          const envelopeParsed = JSON.parse(projectConfig.envelope || "{}");
+          const parsedInnerEnvelopes = envelopeParsed.Inner
+            ? [envelopeParsed.Inner]
+            : [];
+          const parsedOuterEnvelopes = envelopeParsed.Outer
+            ? [envelopeParsed.Outer]
+            : [];
+          const parsedBoxFields = (projectConfig.boxBreakingCriteria || [])
+            .filter((fieldId) => fields.some((f) => f.fieldId === fieldId))
+            .map((fieldId) => fieldId);
+          const parsedEnvelopeFields = (
+            projectConfig.envelopeMakingCriteria || []
+          ).filter((fieldId) => fields.some((f) => f.fieldId === fieldId));
+          const parsedDuplicateFields = (
+            projectConfig.duplicateRemoveFields || []
+          ).filter((fieldId) => fields.some((f) => f.fieldId === fieldId));
+          const parsedSortingFields = (projectConfig.sortingBoxReport || []).filter(
+            (fieldId) => fields.some((f) => f.fieldId === fieldId),
+          );
+          const parsedInnerBundlingCriteria = (
+            projectConfig.innerBundlingCriteria || []
+          ).filter((fieldId) => fields.some((f) => f.fieldId === fieldId));
+
+          parsedValues = {
+            ...parsedValues,
+            enabledModules: Array.from(enabledNames),
+            innerEnvelopes: parsedInnerEnvelopes,
+            outerEnvelopes: parsedOuterEnvelopes,
+            selectedEnvelopeFields: parsedEnvelopeFields,
+            startOmrEnvelopeNumber: projectConfig.omrSerialNumber || 0,
+            resetOmrSerialOnCatchChange:
+              projectConfig.resetOmrSerialOnCatchChange ?? false,
+            startBookletSerialNumber: projectConfig.bookletSerialNumber || 0,
+            resetBookletSerialOnCatchChange:
+              projectConfig.resetBookletSerialOnCatchChange ?? false,
+            selectedBoxFields: parsedBoxFields,
+            startBoxNumber: projectConfig.boxNumber || 0,
+            selectedDuplicatefields: parsedDuplicateFields,
+            selectedSortingField: parsedSortingFields,
+            resetOnSymbolChange: projectConfig.resetOnSymbolChange ?? false,
+            isInnerBundlingDone: projectConfig.isInnerBundlingDone ?? false,
+            innerBundlingCriteria: parsedInnerBundlingCriteria,
+          };
+
+          setEnabledModules([...parsedValues.enabledModules]);
+          setInnerEnvelopes([...parsedValues.innerEnvelopes]);
+          setOuterEnvelopes([...parsedValues.outerEnvelopes]);
+          setSelectedEnvelopeFields([...parsedValues.selectedEnvelopeFields]);
+          setStartOmrEnvelopeNumber(parsedValues.startOmrEnvelopeNumber);
+          setResetOmrSerialOnCatchChange(parsedValues.resetOmrSerialOnCatchChange);
+          setStartBookletSerialNumber(parsedValues.startBookletSerialNumber);
+          setResetBookletSerialOnCatchChange(
+            parsedValues.resetBookletSerialOnCatchChange,
+          );
+          setSelectedBoxFields([...parsedValues.selectedBoxFields]);
+          setStartBoxNumber(parsedValues.startBoxNumber);
+          setBoxBreakingCriteria([
+            "capacity",
+            ...(projectConfig.boxBreakingCriteria || []),
+          ]);
+          setSelectedDuplicatefields([...parsedValues.selectedDuplicatefields]);
+          setSelectedSortingField([...parsedValues.selectedSortingField]);
+          setResetOnSymbolChange(parsedValues.resetOnSymbolChange);
+          setIsInnerBundlingDone(parsedValues.isInnerBundlingDone);
+          setInnerBundlingCriteria([...parsedValues.innerBundlingCriteria]);
+        }
+
+        // Process Extra Configurations
+        const extraProcessingParsed = {};
+        const extraSelections = {};
+        extrasConfig.forEach((item) => {
+          const type = extraTypes.find(
+            (e) => e.extraTypeId === item.extraType,
+          )?.type;
+          if (!type) return;
+          const env = item.envelopeType
+            ? JSON.parse(item.envelopeType)
+            : { Inner: "", Outer: "" };
+
+          let config = {
+            envelopeType: {
+              inner: env.Inner ? [env.Inner] : [],
+              outer: env.Outer ? [env.Outer] : [],
+            },
+            fixedQty: item.mode === "Fixed" ? parseFloat(item.value) : 0,
+            percentage: item.mode === "Percentage" ? parseFloat(item.value) : 0,
+          };
+
+          // Handle Range mode with RangeConfig
+          if (item.mode === "Range" && item.rangeConfig) {
+            try {
+              const rangeData = JSON.parse(item.rangeConfig);
+              config.range = rangeData.ranges || [];
+              config.rangeType = rangeData.rangeType || "Fixed";
+            } catch (e) {
+              config.range = [];
+              config.rangeType = "Fixed";
+            }
+          } else {
+            config.range = [];
+            config.rangeType = "Fixed";
+          }
+
+          extraProcessingParsed[type] = config;
+          extraSelections[type] = item.mode;
+        });
+
+        parsedValues.extraProcessingConfig = JSON.parse(
+          JSON.stringify(extraProcessingParsed),
+        );
+        parsedValues.extraTypeSelection = JSON.parse(
+          JSON.stringify(extraSelections),
+        );
+        setExtraProcessingConfig(JSON.parse(JSON.stringify(extraProcessingParsed)));
+        setExtraTypeSelection(JSON.parse(JSON.stringify(extraSelections)));
+
+        return parsedValues;
+      };
+
+      parsed = await fetchGroupTypeConfigParams(importData.typeId, importData.groupId);
+    }
+
     if (parsed) {
       setImportedSnapshot(parsed); // snapshot from freshly parsed data — not from stale state
       message.success("Configuration imported successfully! Review and save.");
@@ -454,10 +713,16 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
       console.log("ConfigChangeModal callback triggered with saveData:", saveData);
       if (saveData && saveData.affectedReports && saveData.affectedReports.length > 0) {
         console.log("Setting change data and showing modal");
-        setChangeData(saveData);
-        setShowChangeModal(true);
-      } else {
-        console.log("No affected reports or saveData is empty");
+        if (
+          saveData &&
+          saveData.affectedReports &&
+          saveData.affectedReports.length > 0
+        ) {
+          setChangeData(saveData);
+          setShowChangeModal(true);
+        } else {
+          console.log("No affected reports or saveData is empty");
+        }
       }
     },
     isMasterConfig,
@@ -485,9 +750,13 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
     if (importedSnapshot && importedSnapshot !== "pending") {
       setSelectedEnvelopeFields([...importedSnapshot.selectedEnvelopeFields]);
       setStartOmrEnvelopeNumber(importedSnapshot.startOmrEnvelopeNumber);
-      setResetOmrSerialOnCatchChange(importedSnapshot.resetOmrSerialOnCatchChange);
+      setResetOmrSerialOnCatchChange(
+        importedSnapshot.resetOmrSerialOnCatchChange,
+      );
       setStartBookletSerialNumber(importedSnapshot.startBookletSerialNumber);
-      setResetBookletSerialOnCatchChange(importedSnapshot.resetBookletSerialOnCatchChange);
+      setResetBookletSerialOnCatchChange(
+        importedSnapshot.resetBookletSerialOnCatchChange,
+      );
     } else {
       setSelectedEnvelopeFields([]);
       setStartOmrEnvelopeNumber(0);
@@ -507,11 +776,16 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
       setResetOnSymbolChange(importedSnapshot.resetOnSymbolChange);
       setIsInnerBundlingDone(importedSnapshot.isInnerBundlingDone);
       setInnerBundlingCriteria([...importedSnapshot.innerBundlingCriteria]);
-      setBoxBreakingCriteria(["capacity", ...importedSnapshot.selectedBoxFields]);
+      setBoxBreakingCriteria([
+        "capacity",
+        ...importedSnapshot.selectedBoxFields,
+      ]);
     } else {
       setSelectedBoxFields([]);
       setBoxBreakingCriteria(["capacity"]);
-      setSelectedCapacity(boxCapacities.length > 0 ? boxCapacities[0].id : null);
+      setSelectedCapacity(
+        boxCapacities.length > 0 ? boxCapacities[0].id : null,
+      );
       setStartBoxNumber(0);
       setSelectedDuplicatefields([]);
       setSelectedSortingField([]);
@@ -523,8 +797,12 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
 
   const resetExtraProcessing = () => {
     if (importedSnapshot && importedSnapshot !== "pending") {
-      setExtraProcessingConfig(JSON.parse(JSON.stringify(importedSnapshot.extraProcessingConfig)));
-      setExtraTypeSelection(JSON.parse(JSON.stringify(importedSnapshot.extraTypeSelection)));
+      setExtraProcessingConfig(
+        JSON.parse(JSON.stringify(importedSnapshot.extraProcessingConfig)),
+      );
+      setExtraTypeSelection(
+        JSON.parse(JSON.stringify(importedSnapshot.extraTypeSelection)),
+      );
     } else {
       setExtraProcessingConfig({});
       setExtraTypeSelection({});
@@ -533,7 +811,9 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
 
   const resetDuplicateTool = () => {
     if (importedSnapshot && importedSnapshot !== "pending") {
-      setDuplicateConfig(JSON.parse(JSON.stringify(importedSnapshot.duplicateConfig)));
+      setDuplicateConfig(
+        JSON.parse(JSON.stringify(importedSnapshot.duplicateConfig)),
+      );
     } else {
       setDuplicateConfig({
         duplicateCriteria: [],
@@ -597,7 +877,7 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
     setIsRerunning(true);
     try {
       setShowChangeModal(false);
-      
+
       // Store the affected reports in sessionStorage for ProcessingPipeline to pick up
       if (changeData) {
         sessionStorage.setItem(
@@ -607,10 +887,10 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
             affectedReports: changeData.affectedReports,
             changedModules: changeData.changedModules,
             changes: changeData.changes,
-          })
+          }),
         );
       }
-      
+
       // Navigate to ProcessingPipeline
       navigate("/ProcessingPipeline");
       message.success("Navigating to Processing Pipeline to re-run reports");
@@ -628,7 +908,7 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
 
   return (
     <div style={{ padding: 16 }}>
-    
+
       <ConfigChangeModal
         visible={showChangeModal}
         changedFields={changeData?.changedModules || []}
@@ -637,8 +917,8 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
         onCancel={handleCancelModal}
         loading={isRerunning}
       />
-      
-        {/* === PAGE HEADER WITH TYPE/GROUP SELECTION (Master Config Mode) === */}
+
+      {/* === PAGE HEADER WITH TYPE/GROUP SELECTION (Master Config Mode) === */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px', gap: 16 }}>
         <Typography.Title level={3} style={{ margin: 0, minWidth: 'fit-content' }}>
           {isMasterConfig ? 'Master Configuration' : 'Project Configuration'}</Typography.Title>
@@ -711,8 +991,6 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
             importedSnapshot={importedSnapshot}
           />
 
-
-
           <ExtraProcessingCard
             isEnabled={isEnabled}
             extraTypes={extraTypes}
@@ -740,7 +1018,9 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
             startBookletSerialNumber={startBookletSerialNumber}
             setStartBookletSerialNumber={setStartBookletSerialNumber}
             resetBookletSerialOnCatchChange={resetBookletSerialOnCatchChange}
-            setResetBookletSerialOnCatchChange={setResetBookletSerialOnCatchChange}
+            setResetBookletSerialOnCatchChange={
+              setResetBookletSerialOnCatchChange
+            }
             onReset={resetEnvelopeMakingCriteria}
             importedSnapshot={importedSnapshot}
           />
