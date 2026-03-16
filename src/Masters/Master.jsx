@@ -1,5 +1,5 @@
 import React from 'react';
-import { FaProjectDiagram, FaBoxes, FaEnvelope, FaLayerGroup, FaCogs, FaCloudSun } from 'react-icons/fa'; // Filled icons from FontAwesome
+import { FaProjectDiagram, FaBoxes, FaEnvelope, FaLayerGroup, FaCogs, FaCloudSun, FaWrench } from 'react-icons/fa'; // Filled icons from FontAwesome
 import { Tabs, Typography } from 'antd';
 import BoxCapacity from './BoxCapacity'; // adjust the path if needed
 import EnvelopeType from './EnvelopeType';
@@ -7,6 +7,7 @@ import Field from './Field';
 import ToolsModule from './ToolsModule';
 import NodalUnivExtra from './NodalUnivExtra';
 import Project from './Project';
+import MasterConfig from './MasterConfig';
 
 const Master = () => {
   const tabItems = [
@@ -19,6 +20,15 @@ const Master = () => {
         </span>
       ),
       children: <Project />,
+    },
+    {
+      key: '1.5',
+      label: (
+        <span style={{ display: 'flex', alignItems: 'center' }}>
+          <FaWrench style={{ color: '#1890ff', marginRight: 8 }} /> <span>Master Configuration</span>
+        </span>
+      ),
+      children: <MasterConfig />
     },
     {
       key: '2',

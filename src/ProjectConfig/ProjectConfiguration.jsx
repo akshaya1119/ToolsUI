@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from "react";
-import { Row, Col, Typography, message } from "antd";
+import { Row, Col, Typography, message, Card, Select, Space, Button } from "antd";
+import { ReloadOutlined } from "@ant-design/icons";
+import axios from "axios";
 import { useToast } from "../hooks/useToast";
 import useStore from "../stores/ProjectData";
 import { useProjectConfigData } from "./hooks/useProjectConfigData"; // Custom hook for fetching config data
@@ -15,9 +17,89 @@ import DuplicateTool from "../ToolsProcessing/DuplicateTool";
 import API from "../hooks/api";
 import ImportConfig from "./components/ImportConfig";
 
-const ProjectConfiguration = () => {
+const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, selectedGroup = null, onTypeChange = null, onGroupChange = null, typeOptions: propTypeOptions = [], groupOptions: propGroupOptions = [], onReset = null, onResetAll = null }) => {
   const { showToast } = useToast();
   const projectId = useStore((state) => state.projectId);
+  const url = import.meta.env.VITE_API_BASE_URL;
+
+  // Group and Type options - use props if provided, otherwise fetch
+  const [groupOptions, setGroupOptions] = useState(propGroupOptions || []);
+  const [typeOptions, setTypeOptions] = useState(propTypeOptions || []);
+  const [groupLabel, setGroupLabel] = useState('');
+  const [typeLabel, setTypeLabel] = useState('');
+
+  // Update options when props change (from MasterConfig)
+  useEffect(() => {
+    if (isMasterConfig) {
+      if (propGroupOptions && propGroupOptions.length > 0) {
+        setGroupOptions(propGroupOptions);
+      }
+      if (propTypeOptions && propTypeOptions.length > 0) {
+        setTypeOptions(propTypeOptions);
+      }
+    }
+  }, [isMasterConfig, propGroupOptions, propTypeOptions]);
+
+  // Only fetch if not in master config mode (props will be provided)
+  useEffect(() => {
+    if (!isMasterConfig) {
+      fetchGroup();
+      fetchType();
+    }
+  }, [isMasterConfig]);
+
+  // Fetch groups
+  const fetchGroup = async () => {
+    try {
+      const res = await axios.get(`${url}/Groups`);
+      const formatted = (res.data || []).map(group => ({
+        label: group.name || group.groupName,
+        value: group.id || group.groupId,
+      }));
+      setGroupOptions(formatted);
+      // Set label if selectedGroup exists
+      if (selectedGroup) {
+        const found = formatted.find(g => g.value === selectedGroup);
+        setGroupLabel(found?.label || selectedGroup);
+      }
+    } catch (err) {
+      console.error("Failed to fetch groups", err);
+    }
+  };
+
+  // Fetch types
+  const fetchType = async () => {
+    try {
+      const res = await axios.get(`${url}/PaperTypes`);
+      const formatted = (res.data || []).map(type => ({
+        label: type.types,
+        value: type.typeId,
+      }));
+      setTypeOptions(formatted);
+      // Set label if selectedType exists
+      if (selectedType) {
+        const found = formatted.find(t => t.value === selectedType);
+        setTypeLabel(found?.label || selectedType);
+      }
+    } catch (err) {
+      console.error("Failed to fetch paper types", err);
+    }
+  };
+
+  // Update labels when selectedGroup or selectedType changes
+  useEffect(() => {
+    if (selectedGroup && groupOptions.length > 0) {
+      const found = groupOptions.find(g => g.value === selectedGroup);
+      setGroupLabel(found?.label || selectedGroup);
+    }
+  }, [selectedGroup, groupOptions]);
+
+  useEffect(() => {
+    if (selectedType && typeOptions.length > 0) {
+      const found = typeOptions.find(t => t.value === selectedType);
+      setTypeLabel(found?.label || selectedType);
+    }
+  }, [selectedType, typeOptions]);
   const token = localStorage.getItem("token");
 
   // State management
@@ -60,8 +142,15 @@ const ProjectConfiguration = () => {
     setExtraTypeSelection,
   } = useProjectConfigData(token);
 
-  const fetchProjectConfigData = async (projectId) => {
-    console.log("Fetching config data for project:", projectId);
+  const fetchProjectConfigData = async (projectId, typeId = null, groupId = null) => {
+    // In master config mode, don't fetch if typeId or groupId is missing
+    if (isMasterConfig && (!typeId || !groupId)) {
+      console.log("Master config mode: waiting for type and group selection");
+      resetForm();
+      return null;
+    }
+
+    console.log("Fetching config data for:", isMasterConfig ? `typeId: ${typeId}, groupId: ${groupId}` : `projectId: ${projectId}`);
 
     let projectConfig = null;
     let extrasConfig = [];
@@ -71,9 +160,17 @@ const ProjectConfiguration = () => {
       enhancementEnabled: false,
     };
 
+    // Determine endpoints based on mode
+    const projectConfigEndpoint = isMasterConfig 
+      ? `/MProjectConfigs/ByTypeGroup/${typeId}/${groupId}` 
+      : `/ProjectConfigs/ByProject/${projectId}`;
+    const extrasConfigEndpoint = isMasterConfig 
+      ? `/MExtraConfigs/ByTypeGroup/${typeId}/${groupId}` 
+      : `/ExtrasConfigurations/ByProject/${projectId}`;
+
     // Fetch project config
     try {
-      const res = await API.get(`/ProjectConfigs/ByProject/${projectId}`);
+      const res = await API.get(projectConfigEndpoint);
       projectConfig = res.data;
       console.log("Parsed Project Config:", projectConfig);
       setConfigExists(true);
@@ -89,7 +186,7 @@ const ProjectConfiguration = () => {
 
     } catch (err) {
       if (err.response?.status === 404) {
-        console.warn(`No existing configuration for ProjectId: ${projectId}`);
+        console.warn(`No existing configuration for ${isMasterConfig ? `typeId: ${typeId}, groupId: ${groupId}` : `projectId: ${projectId}`}`);
         setConfigExists(false);
         setDuplicateConfig(duplicateConfigRes);
       } else {
@@ -101,7 +198,7 @@ const ProjectConfiguration = () => {
 
     // Fetch extra config data
     try {
-      const extrasRes = await API.get(`/ExtrasConfigurations/ByProject/${projectId}`);
+      const extrasRes = await API.get(extrasConfigEndpoint);
       extrasConfig = extrasRes.data;
     } catch (err) {
       if (err.response?.status !== 404) {
@@ -320,7 +417,10 @@ const ProjectConfiguration = () => {
     duplicateConfig,
     fetchProjectConfigData,
     showToast,
-    resetForm
+    resetForm,
+    isMasterConfig,
+    selectedType,
+    selectedGroup
   );
   console.log(selectedCapacity);
   console.log("Type of selectedCapacity:", typeof selectedCapacity);
@@ -409,9 +509,17 @@ const ProjectConfiguration = () => {
   const duplicateConfigured = isEnabled("Duplicate Tool");
 
   useEffect(() => {
-    if (!projectId) return;
-    fetchProjectConfigData(projectId);
-  }, [projectId, token, extraTypes, fields, showToast, toolModules]);
+    if (isMasterConfig) {
+      // In master config mode, fetch when type and group are selected
+      if (selectedType && selectedGroup) {
+        fetchProjectConfigData(null, selectedType, selectedGroup);
+      }
+    } else {
+      // In project config mode, fetch when projectId is available
+      if (!projectId) return;
+      fetchProjectConfigData(projectId);
+    }
+  }, [isMasterConfig, projectId, selectedType, selectedGroup, token, extraTypes, fields, showToast, toolModules]);
 
   // Once state settles after import, finalize the snapshot
   useEffect(() => {
@@ -445,13 +553,52 @@ const ProjectConfiguration = () => {
 
   return (
     <div style={{ padding: 16 }}>
-      {/* === PAGE HEADER === */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
-        <Typography.Title level={3} style={{ margin: 0 }}>
-          Project Configuration
+      {/* === PAGE HEADER WITH TYPE/GROUP SELECTION (Master Config Mode) === */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px', gap: 16 }}>
+        <Typography.Title level={3} style={{ margin: 0, minWidth: 'fit-content' }}>
+          {isMasterConfig ? 'Master Configuration' : 'Project Configuration'}
         </Typography.Title>
 
-        <ImportConfig onImport={handleImport} disabled={configExists} />
+        {isMasterConfig && (
+          <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', flex: 1, maxWidth: 500 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <Select
+                placeholder="Select Group"
+                value={selectedGroup}
+                onChange={onGroupChange}
+                options={groupOptions}
+                style={{ width: '100%' }}
+                size="large"
+                allowClear
+                clearIcon={<span style={{ fontSize: 12 }}>✕</span>}
+              />
+              {!selectedGroup && (
+                <Typography.Text type="danger" style={{ fontSize: 11, display: 'block', marginTop: 2 }}>
+                  Please select a group
+                </Typography.Text>
+              )}
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <Select
+                placeholder="Select Type"
+                value={selectedType}
+                onChange={onTypeChange}
+                options={typeOptions}
+                style={{ width: '100%' }}
+                size="large"
+                allowClear
+                clearIcon={<span style={{ fontSize: 12 }}>✕</span>}
+              />
+              {!selectedType && (
+                <Typography.Text type="danger" style={{ fontSize: 11, display: 'block', marginTop: 2 }}>
+                  Please select a type
+                </Typography.Text>
+              )}
+            </div>
+          </div>
+        )}
+
+        {!isMasterConfig && <ImportConfig onImport={handleImport} disabled={configExists} />}
       </div>
 
       <Row gutter={16} align="top">
@@ -497,7 +644,6 @@ const ProjectConfiguration = () => {
 
         {/* RIGHT SIDE */}
         <Col xs={24} md={8}>
-
           <EnvelopeMakingCriteriaCard
             isEnabled={isEnabled}
             fields={fields}
@@ -541,8 +687,6 @@ const ProjectConfiguration = () => {
             importedSnapshot={importedSnapshot}
           />
 
-
-
           <ConfigSummaryCard
             enabledModules={enabledModules}
             envelopeConfigured={envelopeConfigured}
@@ -551,6 +695,9 @@ const ProjectConfiguration = () => {
             duplicateConfigured={duplicateConfigured}
             handleSave={handleSave}
             projectId={projectId}
+            isMasterConfig={isMasterConfig}
+            selectedType={selectedType}
+            selectedGroup={selectedGroup}
           />
         </Col>
       </Row>

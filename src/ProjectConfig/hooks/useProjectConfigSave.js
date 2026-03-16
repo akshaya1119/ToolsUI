@@ -25,13 +25,32 @@ export const useProjectConfigSave = (
   duplicateConfig,
   fetchProjectConfigData,
   showToast,
-  resetForm
+  resetForm,
+  isMasterConfig = false,
+  typeId = null,
+  groupId = null
 ) => {
   const handleSave = async () => {
     try {
+      // Validation for master config mode
+      if (isMasterConfig && (!typeId || !groupId)) {
+        showToast("Please select Type and Group first", "error");
+        return;
+      }
+
+      // Validation for project config mode
+      if (!isMasterConfig && !projectId) {
+        showToast("Project ID is required", "error");
+        return;
+      }
+
+      // Determine which endpoint to use
+      const projectConfigEndpoint = isMasterConfig ? '/MProjectConfigs' : '/ProjectConfigs';
+      const extraConfigEndpoint = isMasterConfig ? '/MExtraConfigs' : '/ExtrasConfigurations';
+
       // 1️⃣ Save ProjectConfigs including Duplicate Tool
       const projectConfigPayload = {
-        projectId: Number(projectId),
+        ...(isMasterConfig ? { typeId: Number(typeId), groupId: Number(groupId) } : { projectId: Number(projectId) }),
         modules: enabledModules.map(
           (m) => toolModules.find((tm) => tm.name === m)?.id
         ),
@@ -56,14 +75,16 @@ export const useProjectConfigSave = (
         enhancement: duplicateConfig?.enhancement || 0,
       };
 
-      await API.post(`/ProjectConfigs`, projectConfigPayload);
+      await API.post(projectConfigEndpoint, projectConfigPayload);
 
-      // 2️⃣ Delete existing ExtrasConfigurations first
-      try {
-        await API.delete(`/ExtrasConfigurations/${projectId}`);
-      } catch (err) {
-        // Ignore if no existing configs
-        console.log("No existing extras config to delete");
+      // 2️⃣ Delete existing ExtrasConfigurations first (only for non-master mode)
+      if (!isMasterConfig) {
+        try {
+          await API.delete(`/ExtrasConfigurations/${projectId}`);
+        } catch (err) {
+          // Ignore if no existing configs
+          console.log("No existing extras config to delete");
+        }
       }
 
       // 3️⃣ Save ExtrasConfigurations
@@ -102,7 +123,7 @@ export const useProjectConfigSave = (
 
           const payload = {
             id: 0,
-            projectId: Number(projectId),
+            ...(isMasterConfig ? { typeId: Number(typeId), groupId: Number(groupId) } : { projectId: Number(projectId) }),
             extraType: et.extraTypeId,
             mode,
             envelopeType: JSON.stringify(normalizedEnvelope),
@@ -137,13 +158,15 @@ export const useProjectConfigSave = (
       if (extrasPayloads.length > 0) {
         await Promise.all(
           extrasPayloads.map((payload) =>
-            API.post(`/ExtrasConfigurations`, payload)
+            API.post(extraConfigEndpoint, payload)
           )
         );
       }
 
       showToast("Configuration saved successfully!", "success");
-      fetchProjectConfigData(projectId);
+      if (!isMasterConfig) {
+        fetchProjectConfigData(projectId);
+      }
       resetForm();
       console.log("Saved:", { projectConfigPayload, extrasPayloads });
     } catch (err) {
