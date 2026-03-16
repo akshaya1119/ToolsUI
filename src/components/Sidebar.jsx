@@ -68,7 +68,10 @@ export default function Sidebar({ collapsed }) {
         },
       ]
     ),
-    { label: "Reports", icon: <FaChartBar className="text-black" />, path: "/reports" }, // Filled bar chart icon
+    { label: "Reports", icon: <FaChartBar className="text-black" />, path: "/reports" },
+  
+      { label: "Report Builder", path: "/reportbuilder" },
+     
   ];
 
   const renderMenuItem = (item) => {

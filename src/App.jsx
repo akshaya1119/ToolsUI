@@ -16,6 +16,7 @@ import EnvelopeBreaking from "./ToolsProcessing/Envelope/EnvelopeBreaking";
 import ProcessingPipeline from "./ToolsProcessing/ProcessingPipeline";
 import HorizontalToVertical from "./ToolsProcessing/HToV"
 import Report from "./pages/Report/Report";
+import ReportBuilder from "./pages/Report/ReportBuilder";
 import ProjectDashboard from "./components/ProjectDashboard";
 import ProtectedRoute from "./routes/ProtectedRoute";
 import { useUserToken, useUserTokenActions } from "./stores/UserToken";
@@ -186,6 +187,15 @@ export default function App() {
                   <ProtectedRoute token={token}>
                     <MainLayout >
                       <Report />
+                    </MainLayout></ProtectedRoute>
+                }
+              />
+              <Route
+                path="/reportbuilder"
+                element={
+                  <ProtectedRoute token={token}>
+                    <MainLayout >
+                      <ReportBuilder />
                     </MainLayout></ProtectedRoute>
                 }
               />
