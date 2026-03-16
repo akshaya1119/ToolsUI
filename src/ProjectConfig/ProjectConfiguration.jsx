@@ -843,6 +843,19 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
     }
   }, [isMasterConfig, projectId, selectedType, selectedGroup, token, extraTypes, fields, showToast, toolModules]);
 
+  // Fetch box capacities independently
+  useEffect(() => {
+    const fetchBoxCapacitiesData = async () => {
+      try {
+        const boxRes = await API.get(`/BoxCapacities`);
+        setBoxCapacities(boxRes.data);
+      } catch (err) {
+        console.error("Failed to load box capacities", err);
+      }
+    };
+    fetchBoxCapacitiesData();
+  }, []);
+
   // Once state settles after import, finalize the snapshot
   useEffect(() => {
     if (importedSnapshot !== "pending") return;
