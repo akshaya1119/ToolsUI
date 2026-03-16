@@ -9,6 +9,8 @@ import {
   Typography,
   message,
   Checkbox,
+  Alert,
+  Modal,
 } from "antd";
 import { motion } from "framer-motion";
 import API from "../hooks/api";
@@ -25,6 +27,9 @@ const ProcessingPipeline = () => {
   const [steps, setSteps] = useState([]);
   const [selectedModules, setSelectedModules] = useState([]);
   const [projectConfig, setProjectConfig] = useState(null);
+  const [configChanged, setConfigChanged] = useState(false);
+  const [changedFieldsInfo, setChangedFieldsInfo] = useState([]);
+  const [dependencyModal, setDependencyModal] = useState({ visible: false, unprocessedSteps: [], selectedStep: null });
   const projectId = useStore((state) => state.projectId);
 
   const currentStep = useMemo(
@@ -162,6 +167,29 @@ const ProcessingPipeline = () => {
     loadEnabled();
   }, [projectId]);
 
+  // Listen for configuration changes from sessionStorage
+  useEffect(() => {
+    const configChangeData = sessionStorage.getItem("configChangeData");
+    if (configChangeData) {
+      try {
+        const data = JSON.parse(configChangeData);
+        if (data.projectId === projectId && data.affectedReports) {
+          // Auto-select the affected reports
+          setSelectedModules(data.affectedReports);
+          setConfigChanged(true);
+          setChangedFieldsInfo(data.changedModules || []);
+          
+          // Clear the sessionStorage
+          sessionStorage.removeItem("configChangeData");
+          
+          message.info(`${data.affectedReports.length} report(s) selected for re-processing`);
+        }
+      } catch (err) {
+        console.error("Failed to parse config change data", err);
+      }
+    }
+  }, [projectId]);
+
   // Run order helper
 
   const runDuplicate = async (projectId) => {
@@ -286,6 +314,38 @@ const ProcessingPipeline = () => {
     }
 
     const allOrder = computeRunOrder(enabledModuleNames);
+    
+    // Check for unprocessed dependencies
+    const selectedIndices = selectedModules.map(key => allOrder.findIndex(s => s.key === key));
+    const maxSelectedIndex = Math.max(...selectedIndices);
+    
+    const unprocessedSteps = [];
+    for (let i = 0; i < maxSelectedIndex; i++) {
+      const stepKey = allOrder[i].key;
+      const isSelected = selectedModules.includes(stepKey);
+      const isCompleted = steps.find(s => s.key === stepKey)?.status === "completed";
+      
+      if (!isSelected && !isCompleted) {
+        unprocessedSteps.push(allOrder[i]);
+      }
+    }
+
+    // If there are unprocessed dependencies, show modal
+    if (unprocessedSteps.length > 0) {
+      setDependencyModal({
+        visible: true,
+        unprocessedSteps,
+        selectedStep: selectedModules[selectedModules.length - 1],
+      });
+      return;
+    }
+
+    // Proceed with processing
+    await processModules(selectedModules);
+  };
+
+  const processModules = async (modulesToProcess) => {
+    const allOrder = computeRunOrder(enabledModuleNames);
     const initialSteps = allOrder.map((o) => ({
       key: o.key,
       title: o.title,
@@ -296,22 +356,35 @@ const ProcessingPipeline = () => {
     setSteps(initialSteps);
     setIsProcessing(true);
     const stepTimers = new Map();
+    const completedSteps = new Set();
+    const fileNames = {
+      duplicate: "DuplicateTool.xlsx",
+      extra: "ExtrasCalculation.xlsx",
+      envelope: "EnvelopeBreaking.xlsx",
+      box: "BoxBreaking.xlsx",
+      envelopeSummary: "EnvelopeSummary.xlsx",
+      catchSummary: "CatchSummary.xlsx",
+    };
 
     try {
       for (const step of allOrder) {
         // If this step is not selected, skip it
-        if (!selectedModules.includes(step.key)) {
+        if (!modulesToProcess.includes(step.key)) {
           continue;
         }
 
-        // Check if all previous steps (in the sequence) are completed
+        // Check if all previous steps (in the sequence) are either completed or not selected
         const stepIndex = allOrder.findIndex((s) => s.key === step.key);
         let canRun = true;
 
         if (stepIndex > 0) {
           for (let i = 0; i < stepIndex; i++) {
-            const prevStep = steps.find((s) => s.key === allOrder[i].key);
-            if (!prevStep || prevStep.status !== "completed") {
+            const prevStepKey = allOrder[i].key;
+            const isPrevSelected = modulesToProcess.includes(prevStepKey);
+            const isPrevCompleted = completedSteps.has(prevStepKey);
+            
+            // If previous step is selected but not completed, we can't run this step
+            if (isPrevSelected && !isPrevCompleted) {
               canRun = false;
               break;
             }
@@ -324,34 +397,101 @@ const ProcessingPipeline = () => {
           break;
         }
 
+        // Check if report already exists
+        const fileName = fileNames[step.key];
+        let reportExists = false;
+        
+        if (fileName) {
+          try {
+            const res = await API.get(
+              `/EnvelopeBreakages/Reports/Exists?projectId=${projectId}&fileName=${fileName}`
+            );
+            reportExists = res.data.exists;
+          } catch (err) {
+            console.error(`Failed to check file existence: ${fileName}`, err);
+          }
+        }
+
+        // If report already exists, mark as completed and skip processing
+        if (reportExists) {
+          const fileUrl = `${url3}/${projectId}/${fileName}?DateTime=${new Date().toISOString()}`;
+          updateStepStatus(step.key, {
+            status: "completed",
+            fileUrl,
+            duration: "00:00",
+          });
+          completedSteps.add(step.key);
+          continue;
+        }
+
+        // Process the step
         updateStepStatus(step.key, { status: "in-progress" });
         stepTimers.set(step.key, Date.now());
 
-        if (step.key === "duplicate") await runDuplicate(projectId);
-        else if (step.key === "extra") await runExtras(projectId);
-        else if (step.key === "envelope") await runEnvelope(projectId);
-        else if (step.key === "box") await runBoxBreaking(projectId);
-        else if (step.key === "envelopeSummary") await runEnvelopeSummary(projectId);
-        else if (step.key === "catchSummary") await runCatchSummary(projectId);
+        try {
+          if (step.key === "duplicate") await runDuplicate(projectId);
+          else if (step.key === "extra") await runExtras(projectId);
+          else if (step.key === "envelope") await runEnvelope(projectId);
+          else if (step.key === "box") await runBoxBreaking(projectId);
+          else if (step.key === "envelopeSummary") await runEnvelopeSummary(projectId);
+          else if (step.key === "catchSummary") await runCatchSummary(projectId);
 
-        const durationMs = Date.now() - (stepTimers.get(step.key) || Date.now());
-        const mm = String(Math.floor(durationMs / 60000)).padStart(2, "0");
-        const ss = String(Math.floor((durationMs % 60000) / 1000)).padStart(2, "0");
-        updateStepStatus(step.key, {
-          status: "completed",
-          duration: `${mm}:${ss}`,
-          fileUrl: null,
-        });
+          const durationMs = Date.now() - (stepTimers.get(step.key) || Date.now());
+          const mm = String(Math.floor(durationMs / 60000)).padStart(2, "0");
+          const ss = String(Math.floor((durationMs % 60000) / 1000)).padStart(2, "0");
+          updateStepStatus(step.key, {
+            status: "completed",
+            duration: `${mm}:${ss}`,
+            fileUrl: null,
+          });
+          completedSteps.add(step.key);
+        } catch (stepErr) {
+          console.error(`Step ${step.key} failed`, stepErr);
+          updateStepStatus(step.key, { status: "failed" });
+          throw stepErr;
+        }
       }
       await checkReportExistence(projectId);
       message.success("Data processing completed");
+      
+      // Clear selections and close alert after successful processing
+      setSelectedModules([]);
+      setConfigChanged(false);
     } catch (err) {
       console.error("Processing failed", err);
-      const failing = steps.find((s) => s.status === "in-progress") || null;
-      if (failing) updateStepStatus(failing.key, { status: "failed" });
       message.error(err?.response?.data?.message || err?.message || "Processing failed");
     } finally {
       setIsProcessing(false);
+    }
+  };
+
+  const handleDependencyModalOk = (includeDependent) => {
+    setDependencyModal({ visible: false, unprocessedSteps: [], selectedStep: null });
+    
+    if (includeDependent) {
+      // Add unprocessed steps to selected modules
+      const allOrder = computeRunOrder(enabledModuleNames);
+      const selectedStep = dependencyModal.selectedStep;
+      const selectedIndex = allOrder.findIndex(s => s.key === selectedStep);
+      
+      const modulesToAdd = [];
+      for (let i = 0; i < selectedIndex; i++) {
+        const stepKey = allOrder[i].key;
+        const isCompleted = steps.find(s => s.key === stepKey)?.status === "completed";
+        
+        if (!isCompleted && !selectedModules.includes(stepKey)) {
+          modulesToAdd.push(stepKey);
+        }
+      }
+      
+      const newSelectedModules = [...selectedModules, ...modulesToAdd];
+      setSelectedModules(newSelectedModules);
+      
+      // Process all modules including dependencies
+      processModules(newSelectedModules);
+    } else {
+      // Process only the selected module
+      processModules(selectedModules);
     }
   };
 
@@ -392,27 +532,11 @@ const ProcessingPipeline = () => {
       render: (_, record, index) => {
         let disabled = isProcessing;
 
-        // For sequential selection: check if all previous steps are either completed or not selected
-        if (index > 0) {
-          for (let i = 0; i < index; i++) {
-            const prevStep = steps[i];
-            const isPrevSelected = selectedModules.includes(prevStep.key);
-            const isPrevCompleted = prevStep.status === "completed";
-            
-            // If previous step is selected but not completed, disable this checkbox
-            if (isPrevSelected && !isPrevCompleted) {
-              disabled = true;
-              break;
-            }
-          }
-        }
-
         return (
           <Checkbox
             checked={selectedModules.includes(record.key)}
             onChange={(e) => handleModuleSelection(record.key, e.target.checked)}
             disabled={disabled}
-            title={disabled ? "Complete previous selected steps first" : ""}
           />
         );
       },
@@ -483,6 +607,18 @@ const ProcessingPipeline = () => {
 
   return (
     <div className=" p-4">
+      {configChanged && (
+        <Alert
+          message="Configuration Updated"
+          description={`The following settings have changed: ${changedFieldsInfo.join(", ")}. Please re-run the reports to ensure accuracy.`}
+          type="warning"
+          showIcon
+          closable
+          onClose={() => setConfigChanged(false)}
+          style={{ marginBottom: 16 }}
+        />
+      )}
+      
       <div className="flex justify-between items-center mb-4">
         <Typography.Title level={3} style={{ marginBottom: 24 }}>
           Project Configuration
@@ -536,6 +672,36 @@ const ProcessingPipeline = () => {
           )}
         </Card>
       </motion.div>
+
+      <Modal
+        title="Unprocessed Dependencies Detected"
+        open={dependencyModal.visible}
+        onCancel={() => setDependencyModal({ visible: false, unprocessedSteps: [], selectedStep: null })}
+        footer={[
+          <Button key="skip" onClick={() => handleDependencyModalOk(false)}>
+            Process Only Selected
+          </Button>,
+          <Button key="include" type="primary" onClick={() => handleDependencyModalOk(true)}>
+            Process All Dependencies
+          </Button>,
+        ]}
+      >
+        <p style={{ marginBottom: 16 }}>
+          The following reports have not been processed yet and are required before running your selected module:
+        </p>
+        <ul style={{ marginBottom: 16 }}>
+          {dependencyModal.unprocessedSteps.map((step) => (
+            <li key={step.key}>{step.title}</li>
+          ))}
+        </ul>
+        <p>
+          <strong>What would you like to do?</strong>
+        </p>
+        <ul style={{ marginLeft: 20 }}>
+          <li><strong>Process Only Selected:</strong> Run only your selected module (may fail if dependencies are missing)</li>
+          <li><strong>Process All Dependencies:</strong> Run all unprocessed dependencies first, then your selected module</li>
+        </ul>
+      </Modal>
     </div>
   );
 };
