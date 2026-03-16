@@ -152,7 +152,7 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
 
 
 
-   
+
   // Change detection hook
   const { hasChanges, changedFields, resetChangeDetection } =
     useConfigChangeDetection(
@@ -195,11 +195,11 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
     };
 
     // Determine endpoints based on mode
-    const projectConfigEndpoint = isMasterConfig 
-      ? `/MProjectConfigs/ByTypeGroup/${typeId}/${groupId}` 
+    const projectConfigEndpoint = isMasterConfig
+      ? `/MProjectConfigs/ByTypeGroup/${typeId}/${groupId}`
       : `/ProjectConfigs/ByProject/${projectId}`;
-    const extrasConfigEndpoint = isMasterConfig 
-      ? `/MExtraConfigs/ByTypeGroup/${typeId}/${groupId}` 
+    const extrasConfigEndpoint = isMasterConfig
+      ? `/MExtraConfigs/ByTypeGroup/${typeId}/${groupId}`
       : `/ExtrasConfigurations/ByProject/${projectId}`;
 
     // Fetch project config
@@ -435,8 +435,216 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
     return parsedValues;
   };
 
-  const handleImport = async (importProjectId) => {
-    const parsed = await fetchProjectConfigData(importProjectId);
+  const handleImport = async (importData) => {
+    let parsed = null;
+
+    if (importData.projectId) {
+      parsed = await fetchProjectConfigData(importData.projectId);
+    } else if (importData.typeId && importData.groupId) {
+      // Temporarily bypass the isMasterConfig check inside fetchProjectConfigData
+      // and call the endpoints directly to get the imported snapshot
+      const fetchGroupTypeConfigParams = async (typeId, groupId) => {
+        let projectConfig = null;
+        let extrasConfig = [];
+        let duplicateConfigRes = {
+          duplicateCriteria: [],
+          enhancement: 0,
+          enhancementEnabled: false,
+        };
+
+        try {
+          const res = await API.get(`/MProjectConfigs/ByTypeGroup/${typeId}/${groupId}`);
+          projectConfig = res.data;
+
+          duplicateConfigRes = {
+            duplicateCriteria: Array.isArray(projectConfig.duplicateCriteria)
+              ? [...projectConfig.duplicateCriteria]
+              : JSON.parse(projectConfig.duplicateCriteria || "[]"),
+            enhancement: Number(projectConfig.enhancement) || 0,
+            enhancementEnabled: Number(projectConfig.enhancement) > 0,
+          };
+          setDuplicateConfig(JSON.parse(JSON.stringify(duplicateConfigRes)));
+        } catch (err) {
+          if (err.response?.status === 404) {
+            message.warning("No Master Configuration found for this Group and Type");
+          } else {
+            message.error("Error fetching Master Configuration");
+          }
+          return null;
+        }
+
+        try {
+          const extrasRes = await API.get(`/MExtraConfigs/ByTypeGroup/${typeId}/${groupId}`);
+          extrasConfig = extrasRes.data;
+        } catch (err) {
+          console.warn("Failed to load Master extras config");
+        }
+
+        // Use existing fetch flow structure to build `parsedValues`
+        // We inject the temporarily fetched data
+
+        // This is a cleaner approach: just override the parameters
+        const originalIsMasterConfig = isMasterConfig;
+
+        let parsedValues = {
+          enabledModules: [],
+          innerEnvelopes: [],
+          outerEnvelopes: [],
+          selectedEnvelopeFields: [],
+          startOmrEnvelopeNumber: 0,
+          resetOmrSerialOnCatchChange: false,
+          startBookletSerialNumber: 0,
+          resetBookletSerialOnCatchChange: false,
+          selectedBoxFields: [],
+          selectedCapacity: selectedCapacity,
+          startBoxNumber: 0,
+          selectedDuplicatefields: [],
+          selectedSortingField: [],
+          resetOnSymbolChange: false,
+          isInnerBundlingDone: false,
+          innerBundlingCriteria: [],
+          duplicateConfig: duplicateConfigRes,
+          extraProcessingConfig: {},
+          extraTypeSelection: {},
+        };
+
+        if (projectConfig && toolModules.length > 0) {
+          const enabledNames = new Set();
+          const extraModuleNames = [
+            "Nodal Extra Calculation",
+            "University Extra Calculation",
+          ];
+          projectConfig.modules?.forEach((moduleId) => {
+            const module = toolModules.find((m) => m.id === moduleId);
+            if (module) {
+              if (extraModuleNames.includes(module.name))
+                enabledNames.add("Extra Configuration");
+              else enabledNames.add(module.name);
+            }
+          });
+
+          const envelopeParsed = JSON.parse(projectConfig.envelope || "{}");
+          const parsedInnerEnvelopes = envelopeParsed.Inner
+            ? [envelopeParsed.Inner]
+            : [];
+          const parsedOuterEnvelopes = envelopeParsed.Outer
+            ? [envelopeParsed.Outer]
+            : [];
+          const parsedBoxFields = (projectConfig.boxBreakingCriteria || [])
+            .filter((fieldId) => fields.some((f) => f.fieldId === fieldId))
+            .map((fieldId) => fieldId);
+          const parsedEnvelopeFields = (
+            projectConfig.envelopeMakingCriteria || []
+          ).filter((fieldId) => fields.some((f) => f.fieldId === fieldId));
+          const parsedDuplicateFields = (
+            projectConfig.duplicateRemoveFields || []
+          ).filter((fieldId) => fields.some((f) => f.fieldId === fieldId));
+          const parsedSortingFields = (projectConfig.sortingBoxReport || []).filter(
+            (fieldId) => fields.some((f) => f.fieldId === fieldId),
+          );
+          const parsedInnerBundlingCriteria = (
+            projectConfig.innerBundlingCriteria || []
+          ).filter((fieldId) => fields.some((f) => f.fieldId === fieldId));
+
+          parsedValues = {
+            ...parsedValues,
+            enabledModules: Array.from(enabledNames),
+            innerEnvelopes: parsedInnerEnvelopes,
+            outerEnvelopes: parsedOuterEnvelopes,
+            selectedEnvelopeFields: parsedEnvelopeFields,
+            startOmrEnvelopeNumber: projectConfig.omrSerialNumber || 0,
+            resetOmrSerialOnCatchChange:
+              projectConfig.resetOmrSerialOnCatchChange ?? false,
+            startBookletSerialNumber: projectConfig.bookletSerialNumber || 0,
+            resetBookletSerialOnCatchChange:
+              projectConfig.resetBookletSerialOnCatchChange ?? false,
+            selectedBoxFields: parsedBoxFields,
+            startBoxNumber: projectConfig.boxNumber || 0,
+            selectedDuplicatefields: parsedDuplicateFields,
+            selectedSortingField: parsedSortingFields,
+            resetOnSymbolChange: projectConfig.resetOnSymbolChange ?? false,
+            isInnerBundlingDone: projectConfig.isInnerBundlingDone ?? false,
+            innerBundlingCriteria: parsedInnerBundlingCriteria,
+          };
+
+          setEnabledModules([...parsedValues.enabledModules]);
+          setInnerEnvelopes([...parsedValues.innerEnvelopes]);
+          setOuterEnvelopes([...parsedValues.outerEnvelopes]);
+          setSelectedEnvelopeFields([...parsedValues.selectedEnvelopeFields]);
+          setStartOmrEnvelopeNumber(parsedValues.startOmrEnvelopeNumber);
+          setResetOmrSerialOnCatchChange(parsedValues.resetOmrSerialOnCatchChange);
+          setStartBookletSerialNumber(parsedValues.startBookletSerialNumber);
+          setResetBookletSerialOnCatchChange(
+            parsedValues.resetBookletSerialOnCatchChange,
+          );
+          setSelectedBoxFields([...parsedValues.selectedBoxFields]);
+          setStartBoxNumber(parsedValues.startBoxNumber);
+          setBoxBreakingCriteria([
+            "capacity",
+            ...(projectConfig.boxBreakingCriteria || []),
+          ]);
+          setSelectedDuplicatefields([...parsedValues.selectedDuplicatefields]);
+          setSelectedSortingField([...parsedValues.selectedSortingField]);
+          setResetOnSymbolChange(parsedValues.resetOnSymbolChange);
+          setIsInnerBundlingDone(parsedValues.isInnerBundlingDone);
+          setInnerBundlingCriteria([...parsedValues.innerBundlingCriteria]);
+        }
+
+        // Process Extra Configurations
+        const extraProcessingParsed = {};
+        const extraSelections = {};
+        extrasConfig.forEach((item) => {
+          const type = extraTypes.find(
+            (e) => e.extraTypeId === item.extraType,
+          )?.type;
+          if (!type) return;
+          const env = item.envelopeType
+            ? JSON.parse(item.envelopeType)
+            : { Inner: "", Outer: "" };
+
+          let config = {
+            envelopeType: {
+              inner: env.Inner ? [env.Inner] : [],
+              outer: env.Outer ? [env.Outer] : [],
+            },
+            fixedQty: item.mode === "Fixed" ? parseFloat(item.value) : 0,
+            percentage: item.mode === "Percentage" ? parseFloat(item.value) : 0,
+          };
+
+          // Handle Range mode with RangeConfig
+          if (item.mode === "Range" && item.rangeConfig) {
+            try {
+              const rangeData = JSON.parse(item.rangeConfig);
+              config.range = rangeData.ranges || [];
+              config.rangeType = rangeData.rangeType || "Fixed";
+            } catch (e) {
+              config.range = [];
+              config.rangeType = "Fixed";
+            }
+          } else {
+            config.range = [];
+            config.rangeType = "Fixed";
+          }
+
+          extraProcessingParsed[type] = config;
+          extraSelections[type] = item.mode;
+        });
+
+        parsedValues.extraProcessingConfig = JSON.parse(
+          JSON.stringify(extraProcessingParsed),
+        );
+        parsedValues.extraTypeSelection = JSON.parse(
+          JSON.stringify(extraSelections),
+        );
+        setExtraProcessingConfig(JSON.parse(JSON.stringify(extraProcessingParsed)));
+        setExtraTypeSelection(JSON.parse(JSON.stringify(extraSelections)));
+
+        return parsedValues;
+      };
+
+      parsed = await fetchGroupTypeConfigParams(importData.typeId, importData.groupId);
+    }
+
     if (parsed) {
       setImportedSnapshot(parsed); // snapshot from freshly parsed data — not from stale state
       message.success("Configuration imported successfully! Review and save.");
@@ -505,15 +713,16 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
       console.log("ConfigChangeModal callback triggered with saveData:", saveData);
       if (saveData && saveData.affectedReports && saveData.affectedReports.length > 0) {
         console.log("Setting change data and showing modal");
-      if (
-        saveData &&
-        saveData.affectedReports &&
-        saveData.affectedReports.length > 0
-      ) {
-        setChangeData(saveData);
-        setShowChangeModal(true);
-      } else {
-        console.log("No affected reports or saveData is empty");
+        if (
+          saveData &&
+          saveData.affectedReports &&
+          saveData.affectedReports.length > 0
+        ) {
+          setChangeData(saveData);
+          setShowChangeModal(true);
+        } else {
+          console.log("No affected reports or saveData is empty");
+        }
       }
     },
     isMasterConfig,
@@ -699,7 +908,7 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
 
   return (
     <div style={{ padding: 16 }}>
-    
+
       <ConfigChangeModal
         visible={showChangeModal}
         changedFields={changeData?.changedModules || []}
@@ -708,8 +917,8 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
         onCancel={handleCancelModal}
         loading={isRerunning}
       />
-      
-        {/* === PAGE HEADER WITH TYPE/GROUP SELECTION (Master Config Mode) === */}
+
+      {/* === PAGE HEADER WITH TYPE/GROUP SELECTION (Master Config Mode) === */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px', gap: 16 }}>
         <Typography.Title level={3} style={{ margin: 0, minWidth: 'fit-content' }}>
           {isMasterConfig ? 'Master Configuration' : 'Project Configuration'}</Typography.Title>

@@ -1,5 +1,5 @@
 import React from "react";
-import { Card, List, Button, Typography, Row, Col } from "antd";
+import { Card, List, Button, Typography, Row, Col, message } from "antd";
 import { CarryOutFilled } from "@ant-design/icons";
 import AnimatedCard from "./AnimatedCard";
 import { cardStyle, iconStyle } from "./constants";
@@ -14,6 +14,7 @@ const ConfigSummaryCard = ({
   duplicateConfigured, // <-- new prop
   handleSave,
   projectId,
+  isMasterConfig,
 }) => {
 
   const isAnyConfigMade = envelopeConfigured || boxConfigured || extraConfigured || duplicateConfigured;
@@ -38,10 +39,10 @@ const ConfigSummaryCard = ({
       value: extraConfigured ? "Configured" : "Not Configured",
       danger: !extraConfigured,
     },
-    { 
-      label: "Duplicate Tool", 
-      value: duplicateConfigured ? "Configured" : "Not Configured", 
-      danger: !duplicateConfigured 
+    {
+      label: "Duplicate Tool",
+      value: duplicateConfigured ? "Configured" : "Not Configured",
+      danger: !duplicateConfigured
     },
   ];
 
@@ -88,9 +89,28 @@ const ConfigSummaryCard = ({
           block
           onClick={handleSave}
           disabled={!projectId || !isAnyConfigMade}
-          className="mt-4"
+          className="mt-4 mb-2"
         >
           Save Configuration
+        </Button>
+        <Button
+          type="default"
+          block
+          onClick={() => {
+            const groupId = localStorage.getItem("selectedGroup");
+            const typeId = localStorage.getItem("selectedType");
+
+            if (!groupId || !typeId) {
+              message.warning("Group or Type not selected in Dashboard");
+              return;
+            }
+
+            handleSave(true, parseInt(typeId), parseInt(groupId));
+          }}
+          disabled={!isAnyConfigMade || isMasterConfig}
+          style={{ marginTop: '8px' }}
+        >
+          Save as Master Configuration
         </Button>
       </Card>
     </AnimatedCard>
