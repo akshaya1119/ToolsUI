@@ -923,7 +923,7 @@ const DataImport = () => {
                   checked={isCorrectedNrdataReport}
                   onChange={(e) => setIsCorrectedNrdataReport(e.target.checked)}
                 >
-                  This is a corrected NRData report
+                  Upload changed NR
                 </Checkbox>
                 <Text type="secondary" style={{ display: "block", fontSize: 12, lineHeight: 1.3, marginTop: 4 }}>
                   Enable this when the file is a corrected NRData report. We send this flag along with the upload request.
@@ -1139,17 +1139,17 @@ const DataImport = () => {
               activeKey={activeTab}
               onChange={(key) => setActiveTab(key)}
               style={{ marginTop: 8 }}
-              // tabBarExtraContent={
-              //   <Button
-              //     type="primary"
-              //     size="small"
-              //     disabled={activeTab !== "1" || selectedUploadedCatchNos.length !== 2}
-              //     loading={loading}
-              //     onClick={openMergeModal}
-              //   >
-              //     Merge Catch Numbers
-              //   </Button>
-              // }
+              tabBarExtraContent={
+                <Button
+                  type="primary"
+                  size="small"
+                  disabled={activeTab !== "1" || selectedUploadedCatchNos.length !== 2}
+                  loading={loading}
+                  onClick={openMergeModal}
+                >
+                  Merge Catch Numbers
+                </Button>
+              }
             >
               <TabPane tab="Uploaded Data" key="1">
                 {enhancedColumns.length > 0 ? (
