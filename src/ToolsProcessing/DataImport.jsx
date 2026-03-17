@@ -530,7 +530,7 @@ const DataImport = () => {
     setEditableSkippedRows([]);
   };
 
-  const handleUpload = () => {
+  const handleUpload = async () => {
     let mappedData = getMappedData();
 
     // Keep the original Excel row number in NRDatas JSON for conflict display.
@@ -564,31 +564,38 @@ const DataImport = () => {
       }))
     };
 
-    API.post(`/NRDatas`, payload, {
-      headers: { Authorization: `Bearer ${token}` }
-    })
-      .then(res => {
+    try {
+      if (isCorrectedNrdataReport) {
+        const changedRes = await API.post(`/ChangedNr`, payload, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        console.log('Changed NRData result:', changedRes.data);
+        showToast(`Corrected NRData report uploaded (${mappedData.length} rows).`, "success");
+      } else {
+        const res = await API.post(`/NRDatas`, payload, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
         console.log('Validation result:', res.data);
         showToast(`Validation successful! ${mappedData.length} rows uploaded.`, "success");
-        resetForm();
-        fetchExistingData(projectId);
-      })
-      .catch(err => {
-        console.error("Validation failed", err);
+      }
 
-        const errorMessage =
-          err?.response?.data?.message ||
-          err?.response?.data ||
-          err?.message ||
-          "Validation failed";
+      resetForm();
+      fetchExistingData(projectId);
+    } catch (err) {
+      console.error("Validation failed", err);
 
-        showToast(errorMessage, "error");
-        resetForm();
-      })
-      .finally(() => {
-        setLoading(false);
-        setFileList([]);
-      });
+      const errorMessage =
+        err?.response?.data?.message ||
+        err?.response?.data ||
+        err?.message ||
+        "Validation failed";
+
+      showToast(errorMessage, "error");
+      resetForm();
+    } finally {
+      setLoading(false);
+      setFileList([]);
+    }
   };
 
   // const areRequiredFieldsMapped = () => {
@@ -894,40 +901,53 @@ const DataImport = () => {
               <div style={{ padding: 12, border: "1px solid #d9d9d9", borderRadius: 10, background: "#fff" }}>
                 <Space direction="vertical" size={10} style={{ width: "100%" }}>
                   <div>
+                    <Text strong>Changed NR Data</Text>
+                    <Text type="secondary" style={{ display: "block", fontSize: 12, lineHeight: 1.3}}>
+                    Enable this when the file is a Changed NRData.
+                  </Text>
+                  </div>
+                  <Checkbox
+                    checked={isCorrectedNrdataReport}
+                    onChange={(e) => setIsCorrectedNrdataReport(e.target.checked)}
+                  >
+                    Changed NR Data
+                  </Checkbox>
+                  
+                </Space>
+
+                <Space direction="vertical" size={10} style={{ width: "100%" , marginTop: 3}}>
+                  <div>
                     <Text strong>Zero Quantity Handling</Text>
                     <Text type="secondary" style={{ display: "block", fontSize: 12, lineHeight: 1.3 }}>
                       Choose how to handle rows where NRQuantity is 0 before upload.
                     </Text>
                   </div>
-                <Checkbox
-                  checked={keepZeroQuantity}
-                  onChange={handleKeepZeroQuantityChange}
-                >
-                  Keep items with 0 quantity and change their quantity
-                </Checkbox>
 
-                {keepZeroQuantity && (
-                  <Input
-                    type="number"
-                    value={quantity}
-                    onChange={handleQuantityChange}
-                    placeholder="Enter quantity to replace 0"
-                    min={0}
-                  />
-                )}
+                  <Checkbox
+                    checked={keepZeroQuantity}
+                    onChange={handleKeepZeroQuantityChange}
+                  >
+                    Keep items with 0 quantity and change their quantity
+                  </Checkbox>
 
-                <Checkbox checked={skipItems} onChange={handleSkipItemsChange}>
-                  Skip items with 0 quantity
-                </Checkbox>
-                <Checkbox
-                  checked={isCorrectedNrdataReport}
-                  onChange={(e) => setIsCorrectedNrdataReport(e.target.checked)}
-                >
-                  This is a corrected NRData report
-                </Checkbox>
-                <Text type="secondary" style={{ display: "block", fontSize: 12, lineHeight: 1.3, marginTop: 4 }}>
-                  Enable this when the file is a corrected NRData report. We send this flag along with the upload request.
-                </Text>
+                  {keepZeroQuantity && (
+                    <Input
+                      type="number"
+                      value={quantity}
+                      onChange={handleQuantityChange}
+                      placeholder="Enter quantity to replace 0"
+                      min={0}
+                    />
+                  )}
+
+                  <Checkbox
+                    checked={skipItems}
+                    onChange={handleSkipItemsChange}
+                  >
+                    Skip items with 0 quantity
+                  </Checkbox>
+
+                  
                 </Space>
               </div>
             </Col>
