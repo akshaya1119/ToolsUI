@@ -1,13 +1,15 @@
 import React from 'react';
-import { FaProjectDiagram, FaBoxes, FaEnvelope, FaLayerGroup, FaCogs, FaCloudSun, FaWrench } from 'react-icons/fa'; // Filled icons from FontAwesome
-import { Tabs, Typography } from 'antd';
+import { FaProjectDiagram, FaBoxes, FaEnvelope, FaLayerGroup, FaCogs, FaCloudSun, FaWrench} from 'react-icons/fa'; // Filled icons from FontAwesome
+import { Tabs, Typography  } from 'antd';
 import BoxCapacity from './BoxCapacity'; // adjust the path if needed
 import EnvelopeType from './EnvelopeType';
 import Field from './Field';
 import ToolsModule from './ToolsModule';
 import NodalUnivExtra from './NodalUnivExtra';
 import Project from './Project';
-
+import MasterConfig from './MasterConfig';
+import ReportBuilder from '../pages/Report/ReportBuilder';
+import {CopyOutlined} from '@ant-design/icons'
 const Master = () => {
   const tabItems = [
     {
@@ -78,11 +80,11 @@ const Master = () => {
       key: '7',
       label: (
         <span style={{ display: 'flex', alignItems: 'center' }}>
-          <FaSlidersH style={{ color: '#1890ff', marginRight: 8 }} /> <span>Master Configuration</span> 
+          <CopyOutlined style={{ color: '#1890ff', marginRight: 8 }} /><span>Report Builder</span> 
         </span>
       ),
-      children: <MasterConfiguration />
-    }
+      children: <ReportBuilder />
+    },
   ];
 
   return (
