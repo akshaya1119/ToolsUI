@@ -42,6 +42,7 @@ const ExtraProcessingCard = ({
     paddingLeft: 6,
     borderRadius: 2,
   };
+  const extraEnabled = isEnabled(EXTRA_ALIAS_NAME);
 
   return (
     <AnimatedCard>
@@ -59,7 +60,7 @@ const ExtraProcessingCard = ({
         }
         extra={
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            {isEnabled(EXTRA_ALIAS_NAME) && (
+            {extraEnabled && (
               <Button
                 type="text"
                 size="small"
@@ -70,7 +71,7 @@ const ExtraProcessingCard = ({
                 Reset
               </Button>
             )}
-            {!isEnabled(EXTRA_ALIAS_NAME) && (
+            {!extraEnabled && (
               <Tag icon={<LockFilled style={{ color: PRIMARY_COLOR }} />}>
                 Disabled
               </Tag>
@@ -111,6 +112,7 @@ const ExtraProcessingCard = ({
                         <Select
                           placeholder="Select Inner Envelopes"
                           style={{ width: "100%" }}
+                          disabled={!extraEnabled}
                           value={
                             extraProcessingConfig[et.type]?.envelopeType
                               ?.inner || []
@@ -146,6 +148,7 @@ const ExtraProcessingCard = ({
                         <Select
                           placeholder="Select Outer Envelopes"
                           style={{ width: "100%" }}
+                          disabled={!extraEnabled}
                           value={
                             extraProcessingConfig[et.type]?.envelopeType
                               ?.outer || []
@@ -191,6 +194,7 @@ const ExtraProcessingCard = ({
                 </Radio.Group> */}
                   <Radio.Group
                     value={extraTypeSelection[et.type]}
+                    disabled={!extraEnabled}
                     onChange={(e) => {
                       const mode = e.target.value;
 
@@ -234,7 +238,7 @@ const ExtraProcessingCard = ({
                             [et.type]: { ...prev[et.type], fixedQty: v ?? 0 },
                           }))
                         }
-                        disabled={!isEnabled("Extra Configuration")}
+                        disabled={!extraEnabled}
                         style={{ width: "100%" }}
                       />
                     </Form.Item>
@@ -277,6 +281,7 @@ const ExtraProcessingCard = ({
                             }
                             checkedChildren="%"
                             unCheckedChildren="#"
+                            disabled={!extraEnabled}
                             onChange={(checked) =>
                               setExtraProcessingConfig((prev) => ({
                                 ...prev,
@@ -333,6 +338,7 @@ const ExtraProcessingCard = ({
                                 size="small"
                                 placeholder="To"
                                 value={r.to}
+                                disabled={!extraEnabled}
                                 style={{ width: "100%" }}
                                 onChange={(v) => {
                                   const prevTo =
@@ -371,6 +377,7 @@ const ExtraProcessingCard = ({
                                     : undefined
                                 }
                                 value={r.value}
+                                disabled={!extraEnabled}
                                 style={{ width: "100%" }}
                                 onChange={(v) => {
                                   const updated = [...extraProcessingConfig[et.type].range];
@@ -394,6 +401,7 @@ const ExtraProcessingCard = ({
                                   size="small"
                                   type="primary"
                                   ghost
+                                  disabled={!extraEnabled}
                                   onClick={() => {
                                     const updated = [
                                       ...extraProcessingConfig[et.type].range,
@@ -415,6 +423,7 @@ const ExtraProcessingCard = ({
                                   size="small"
                                   type="primary"
                                   ghost
+                                  disabled={!extraEnabled}
                                   onClick={() => {
                                     const updated = extraProcessingConfig[et.type].range.filter(
                                       (_, idx) => idx !== i
@@ -450,7 +459,7 @@ const ExtraProcessingCard = ({
                             [et.type]: { ...prev[et.type], percentage: v ?? 0 },
                           }))
                         }
-                        disabled={!isEnabled("Extra Configuration")}
+                        disabled={!extraEnabled}
                         style={{ width: "100%" }}
                       />
                     </Form.Item>

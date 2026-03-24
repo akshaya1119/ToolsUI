@@ -330,7 +330,7 @@ const renderResolvedFieldValues = (conflict) => {
 
 const renderActionCell = (conflict, selectedValue, loading, onSelectionChange, onResolve, onIgnore) => {
   const isIgnored = conflict.status === CONFLICT_STATUS.IGNORED;
-  const canRenderIgnore = conflict.canIgnore && typeof onIgnore === "function";
+  const canRenderIgnore = typeof onIgnore === "function";
   const normalizedSelectedValue =
     selectedValue === undefined || selectedValue === null ? undefined : String(selectedValue);
   const zeroQuantityHelp =
@@ -405,6 +405,17 @@ const renderActionCell = (conflict, selectedValue, loading, onSelectionChange, o
             </Button>
           )}
         </Space>
+      </Space>
+    );
+  }
+
+  if (canRenderIgnore) {
+    return (
+      <Space wrap size={[4, 4]}>
+        <Text type="secondary">Review only</Text>
+        <Button size="small" disabled={isIgnored} onClick={() => onIgnore(conflict)}>
+          {isIgnored ? "Ignored" : "Ignore"}
+        </Button>
       </Space>
     );
   }
