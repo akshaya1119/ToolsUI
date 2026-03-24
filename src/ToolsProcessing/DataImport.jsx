@@ -1,9 +1,11 @@
-import React, { useEffect, useState } from 'react';
+﻿import React, { useEffect, useState } from 'react';
 import '@ant-design/v5-patch-for-react-19'
 import { Row, Col, Card, Select, Upload, Button, Typography, Space, Table, Tabs, Checkbox, Input, Modal, Radio } from 'antd';
 import { useToast } from '../hooks/useToast';
 import { CheckCircleOutlined, UploadOutlined, ToolOutlined, SearchOutlined } from '@ant-design/icons';
-import * as XLSX from 'xlsx';
+import * as XLSX from 'xlsx-js-style';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import { motion } from 'framer-motion';
 import API from '../hooks/api';
 import useStore from '../stores/ProjectData';
@@ -25,9 +27,9 @@ const DataImport = () => {
   const [conflicts, setConflicts] = useState(null);
   const [conflictSelections, setConflictSelections] = useState({});
   const [showData, setShowData] = useState(false);
-  const [existingData, setExistingData] = useState([]); // ✅ default to []
-  const [columns, setColumns] = useState([]); // ✅ default to []
-  const [loading, setLoading] = useState(false); // ✅ added
+  const [existingData, setExistingData] = useState([]); // âœ… default to []
+  const [columns, setColumns] = useState([]); // âœ… default to []
+  const [loading, setLoading] = useState(false); // âœ… added
   const [activeTab, setActiveTab] = useState("1");
   const token = localStorage.getItem('token');
   const projectId = useStore((state) => state.projectId);
@@ -417,6 +419,458 @@ const DataImport = () => {
         />
       </div>
     );
+  };
+
+  const getConflictValue = (item, ...keys) => {
+    for (const key of keys) {
+      if (item?.[key] !== undefined && item?.[key] !== null) {
+        return item[key];
+      }
+    }
+    return undefined;
+  };
+
+  const toConflictArray = (value) => {
+    if (Array.isArray(value)) return value.filter((item) => item !== undefined && item !== null && item !== "");
+    if (value === undefined || value === null || value === "") return [];
+    return [value];
+  };
+
+  const normalizeDataKey = (key) => {
+    if (!key) return key;
+    const normalized = String(key).replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
+    return normalized === "importrowno" ? "ImportRowNo" : key;
+  };
+
+  const shouldExcludeDataKey = (key) => {
+    if (!key) return false;
+    const normalized = String(key).replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
+    return (
+      normalized === "a" ||
+      normalized === "b" ||
+      normalized === "c" ||
+      normalized === "d" ||
+      normalized === "ccsort" ||
+      normalized === "importrowno" ||
+      normalized === "routeno" ||
+      normalized === "routesort" ||
+      normalized === "centersort" ||
+      normalized === "nodalsort" ||
+      normalized === "quantity" ||
+      normalized === "pages"
+    );
+  };
+
+  const normalizeKey = (key) => String(key || "").replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
+  const highlightAliasGroups = [
+    ["catchno", "catchnumber", "catch"],
+    ["centercode", "centrecode", "center"],
+    ["collegecode", "college"],
+    ["collegename", "college"],
+    ["nodalcode", "nodal"],
+    ["examdate", "examdate"],
+    ["examtime", "examtime"],
+    ["nrquantity", "nrquantity", "nrqty"],
+    ["papercode", "paper"],
+    ["remark", "remarks", "remark"],
+  ];
+
+  const isHighlightedColumn = (headerKey, highlightKeySet) => {
+    const normalized = normalizeKey(headerKey);
+    if (highlightKeySet.has(normalized)) {
+      return true;
+    }
+    for (const group of highlightAliasGroups) {
+      if (group.includes(normalized)) {
+        return group.some((alias) => highlightKeySet.has(alias));
+      }
+    }
+    return false;
+  };
+
+  const getHighlightKeysForConflict = (conflictType, item) => {
+    switch (normalizeKey(conflictType)) {
+      case "catchuniquefield": {
+        const uniqueField = getConflictValue(item, "uniqueField", "UniqueField");
+        return ["CatchNo", uniqueField].filter(Boolean);
+      }
+      case "centermultiplenodals":
+        return ["CenterCode", "CentreCode", "NodalCode"];
+      case "collegemultiplenodals": {
+        const collegeKeyType = getConflictValue(item, "collegeKeyType", "CollegeKeyType");
+        const collegeKey = collegeKeyType === "CollegeCode" ? "CollegeCode" : "CollegeName";
+        return [collegeKey, "NodalCode"];
+      }
+      case "collegemultiplecenters": {
+        const collegeKeyType = getConflictValue(item, "collegeKeyType", "CollegeKeyType");
+        const collegeKey = collegeKeyType === "CollegeCode" ? "CollegeCode" : "CollegeName";
+        return [collegeKey, "CenterCode", "CentreCode"];
+      }
+      case "requiredfieldempty":
+        return [getConflictValue(item, "field", "Field")].filter(Boolean);
+      case "zeronrquantity":
+        return ["NRQuantity"];
+      case "nodalcodedigitmismatch":
+        return ["NodalCode"];
+      default:
+        return [];
+    }
+  };
+
+  const downloadConflictReport = () => {
+    const rawErrors = Array.isArray(conflicts) ? conflicts : conflicts?.errors || conflicts?.Errors || [];
+
+    if (!rawErrors.length) {
+      showToast("No conflicts available to download.", "info");
+      return;
+    }
+
+    const groupedByType = rawErrors.reduce((acc, item) => {
+      const conflictType = getConflictValue(item, "conflictType", "ConflictType") || "unknown";
+      if (!acc[conflictType]) {
+        acc[conflictType] = [];
+      }
+      acc[conflictType].push(item);
+      return acc;
+    }, {});
+
+    const sheetRows = [];
+    const highlightCells = [];
+    const headerHighlightCells = [];
+    const sectionTitleCells = [];
+    const groups = Object.entries(groupedByType);
+
+    const getOrderedKeys = (dataKeys) => {
+      const preferredOrder = [
+        "CollegeCode",
+        "CenterCode",
+        "NodalCode",
+        "CatchNo",
+        "PaperCode",
+        "ExamDate",
+        "ExamTime",
+        "NRQuantity",
+        "Remark",
+      ];
+      const orderedKeys = preferredOrder
+        .map((key) => dataKeys.find((item) => normalizeKey(item) === normalizeKey(key)))
+        .filter(Boolean);
+      const remainingKeys = dataKeys.filter(
+        (key) => !orderedKeys.some((ordered) => normalizeKey(ordered) === normalizeKey(key))
+      );
+      return [...orderedKeys, ...remainingKeys];
+    };
+
+    groups.forEach(([conflictType, items], groupIndex) => {
+      const dataKeySet = new Set();
+
+      items.forEach((item) => {
+        const conflictRows = toConflictArray(getConflictValue(item, "rows", "Rows"));
+        conflictRows.forEach((row) => {
+          const rowData = getConflictValue(row, "data", "Data") || {};
+          Object.keys(rowData).forEach((key) => {
+            if (shouldExcludeDataKey(key)) return;
+            dataKeySet.add(normalizeDataKey(key));
+          });
+        });
+      });
+
+      const dataKeys = Array.from(dataKeySet);
+      const headerKeys = getOrderedKeys(dataKeys);
+
+      sheetRows.push([`Conflict Type: ${conflictType}`]);
+      sectionTitleCells.push({ rowIndex: sheetRows.length - 1, colCount: headerKeys.length });
+      const headerRowIndex = sheetRows.length;
+      sheetRows.push(headerKeys);
+      const headerIndexMap = headerKeys.reduce((acc, key, index) => {
+        acc[normalizeKey(key)] = index;
+        return acc;
+      }, {});
+      const headerHighlightSet = new Set();
+
+      items.forEach((item) => {
+        const conflictRows = toConflictArray(getConflictValue(item, "rows", "Rows"));
+
+        if (conflictRows.length === 0) {
+          sheetRows.push(headerKeys.map(() => ""));
+          return;
+        }
+
+        conflictRows.forEach((row) => {
+          const rowData = getConflictValue(row, "data", "Data") || {};
+          const rowIndex = sheetRows.length;
+          const rawHighlightKeys = getHighlightKeysForConflict(conflictType, item)
+            .filter(Boolean)
+            .map((key) => String(key));
+          const highlightKeySet = new Set(rawHighlightKeys.map((key) => normalizeKey(key)));
+          const rowValues = headerKeys.map((key) => {
+            const value = rowData[key] ?? rowData[normalizeDataKey(key)] ?? "";
+            return value;
+          });
+          sheetRows.push(rowValues);
+
+          const highlightIndexes = headerKeys
+            .map((key, index) => (isHighlightedColumn(key, highlightKeySet) ? index : -1))
+            .filter((index) => index >= 0);
+
+          if (highlightIndexes.length > 0) {
+            const colorMap = {
+              catch_unique_field: "FFF3CD",
+              center_multiple_nodals: "D1ECF1",
+              college_multiple_nodals: "D4EDDA",
+              college_multiple_centers: "F8D7DA",
+              required_field_empty: "E2E3E5",
+              zero_nr_quantity: "CCE5FF",
+              nodal_code_digit_mismatch: "FFE5B4",
+            };
+            const colorKey = normalizeKey(conflictType);
+            const color = colorMap[colorKey] || "FFF2CC";
+            highlightCells.push({ rowIndex, colIndexes: highlightIndexes, color });
+            highlightIndexes.forEach((index) => headerHighlightSet.add(index));
+          }
+        });
+      });
+      if (headerHighlightSet.size > 0) {
+        const colorKey = normalizeKey(conflictType);
+        const headerColorMap = {
+          catch_unique_field: "FFE8A1",
+          center_multiple_nodals: "BFE7F2",
+          college_multiple_nodals: "C8E6C9",
+          college_multiple_centers: "F5C6CB",
+          required_field_empty: "D6D8DB",
+          zero_nr_quantity: "B8DAFF",
+          nodal_code_digit_mismatch: "FFD59A",
+        };
+        const headerColor = headerColorMap[colorKey] || "FFE8A1";
+        headerHighlightCells.push({
+          rowIndex: headerRowIndex,
+          colIndexes: Array.from(headerHighlightSet),
+          color: headerColor,
+        });
+      }
+
+      if (groupIndex < groups.length - 1) {
+        sheetRows.push([]);
+      }
+    });
+
+    const worksheet = XLSX.utils.aoa_to_sheet(sheetRows);
+    const columnWidths = (sheetRows[1] || []).map((_, columnIndex) => {
+      const maxLength = sheetRows.reduce((max, row) => {
+        if (Array.isArray(row) && row[0] && String(row[0]).startsWith("Conflict Type:")) {
+          return max;
+        }
+        const value = row[columnIndex];
+        if (value === undefined || value === null) return max;
+        return Math.max(max, String(value).length);
+      }, 10);
+      return { wch: Math.min(Math.max(maxLength + 2, 12), 40) };
+    });
+    worksheet["!cols"] = columnWidths;
+
+    highlightCells.forEach(({ rowIndex, colIndexes, color }) => {
+      colIndexes.forEach((colIndex) => {
+        const cellAddress = XLSX.utils.encode_cell({ r: rowIndex, c: colIndex });
+        if (!worksheet[cellAddress]) {
+          worksheet[cellAddress] = { t: "s", v: "" };
+        }
+        worksheet[cellAddress].s = {
+          fill: {
+            patternType: "solid",
+            fgColor: { rgb: color || "FFF2CC" },
+            bgColor: { rgb: color || "FFF2CC" },
+          },
+        };
+      });
+    });
+
+    headerHighlightCells.forEach(({ rowIndex, colIndexes, color }) => {
+      colIndexes.forEach((colIndex) => {
+        const cellAddress = XLSX.utils.encode_cell({ r: rowIndex, c: colIndex });
+        if (!worksheet[cellAddress]) {
+          worksheet[cellAddress] = { t: "s", v: "" };
+        }
+        worksheet[cellAddress].s = {
+          font: { bold: true, color: { rgb: "000000" } },
+          fill: {
+            patternType: "solid",
+            fgColor: { rgb: color || "FFE8A1" },
+            bgColor: { rgb: color || "FFE8A1" },
+          },
+        };
+      });
+    });
+
+    worksheet["!merges"] = worksheet["!merges"] || [];
+    sectionTitleCells.forEach(({ rowIndex, colCount }) => {
+      const lastCol = Math.max(0, colCount - 1);
+      worksheet["!merges"].push({
+        s: { r: rowIndex, c: 0 },
+        e: { r: rowIndex, c: lastCol },
+      });
+      for (let c = 0; c <= lastCol; c += 1) {
+        const cellAddress = XLSX.utils.encode_cell({ r: rowIndex, c });
+        if (!worksheet[cellAddress]) {
+          worksheet[cellAddress] = { t: "s", v: c === 0 ? sheetRows[rowIndex][0] : "" };
+        }
+        worksheet[cellAddress].s = {
+          font: { bold: true, color: { rgb: "FFFFFF" } },
+          fill: {
+            patternType: "solid",
+            fgColor: { rgb: "4B6CB7" },
+            bgColor: { rgb: "4B6CB7" },
+          },
+          alignment: { horizontal: "left", vertical: "center" },
+        };
+      }
+    });
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Conflict Report");
+
+    const timestamp = new Date().toISOString().slice(0, 10);
+    const filename = `conflict_report_${timestamp}.xlsx`;
+
+    XLSX.writeFile(workbook, filename, { bookType: "xlsx", cellStyles: true, compression: true });
+    showToast(`Downloaded conflict report with ${rawErrors.length} conflicts.`, "success");
+  };
+
+  const downloadConflictReportPdf = () => {
+    const rawErrors = Array.isArray(conflicts) ? conflicts : conflicts?.errors || conflicts?.Errors || [];
+
+    if (!rawErrors.length) {
+      showToast("No conflicts available to download.", "info");
+      return;
+    }
+
+    const groupedByType = rawErrors.reduce((acc, item) => {
+      const conflictType = getConflictValue(item, "conflictType", "ConflictType") || "unknown";
+      if (!acc[conflictType]) {
+        acc[conflictType] = [];
+      }
+      acc[conflictType].push(item);
+      return acc;
+    }, {});
+
+    const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const marginX = 28;
+    let isFirstSection = true;
+
+    const getOrderedKeys = (dataKeys) => {
+      const preferredOrder = [
+        "CollegeCode",
+        "CenterCode",
+        "NodalCode",
+        "CatchNo",
+        "PaperCode",
+        "ExamDate",
+        "ExamTime",
+        "NRQuantity",
+        "Remark",
+      ];
+      const orderedKeys = preferredOrder
+        .map((key) => dataKeys.find((item) => normalizeKey(item) === normalizeKey(key)))
+        .filter(Boolean);
+      const remainingKeys = dataKeys.filter(
+        (key) => !orderedKeys.some((ordered) => normalizeKey(ordered) === normalizeKey(key))
+      );
+      return [...orderedKeys, ...remainingKeys];
+    };
+
+    Object.entries(groupedByType).forEach(([conflictType, items], index) => {
+      const dataKeySet = new Set();
+      const rows = [];
+      const rowHighlights = [];
+
+      items.forEach((item) => {
+        const conflictRows = toConflictArray(getConflictValue(item, "rows", "Rows"));
+        conflictRows.forEach((row) => {
+          const rowData = getConflictValue(row, "data", "Data") || {};
+          Object.keys(rowData).forEach((key) => {
+            if (shouldExcludeDataKey(key)) return;
+            dataKeySet.add(normalizeDataKey(key));
+          });
+        });
+      });
+
+      const headerKeys = getOrderedKeys(Array.from(dataKeySet));
+
+      items.forEach((item) => {
+        const conflictRows = toConflictArray(getConflictValue(item, "rows", "Rows"));
+        conflictRows.forEach((row) => {
+          const rowData = getConflictValue(row, "data", "Data") || {};
+          rows.push(
+            headerKeys.map((key) => rowData[key] ?? rowData[normalizeDataKey(key)] ?? "")
+          );
+
+          const rawHighlightKeys = getHighlightKeysForConflict(conflictType, item)
+            .filter(Boolean)
+            .map((key) => String(key));
+          const highlightKeySet = new Set(rawHighlightKeys.map((key) => normalizeKey(key)));
+          const highlightIndexes = headerKeys
+            .map((key, colIndex) => (isHighlightedColumn(key, highlightKeySet) ? colIndex : -1))
+            .filter((colIndex) => colIndex >= 0);
+          rowHighlights.push(highlightIndexes);
+        });
+      });
+
+      if (!isFirstSection) {
+        doc.addPage();
+      }
+      isFirstSection = false;
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(14);
+      doc.text(`Conflict Type: ${conflictType}`, marginX, 40);
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+
+      autoTable(doc, {
+        head: [headerKeys],
+        body: rows.length ? rows : [["No rows"]],
+        startY: 60,
+        margin: { left: marginX, right: marginX },
+        tableWidth: pageWidth - marginX * 2,
+        styles: {
+          font: "helvetica",
+          fontSize: 8,
+          cellPadding: 4,
+          valign: "middle",
+          lineColor: [220, 220, 220],
+          lineWidth: 0.5,
+        },
+        headStyles: {
+          fillColor: [22, 119, 255],
+          textColor: 255,
+          fontStyle: "bold",
+        },
+        alternateRowStyles: {
+          fillColor: [245, 247, 250],
+        },
+        didParseCell: (data) => {
+          if (data.section !== "body") return;
+          const highlightCols = rowHighlights[data.row.index] || [];
+          if (highlightCols.includes(data.column.index)) {
+            data.cell.styles.fillColor = [255, 243, 205];
+          }
+        },
+        didDrawPage: (data) => {
+          doc.setFontSize(9);
+          doc.text(
+            `Page ${doc.internal.getNumberOfPages()}`,
+            pageWidth - marginX,
+            doc.internal.pageSize.getHeight() - 12,
+            { align: "right" }
+          );
+        },
+      });
+    });
+
+    const timestamp = new Date().toISOString().slice(0, 10);
+    doc.save(`conflict_report_${timestamp}.pdf`);
+    showToast(`Downloaded conflict report PDF (${rawErrors.length} conflicts).`, "success");
   };
 
   // Excel parsing
@@ -1160,15 +1614,37 @@ const DataImport = () => {
               onChange={(key) => setActiveTab(key)}
               style={{ marginTop: 8 }}
               tabBarExtraContent={
-                <Button
-                  type="primary"
-                  size="small"
-                  disabled={activeTab !== "1" || selectedUploadedCatchNos.length !== 2}
-                  loading={loading}
-                  onClick={openMergeModal}
-                >
-                  Merge Catch Numbers
-                </Button>
+                activeTab === "2" ? (
+                  <Space size={8}>
+                    <Button
+                      type="primary"
+                      size="small"
+                      onClick={downloadConflictReport}
+                      disabled={!conflicts || !(conflicts?.errors || conflicts?.Errors || []).length}
+                    >
+                      Download Conflict Excel
+                    </Button>
+                    <Button
+                      type="primary"
+                      size="small"
+                      onClick={downloadConflictReportPdf}
+                      disabled={!conflicts || !(conflicts?.errors || conflicts?.Errors || []).length}
+                      style={{ backgroundColor: "#52c41a", borderColor: "#52c41a" }}
+                    >
+                      Download Conflict PDF
+                    </Button>
+                  </Space>
+                ) : (
+                  <Button
+                    type="primary"
+                    size="small"
+                    disabled={activeTab !== "1" || selectedUploadedCatchNos.length !== 2}
+                    loading={loading}
+                    onClick={openMergeModal}
+                  >
+                    Merge Catch Numbers
+                  </Button>
+                )
               }
             >
               <TabPane tab="Uploaded Data" key="1">

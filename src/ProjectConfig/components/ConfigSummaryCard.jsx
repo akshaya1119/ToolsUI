@@ -32,7 +32,7 @@ const ConfigSummaryCard = ({
       strong: true,
     },
     {
-      label: "Envelope Setup",
+      label: "Envelope Setup & Enhancement",
       value: envelopeConfigured ? "Configured" : "Not Configured",
       danger: !envelopeConfigured,
     },
