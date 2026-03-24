@@ -691,9 +691,9 @@ const ProcessingPipeline = () => {
         open={dependencyModal.visible}
         onCancel={() => setDependencyModal({ visible: false, unprocessedSteps: [], selectedStep: null })}
         footer={[
-          <Button key="skip" onClick={() => handleDependencyModalOk(false)}>
-            Process Only Selected
-          </Button>,
+          // <Button key="skip" onClick={() => handleDependencyModalOk(false)}>
+          //   Process Only Selected
+          // </Button>,
           <Button key="include" type="primary" onClick={() => handleDependencyModalOk(true)}>
             Process All Dependencies
           </Button>,
