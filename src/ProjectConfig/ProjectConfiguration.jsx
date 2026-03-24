@@ -907,6 +907,8 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
     setShowChangeModal(false);
   };
 
+  const effectiveTypeId = selectedType ?? localStorage.getItem("selectedType");
+
   return (
     <div style={{ padding: 16 }}>
 
@@ -1026,6 +1028,7 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
             }
             onReset={resetEnvelopeMakingCriteria}
             importedSnapshot={importedSnapshot}
+            typeId={effectiveTypeId}
           />
           <BoxBreakingCard
             isEnabled={isEnabled}
