@@ -825,7 +825,8 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
   };
 
   // Configuration status
-  const envelopeConfigured = isEnabled("Envelope Breaking");
+  const envelopeConfigured =
+    isEnabled("Envelope Setup and Enhancement") || isEnabled("Envelope Breaking");
   const boxConfigured = isEnabled("Box Breaking");
   const extraConfigured = isEnabled(EXTRA_ALIAS_NAME);
   const duplicateConfigured = isEnabled("Duplicate Tool");
@@ -919,6 +920,8 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
     setShowChangeModal(false);
   };
 
+  const effectiveTypeId = selectedType ?? localStorage.getItem("selectedType");
+
   return (
     <div style={{ padding: 16 }}>
 
@@ -1002,6 +1005,8 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
             envelopeOptions={envelopeOptions}
             onReset={resetEnvelopeSetup}
             importedSnapshot={importedSnapshot}
+            duplicateConfig={duplicateConfig}
+            setDuplicateConfig={setDuplicateConfig}
           />
 
           <ExtraProcessingCard
@@ -1036,6 +1041,7 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
             }
             onReset={resetEnvelopeMakingCriteria}
             importedSnapshot={importedSnapshot}
+            typeId={effectiveTypeId}
           />
           <BoxBreakingCard
             isEnabled={isEnabled}

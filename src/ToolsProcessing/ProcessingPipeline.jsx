@@ -97,6 +97,8 @@ const ProcessingPipeline = () => {
     // Real module-based steps — use specific substrings to avoid cross-matching
     if (lowerNames.some((n) => n.includes("duplicate")))
       order.push({ key: "duplicate", title: "Duplicate Processing" });
+    if (lowerNames.some((n) => n.includes("enhancement")))
+      order.push({ key: "enhancement", title: "Enhancement Processing" });
     if (lowerNames.some((n) => n.includes("extra")))
       order.push({ key: "extra", title: "Extra Configuration" });
     // Use exact phrase "envelope breaking" to avoid matching "envelope summary"
@@ -206,6 +208,11 @@ const ProcessingPipeline = () => {
     message.success(`Duplicate processing completed. Duplicates removed: ${duplicatesRemoved}`);
   };
 
+  const runEnhancement = async (projectId) => {
+    const res = await API.post(`/Duplicate/Enhancement?ProjectId=${projectId}`);
+    message.success(res?.data?.message || "Enhancement processing completed");
+  };
+
   const runExtras = async (projectId) => {
     const res = await API.post(`/ExtraEnvelopes?ProjectId=${projectId}`);
     message.success(res?.data?.message || "Extras calculation completed");
@@ -279,15 +286,15 @@ const ProcessingPipeline = () => {
 
     const configMap = {
       duplicate: {
-        value:
-          [`Duplicate Remove: ${getNames(projectConfig.duplicateCriteria).join(", ")}`,
-          `Enhancement: ${projectConfig.enhancement}`
-          ],
+        value: [`Duplicate Remove: ${getNames(projectConfig.duplicateCriteria).join(", ")}`],
       },
-      extra: {
+      enhancement: {
         value: projectConfig.enhancement
           ? [`Enhancement: ${projectConfig.enhancement}`]
           : ["Not configured"],
+      },
+      extra: {
+        value: ["Not configured"],
       },
       envelope: {
         value: [`Sorting: ${getNames(projectConfig.envelopeMakingCriteria)}`],
@@ -442,6 +449,7 @@ const ProcessingPipeline = () => {
 
         try {
           if (step.key === "duplicate") await runDuplicate(projectId);
+          else if (step.key === "enhancement") await runEnhancement(projectId);
           else if (step.key === "extra") await runExtras(projectId);
           else if (step.key === "envelope") await runEnvelope(projectId);
           else if (step.key === "box") await runBoxBreaking(projectId);

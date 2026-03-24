@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Card, Select, Typography, Tag, InputNumber, Checkbox, Button } from "antd";
 import { ContainerFilled, LockFilled, UndoOutlined } from "@ant-design/icons";
 import AnimatedCard from "./AnimatedCard";
@@ -22,12 +22,30 @@ const EnvelopeMakingCriteriaCard = ({
   setResetBookletSerialOnCatchChange,
   onReset,
   importedSnapshot,
+  typeId,
 }) => {
   const isDirty = (current, snapshotVal) => {
     if (!importedSnapshot || importedSnapshot === "pending") return false;
     return JSON.stringify(current) !== JSON.stringify(snapshotVal);
   };
   const DIRTY_STYLE = { borderLeft: "3px solid #faad14", paddingLeft: 4 };
+
+  const resolveDefaultMssCount = (value) => {
+    const numericType = Number(value);
+    if (numericType === 2) return 1; // Paper
+    if (numericType === 1) return 3; // Booklet
+    return 1;
+  };
+
+  const [mssCount, setMssCount] = useState(() => resolveDefaultMssCount(typeId));
+  const [mssTouched, setMssTouched] = useState(false);
+  const [mssInsertPosition, setMssInsertPosition] = useState("end");
+
+  useEffect(() => {
+    if (!mssTouched) {
+      setMssCount(resolveDefaultMssCount(typeId));
+    }
+  }, [typeId, mssTouched]);
 
   const getDynamicSortLabel = (selectedIds) => {
     if (!selectedIds || selectedIds.length === 0) {
@@ -162,6 +180,43 @@ const EnvelopeMakingCriteriaCard = ({
               placeholder="Enter Start Booklet Serial Number"
               style={{ width: "100%", marginTop: 4 }}
             />
+          </div>
+
+          {/* MSS Count - 50% */}
+          <div style={{ flex: "1 1 48%" }}>
+            <Text strong>MSS Count</Text>
+            <InputNumber
+              min={0}
+              disabled={!isEnabled("Envelope Breaking")}
+              value={mssCount}
+              onChange={(value) => {
+                setMssTouched(true);
+                setMssCount(value ?? 0);
+              }}
+              placeholder="Enter MSS count"
+              style={{ width: "100%", marginTop: 4 }}
+            />
+            <Text type="secondary" style={{ display: "block", fontSize: 12, marginTop: 2 }}>
+              {Number(typeId) === 2
+                ? "Type: Paper (default MSS count 1)"
+                : Number(typeId) === 1
+                  ? "Type: Booklet (default MSS count 3)"
+                  : "Type not set (default MSS count 1)"}
+            </Text>
+          </div>
+
+          {/* MSS Row Insert Position - 50% */}
+          <div style={{ flex: "1 1 48%" }}>
+            <Text strong>MSS Row Insert Position</Text>
+            <Select
+              disabled={!isEnabled("Envelope Breaking")}
+              value={mssInsertPosition}
+              onChange={setMssInsertPosition}
+              style={{ width: "100%", marginTop: 4 }}
+            >
+              <Option value="start">Start</Option>
+              <Option value="end">End</Option>
+            </Select>
           </div>
         </div>
       </Card>
