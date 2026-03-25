@@ -137,7 +137,8 @@ const ImportConfig = ({ onImport, disabled }) => {
                 option?.children?.toLowerCase().includes(input.toLowerCase())
               }
             >
-              {(Array.isArray(projectList) ? projectList : []).map((project) => (
+              {(Array.isArray(projectList?.data) ? projectList?.data : []).map((project) => (
+                
                 <Select.Option
                   key={project.projectId}
                   value={project.projectId}
