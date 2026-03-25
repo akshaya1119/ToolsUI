@@ -26,7 +26,7 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
   const navigate = useNavigate();
   const projectId = useStore((state) => state.projectId);
   const url = import.meta.env.VITE_API_BASE_URL;
-
+  const [mssInsertPosition, setMssInsertPosition] = useState("end");
   // Group and Type options - use props if provided, otherwise fetch
   const [groupOptions, setGroupOptions] = useState(propGroupOptions || []);
   const [typeOptions, setTypeOptions] = useState(propTypeOptions || []);
@@ -149,8 +149,8 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
     extraTypeSelection,
     setExtraTypeSelection,
   } = useProjectConfigData(token);
-
-
+  const [mss, setMss] = useState([]);
+  const [selectedMss, setSelectedMss] = useState([]);
 
 
   // Change detection hook
@@ -175,6 +175,7 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
       innerBundlingCriteria,
       extraProcessingConfig,
       duplicateConfig,
+      selectedMss,
     );
 
   const fetchProjectConfigData = async (projectId, typeId = null, groupId = null) => {
@@ -262,6 +263,21 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
       );
     }
 
+    let fetchedMss = [];
+    try {
+      const typeToUse = typeId || selectedType || localStorage.getItem("selectedType");
+      if (typeToUse) {
+        const response = await API.get(`Projects/GetMssByType?typeId=${typeToUse}`);
+        fetchedMss = response.data;
+        setMss(fetchedMss);
+      }
+    } catch (err) {
+      console.error(
+        "Failed to get MSS",
+        err.response?.data || err.message,
+      );
+    }
+
     // Build values locally (don't rely on state — state is async)
     let parsedValues = {
       enabledModules: [],
@@ -283,6 +299,7 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
       duplicateConfig: duplicateConfigRes,
       extraProcessingConfig: {},
       extraTypeSelection: {},
+      selectedMss: fetchedMss.map(m => m.id),
     };
 
     if (projectConfig && toolModules.length > 0) {
@@ -342,6 +359,7 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
         resetOnSymbolChange: projectConfig.resetOnSymbolChange ?? false,
         isInnerBundlingDone: projectConfig.isInnerBundlingDone ?? false,
         innerBundlingCriteria: parsedInnerBundlingCriteria,
+        selectedMss: projectConfig.mssTypes ?? fetchedMss.map(m => m.id),
       };
 
       setEnabledModules([...parsedValues.enabledModules]);
@@ -365,6 +383,7 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
       setResetOnSymbolChange(parsedValues.resetOnSymbolChange);
       setIsInnerBundlingDone(parsedValues.isInnerBundlingDone);
       setInnerBundlingCriteria([...parsedValues.innerBundlingCriteria]);
+      setSelectedMss([...parsedValues.selectedMss]);
     } else {
       setEnabledModules([]);
       setInnerEnvelopes([]);
@@ -381,6 +400,7 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
       setStartBookletSerialNumber(0);
       setIsInnerBundlingDone(false);
       setInnerBundlingCriteria([]);
+      setSelectedMss(fetchedMss.map(m => m.id));
     }
 
     // Process Extra Configurations
@@ -506,6 +526,7 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
           duplicateConfig: duplicateConfigRes,
           extraProcessingConfig: {},
           extraTypeSelection: {},
+          selectedMss: mss.map(m => m.id),
         };
 
         if (projectConfig && toolModules.length > 0) {
@@ -565,6 +586,7 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
             resetOnSymbolChange: projectConfig.resetOnSymbolChange ?? false,
             isInnerBundlingDone: projectConfig.isInnerBundlingDone ?? false,
             innerBundlingCriteria: parsedInnerBundlingCriteria,
+            selectedMss: projectConfig.mssTypes ?? mss.map(m => m.id),
           };
 
           setEnabledModules([...parsedValues.enabledModules]);
@@ -588,6 +610,7 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
           setResetOnSymbolChange(parsedValues.resetOnSymbolChange);
           setIsInnerBundlingDone(parsedValues.isInnerBundlingDone);
           setInnerBundlingCriteria([...parsedValues.innerBundlingCriteria]);
+          setSelectedMss([...parsedValues.selectedMss]);
         }
 
         // Process Extra Configurations
@@ -678,6 +701,7 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
       enhancementEnabled: false,
       enhancementType: "round",
     });
+    setSelectedMss(mss.map(m => m.id));
     setImportedSnapshot(null);
   };
 
@@ -705,6 +729,8 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
     innerBundlingCriteria,
     extraProcessingConfig,
     duplicateConfig,
+    selectedMss,
+    mssInsertPosition,
     fetchProjectConfigData,
     showToast,
     resetForm,
@@ -757,12 +783,14 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
       setResetBookletSerialOnCatchChange(
         importedSnapshot.resetBookletSerialOnCatchChange,
       );
+      setSelectedMss([...(importedSnapshot.selectedMss || [])]);
     } else {
       setSelectedEnvelopeFields([]);
       setStartOmrEnvelopeNumber(0);
       setResetOmrSerialOnCatchChange(false);
       setStartBookletSerialNumber(0);
       setResetBookletSerialOnCatchChange(false);
+      setSelectedMss(mss.map(m => m.id));
     }
   };
 
@@ -880,6 +908,7 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
       duplicateConfig: JSON.parse(JSON.stringify(duplicateConfig)),
       extraProcessingConfig: JSON.parse(JSON.stringify(extraProcessingConfig)),
       extraTypeSelection: JSON.parse(JSON.stringify(extraTypeSelection)),
+      selectedMss: [...selectedMss],
     });
   }, [importedSnapshot]);
 
@@ -1042,6 +1071,11 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
             onReset={resetEnvelopeMakingCriteria}
             importedSnapshot={importedSnapshot}
             typeId={effectiveTypeId}
+            mssList={mss}
+            selectedMss={selectedMss}
+            setSelectedMss={setSelectedMss}
+            mssInsertPosition={mssInsertPosition}
+            setMssInsertPosition={setMssInsertPosition}
           />
           <BoxBreakingCard
             isEnabled={isEnabled}

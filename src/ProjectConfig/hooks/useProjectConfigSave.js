@@ -24,6 +24,8 @@ export const useProjectConfigSave = (
   innerBundlingCriteria,
   extraProcessingConfig,
   duplicateConfig,
+  selectedMss,
+  mssInsertPosition,
   fetchProjectConfigData,
   showToast,
   resetForm,
@@ -89,6 +91,8 @@ export const useProjectConfigSave = (
         innerBundlingCriteria: innerBundlingCriteria,
         duplicateCriteria: duplicateConfig?.duplicateCriteria || [],
         enhancement: duplicateConfig?.enhancement || 0,
+        mssTypes: selectedMss || [],
+        mssAttached: mssInsertPosition || "end",
       };
 
       await API.post(projectConfigEndpoint, projectConfigPayload);
