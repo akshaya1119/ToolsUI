@@ -9,7 +9,8 @@ import NodalUnivExtra from './NodalUnivExtra';
 import Project from './Project';
 import MasterConfig from './MasterConfig';
 import ReportBuilder from '../pages/Report/ReportBuilder';
-import {CopyOutlined} from '@ant-design/icons'
+import CrystalReports from './CrystalReports';
+import {CopyOutlined, FileTextOutlined} from '@ant-design/icons'
 const Master = () => {
   const tabItems = [
     {
@@ -84,6 +85,15 @@ const Master = () => {
         </span>
       ),
       children: <ReportBuilder />
+    },
+    {
+      key: '8',
+      label: (
+        <span style={{ display: 'flex', alignItems: 'center' }}>
+          <FileTextOutlined style={{ color: '#1890ff', marginRight: 8 }} /><span>Crystal Reports</span> 
+        </span>
+      ),
+      children: <CrystalReports />
     },
   ];
 
