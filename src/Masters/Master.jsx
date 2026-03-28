@@ -8,6 +8,7 @@ import ToolsModule from './ToolsModule';
 import NodalUnivExtra from './NodalUnivExtra';
 import Project from './Project';
 import MasterConfig from './MasterConfig';
+import RPTFiles from './RPTFiles';
 
 const Master = () => {
   const tabItems = [
@@ -74,6 +75,14 @@ const Master = () => {
         </span>
       ),
       children: <NodalUnivExtra />
+    },
+    {
+      key: '7',
+      label: (
+        <span style={{ display: 'flex', alignItems: 'center' }}> 
+        RPT Files </span>
+      ),
+      children: <RPTFiles />
     }
   ];
 
