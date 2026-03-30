@@ -854,7 +854,7 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
 
   // Configuration status
   const envelopeConfigured =
-    isEnabled("Envelope Setup and Enhancement") || isEnabled("Envelope Breaking");
+    isEnabled("Envelope Setup and Enhancement");
   const boxConfigured = isEnabled("Box Breaking");
   const extraConfigured = isEnabled(EXTRA_ALIAS_NAME);
   const duplicateConfigured = isEnabled("Duplicate Tool");

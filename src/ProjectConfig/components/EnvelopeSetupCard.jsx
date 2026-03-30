@@ -25,8 +25,7 @@ const EnvelopeSetupCard = ({
   };
   const DIRTY_STYLE = { borderLeft: "3px solid #faad14", paddingLeft: 4 };
 
-  const envelopeModuleEnabled =
-    isEnabled("Envelope Setup and Enhancement") || isEnabled("Envelope Breaking");
+  const envelopeModuleEnabled = isEnabled("Envelope Setup and Enhancement");
 
   const enhancementValue = duplicateConfig?.enhancement ?? 0;
   const enhancementLocked = !envelopeModuleEnabled;

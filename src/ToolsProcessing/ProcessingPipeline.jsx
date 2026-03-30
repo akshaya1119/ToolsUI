@@ -53,6 +53,7 @@ const ProcessingPipeline = () => {
     const fileNames = {
       duplicate: "DuplicateTool.xlsx",
       extra: "ExtrasCalculation.xlsx",
+      enhancement: "EnhancementReport.xlsx", 
       envelope: "EnvelopeBreaking.xlsx",
       box: "BoxBreaking.xlsx",
       envelopeSummary: "EnvelopeSummary.xlsx",
@@ -97,7 +98,7 @@ const ProcessingPipeline = () => {
     // Real module-based steps — use specific substrings to avoid cross-matching
     if (lowerNames.some((n) => n.includes("duplicate")))
       order.push({ key: "duplicate", title: "Duplicate Processing" });
-    if (lowerNames.some((n) => n.includes("enhancement")))
+    if (lowerNames.includes("envelope setup and enhancement"))
       order.push({ key: "enhancement", title: "Enhancement Processing" });
     if (lowerNames.some((n) => n.includes("extra")))
       order.push({ key: "extra", title: "Extra Configuration" });
@@ -378,6 +379,7 @@ const ProcessingPipeline = () => {
     const fileNames = {
       duplicate: "DuplicateTool.xlsx",
       extra: "ExtrasCalculation.xlsx",
+      enhancement: "EnhancementProcessing.xlsx",
       envelope: "EnvelopeBreaking.xlsx",
       box: "BoxBreaking.xlsx",
       envelopeSummary: "EnvelopeSummary.xlsx",
