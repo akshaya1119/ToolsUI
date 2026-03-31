@@ -40,6 +40,7 @@ export default function Sidebar({ collapsed }) {
           children: [
             { label: "Project Configuration", path: "/projectconfiguration" },
             { label: "Data Import", path: "/dataimport" },
+            { label: "Project Templates", path: "/projecttemplates" },
             { label: "Processing Pipeline", path: "/processingpipeline" },
           ],
         },

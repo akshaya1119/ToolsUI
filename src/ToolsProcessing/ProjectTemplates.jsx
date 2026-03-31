@@ -2,7 +2,6 @@
 import {
   Button,
   Card,
-  Divider,
   Empty,
   Form,
   Input,
@@ -22,6 +21,7 @@ import {
   CloseOutlined,
   DownloadOutlined,
   EditOutlined,
+  ExclamationCircleOutlined,
   SettingOutlined,
   HistoryOutlined,
   InboxOutlined,
@@ -30,20 +30,26 @@ import {
   UploadOutlined,
 } from "@ant-design/icons";
 import axios from "axios";
+import useStore from "../stores/ProjectData";
 
-const RPTFiles = () => {
+const ProjectTemplates = () => {
   const url = import.meta.env.VITE_API_BASE_URL;
   const APIURL = import.meta.env.VITE_API_URL;
+  const rptApiUrl = import.meta.env.VITE_RPT_API_URL;
   const token = localStorage.getItem("token");
+
+  const projectId = useStore((state) => state.projectId);
+  const projectName = useStore((state) => state.projectName);
 
   const [groupOptions, setGroupOptions] = useState([]);
   const [typeOptions, setTypeOptions] = useState([]);
   const [userOptions, setUserOptions] = useState([]);
   const [groupLabel, setGroupLabel] = useState("");
   const [typeLabel, setTypeLabel] = useState("");
-  const [selectedGroup, setSelectedGroup] = useState(null);
-  const [selectedType, setSelectedType] = useState(null);
-  const [templateScope, setTemplateScope] = useState("group");
+  const [projectGroupId, setProjectGroupId] = useState(null);
+  const [projectTypeId, setProjectTypeId] = useState(null);
+  const [projectLabel, setProjectLabel] = useState("");
+  const [projectLoading, setProjectLoading] = useState(false);
   const [projectOptions, setProjectOptions] = useState([]);
   const [moduleOptions, setModuleOptions] = useState([]);
 
@@ -75,6 +81,7 @@ const RPTFiles = () => {
   const [versionsLoading, setVersionsLoading] = useState(false);
   const [versionsData, setVersionsData] = useState([]);
   const [versionsTemplate, setVersionsTemplate] = useState(null);
+  const [pendingGenerateTemplate, setPendingGenerateTemplate] = useState(null);
 
   const [addFileList, setAddFileList] = useState([]);
   const [addSubmitting, setAddSubmitting] = useState(false);
@@ -85,20 +92,11 @@ const RPTFiles = () => {
   const [importForm] = Form.useForm();
   const [editForm] = Form.useForm();
 
-  const selectionReady = Boolean(
-    selectedType && (templateScope === "standard" || selectedGroup)
-  );
+  const selectionReady = Boolean(projectId && projectGroupId && projectTypeId);
 
-  const onGroupChange = (value) => {
-    setSelectedGroup(value || null);
-  };
-
-  const onTypeChange = (value) => {
-    setSelectedType(value || null);
-  };
-
-  const onScopeChange = (value) => {
-    setTemplateScope(value);
+  const normalizeId = (value) => {
+    const num = Number(value);
+    return Number.isFinite(num) && num > 0 ? num : null;
   };
 
   useEffect(() => {
@@ -110,10 +108,8 @@ const RPTFiles = () => {
   }, []);
 
   useEffect(() => {
-    if (templateScope === "standard") {
-      setSelectedGroup(null);
-    }
-  }, [templateScope]);
+    fetchProjectContext();
+  }, [projectId]);
 
   const fetchGroup = async () => {
     try {
@@ -123,9 +119,9 @@ const RPTFiles = () => {
         value: group.id || group.groupId,
       }));
       setGroupOptions(formatted);
-      if (selectedGroup) {
-        const found = formatted.find((g) => g.value === selectedGroup);
-        setGroupLabel(found?.label || selectedGroup);
+      if (projectGroupId) {
+        const found = formatted.find((g) => g.value === projectGroupId);
+        setGroupLabel(found?.label || projectGroupId);
       }
     } catch (err) {
       console.error("Failed to fetch groups", err);
@@ -140,13 +136,50 @@ const RPTFiles = () => {
         value: type.typeId,
       }));
       setTypeOptions(formatted);
-      if (selectedType) {
-        const found = formatted.find((t) => t.value === selectedType);
-        setTypeLabel(found?.label || selectedType);
+      if (projectTypeId) {
+        const found = formatted.find((t) => t.value === projectTypeId);
+        setTypeLabel(found?.label || projectTypeId);
       }
     } catch (err) {
       console.error("Failed to fetch paper types", err);
     }
+  };
+
+  const fetchProjectContext = async () => {
+    const normalizedProjectId = normalizeId(projectId);
+    if (!normalizedProjectId) {
+      setProjectGroupId(null);
+      setProjectTypeId(null);
+      setProjectLabel("");
+      return;
+    }
+
+    setProjectLoading(true);
+    try {
+      const res = await axios.get(`${url}/Project`);
+      const list = Array.isArray(res.data) ? res.data : [];
+      const found = list.find(
+        (project) =>
+          normalizeId(project?.projectId ?? project?.id) === normalizedProjectId,
+      );
+
+      if (found) {
+        setProjectGroupId(normalizeId(found?.groupId));
+        setProjectTypeId(normalizeId(found?.typeId));
+        setProjectLabel(found?.name || found?.projectName || projectName || "");
+        return;
+      }
+    } catch (err) {
+      console.error("Failed to fetch project context", err);
+    } finally {
+      setProjectLoading(false);
+    }
+
+    const fallbackGroup = normalizeId(localStorage.getItem("selectedGroup"));
+    const fallbackType = normalizeId(localStorage.getItem("selectedType"));
+    setProjectGroupId(fallbackGroup);
+    setProjectTypeId(fallbackType);
+    setProjectLabel(projectName || "");
   };
 
   const fetchProjects = async () => {
@@ -209,32 +242,31 @@ const RPTFiles = () => {
 
 
   useEffect(() => {
-    if (selectedGroup && groupOptions.length > 0) {
-      const found = groupOptions.find((g) => g.value === selectedGroup);
-      setGroupLabel(found?.label || selectedGroup);
+    if (projectGroupId && groupOptions.length > 0) {
+      const found = groupOptions.find((g) => g.value === projectGroupId);
+      setGroupLabel(found?.label || projectGroupId);
     } else {
       setGroupLabel("");
     }
-  }, [selectedGroup, groupOptions]);
+  }, [projectGroupId, groupOptions]);
 
   useEffect(() => {
-    if (selectedType && typeOptions.length > 0) {
-      const found = typeOptions.find((t) => t.value === selectedType);
-      setTypeLabel(found?.label || selectedType);
+    if (projectTypeId && typeOptions.length > 0) {
+      const found = typeOptions.find((t) => t.value === projectTypeId);
+      setTypeLabel(found?.label || projectTypeId);
     } else {
       setTypeLabel("");
     }
-  }, [selectedType, typeOptions]);
+  }, [projectTypeId, typeOptions]);
 
   const fetchAvailableRPTFiles = async () => {
     if (!selectionReady) return;
     setLoadingTemplates(true);
     try {
       const params = new URLSearchParams();
-      params.set("typeId", selectedType);
-      if (templateScope === "group" && selectedGroup) {
-        params.set("groupId", selectedGroup);
-      }
+      params.set("typeId", projectTypeId);
+      params.set("groupId", projectGroupId);
+      params.set("projectId", normalizeId(projectId));
       const res = await axios.get(
         `${APIURL}/RPTTemplates/by-group?${params.toString()}`,
       );
@@ -251,10 +283,13 @@ const RPTFiles = () => {
     setMappingOptionsLoading(true);
     try {
       const groupId =
-        template?.groupId ??
-        (templateScope === "group" ? selectedGroup : 0) ??
+        normalizeId(template?.groupId) ??
+        normalizeId(projectGroupId) ??
         0;
-      const typeId = template?.typeId ?? selectedType ?? 0;
+      const typeId =
+        normalizeId(template?.typeId) ??
+        normalizeId(projectTypeId) ??
+        0;
       const res = await axios.get(`${APIURL}/RPTTemplates/mapping-options`, {
         params: {
           groupId,
@@ -282,7 +317,7 @@ const RPTFiles = () => {
     } else {
       setAvailableRPTFiles([]);
     }
-  }, [selectedGroup, selectedType, templateScope]);
+  }, [projectId, projectGroupId, projectTypeId]);
 
   useEffect(() => {
     if (!mappingModalOpen) {
@@ -300,12 +335,7 @@ const RPTFiles = () => {
     if (mappingModalOpen) {
       fetchMappingOptions(mappingTemplate);
     }
-  }, [mappingModalOpen, selectedGroup, selectedType, mappingTemplate]);
-
-  useEffect(() => {
-    if (selectedGroup) addForm.setFieldsValue({ groupId: selectedGroup });
-    if (selectedType) addForm.setFieldsValue({ typeId: selectedType });
-  }, [selectedGroup, selectedType, addForm]);
+  }, [mappingModalOpen, projectGroupId, projectTypeId, mappingTemplate]);
 
   const uploadTemplate = async ({
     groupId,
@@ -363,8 +393,9 @@ const RPTFiles = () => {
       setAddSubmitting(true);
       const doUpload = async (forceUpload = false) =>
         uploadTemplate({
-          groupId: templateScope === "group" ? values.groupId : null,
-          typeId: values.typeId,
+          groupId: projectGroupId,
+          typeId: projectTypeId,
+          projectId: normalizeId(projectId),
           templateName: values.templateName,
           file,
           moduleIds: values.moduleIds || [],
@@ -381,8 +412,9 @@ const RPTFiles = () => {
         const uploadedTemplate = {
           templateId: result?.templateId,
           templateName: result?.templateName || values.templateName,
-          groupId: templateScope === "group" ? values.groupId : null,
-          typeId: values.typeId,
+          groupId: projectGroupId,
+          typeId: projectTypeId,
+          projectId: normalizeId(projectId),
         };
 
         if (uploadedTemplate.templateId) {
@@ -425,14 +457,20 @@ const RPTFiles = () => {
   };
 
   const handleImportTemplates = async () => {
+    if (!selectionReady) {
+      message.warning("Select a project with group and type first.");
+      return;
+    }
+
     try {
       const values = await importForm.validateFields();
       setImportSubmitting(true);
       const sourceScope = values.sourceScope || "group";
       const payload = {
         sourceScope,
-        targetGroupId: selectedGroup,
-        targetTypeId: selectedType,
+        targetProjectId: normalizeId(projectId),
+        targetGroupId: projectGroupId,
+        targetTypeId: projectTypeId,
         copyMappings: values.copyMappings ?? true,
       };
       if (values.sourceTypeId) {
@@ -445,9 +483,8 @@ const RPTFiles = () => {
       } else if (sourceScope === "project") {
         payload.sourceProjectId = values.sourceProjectId;
       }
-      await axios.post(`${APIURL}/RPTTemplates/import-from-group`, {
-        ...payload,
-      });
+
+      await axios.post(`${APIURL}/RPTTemplates/import-from-group`, payload);
       message.success("Templates imported successfully.");
       setImportModalOpen(false);
       importForm.resetFields();
@@ -767,6 +804,7 @@ const RPTFiles = () => {
     setVersionsOpen(false);
     setVersionsTemplate(null);
     setVersionsData([]);
+    setPendingGenerateTemplate(null);
   };
 
   const openEditModal = (template) => {
@@ -809,6 +847,66 @@ const RPTFiles = () => {
     }
   };
 
+  const runReportGeneration = async (template) => {
+    if (!projectId) {
+      message.warning("Please select a project");
+      return;
+    }
+    if (!template?.templateId) {
+      message.warning("Template not found.");
+      return;
+    }
+    if (!rptApiUrl) {
+      message.error("RPT API URL is not configured.");
+      return;
+    }
+    const payload = {
+      projectId: Number(projectId),
+      templateId: Number(template.templateId),
+    };
+    const hide = message.loading("Generating report...");
+    try {
+      const res = await axios.post(
+        `${rptApiUrl}/report/generate-dynamic`,
+        payload,
+        { responseType: "blob" },
+      );
+      const contentDisposition = res.headers["content-disposition"] || "";
+      const fileNameMatch = contentDisposition.match(/filename="?([^\"]+)"?/i);
+      const fileName =
+        fileNameMatch?.[1] ||
+        `report_template${payload.templateId}_proj${payload.projectId}.pdf`;
+      const fileBlob = new Blob([res.data], { type: "application/pdf" });
+      const url = window.URL.createObjectURL(fileBlob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      message.success("Report generated.");
+    } catch (err) {
+      const msg =
+        err?.response?.data?.message ||
+        err?.response?.data ||
+        "Failed to generate report.";
+      console.error("Generate report failed", err);
+      message.error(msg);
+    } finally {
+      hide();
+    }
+  };
+
+  const handleGenerateReportFromVersion = (template) => {
+    if (!template) return;
+    if (template?.isActive) {
+      runReportGeneration(template);
+      return;
+    }
+    setPendingGenerateTemplate(template);
+  };
+
   const handleDownload = async (template) => {
     try {
       const { blob, fileName } = await downloadTemplateBlob(template);
@@ -837,8 +935,9 @@ const RPTFiles = () => {
       try {
         const doUpload = async (forceUpload = false) =>
           uploadTemplate({
-            groupId: record.groupId,
-            typeId: record.typeId,
+            groupId: projectGroupId,
+            typeId: projectTypeId,
+            projectId: normalizeId(projectId),
             templateName: record.templateName,
             file,
             moduleIds: record.moduleIds ?? record.ModuleIds ?? [],
@@ -853,8 +952,9 @@ const RPTFiles = () => {
           const uploadedTemplate = {
             templateId: result?.templateId,
             templateName: result?.templateName || record.templateName,
-            groupId: record.groupId,
-            typeId: record.typeId,
+            groupId: projectGroupId,
+            typeId: projectTypeId,
+            projectId: normalizeId(projectId),
           };
 
           if (uploadedTemplate.templateId) {
@@ -1045,7 +1145,7 @@ const RPTFiles = () => {
         ),
       },
     ],
-    [availableRPTFiles, userMap, moduleMap],
+    [availableRPTFiles, projectGroupId, projectTypeId, projectId, userMap, moduleMap],
   );
 
   const versionsColumns = useMemo(
@@ -1098,19 +1198,28 @@ const RPTFiles = () => {
       {
         title: "Actions",
         key: "actions",
-        width: 120,
+        width: 200,
         render: (_, record) => (
-          <Button
-            size="small"
-            icon={<DownloadOutlined />}
-            onClick={() => handleDownload(record)}
-          >
-            Download
-          </Button>
+          <Space size={6}>
+            <Button
+              size="small"
+              icon={<DownloadOutlined />}
+              onClick={() => handleDownload(record)}
+            >
+              Download
+            </Button>
+            <Button
+              size="small"
+              type="primary"
+              onClick={() => handleGenerateReportFromVersion(record)}
+            >
+              Generate
+            </Button>
+          </Space>
         ),
       },
     ],
-    [userMap, versionsData],
+    [userMap],
   );
 
   const sourceOptionGroups = useMemo(() => {
@@ -1246,60 +1355,60 @@ const RPTFiles = () => {
       `}</style>
       <div className="rpt-header">
         <Typography.Title level={4} style={{ margin: 0 }}>
-          RPT Templates
+          Project Templates
         </Typography.Title>
         <div className="rpt-filters">
           <div className="rpt-filter">
-            <Select
-              placeholder="Scope"
-              value={templateScope}
-              onChange={onScopeChange}
-              options={[
-                { label: "Group", value: "group" },
-                { label: "Standard", value: "standard" },
-              ]}
-              style={{ width: "100%" }}
+            <Input
+              placeholder="Project"
+              value={
+                projectLoading
+                  ? "Loading project..."
+                  : projectLabel ||
+                    projectName ||
+                    (projectId ? `Project ${projectId}` : "")
+              }
               size="large"
+              disabled
             />
-          </div>
-          <div className="rpt-filter">
-            <Select
-              placeholder="Select Group"
-              value={selectedGroup}
-              onChange={onGroupChange}
-              options={groupOptions}
-              style={{ width: "100%" }}
-              size="large"
-              allowClear
-              clearIcon={<span style={{ fontSize: 12 }}>x</span>}
-              disabled={templateScope === "standard"}
-            />
-            {!selectedGroup && templateScope === "group" && (
+            {!projectId && (
               <Typography.Text
                 type="danger"
                 style={{ fontSize: 11, display: "block", marginTop: 2 }}
               >
-                Please select a group
+                Please select a project
               </Typography.Text>
             )}
           </div>
           <div className="rpt-filter">
-            <Select
-              placeholder="Select Type"
-              value={selectedType}
-              onChange={onTypeChange}
-              options={typeOptions}
-              style={{ width: "100%" }}
+            <Input
+              placeholder="Group"
+              value={groupLabel || ""}
               size="large"
-              allowClear
-              clearIcon={<span style={{ fontSize: 12 }}>x</span>}
+              disabled
             />
-            {!selectedType && (
+            {!projectGroupId && (
               <Typography.Text
                 type="danger"
                 style={{ fontSize: 11, display: "block", marginTop: 2 }}
               >
-                Please select a type
+                Group is missing for this project
+              </Typography.Text>
+            )}
+          </div>
+          <div className="rpt-filter">
+            <Input
+              placeholder="Type"
+              value={typeLabel || ""}
+              size="large"
+              disabled
+            />
+            {!projectTypeId && (
+              <Typography.Text
+                type="danger"
+                style={{ fontSize: 11, display: "block", marginTop: 2 }}
+              >
+                Type is missing for this project
               </Typography.Text>
             )}
           </div>
@@ -1319,11 +1428,8 @@ const RPTFiles = () => {
               <Typography.Text strong>Templates</Typography.Text>
               {selectionReady && (
                 <>
-                  {templateScope === "standard" ? (
-                    <Tag>Standard</Tag>
-                  ) : (
-                    <Tag>{groupLabel}</Tag>
-                  )}
+                  <Tag>Project</Tag>
+                  <Tag>{groupLabel}</Tag>
                   <Tag>{typeLabel}</Tag>
                 </>
               )}
@@ -1343,13 +1449,14 @@ const RPTFiles = () => {
                 type="primary"
                 icon={<PlusOutlined />}
                 onClick={() => setAddModalOpen(true)}
+                disabled={!selectionReady}
               >
                 Add
               </Button>
               <Button
                 icon={<CopyOutlined />}
                 onClick={() => setImportModalOpen(true)}
-                disabled={!selectionReady || templateScope !== "group"}
+                disabled={!selectionReady}
               >
                 Import
               </Button>
@@ -1358,7 +1465,7 @@ const RPTFiles = () => {
         >
           {!selectionReady ? (
             <Empty
-              description="Select a group and type to view templates."
+              description="Select a project with group and type to view templates."
               image={Empty.PRESENTED_IMAGE_SIMPLE}
             />
           ) : availableRPTFiles.length === 0 ? (
@@ -1367,10 +1474,10 @@ const RPTFiles = () => {
               description={
                 <Space direction="vertical" size={6}>
                   <Typography.Text>
-                    No templates found for this group and type.
+                    No templates found for this project.
                   </Typography.Text>
                   <Typography.Text type="secondary">
-                    You can import from an existing group or add a new template.
+                    Uploading here creates a project-only version.
                   </Typography.Text>
                 </Space>
               }
@@ -1386,7 +1493,7 @@ const RPTFiles = () => {
                 <Button
                   icon={<CopyOutlined />}
                   onClick={() => setImportModalOpen(true)}
-                  disabled={templateScope !== "group"}
+                  disabled={!selectionReady}
                 >
                   Import Templates
                 </Button>
@@ -1555,21 +1662,21 @@ const RPTFiles = () => {
           >
             <Input placeholder="Enter template name" />
           </Form.Item>
-          {templateScope === "group" && (
-            <Form.Item
-              label="Group"
-              name="groupId"
-              rules={[{ required: true, message: "Group is required" }]}
-            >
-              <Select options={groupOptions} placeholder="Select group" />
-            </Form.Item>
-          )}
           <Form.Item
-            label="Type"
-            name="typeId"
-            rules={[{ required: true, message: "Type is required" }]}
+            label="Project"
+            style={{ marginBottom: 8 }}
           >
-            <Select options={typeOptions} placeholder="Select type" />
+            <Input
+              value={projectLabel || projectName || ""}
+              placeholder="Project"
+              disabled
+            />
+          </Form.Item>
+          <Form.Item label="Group" style={{ marginBottom: 8 }}>
+            <Input value={groupLabel || ""} placeholder="Group" disabled />
+          </Form.Item>
+          <Form.Item label="Type" style={{ marginBottom: 8 }}>
+            <Input value={typeLabel || ""} placeholder="Type" disabled />
           </Form.Item>
           <Form.Item
             label="Modules"
@@ -1619,13 +1726,27 @@ const RPTFiles = () => {
           form={importForm}
           initialValues={{ copyMappings: true }}
         >
+          <Form.Item label="Target Project" style={{ marginBottom: 8 }}>
+            <Input
+              value={
+                projectLabel ||
+                projectName ||
+                (projectId ? `Project ${projectId}` : "")
+              }
+              placeholder="Target Project"
+              disabled
+            />
+          </Form.Item>
+
           <Form.Item
             label="Import From"
             name="sourceScope"
             rules={[
               {
                 validator: (_, value) =>
-                  value ? Promise.resolve() : Promise.reject("Import source is required"),
+                  value
+                    ? Promise.resolve()
+                    : Promise.reject("Import source is required"),
               },
             ]}
             style={{ marginBottom: 8 }}
@@ -1655,7 +1776,9 @@ const RPTFiles = () => {
                     rules={[
                       {
                         validator: (_, value) =>
-                          value ? Promise.resolve() : Promise.reject("Source group is required"),
+                          value
+                            ? Promise.resolve()
+                            : Promise.reject("Source group is required"),
                       },
                     ]}
                     style={{ marginBottom: 8 }}
@@ -1681,7 +1804,9 @@ const RPTFiles = () => {
                     rules={[
                       {
                         validator: (_, value) =>
-                          value ? Promise.resolve() : Promise.reject("Source project id is required"),
+                          value
+                            ? Promise.resolve()
+                            : Promise.reject("Source project is required"),
                       },
                     ]}
                     style={{ marginBottom: 8 }}
@@ -1774,12 +1899,51 @@ const RPTFiles = () => {
         open={versionsOpen}
         onCancel={closeVersionsModal}
         footer={null}
-        width={820}
+        width={860}
       >
         <Space direction="vertical" size={8} style={{ width: "100%" }}>
           <Typography.Text type="secondary">
             Showing all saved versions for this template.
           </Typography.Text>
+          {pendingGenerateTemplate && (
+            <Card
+              size="small"
+              style={{ background: "#fff7e6", borderColor: "#ffd591" }}
+              bodyStyle={{ padding: 12 }}
+            >
+              <Space
+                align="start"
+                style={{ display: "flex", justifyContent: "space-between" }}
+              >
+                <Space>
+                  <ExclamationCircleOutlined style={{ color: "#d46b08" }} />
+                  <Typography.Text>
+                    You are using version v{pendingGenerateTemplate.version}. Output
+                    may differ from the latest template.
+                  </Typography.Text>
+                </Space>
+                <Space>
+                  <Button
+                    size="small"
+                    onClick={() => setPendingGenerateTemplate(null)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    size="small"
+                    type="primary"
+                    onClick={() => {
+                      const target = pendingGenerateTemplate;
+                      setPendingGenerateTemplate(null);
+                      runReportGeneration(target);
+                    }}
+                  >
+                    Generate
+                  </Button>
+                </Space>
+              </Space>
+            </Card>
+          )}
           <Table
             rowKey="templateId"
             dataSource={versionsData}
@@ -1795,4 +1959,4 @@ const RPTFiles = () => {
   );
 };
 
-export default RPTFiles;
+export default ProjectTemplates;
