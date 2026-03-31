@@ -9,7 +9,7 @@ import NodalUnivExtra from './NodalUnivExtra';
 import Project from './Project';
 import MasterConfig from './MasterConfig';
 import RPTFiles from './RPTFiles';
-
+import { HiTemplate } from "react-icons/hi";
 const Master = () => {
   const tabItems = [
     {
@@ -80,14 +80,14 @@ const Master = () => {
       key: '7',
       label: (
         <span style={{ display: 'flex', alignItems: 'center' }}> 
-        RPT Files </span>
+        <HiTemplate style={{ color: '#1890ff', marginRight: 8 }} />RPT Templates </span>
       ),
       children: <RPTFiles />
     }
   ];
 
   return (
-    <div style={{ padding: 24 }}>
+    <div style={{ padding: 0 }}>
       <Typography.Title level={3} style={{ marginBottom: 24 }}>
         Masters
       </Typography.Title>

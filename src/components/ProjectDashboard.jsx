@@ -185,9 +185,13 @@ const ProjectDashboard = () => {
     }
     setTemplatesLoading(true);
     try {
-      const res = await API.get(
-        `/RPTTemplates/by-group?groupId=${groupId}&typeId=${typeId}`
-      );
+      const res = await API.get("/RPTTemplates/by-group", {
+        params: {
+          groupId,
+          typeId,
+          projectId,
+        },
+      });
       setTemplateOptions(res.data || []);
     } catch (err) {
       console.error("Failed to fetch templates", err);
