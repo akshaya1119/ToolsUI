@@ -54,7 +54,7 @@ const ProcessingPipeline = () => {
       duplicate: "DuplicateTool.xlsx",
       extra: "ExtrasCalculation.xlsx",
       enhancement: "EnhancementReport.xlsx", 
-      envelope: "EnvelopeBreaking.xlsx",
+      envelopebreaking: "EnvelopeBreaking.xlsx",
       box: "BoxBreaking.xlsx",
       envelopeSummary: "EnvelopeSummary.xlsx",
       catchSummary: "CatchSummary.xlsx",
@@ -104,7 +104,7 @@ const ProcessingPipeline = () => {
       order.push({ key: "extra", title: "Extra Configuration" });
     // Use exact phrase "envelope breaking" to avoid matching "envelope summary"
     if (lowerNames.some((n) => n.includes("envelope breaking")))
-      order.push({ key: "envelope", title: "Envelope Breaking" });
+      order.push({ key: "envelopebreaking", title: "Envelope Breaking" });
     if (lowerNames.some((n) => n.includes("box")))
       order.push({ key: "box", title: "Box Breaking" });
 
@@ -297,13 +297,13 @@ const ProcessingPipeline = () => {
       extra: {
         value: ["Not configured"],
       },
-      envelope: {
+      envelopebreaking: {
         value: [`Sorting: ${getNames(projectConfig.envelopeMakingCriteria)}`],
       },
       box: {
         value: [
           `Box Breaking: ${getNames(projectConfig.boxBreakingCriteria).join(", ")}`,
-          `Sorting Way: ${getNames(projectConfig.sortingBoxReport).join(", ")}`,
+          `Sorting: ${getNames(projectConfig.sortingBoxReport).join(", ")}`,
           `Duplicate Removal: ${getNames(projectConfig.duplicateRemoveFields).join(", ")}`,
         ],
       },

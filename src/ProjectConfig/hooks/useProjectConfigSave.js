@@ -97,13 +97,46 @@ export const useProjectConfigSave = (
 
       await API.post(projectConfigEndpoint, projectConfigPayload);
 
-      // Prepare extras config for comparison
-      const newExtrasConfig = Object.entries(extraTypeSelection)
-        .filter(([typeName]) => extraTypes.find((t) => t.type === typeName))
-        .reduce((acc, [typeName]) => {
-          acc[typeName] = extraProcessingConfig[typeName] || {};
-          return acc;
-        }, {});
+      // Prepare extras config for comparison — normalize it to match API structure
+      const newExtrasConfig = {};
+      Object.entries(extraTypeSelection).forEach(([typeName, mode]) => {
+        const et = extraTypes.find((t) => t.type === typeName);
+        if (!et) return;
+        
+        const config = extraProcessingConfig[typeName] || {};
+        const normalizedEnvelope = {
+          Inner: Array.isArray(config.envelopeType?.inner)
+            ? config.envelopeType.inner[0] || ""
+            : config.envelopeType?.inner || "",
+          Outer: Array.isArray(config.envelopeType?.outer)
+            ? config.envelopeType.outer[0] || ""
+            : config.envelopeType?.outer || "",
+        };
+
+        const item = {
+          mode,
+          value: "",
+          envelopeType: normalizedEnvelope,
+          rangeConfig: null,
+        };
+
+        if (mode === "Fixed") {
+          item.value = String(Number(config.fixedQty || 0));
+        } else if (mode === "Percentage") {
+          item.value = String(Number(config.percentage || 0));
+        } else if (mode === "Range") {
+          const rangesWithFrom = (config.range || []).map((r, idx) => {
+            const from = idx === 0 ? 0 : (config.range[idx - 1]?.to ?? 0) + 1;
+            return { from, to: r.to, value: r.value };
+          });
+          item.rangeConfig = {
+            rangeType: config.rangeType || "Fixed",
+            ranges: rangesWithFrom,
+          };
+        }
+
+        newExtrasConfig[typeName] = item;
+      });
 
       // Get existing extras config for comparison
       let existingExtrasConfig = null;
@@ -117,13 +150,14 @@ export const useProjectConfigSave = (
           
           existingExtrasConfig = {};
           extrasData.forEach((item) => {
-            const type = extraTypes.find((e) => e.extraTypeId === item.extraType)?.type;
+            const etFound = extraTypes.find((e) => e.extraTypeId === item.extraType);
+            const type = etFound?.type;
             if (type) {
               existingExtrasConfig[type] = {
                 mode: item.mode,
-                value: item.value,
-                envelopeType: item.envelopeType,
-                rangeConfig: item.rangeConfig,
+                value: item.value ? String(item.value) : "",
+                envelopeType: item.envelopeType ? JSON.parse(item.envelopeType) : { Inner: "", Outer: "" },
+                rangeConfig: item.rangeConfig ? JSON.parse(item.rangeConfig) : null,
               };
             }
           });
@@ -134,7 +168,7 @@ export const useProjectConfigSave = (
 
       // Compare configurations to identify changes
       const changes = compareConfigurations(existingConfig, projectConfigPayload, enabledModules, existingExtrasConfig, newExtrasConfig);
-      const affectedReportsWithDeps = getReportDependencies(changes.affectedReports, enabledModules);
+      const affectedReportsWithDeps = getReportDependencies(changes.affectedReports, enabledModules, toolModules);
 
       console.log("Existing Config:", existingConfig);
       console.log("New Config Payload:", projectConfigPayload);

@@ -919,6 +919,39 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
   const handleConfirmRerun = async () => {
     setIsRerunning(true);
     try {
+      // Map affected report keys to module IDs
+      const moduleIds = [];
+      const reportToModuleNameMap = {
+        duplicate: "duplicate tool",
+        extra: "extra configuration",
+        envelope: "envelope breaking",
+        box: "box breaking",
+        envelopeSummary: "envelope summary",
+        catchSummary: "catch summary report",
+        catchOmrSerialing: "catchomrserialingreport",
+      };
+
+      if (changeData && changeData.affectedReports && toolModules) {
+        changeData.affectedReports.forEach((reportKey) => {
+          const targetModuleName = reportToModuleNameMap[reportKey] || reportKey;
+          const module = toolModules.find(
+            (m) => m.name.toLowerCase().includes(targetModuleName.toLowerCase())
+          );
+          if (module && module.id) {
+            moduleIds.push(Number(module.id));
+          }
+        });
+      }
+
+      // Send the POST API call if we have module IDs
+      if (moduleIds.length > 0) {
+        console.log("Sending rerun API call for moduleIds:", moduleIds);
+        await API.post("/ProjectConfigs/DeleteModuleReports", {
+          projectId: Number(projectId),
+          moduleIds: moduleIds,
+        });
+      }
+
       setShowChangeModal(false);
 
       // Store the affected reports in sessionStorage for ProcessingPipeline to pick up
@@ -936,10 +969,10 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
 
       // Navigate to ProcessingPipeline
       navigate("/ProcessingPipeline");
-      message.success("Navigating to Processing Pipeline to re-run reports");
+      message.success("Reports re-generation initiated successfully");
     } catch (err) {
       console.error("Error during rerun:", err);
-      message.error("Failed to initiate report re-run");
+      message.error(err.response?.data?.message || "Failed to initiate report re-run");
     } finally {
       setIsRerunning(false);
     }
