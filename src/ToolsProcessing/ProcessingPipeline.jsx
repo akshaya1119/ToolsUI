@@ -26,6 +26,7 @@ const ProcessingPipeline = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [steps, setSteps] = useState([]);
   const [selectedModules, setSelectedModules] = useState([]);
+  const [allModules, setAllModules] = useState([]);
   const [projectConfig, setProjectConfig] = useState(null);
   const [configChanged, setConfigChanged] = useState(false);
   const [changedFieldsInfo, setChangedFieldsInfo] = useState([]);
@@ -53,7 +54,8 @@ const ProcessingPipeline = () => {
     const fileNames = {
       duplicate: "DuplicateTool.xlsx",
       extra: "ExtrasCalculation.xlsx",
-      envelope: "EnvelopeBreaking.xlsx",
+      enhancement: "EnhancementReport.xlsx", 
+      envelopebreaking: "EnvelopeBreaking.xlsx",
       box: "BoxBreaking.xlsx",
       envelopeSummary: "EnvelopeSummary.xlsx",
       catchSummary: "CatchSummary.xlsx",
@@ -97,13 +99,13 @@ const ProcessingPipeline = () => {
     // Real module-based steps — use specific substrings to avoid cross-matching
     if (lowerNames.some((n) => n.includes("duplicate")))
       order.push({ key: "duplicate", title: "Duplicate Processing" });
-    if (lowerNames.some((n) => n.includes("enhancement")))
+    if (lowerNames.includes("envelope setup and enhancement"))
       order.push({ key: "enhancement", title: "Enhancement Processing" });
     if (lowerNames.some((n) => n.includes("extra")))
       order.push({ key: "extra", title: "Extra Configuration" });
     // Use exact phrase "envelope breaking" to avoid matching "envelope summary"
     if (lowerNames.some((n) => n.includes("envelope breaking")))
-      order.push({ key: "envelope", title: "Envelope Breaking" });
+      order.push({ key: "envelopebreaking", title: "Envelope Breaking" });
     if (lowerNames.some((n) => n.includes("box")))
       order.push({ key: "box", title: "Box Breaking" });
 
@@ -141,11 +143,16 @@ const ProcessingPipeline = () => {
         if (moduleEntries.length && typeof moduleEntries[0] === "number") {
           const modsRes = await API.get(`/Modules`);
           const allMods = modsRes.data || [];
+          setAllModules(allMods);
           const idToName = new Map(allMods.map((m) => [m.id, m.name]));
           moduleEntries = moduleEntries
             .sort((a, b) => a - b)                // Sort ascending
             .map((id) => idToName.get(id))       // Map ID to name
             .filter(Boolean);
+        } else {
+          // If already names, still fetch all modules once for dependency resolution
+          const modsRes = await API.get(`/Modules`);
+          setAllModules(modsRes.data || []);
         }
         setEnabledModuleNames(moduleEntries || []);
         const order = computeRunOrder(moduleEntries);
@@ -249,20 +256,62 @@ const ProcessingPipeline = () => {
   };
 
   const handleModuleSelection = (moduleKey, checked) => {
+    if (!checked) {
+      setSelectedModules((prev) => prev.filter((key) => key !== moduleKey));
+      return;
+    }
+
+    // --- RECURSIVE DEPENDENCY RESOLUTION ---
+    const getRecursiveAncestors = (key, memo = new Set()) => {
+      if (memo.has(key)) return memo;
+      memo.add(key);
+
+      const moduleKeyToNameMap = {
+        duplicate: "Duplicate Tool",
+        enhancement: "Envelope Setup and Enhancement",
+        extra: "Extra Configuration",
+        envelopebreaking: "Envelope Breaking",
+        box: "Box Breaking",
+        envelopeSummary: "Envelope Summary",
+        catchSummary: "Catch Summary Report",
+        catchOmrSerialing: "Catchomrserialingreport",
+      };
+
+      const name = moduleKeyToNameMap[key];
+      if (!name) return memo;
+
+      const module = allModules.find(m => m.name.toLowerCase() === name.toLowerCase());
+      if (!module) return memo;
+
+      const parentIds = module.parentModuleIds || (module.parentModuleId ? [module.parentModuleId] : []);
+      
+      parentIds.forEach(pid => {
+        const parent = allModules.find(m => m.id === pid);
+        if (parent) {
+          // Map parent name back to key
+          const parentKey = Object.keys(moduleKeyToNameMap).find(
+            k => moduleKeyToNameMap[k].toLowerCase() === parent.name.toLowerCase()
+          );
+          if (parentKey) {
+            getRecursiveAncestors(parentKey, memo);
+          }
+        }
+      });
+
+      return memo;
+    };
+
+    const ancestors = Array.from(getRecursiveAncestors(moduleKey));
+    
     setSelectedModules((prev) => {
-      if (checked) {
-        // Find the index of the clicked module
-        const clickedIndex = steps.findIndex((s) => s.key === moduleKey);
+      // Filter ancestors to only include those NOT completed (except the clicked one)
+      const keysToSelect = ancestors.filter(key => {
+        const step = steps.find(s => s.key === key);
+        return (step && step.status !== "completed") || key === moduleKey;
+      });
 
-        // Get all module keys from start to clicked index
-        const keysToSelect = steps.slice(0, clickedIndex + 1).map((s) => s.key);
-
-        // Merge with existing selections and remove duplicates
-        const merged = Array.from(new Set([...prev, ...keysToSelect]));
-        return merged;
-      } else {
-        return prev.filter((key) => key !== moduleKey);
-      }
+      // Merge with existing selections
+      return Array.from(new Set([...prev, ...keysToSelect]));
     });
   };
 
@@ -296,13 +345,13 @@ const ProcessingPipeline = () => {
       extra: {
         value: ["Not configured"],
       },
-      envelope: {
+      envelopebreaking: {
         value: [`Sorting: ${getNames(projectConfig.envelopeMakingCriteria)}`],
       },
       box: {
         value: [
           `Box Breaking: ${getNames(projectConfig.boxBreakingCriteria).join(", ")}`,
-          `Sorting Way: ${getNames(projectConfig.sortingBoxReport).join(", ")}`,
+          `Sorting: ${getNames(projectConfig.sortingBoxReport).join(", ")}`,
           `Duplicate Removal: ${getNames(projectConfig.duplicateRemoveFields).join(", ")}`,
         ],
       },
@@ -378,6 +427,7 @@ const ProcessingPipeline = () => {
     const fileNames = {
       duplicate: "DuplicateTool.xlsx",
       extra: "ExtrasCalculation.xlsx",
+      enhancement: "EnhancementProcessing.xlsx",
       envelope: "EnvelopeBreaking.xlsx",
       box: "BoxBreaking.xlsx",
       envelopeSummary: "EnvelopeSummary.xlsx",
