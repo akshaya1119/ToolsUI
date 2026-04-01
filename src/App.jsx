@@ -10,12 +10,14 @@ import { jwtDecode } from "jwt-decode";
 import { ToastProvider } from './services/notification/ToastProvider';
 import ProjectConfiguration from "./ProjectConfig/ProjectConfiguration";
 import DataImport from "./ToolsProcessing/DataImport";
+import ProjectTemplates from "./ToolsProcessing/ProjectTemplates";
 import DuplicateTool from "./ToolsProcessing/DuplicateTool";
 import Master from "./Masters/Master";
 import EnvelopeBreaking from "./ToolsProcessing/Envelope/EnvelopeBreaking";
 import ProcessingPipeline from "./ToolsProcessing/ProcessingPipeline";
 import HorizontalToVertical from "./ToolsProcessing/HToV"
 import Report from "./pages/Report/Report";
+import ReportBuilder from "./pages/Report/ReportBuilder";
 import ProjectDashboard from "./components/ProjectDashboard";
 import ProtectedRoute from "./routes/ProtectedRoute";
 import { useUserToken, useUserTokenActions } from "./stores/UserToken";
@@ -126,6 +128,16 @@ export default function App() {
                 }
               />
               <Route
+                path="/projecttemplates"
+                element={
+                  <ProtectedRoute token={token}>
+                    <MainLayout >
+                      <ProjectTemplates />
+                    </MainLayout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
                 path="/duplicate"
                 element={
                   <ProtectedRoute token={token}>
@@ -186,6 +198,15 @@ export default function App() {
                   <ProtectedRoute token={token}>
                     <MainLayout >
                       <Report />
+                    </MainLayout></ProtectedRoute>
+                }
+              />
+              <Route
+                path="/reportbuilder"
+                element={
+                  <ProtectedRoute token={token}>
+                    <MainLayout >
+                      <ReportBuilder />
                     </MainLayout></ProtectedRoute>
                 }
               />

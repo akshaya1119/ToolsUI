@@ -40,6 +40,7 @@ export default function Sidebar({ collapsed }) {
           children: [
             { label: "Project Configuration", path: "/projectconfiguration" },
             { label: "Data Import", path: "/dataimport" },
+            { label: "Project Templates", path: "/projecttemplates" },
             { label: "Processing Pipeline", path: "/processingpipeline" },
           ],
         },
@@ -68,7 +69,7 @@ export default function Sidebar({ collapsed }) {
         },
       ]
     ),
-    { label: "Reports", icon: <FaChartBar className="text-black" />, path: "/reports" }, // Filled bar chart icon
+  ,   
   ];
 
   const renderMenuItem = (item) => {
