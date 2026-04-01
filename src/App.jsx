@@ -10,6 +10,7 @@ import { jwtDecode } from "jwt-decode";
 import { ToastProvider } from './services/notification/ToastProvider';
 import ProjectConfiguration from "./ProjectConfig/ProjectConfiguration";
 import DataImport from "./ToolsProcessing/DataImport";
+import ProjectTemplates from "./ToolsProcessing/ProjectTemplates";
 import DuplicateTool from "./ToolsProcessing/DuplicateTool";
 import Master from "./Masters/Master";
 import EnvelopeBreaking from "./ToolsProcessing/Envelope/EnvelopeBreaking";
@@ -122,6 +123,16 @@ export default function App() {
                   <ProtectedRoute token={token}>
                     <MainLayout >
                       <DataImport />
+                    </MainLayout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/projecttemplates"
+                element={
+                  <ProtectedRoute token={token}>
+                    <MainLayout >
+                      <ProjectTemplates />
                     </MainLayout>
                   </ProtectedRoute>
                 }

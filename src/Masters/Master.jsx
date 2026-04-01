@@ -8,7 +8,8 @@ import ToolsModule from './ToolsModule';
 import NodalUnivExtra from './NodalUnivExtra';
 import Project from './Project';
 import MasterConfig from './MasterConfig';
-import ReportBuilder from '../pages/Report/ReportBuilder';
+import RPTFiles from './RPTFiles';
+import { HiTemplate } from "react-icons/hi";import ReportBuilder from '../pages/Report/ReportBuilder';
 import CrystalReports from './CrystalReports';
 import {CopyOutlined, FileTextOutlined} from '@ant-design/icons'
 const Master = () => {
@@ -80,6 +81,14 @@ const Master = () => {
     {
       key: '7',
       label: (
+        <span style={{ display: 'flex', alignItems: 'center' }}> 
+        <HiTemplate style={{ color: '#1890ff', marginRight: 8 }} />RPT Templates </span>
+      ),
+      children: <RPTFiles />
+    },
+    {
+      key: '8',
+      label: (
         <span style={{ display: 'flex', alignItems: 'center' }}>
           <CopyOutlined style={{ color: '#1890ff', marginRight: 8 }} /><span>Report Builder</span> 
         </span>
@@ -87,7 +96,7 @@ const Master = () => {
       children: <ReportBuilder />
     },
     {
-      key: '8',
+      key: '9',
       label: (
         <span style={{ display: 'flex', alignItems: 'center' }}>
           <FileTextOutlined style={{ color: '#1890ff', marginRight: 8 }} /><span>Crystal Reports</span> 
@@ -98,7 +107,7 @@ const Master = () => {
   ];
 
   return (
-    <div style={{ padding: 24 }}>
+    <div style={{ padding: 0 }}>
       <Typography.Title level={3} style={{ marginBottom: 24 }}>
         Masters
       </Typography.Title>
