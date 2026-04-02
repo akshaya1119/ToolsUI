@@ -6,10 +6,21 @@ import { cardStyle, iconStyle } from "./constants";
 
 const { Text } = Typography;
 
+// Modules allowed without Envelope Setup and Enhancement
+const ALWAYS_ALLOWED = ["Duplicate Tool", "Extra Configuration"];
+
 const ModuleSelectionCard = ({ mergedModules, enabledModules, setEnabledModules }) => {
-  console.log(mergedModules);
-  console.log(enabledModules);
-  console.log(setEnabledModules);
+  const envelopeEnabled = enabledModules.includes("Envelope Setup and Enhancement");
+
+  const handleChange = (newValues) => {
+    // If Envelope Setup and Enhancement is being unchecked, strip all non-allowed modules
+    if (!newValues.includes("Envelope Setup and Enhancement")) {
+      setEnabledModules(newValues.filter((m) => ALWAYS_ALLOWED.includes(m)));
+    } else {
+      setEnabledModules(newValues);
+    }
+  };
+
   return (
     <AnimatedCard>
       <Card
@@ -29,7 +40,7 @@ const ModuleSelectionCard = ({ mergedModules, enabledModules, setEnabledModules 
         <Checkbox.Group
           style={{ display: "block", marginTop: 12 }}
           value={enabledModules}
-          onChange={setEnabledModules}
+          onChange={handleChange}
         >
           <div
             style={{
@@ -39,15 +50,20 @@ const ModuleSelectionCard = ({ mergedModules, enabledModules, setEnabledModules 
               rowGap: 8,
             }}
           >
-            {mergedModules.map((tool) => (
-              <Checkbox key={tool.id} value={tool.name}>
-                <b>{tool.name}</b>
-                <br />
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  {tool.description}
-                </Text>
-              </Checkbox>
-            ))}
+            {mergedModules.map((tool) => {
+              const isAlwaysAllowed = ALWAYS_ALLOWED.includes(tool.name);
+              const isGateModule = tool.name === "Envelope Setup and Enhancement";
+              const isDisabled = !envelopeEnabled && !isAlwaysAllowed && !isGateModule;
+              return (
+                <Checkbox key={tool.id} value={tool.name} disabled={isDisabled}>
+                  <b style={{ color: isDisabled ? "#aaa" : undefined }}>{tool.name}</b>
+                  <br />
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    {tool.description}
+                  </Text>
+                </Checkbox>
+              );
+            })}
           </div>
         </Checkbox.Group>
       </Card>
@@ -55,4 +71,4 @@ const ModuleSelectionCard = ({ mergedModules, enabledModules, setEnabledModules 
   );
 };
 
-export default ModuleSelectionCard;
+export default ModuleSelectionCard;

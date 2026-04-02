@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { Table, Button, Modal, Input, Space, message } from 'antd';
+import { Table, Button, Modal, Input, Space, message, Select } from 'antd';
 import { EditOutlined, SearchOutlined } from '@ant-design/icons';
 import API from '../hooks/api';
+
+const { Option } = Select;
 
 const ToolModule = () => {
     const [modules, setModules] = useState([]);
@@ -9,6 +11,7 @@ const ToolModule = () => {
     const [modalVisible, setModalVisible] = useState(false);
     const [editingItem, setEditingItem] = useState(null);
     const [name, setName] = useState('');
+    const [dependencyIds, setDependencyIds] = useState([]); // now array
 
     const fetchModules = async () => {
         setLoading(true);
@@ -29,12 +32,14 @@ const ToolModule = () => {
     const handleAdd = () => {
         setEditingItem(null);
         setName('');
+        setDependencyIds([]);
         setModalVisible(true);
     };
 
     const handleEdit = (record) => {
         setEditingItem(record);
         setName(record.name);
+        setDependencyIds(record.parentModuleIds || []); // array
         setModalVisible(true);
     };
 
@@ -55,18 +60,24 @@ const ToolModule = () => {
             return;
         }
 
+        // Prevent self-dependency
+        if (editingItem && dependencyIds.includes(editingItem.id)) {
+            message.error("Module cannot depend on itself");
+            return;
+        }
+
+        const payload = {
+            id: editingItem ? editingItem.id : 0,
+            name,
+            parentModuleIds: dependencyIds // send array to backend
+        };
+
         try {
             if (editingItem) {
-                await API.put(`/Modules/${editingItem.id}`, {
-                    id: editingItem.id,
-                    name,
-                });
+                await API.put(`/Modules/${editingItem.id}`, payload);
                 message.success('Updated successfully');
             } else {
-                await API.post('/Modules', {
-                    id: 0, // or omit if backend auto-generates it
-                    name,
-                });
+                await API.post('/Modules', payload);
                 message.success('Added successfully');
             }
 
@@ -119,6 +130,17 @@ const ToolModule = () => {
             ...getColumnSearchProps('name'),
         },
         {
+            title: 'Depends On',
+            key: 'dependsOn',
+            render: (_, record) => (
+                <span>
+                    {record.parentModuleNames?.length
+                        ? record.parentModuleNames.join(', ')
+                        : '—'}
+                </span>
+            ),
+        },
+        {
             title: 'Actions',
             key: 'actions',
             render: (_, record) => (
@@ -153,7 +175,24 @@ const ToolModule = () => {
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     placeholder="Enter module name"
+                    style={{ marginBottom: 12 }}
                 />
+                <Select
+                    mode="multiple" // 👈 allow multiple selection
+                    placeholder="Select dependent modules (optional)"
+                    value={dependencyIds}
+                    onChange={(value) => setDependencyIds(value)}
+                    allowClear
+                    style={{ width: '100%' }}
+                >
+                    {modules
+                        .filter(m => !editingItem || m.id !== editingItem.id) // prevent self-dependency
+                        .map(module => (
+                            <Option key={module.id} value={module.id}>
+                                {module.name}
+                            </Option>
+                        ))}
+                </Select>
             </Modal>
         </div>
     );

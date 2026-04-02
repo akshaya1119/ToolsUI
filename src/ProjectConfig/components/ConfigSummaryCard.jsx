@@ -1,5 +1,4 @@
-import React from "react";
-import { Card, List, Button, Typography, Row, Col, message } from "antd";
+import { Card, List, Button, Typography, Row, Col } from "antd";
 import { CarryOutFilled } from "@ant-design/icons";
 import AnimatedCard from "./AnimatedCard";
 import { cardStyle, iconStyle } from "./constants";
@@ -17,7 +16,6 @@ const ConfigSummaryCard = ({
   isMasterConfig,
   selectedType,
   selectedGroup,
-  hasChanges = false,
 }) => {
 
   // In project config mode, type/group come from localStorage (set when project was selected on dashboard)
@@ -91,26 +89,42 @@ const ConfigSummaryCard = ({
             </List.Item>
           )}
         />
-        {/* Save Configuration — only for project config mode (not master config) */}
-        <Button
-          type="primary"
-          block
-          onClick={() => handleSave()}
-          disabled={isMasterConfig || !projectId || !isAnyConfigMade || !hasChanges}
-          className="mt-4 mb-2"
-        >
-          Save Configuration
-        </Button>
-        {/* Save as Master Configuration — only for project config mode, requires type & group */}
-        <Button
-          type="default"
-          block
-          onClick={() => handleSave(true, effectiveType, effectiveGroup)}
-          disabled={isMasterConfig || !isAnyConfigMade || !effectiveType || !effectiveGroup}
-          style={{ marginTop: '8px' }}
-        >
-          Save as Master Configuration
-        </Button>
+        {/* Master Config: Only Save button */}
+        {isMasterConfig && (
+          <Button
+            type="primary"
+            block
+            onClick={() => handleSave()}
+            disabled={!isAnyConfigMade}
+            className="mt-4"
+          >
+            Save
+          </Button>
+        )}
+
+        {/* Project Config: Save Configuration and Save as Master Configuration buttons */}
+        {!isMasterConfig && (
+          <>
+            <Button
+              type="primary"
+              block
+              onClick={() => handleSave()}
+              disabled={!projectId || !isAnyConfigMade}
+              className="mt-4 mb-2"
+            >
+              Save Configuration
+            </Button>
+            <Button
+              type="default"
+              block
+              onClick={() => handleSave(true, effectiveType, effectiveGroup, true)}
+              disabled={!isAnyConfigMade || !effectiveType || !effectiveGroup}
+              style={{ marginTop: '8px' }}
+            >
+              Save as Master Configuration
+            </Button>
+          </>
+        )}
       </Card>
     </AnimatedCard>
   );
