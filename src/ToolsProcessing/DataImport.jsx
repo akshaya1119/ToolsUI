@@ -2,7 +2,7 @@
 import '@ant-design/v5-patch-for-react-19'
 import { Row, Col, Card, Select, Upload, Button, Typography, Space, Table, Tabs, Checkbox, Input, Modal, Radio } from 'antd';
 import { useToast } from '../hooks/useToast';
-import { CheckCircleOutlined, UploadOutlined, ToolOutlined, SearchOutlined, PlusOutlined } from '@ant-design/icons';
+import { CheckCircleOutlined, UploadOutlined, ToolOutlined, SearchOutlined, PlusOutlined, EditOutlined,CloseCircleOutlined } from '@ant-design/icons';
 import * as XLSX from 'xlsx-js-style';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -1153,15 +1153,74 @@ const DataImport = () => {
   });
 
   // columnsFromBackend = response.columns
-  const enhancedColumns = columns.map(col => ({
-    title: col,
-    dataIndex: col,
-    key: col,
-    ellipsis: true,
-    ...getColumnSearchProps(col),  // search/filter props
-    sorter: true,
-    sortOrder: uploadedTableSorter.field === col ? uploadedTableSorter.order : null,
-  }));
+  const enhancedColumns = [
+    ...columns.map(col => ({
+      title: col,
+      dataIndex: col,
+      key: col,
+      ellipsis: true,
+      ...getColumnSearchProps(col),
+      sorter: true,
+      sortOrder: uploadedTableSorter.field === col ? uploadedTableSorter.order : null,
+      render: (text, record) => {
+        if (editingRowId === record.id) {
+          return (
+            <Input
+              size="small"
+              value={editFormData[col] ?? text}
+              onChange={(e) => handleFieldChange(col, e.target.value)}
+              style={{ width: '100%' }}
+            />
+          );
+        }
+        return text;
+      }
+    })),
+    {
+      title: 'Actions',
+      key: 'actions',
+      fixed: 'right',
+      width: 80,
+      render: (_, record) => {
+        if (editingRowId === record.id) {
+          return (
+            <Space size="small">
+              <Button
+                type="link"
+                size="small"
+                onClick={handleSaveEdit}
+                loading={loading}
+                style={{ padding: 0, color: '#52c41a', fontSize: '16px' }}
+                title="Save"
+              >
+                <CheckCircleOutlined />
+              </Button>
+              <Button
+                type="link"
+                size="small"
+                onClick={handleCancelEdit}
+                style={{ padding: 0, color: '#ff4d4f', fontSize: '16px' }}
+                title="Cancel"
+              >
+                <CloseCircleOutlined />
+              </Button>
+            </Space>
+          );
+        }
+        return (
+          <Button
+            type="link"
+            size="small"
+            onClick={() => handleEditRow(record)}
+            style={{ padding: 0, fontSize: '16px' }}
+            title="Edit"
+          >
+            <EditOutlined />
+          </Button>
+        );
+      }
+    }
+  ];
 
 const [masterFields, setMasterFields] = useState([]);
 const [loadingFields, setLoadingFields] = useState(false);
@@ -1172,6 +1231,8 @@ const [newRow, setNewRow] = useState({
   extraFields: [],
 });
 const [configuredFields, setConfiguredFields] = useState([]);
+const [editingRowId, setEditingRowId] = useState(null);
+const [editFormData, setEditFormData] = useState({});
 
 const fetchMasterFields = async () => {
   try {
@@ -1315,6 +1376,50 @@ const handleInlineSave = async () => {
     
     showToast(errorMsg, "error");
   }
+};
+
+const handleEditRow = (record) => {
+  setEditingRowId(record.id);
+  setEditFormData({ ...record });
+};
+
+const handleCancelEdit = () => {
+  setEditingRowId(null);
+  setEditFormData({});
+};
+
+const handleSaveEdit = async () => {
+  if (!editingRowId) return;
+
+  try {
+    setLoading(true);
+
+    // Remove the id from the data to send (it's in the URL)
+    const { id, ...dataToSend } = editFormData;
+
+    // Use the new UpdateSingle endpoint
+    await API.put(`/NRDatas/UpdateSingle/${id}`, dataToSend, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+
+    showToast("Data updated successfully", "success");
+    setEditingRowId(null);
+    setEditFormData({});
+    await fetchExistingData(projectId);
+  } catch (err) {
+    console.error("Error updating data:", err);
+    const errorMsg = err?.response?.data?.message || err?.response?.data || err?.message || "Failed to update data";
+    showToast(errorMsg, "error");
+  } finally {
+    setLoading(false);
+  }
+};
+
+const handleFieldChange = (fieldName, value) => {
+  setEditFormData(prev => ({
+    ...prev,
+    [fieldName]: value
+  }));
 };
 
   const deleteNRData = async (closeModal) => {
@@ -2099,9 +2204,10 @@ const handleInlineSave = async () => {
                         },
                         getCheckboxProps: (record) => ({
                           disabled:
-                            Boolean(record.CatchNo) &&
+                            editingRowId !== null || // Disable selection when editing
+                            (Boolean(record.CatchNo) &&
                             selectedUploadedCatchNos.length >= 2 &&
-                            !selectedUploadedCatchNos.includes(record.CatchNo),
+                            !selectedUploadedCatchNos.includes(record.CatchNo)),
                         }),
                       }}
                       scroll={{ x: "max-content" }}
