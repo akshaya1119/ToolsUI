@@ -1168,8 +1168,6 @@ const [loadingFields, setLoadingFields] = useState(false);
 const [addRowOpen, setAddRowOpen] = useState(false);
 const [newRow, setNewRow] = useState({
   catchNo: "",
-  lotNo: "",
-  pages: 0,
   fields: {},
   extraFields: [],
 });
@@ -1200,14 +1198,12 @@ const fetchMasterFields = async () => {
       : JSON.parse(config.duplicateCriteria || "[]");
     duplicateCriteria.forEach(id => configuredFieldIds.add(id));
 
-    // Always include NRQuantity field
-    const nrQuantityField = allFields.find(f => f.name === "NRQuantity");
-    if (nrQuantityField) {
-      configuredFieldIds.add(nrQuantityField.fieldId);
-    }
-
     // Filter fields that are in the project configuration
-    const fieldsToShow = allFields.filter(f => configuredFieldIds.has(f.fieldId));
+    // Exclude CatchNo, NRQuantity, LotNo, Pages as they are hardcoded in the form
+    const fieldsToShow = allFields.filter(f => 
+      configuredFieldIds.has(f.fieldId) && 
+      !["CatchNo", "NRQuantity", "LotNo", "Pages"].includes(f.name)
+    );
 
     setMasterFields(allFields);
     setConfiguredFields(fieldsToShow);
@@ -1229,11 +1225,23 @@ const handleInlineSave = async () => {
     return;
   }
 
-  // Check if all required fields are filled
+  // Validate mandatory fields: NRQuantity, LotNo, Pages
+  const mandatoryFields = ["NRQuantity", "LotNo", "Pages"];
+  const missingMandatory = mandatoryFields.filter(fieldName => {
+    const value = newRow.fields[fieldName];
+    return !value || String(value).trim() === "";
+  });
+
+  if (missingMandatory.length > 0) {
+    showToast(`Please fill mandatory fields: ${missingMandatory.join(", ")}`, "warning");
+    return;
+  }
+
+  // Check if all other required fields from configuration are filled
   const missingRequired = requiredFieldNames.filter(fieldName => {
-    // CatchNo is stored separately in newRow.catchNo, not in newRow.fields
-    if (fieldName === "CatchNo") {
-      return !catchNo || catchNo === "";
+    // Skip CatchNo (already validated) and mandatory fields (already validated)
+    if (fieldName === "CatchNo" || mandatoryFields.includes(fieldName)) {
+      return false;
     }
     const value = newRow.fields[fieldName];
     return !value || String(value).trim() === "";
@@ -1261,7 +1269,6 @@ const handleInlineSave = async () => {
     // Use the same endpoint as file upload
     const payload = {
       projectId: Number(projectId),
-      isCorrectedNrdataReport: false,
       data: [rowData]
     };
 
@@ -1779,31 +1786,76 @@ const handleInlineSave = async () => {
               onChange={(e) => setNewRow({ ...newRow, catchNo: e.target.value })}
             />
           </Col>
+
+          {/* NRQuantity - Always Required */}
           <Col xs={24} sm={12} md={8} lg={6}>
             <Text strong style={{ fontSize: 12 }}>
-              Lot No <span style={{ color: "#ff4d4f" }}>*</span>
+              NRQuantity <span style={{ color: "#ff4d4f" }}>*</span>
             </Text>
             <Input
               size="small"
-              placeholder="Lot No"
-              value={newRow.lotNo}
-              onChange={(e) => setNewRow({ ...newRow, lotNo: e.target.value })}
+              type="number"
+              placeholder="NRQuantity"
+              value={newRow.fields.NRQuantity || ""}
+              onChange={(e) => {
+                setNewRow((prev) => ({
+                  ...prev,
+                  fields: {
+                    ...prev.fields,
+                    NRQuantity: e.target.value,
+                  },
+                }));
+              }}
             />
           </Col>
+
+          {/* LotNo - Always Required */}
+          <Col xs={24} sm={12} md={8} lg={6}>
+            <Text strong style={{ fontSize: 12 }}>
+              LotNo <span style={{ color: "#ff4d4f" }}>*</span>
+            </Text>
+            <Input
+              size="small"
+              type="number"
+              placeholder="LotNo"
+              value={newRow.fields.LotNo || ""}
+              onChange={(e) => {
+                setNewRow((prev) => ({
+                  ...prev,
+                  fields: {
+                    ...prev.fields,
+                    LotNo: e.target.value,
+                  },
+                }));
+              }}
+            />
+          </Col>
+
+          {/* Pages - Always Required */}
           <Col xs={24} sm={12} md={8} lg={6}>
             <Text strong style={{ fontSize: 12 }}>
               Pages <span style={{ color: "#ff4d4f" }}>*</span>
             </Text>
             <Input
               size="small"
+              type="number"
               placeholder="Pages"
-              value={newRow.pages}
-              onChange={(e) => setNewRow({ ...newRow, pages: e.target.value })}
+              value={newRow.fields.Pages || ""}
+              onChange={(e) => {
+                setNewRow((prev) => ({
+                  ...prev,
+                  fields: {
+                    ...prev.fields,
+                    Pages: e.target.value,
+                  },
+                }));
+              }}
             />
           </Col>
+
           {/* Dynamic Configured Fields */}
           {configuredFields
-            .filter(field => field.name !== "CatchNo") // Avoid duplicate CatchNo
+            .filter(field => !["CatchNo", "NRQuantity", "LotNo", "Pages"].includes(field.name)) // Exclude hardcoded fields
             .map((field) => {
               const isRequired = requiredFieldNames.includes(field.name);
               return (
