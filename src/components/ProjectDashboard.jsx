@@ -237,8 +237,8 @@ const ProjectDashboard = () => {
             `/EnvelopeBreakages/EnvelopeConfiguration?ProjectId=${projectId}`
           );
         else if (step.key === "box")
-          await API.get(
-            `/EnvelopeBreakages/Replication?ProjectId=${projectId}`
+          await API.post(
+            `/BoxBreakingProcessing/ProcessBoxBreaking?ProjectId=${projectId}`
           );
         else if (step.key === "envelopeSummary")
           await API.get(

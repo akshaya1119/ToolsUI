@@ -176,6 +176,7 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
       extraProcessingConfig,
       duplicateConfig,
       selectedMss,
+      mssInsertPosition
     );
 
   const fetchProjectConfigData = async (projectId, typeId = null, groupId = null) => {
@@ -300,6 +301,7 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
       extraProcessingConfig: {},
       extraTypeSelection: {},
       selectedMss: fetchedMss.map(m => m.id),
+      mssInsertPosition: "end",
     };
 
     if (projectConfig && toolModules.length > 0) {
@@ -360,6 +362,7 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
         isInnerBundlingDone: projectConfig.isInnerBundlingDone ?? false,
         innerBundlingCriteria: parsedInnerBundlingCriteria,
         selectedMss: projectConfig.mssTypes ?? fetchedMss.map(m => m.id),
+        mssInsertPosition: projectConfig.mssAttached || "end",
       };
 
       setEnabledModules([...parsedValues.enabledModules]);
@@ -384,6 +387,7 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
       setIsInnerBundlingDone(parsedValues.isInnerBundlingDone);
       setInnerBundlingCriteria([...parsedValues.innerBundlingCriteria]);
       setSelectedMss([...parsedValues.selectedMss]);
+      setMssInsertPosition(parsedValues.mssInsertPosition);
     } else {
       setEnabledModules([]);
       setInnerEnvelopes([]);
@@ -401,6 +405,7 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
       setIsInnerBundlingDone(false);
       setInnerBundlingCriteria([]);
       setSelectedMss(fetchedMss.map(m => m.id));
+      setMssInsertPosition("end");
     }
 
     // Process Extra Configurations
@@ -451,6 +456,7 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
     );
     setExtraProcessingConfig(JSON.parse(JSON.stringify(extraProcessingParsed)));
     setExtraTypeSelection(JSON.parse(JSON.stringify(extraSelections)));
+    setImportedSnapshot(parsedValues);
 
     return parsedValues;
   };
@@ -527,6 +533,7 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
           extraProcessingConfig: {},
           extraTypeSelection: {},
           selectedMss: mss.map(m => m.id),
+          mssInsertPosition: "end",
         };
 
         if (projectConfig && toolModules.length > 0) {
@@ -587,6 +594,7 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
             isInnerBundlingDone: projectConfig.isInnerBundlingDone ?? false,
             innerBundlingCriteria: parsedInnerBundlingCriteria,
             selectedMss: projectConfig.mssTypes ?? mss.map(m => m.id),
+            mssInsertPosition: projectConfig.mssAttached || "end",
           };
 
           setEnabledModules([...parsedValues.enabledModules]);
@@ -611,6 +619,7 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
           setIsInnerBundlingDone(parsedValues.isInnerBundlingDone);
           setInnerBundlingCriteria([...parsedValues.innerBundlingCriteria]);
           setSelectedMss([...parsedValues.selectedMss]);
+          setMssInsertPosition(parsedValues.mssInsertPosition);
         }
 
         // Process Extra Configurations
@@ -702,6 +711,7 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
       enhancementType: "round",
     });
     setSelectedMss(mss.map(m => m.id));
+    setMssInsertPosition("end");
     setImportedSnapshot(null);
   };
 
@@ -784,6 +794,7 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
         importedSnapshot.resetBookletSerialOnCatchChange,
       );
       setSelectedMss([...(importedSnapshot.selectedMss || [])]);
+      setMssInsertPosition(importedSnapshot.mssInsertPosition || "end");
     } else {
       setSelectedEnvelopeFields([]);
       setStartOmrEnvelopeNumber(0);
@@ -791,6 +802,7 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
       setStartBookletSerialNumber(0);
       setResetBookletSerialOnCatchChange(false);
       setSelectedMss(mss.map(m => m.id));
+      setMssInsertPosition("end");
     }
   };
 
@@ -909,6 +921,7 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
       extraProcessingConfig: JSON.parse(JSON.stringify(extraProcessingConfig)),
       extraTypeSelection: JSON.parse(JSON.stringify(extraTypeSelection)),
       selectedMss: [...selectedMss],
+      mssInsertPosition,
     });
   }, [importedSnapshot]);
 

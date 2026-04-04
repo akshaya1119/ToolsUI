@@ -187,7 +187,7 @@ const EnvelopeMakingCriteriaCard = ({
           </div>
 
           {/* MSS Row Insert Position - 50% */}
-          <div style={{ flex: "1 1 48%" }}>
+          <div style={{ flex: "1 1 48%", ...(isDirty(mssInsertPosition, importedSnapshot?.mssInsertPosition) ? DIRTY_STYLE : {}) }}>
             <Text strong>MSS Row Insert Position</Text>
             <Select
               disabled={!isEnabled("Envelope Breaking")}
