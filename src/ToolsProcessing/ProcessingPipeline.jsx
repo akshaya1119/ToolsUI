@@ -11,8 +11,10 @@ import {
   Checkbox,
   Alert,
   Modal,
+  Space,
 } from "antd";
 import { motion } from "framer-motion";
+import axios from "axios";
 import API from "../hooks/api";
 import useStore from "../stores/ProjectData";
 
@@ -31,7 +33,20 @@ const ProcessingPipeline = () => {
   const [configChanged, setConfigChanged] = useState(false);
   const [changedFieldsInfo, setChangedFieldsInfo] = useState([]);
   const [dependencyModal, setDependencyModal] = useState({ visible: false, unprocessedSteps: [], selectedStep: null });
+  const [templatesLoading, setTemplatesLoading] = useState(false);
+  const [templateOptions, setTemplateOptions] = useState([]);
+  const [templatePanel, setTemplatePanel] = useState({ open: false, moduleKey: null });
+  const [templateDownloads, setTemplateDownloads] = useState({});
+  const [generatingTemplates, setGeneratingTemplates] = useState({});
+  const [templateReportStatus, setTemplateReportStatus] = useState({});
+  const [bulkGenerating, setBulkGenerating] = useState(false);
+  const [bulkDownloading, setBulkDownloading] = useState(false);
+  const [mappingUpdateMap, setMappingUpdateMap] = useState({});
   const projectId = useStore((state) => state.projectId);
+  const storedGroupId = localStorage.getItem("selectedGroup");
+  const storedTypeId = localStorage.getItem("selectedType");
+  const groupId = storedGroupId ? Number(storedGroupId) : null;
+  const typeId = storedTypeId ? Number(storedTypeId) : null;
 
   const currentStep = useMemo(
     () =>
@@ -49,6 +64,20 @@ const ProcessingPipeline = () => {
         : 0,
     [steps]
   );
+
+  const rptApiUrl = import.meta.env.VITE_RPT_API_URL;
+  const mappingUpdateKey = "rptTemplateMappingUpdatedAt";
+
+  const moduleKeyToNameMap = {
+    duplicate: "Duplicate Tool",
+    enhancement: "Envelope Setup and Enhancement",
+    extra: "Extra Configuration",
+    envelopebreaking: "Envelope Breaking",
+    box: "Box Breaking",
+    envelopeSummary: "Envelope Summary",
+    catchSummary: "Catch Summary Report",
+    catchOmrSerialing: "Catchomrserialingreport",
+  };
 
   const checkReportExistence = async (projectId) => {
     const fileNames = {
@@ -90,6 +119,98 @@ const ProcessingPipeline = () => {
     );
   };
 
+  const fetchTemplates = async () => {
+    if (!groupId || !typeId || !projectId) {
+      setTemplateOptions([]);
+      return;
+    }
+    setTemplatesLoading(true);
+    try {
+      const res = await API.get("/RPTTemplates/by-group", {
+        params: {
+          groupId,
+          typeId,
+          projectId,
+        },
+      });
+      setTemplateOptions(res.data || []);
+    } catch (err) {
+      console.error("Failed to fetch templates", err);
+      message.error("Failed to load templates for this project.");
+    } finally {
+      setTemplatesLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (projectId) {
+      fetchTemplates();
+    } else {
+      setTemplateOptions([]);
+    }
+  }, [projectId, groupId, typeId]);
+
+  useEffect(() => {
+    setTemplatePanel({ open: false, moduleKey: null });
+    setTemplateDownloads({});
+    setGeneratingTemplates({});
+    setTemplateReportStatus({});
+  }, [projectId]);
+
+  const loadMappingUpdates = () => {
+    try {
+      const raw = localStorage.getItem(mappingUpdateKey);
+      const parsed = raw ? JSON.parse(raw) : {};
+      setMappingUpdateMap(parsed && typeof parsed === "object" ? parsed : {});
+    } catch (err) {
+      setMappingUpdateMap({});
+    }
+  };
+
+  const clearMappingUpdate = (templateId) => {
+    if (!templateId) return;
+    try {
+      const raw = localStorage.getItem(mappingUpdateKey);
+      const parsed = raw ? JSON.parse(raw) : {};
+      if (parsed && typeof parsed === "object" && templateId in parsed) {
+        const next = { ...parsed };
+        delete next[templateId];
+        localStorage.setItem(mappingUpdateKey, JSON.stringify(next));
+        setMappingUpdateMap(next);
+      }
+    } catch (err) {
+      // ignore storage cleanup errors
+    }
+  };
+
+  const getMappingUpdateTime = (templateId) => mappingUpdateMap?.[templateId] || null;
+
+  const isMappingNewerThanReport = (templateId) => {
+    if (!templateId) return false;
+    const updatedAt = getMappingUpdateTime(templateId);
+    if (!updatedAt) return false;
+    const updatedTime = Date.parse(updatedAt);
+    if (!Number.isFinite(updatedTime)) return true;
+    const generatedAt = templateReportStatus[templateId]?.generatedAt;
+    if (!generatedAt) return true;
+    const generatedTime = Date.parse(generatedAt);
+    if (!Number.isFinite(generatedTime)) return true;
+    return updatedTime > generatedTime;
+  };
+
+  useEffect(() => {
+    loadMappingUpdates();
+  }, [projectId]);
+
+  useEffect(() => {
+    const handleStorage = (event) => {
+      if (event?.key === mappingUpdateKey) {
+        loadMappingUpdates();
+      }
+    };
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
+  }, []);
 
   const computeRunOrder = (names = []) => {
     const lowerNames = names.map((n) => String(n).toLowerCase());
@@ -231,7 +352,7 @@ const ProcessingPipeline = () => {
   };
 
   const runBoxBreaking = async (projectId) => {
-    const res = await API.get(`/EnvelopeBreakages/Replication?ProjectId=${projectId}`);
+    const res = await API.post(`/BoxBreakingProcessing/ProcessBoxBreaking?ProjectId=${projectId}`);
     message.success(res?.data?.message || "Box breaking completed");
   };
 
@@ -265,17 +386,6 @@ const ProcessingPipeline = () => {
     const getRecursiveAncestors = (key, memo = new Set()) => {
       if (memo.has(key)) return memo;
       memo.add(key);
-
-      const moduleKeyToNameMap = {
-        duplicate: "Duplicate Tool",
-        enhancement: "Envelope Setup and Enhancement",
-        extra: "Extra Configuration",
-        envelopebreaking: "Envelope Breaking",
-        box: "Box Breaking",
-        envelopeSummary: "Envelope Summary",
-        catchSummary: "Catch Summary Report",
-        catchOmrSerialing: "Catchomrserialingreport",
-      };
 
       const name = moduleKeyToNameMap[key];
       if (!name) return memo;
@@ -313,6 +423,337 @@ const ProcessingPipeline = () => {
       // Merge with existing selections
       return Array.from(new Set([...prev, ...keysToSelect]));
     });
+  };
+
+  const normalizeModuleIds = (raw) => {
+    if (raw == null) return [];
+    if (Array.isArray(raw)) {
+      return raw.map((val) => Number(val)).filter((id) => Number.isFinite(id));
+    }
+    if (typeof raw === "number") return [raw];
+    if (typeof raw === "string") {
+      return raw
+        .split(",")
+        .map((val) => Number(val.trim()))
+        .filter((id) => Number.isFinite(id));
+    }
+    return [];
+  };
+
+  const resolveTemplateId = (template) => {
+    const raw =
+      template?.templateId ??
+      template?.TemplateId ??
+      template?.id ??
+      template?.Id ??
+      null;
+    const num = Number(raw);
+    return Number.isFinite(num) ? num : null;
+  };
+
+  const resolveTemplateName = (template) => {
+    const name =
+      template?.templateName ??
+      template?.TemplateName ??
+      template?.name ??
+      template?.Name ??
+      "";
+    if (name) return name;
+    const id = resolveTemplateId(template);
+    return id ? `Template ${id}` : "Template";
+  };
+
+  const moduleKeyToIdMap = useMemo(() => {
+    const map = {};
+    Object.entries(moduleKeyToNameMap).forEach(([key, name]) => {
+      const match = allModules.find(
+        (m) => String(m.name || "").toLowerCase() === String(name).toLowerCase()
+      );
+      if (match?.id) map[key] = match.id;
+    });
+    return map;
+  }, [allModules]);
+
+  const templatesByModuleId = useMemo(() => {
+    const map = new Map();
+    (templateOptions || []).forEach((template) => {
+      const ids = normalizeModuleIds(
+        template?.moduleIds ?? template?.ModuleIds
+      );
+      ids.forEach((id) => {
+        const list = map.get(id) || [];
+        list.push(template);
+        map.set(id, list);
+      });
+    });
+    return map;
+  }, [templateOptions]);
+
+  const getTemplatesForModuleKey = (moduleKey) => {
+    const moduleId = moduleKeyToIdMap[moduleKey];
+    if (!moduleId) return [];
+    return templatesByModuleId.get(moduleId) || [];
+  };
+
+  const loadTemplateReportStatus = async (moduleKey) => {
+    if (!rptApiUrl || !projectId) return;
+    const templates = getTemplatesForModuleKey(moduleKey);
+    if (!templates.length) return;
+    try {
+      const results = await Promise.all(
+        templates.map(async (template) => {
+          const templateId = resolveTemplateId(template);
+          if (!templateId) return null;
+          const res = await axios.get(`${rptApiUrl}/report/generated-exists`, {
+            params: {
+              templateId,
+              projectId: Number(projectId),
+            },
+          });
+          return { templateId, data: res?.data };
+        })
+      );
+
+      setTemplateReportStatus((prev) => {
+        const next = { ...prev };
+        results.forEach((item) => {
+          if (!item?.templateId) return;
+          next[item.templateId] = {
+            exists: Boolean(item?.data?.exists),
+            fileName: item?.data?.fileName || null,
+            generatedAt: item?.data?.generatedAt || null,
+          };
+        });
+        return next;
+      });
+    } catch (err) {
+      console.error("Failed to check generated reports", err);
+    }
+  };
+
+  const openTemplatePanel = (moduleKey) => {
+    setTemplatePanel({ open: true, moduleKey });
+  };
+
+  const closeTemplatePanel = () => {
+    setTemplatePanel({ open: false, moduleKey: null });
+  };
+
+  useEffect(() => {
+    if (!templatePanel.open || !templatePanel.moduleKey) return;
+    loadTemplateReportStatus(templatePanel.moduleKey);
+  }, [templatePanel.open, templatePanel.moduleKey, templateOptions, projectId]);
+
+  const handleGenerateTemplate = async (template) => {
+    if (!projectId) {
+      message.warning("Please select a project");
+      return;
+    }
+    const templateId = resolveTemplateId(template);
+    if (!templateId) {
+      message.warning("Template not found.");
+      return;
+    }
+    if (!rptApiUrl) {
+      message.error("RPT API URL is not configured.");
+      return;
+    }
+
+    const payload = {
+      projectId: Number(projectId),
+      templateId: Number(templateId),
+    };
+    const messageKey = `generate-report-${payload.templateId}-${Date.now()}`;
+    setGeneratingTemplates((prev) => ({ ...prev, [templateId]: true }));
+    message.loading({
+      content: "Generating report...",
+      key: messageKey,
+      duration: 0,
+    });
+
+    try {
+      const res = await axios.post(
+        `${rptApiUrl}/report/generate-dynamic`,
+        payload,
+        { responseType: "blob" }
+      );
+      const contentDisposition = res.headers["content-disposition"] || "";
+      const fileNameMatch = contentDisposition.match(/filename="?([^\"]+)"?/i);
+      const fileName =
+        fileNameMatch?.[1] ||
+        `report_template${payload.templateId}_proj${payload.projectId}.pdf`;
+      const fileBlob = new Blob([res.data], { type: "application/pdf" });
+      const url = window.URL.createObjectURL(fileBlob);
+
+      setTemplateDownloads((prev) => {
+        const existing = prev[templateId];
+        if (existing?.url) {
+          window.URL.revokeObjectURL(existing.url);
+        }
+        return { ...prev, [templateId]: { url, fileName } };
+      });
+      setTemplateReportStatus((prev) => ({
+        ...prev,
+        [templateId]: {
+          ...(prev[templateId] || {}),
+          exists: true,
+          fileName,
+          generatedAt: new Date().toISOString(),
+        },
+      }));
+      clearMappingUpdate(templateId);
+
+      message.success({ content: "Report generated.", key: messageKey });
+    } catch (err) {
+      console.error("Generate report failed", err);
+      const msg =
+        err?.response?.data?.message ||
+        err?.response?.data ||
+        "Failed to generate report.";
+      message.error({ content: msg, key: messageKey, duration: 6 });
+    } finally {
+      setGeneratingTemplates((prev) => ({ ...prev, [templateId]: false }));
+    }
+  };
+
+  const handleDownloadTemplate = async (template) => {
+    const templateId = resolveTemplateId(template);
+    if (!templateId) {
+      message.warning("Template not found.");
+      return;
+    }
+    const cached = templateDownloads[templateId];
+    if (cached?.url) {
+      const link = document.createElement("a");
+      link.href = cached.url;
+      link.download = cached.fileName || "report.pdf";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      message.success("Download started.");
+      return;
+    }
+
+    if (!rptApiUrl || !projectId) {
+      message.warning("Please generate the report first.");
+      return;
+    }
+
+    try {
+      const res = await axios.get(`${rptApiUrl}/report/generated-download`, {
+        params: {
+          templateId,
+          projectId: Number(projectId),
+        },
+        responseType: "blob",
+      });
+      const contentDisposition = res.headers["content-disposition"] || "";
+      const fileNameMatch = contentDisposition.match(/filename="?([^\"]+)"?/i);
+      const fileName = fileNameMatch?.[1] || `report_template${templateId}.pdf`;
+      const fileBlob = new Blob([res.data], { type: "application/pdf" });
+      const url = window.URL.createObjectURL(fileBlob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      message.success("Download started.");
+    } catch (err) {
+      console.error("Download failed", err);
+      const msg =
+        err?.response?.data?.message ||
+        err?.response?.data ||
+        "Please generate the report first.";
+      message.error(msg);
+    }
+  };
+
+  const handleGenerateAllTemplates = async () => {
+    if (!templatePanel.moduleKey) return;
+    const templates = getTemplatesForModuleKey(templatePanel.moduleKey);
+    const pending = templates.filter((template) => {
+      const templateId = resolveTemplateId(template);
+      if (!templateId) return false;
+      return (
+        !templateReportStatus[templateId]?.exists ||
+        isMappingNewerThanReport(templateId)
+      );
+    });
+
+    if (pending.length === 0) {
+      message.info("All templates are already generated.");
+      return;
+    }
+
+    setBulkGenerating(true);
+    try {
+      for (const template of pending) {
+        await handleGenerateTemplate(template);
+      }
+      await loadTemplateReportStatus(templatePanel.moduleKey);
+    } finally {
+      setBulkGenerating(false);
+    }
+  };
+
+  const handleDownloadAllTemplates = async () => {
+    if (!templatePanel.moduleKey) return;
+    if (!rptApiUrl || !projectId) {
+      message.warning("Please generate the report first.");
+      return;
+    }
+    const templates = getTemplatesForModuleKey(templatePanel.moduleKey);
+    const ids = templates
+      .map((template) => resolveTemplateId(template))
+      .filter(Boolean);
+
+    if (!ids.length) {
+      message.warning("No templates available.");
+      return;
+    }
+
+    const missing = ids.filter((id) => !templateReportStatus[id]?.exists);
+    if (missing.length > 0) {
+      message.warning("Please generate all templates before downloading.");
+      return;
+    }
+
+    setBulkDownloading(true);
+    try {
+      const res = await axios.get(`${rptApiUrl}/report/generated-download-zip`, {
+        params: {
+          projectId: Number(projectId),
+          templateIds: ids.join(","),
+        },
+        responseType: "blob",
+      });
+      const contentDisposition = res.headers["content-disposition"] || "";
+      const fileNameMatch = contentDisposition.match(/filename="?([^\"]+)"?/i);
+      const fileName =
+        fileNameMatch?.[1] ||
+        `reports_project${projectId}_${new Date().toISOString().slice(0, 10)}.zip`;
+      const fileBlob = new Blob([res.data], { type: "application/zip" });
+      const url = window.URL.createObjectURL(fileBlob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      message.success("Download started.");
+    } catch (err) {
+      console.error("Download all failed", err);
+      const msg =
+        err?.response?.data?.message ||
+        err?.response?.data ||
+        "Failed to download all reports.";
+      message.error(msg);
+    } finally {
+      setBulkDownloading(false);
+    }
   };
 
   const handleSelectAll = (checked) => {
@@ -585,6 +1026,8 @@ const ProcessingPipeline = () => {
     };
   });
 
+  const showTemplatePanel = templatePanel.open;
+
   const columns = [
     {
       title: () => (
@@ -662,6 +1105,25 @@ const ProcessingPipeline = () => {
       },
     },
     {
+      title: "Templates",
+      dataIndex: "templates",
+      key: "templates",
+      render: (_, record) => {
+        const moduleTemplates = getTemplatesForModuleKey(record.key);
+        const hasTemplates = moduleTemplates.length > 0;
+        const isReady = record.status === "completed";
+        return (
+          <Button
+            size="small"
+            onClick={() => openTemplatePanel(record.key)}
+            disabled={!isReady || !hasTemplates}
+          >
+            Templates{hasTemplates ? ` (${moduleTemplates.length})` : ""}
+          </Button>
+        );
+      },
+    },
+    {
       title: "Report",
       dataIndex: "report",
       key: "report",
@@ -720,28 +1182,136 @@ const ProcessingPipeline = () => {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
       >
-        <Card
-          size="small"
-          title="Enabled Modules Status & Reports"
-          style={{
-            marginBottom: 12,
-            border: "1px solid #d9d9d9",
-            boxShadow: "0 4px 8px rgba(0,0,0,0.1)",
-          }}
+        <div
+          className={showTemplatePanel ? "pipeline-main pipeline-main--with-panel" : "pipeline-main pipeline-main--single"}
         >
+          <Card
+            size="small"
+            title="Enabled Modules Status & Reports"
+            className="pipeline-table-card"
+            style={{
+              marginBottom: 12,
+              border: "1px solid #d9d9d9",
+              boxShadow: "0 4px 8px rgba(0,0,0,0.1)",
+            }}
+          >
+            {enabledModuleNames.length === 0 ? (
+              <p>No modules selected for this project</p>
+            ) : (
+              <Table
+                columns={columns}
+                dataSource={data}
+                pagination={false}
+                loading={loadingModules}
+                rowKey="key"
+              />
+            )}
+          </Card>
 
-          {enabledModuleNames.length === 0 ? (
-            <p>No modules selected for this project</p>
-          ) : (
-            <Table
-              columns={columns}
-              dataSource={data}
-              pagination={false}
-              loading={loadingModules}
-              rowKey="key"
-            />
+          {showTemplatePanel && (
+            <Card
+              size="small"
+              className="pipeline-panel"
+              title={
+                <div className="pipeline-panel-title">
+                  <Typography.Text strong>
+                    Templates
+                    {templatePanel.moduleKey
+                      ? ` - ${steps.find((s) => s.key === templatePanel.moduleKey)?.title || "Module"}`
+                      : ""}
+                  </Typography.Text>
+                  <div className="pipeline-panel-actions">
+                    <Button
+                      size="small"
+                      type="primary"
+                      onClick={handleGenerateAllTemplates}
+                      loading={bulkGenerating}
+                    >
+                      Generate All
+                    </Button>
+                    <Button
+                      size="small"
+                      onClick={handleDownloadAllTemplates}
+                      loading={bulkDownloading}
+                    >
+                      Download All
+                    </Button>
+                    <Button size="small" onClick={closeTemplatePanel}>
+                      Close
+                    </Button>
+                  </div>
+                </div>
+              }
+              bodyStyle={{ padding: 0 }}
+              style={{
+                border: "1px solid #d9d9d9",
+                boxShadow: "0 4px 8px rgba(0,0,0,0.1)",
+                borderRadius: 8,
+                alignSelf: "start",
+              }}
+            >
+              <div className="pipeline-panel-body">
+                {templatesLoading ? (
+                  <Text type="secondary">Loading templates...</Text>
+                ) : (
+                  <>
+                    {templatePanel.moduleKey &&
+                    getTemplatesForModuleKey(templatePanel.moduleKey).length === 0 ? (
+                      <Text type="secondary">No templates linked to this module.</Text>
+                    ) : (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                        {getTemplatesForModuleKey(templatePanel.moduleKey || "").map((template) => {
+                          const templateId = resolveTemplateId(template);
+                          const isGenerating = templateId ? generatingTemplates[templateId] : false;
+                          const reportStatus = templateId ? templateReportStatus[templateId] : null;
+                          const hasDownload = templateId
+                            ? Boolean(templateDownloads[templateId]?.url || reportStatus?.exists)
+                            : false;
+                          const hasMappingUpdate = templateId
+                            ? isMappingNewerThanReport(templateId)
+                            : false;
+                          const canGenerate = templateId
+                            ? !reportStatus?.exists || hasMappingUpdate
+                            : true;
+                          return (
+                            <Card
+                              size="small"
+                              key={templateId || resolveTemplateName(template)}
+                              bodyStyle={{ padding: 12 }}
+                              style={{ borderRadius: 8 }}
+                            >
+                              <div style={{ fontWeight: 600, marginBottom: 8 }}>
+                                {resolveTemplateName(template)}
+                              </div>
+                              <Space>
+                                <Button
+                                  size="small"
+                                  type="primary"
+                                  onClick={() => handleGenerateTemplate(template)}
+                                  loading={isGenerating}
+                                  disabled={!canGenerate}
+                                >
+                                  Generate
+                                </Button>
+                                <Button
+                                  size="small"
+                                  onClick={() => handleDownloadTemplate(template)}
+                                  disabled={!hasDownload}
+                                >
+                                  Download
+                                </Button>
+                              </Space>
+                            </Card>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </Card>
           )}
-        </Card>
+        </div>
       </motion.div>
 
       <Modal
@@ -773,6 +1343,53 @@ const ProcessingPipeline = () => {
           <li><strong>Process All Dependencies:</strong> Run all unprocessed dependencies first, then your selected module</li>
         </ul>
       </Modal>
+
+      <style>{`
+        .pipeline-main {
+          display: grid;
+          gap: 12px;
+          align-items: start;
+        }
+        .pipeline-main--with-panel {
+          grid-template-columns: minmax(0, 1fr) minmax(320px, 360px);
+        }
+        .pipeline-main--single {
+          grid-template-columns: minmax(0, 1fr);
+        }
+        .pipeline-table-card {
+          min-width: 0;
+        }
+        .pipeline-panel {
+          position: sticky;
+          top: 12px;
+        }
+        .pipeline-panel-body {
+          padding: 12px;
+          max-height: calc(100vh - 260px);
+          overflow-y: auto;
+        }
+        .pipeline-panel-title {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+        .pipeline-panel-actions {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+        .pipeline-panel-actions .ant-btn {
+          white-space: nowrap;
+        }
+        @media (max-width: 1200px) {
+          .pipeline-main--with-panel {
+            grid-template-columns: minmax(0, 1fr);
+          }
+          .pipeline-panel {
+            position: static;
+          }
+        }
+      `}</style>
     </div>
   );
 };

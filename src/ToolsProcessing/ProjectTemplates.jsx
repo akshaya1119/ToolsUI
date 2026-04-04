@@ -75,12 +75,14 @@ const ProjectTemplates = () => {
   const [mappingOptionsLoading, setMappingOptionsLoading] = useState(false);
   const [mappingSelections, setMappingSelections] = useState({});
   const [groupBySelections, setGroupBySelections] = useState([]);
+  const [mappingPinnedFields, setMappingPinnedFields] = useState([]);
 
   const [versionsOpen, setVersionsOpen] = useState(false);
   const [versionsLoading, setVersionsLoading] = useState(false);
   const [versionsData, setVersionsData] = useState([]);
   const [versionsTemplate, setVersionsTemplate] = useState(null);
   const [pendingGenerateTemplate, setPendingGenerateTemplate] = useState(null);
+  const [activatingVersionId, setActivatingVersionId] = useState(null);
 
   const [addFileList, setAddFileList] = useState([]);
   const [addSubmitting, setAddSubmitting] = useState(false);
@@ -89,6 +91,9 @@ const ProjectTemplates = () => {
   const [editingTemplateName, setEditingTemplateName] = useState("");
   const [editingModuleIds, setEditingModuleIds] = useState([]);
   const [inlineEditSaving, setInlineEditSaving] = useState(false);
+  const [editingVersionId, setEditingVersionId] = useState(null);
+  const [editingVersionOptions, setEditingVersionOptions] = useState([]);
+  const [editingVersionsLoading, setEditingVersionsLoading] = useState(false);
 
   const [addForm] = Form.useForm();
   const [importForm] = Form.useForm();
@@ -374,6 +379,7 @@ const ProjectTemplates = () => {
       setMappingNotFound(false);
       setMappingSelections({});
       setGroupBySelections([]);
+      setMappingPinnedFields([]);
     }
   }, [mappingModalOpen]);
 
@@ -586,6 +592,7 @@ const ProjectTemplates = () => {
       const parsed = parseMappingJson(mapping);
       setMappingSelections(parsed.mappings || {});
       setGroupBySelections(Array.isArray(parsed.groupBy) ? parsed.groupBy : []);
+      setMappingPinnedFields(Object.keys(parsed.mappings || {}));
       const emptyMapping =
         Object.keys(parsed.mappings || {}).length === 0 &&
         (!parsed.groupBy || parsed.groupBy.length === 0);
@@ -595,6 +602,7 @@ const ProjectTemplates = () => {
         setMappingSelections({});
         setGroupBySelections([]);
         setMappingNotFound(true);
+        setMappingPinnedFields([]);
       } else {
         showError(err, "Failed to load mapping.");
       }
@@ -606,6 +614,21 @@ const ProjectTemplates = () => {
   const closeMappingPanel = () => {
     setMappingModalOpen(false);
     setMappingTemplate(null);
+  };
+
+  const recordMappingUpdate = (templateId) => {
+    if (!templateId) return;
+    const key = "rptTemplateMappingUpdatedAt";
+    const now = new Date().toISOString();
+    try {
+      const raw = localStorage.getItem(key);
+      const parsed = raw ? JSON.parse(raw) : {};
+      const next = parsed && typeof parsed === "object" ? { ...parsed } : {};
+      next[templateId] = now;
+      localStorage.setItem(key, JSON.stringify(next));
+    } catch (err) {
+      localStorage.setItem(key, JSON.stringify({ [templateId]: now }));
+    }
   };
 
   const handleSaveMapping = async () => {
@@ -634,6 +657,7 @@ const ProjectTemplates = () => {
       );
       message.success("Mapping saved.");
       setMappingNotFound(false);
+      recordMappingUpdate(mappingTemplate.templateId);
       closeMappingPanel();
     } catch (err) {
       console.error("Failed to save mapping", err);
@@ -818,6 +842,9 @@ const ProjectTemplates = () => {
     return parsed.toLocaleString();
   };
 
+  const resolveTemplateId = (record) =>
+    record?.templateId ?? record?.TemplateId ?? record?.id ?? record?.Id ?? null;
+
   const getScopeLabel = (record) =>
     record?.projectId ? "Project" : record?.groupId ? "Group" : "Standard";
 
@@ -854,6 +881,73 @@ const ProjectTemplates = () => {
     setVersionsTemplate(null);
     setVersionsData([]);
     setPendingGenerateTemplate(null);
+    setActivatingVersionId(null);
+  };
+
+  const activateTemplateVersion = async (record) => {
+    const templateId = resolveTemplateId(record);
+    if (!templateId) {
+      message.warning("Template not found.");
+      return;
+    }
+    setActivatingVersionId(templateId);
+    try {
+      await axios.post(`${APIURL}/RPTTemplates/${templateId}/activate`);
+      message.success("Template activated.");
+      if (versionsTemplate) {
+        fetchTemplateVersions(versionsTemplate);
+      }
+      fetchAvailableRPTFiles();
+    } catch (err) {
+      console.error("Failed to activate template", err);
+      showError(err, "Failed to activate template.");
+    } finally {
+      setActivatingVersionId(null);
+    }
+  };
+
+  const confirmActivateVersion = (record) => {
+    const scopeLabel = getScopeLabel(record);
+    Modal.confirm({
+      title: "Set active version?",
+      content: `This will make v${record?.version} the active template for the ${scopeLabel.toLowerCase()} scope. All projects using this template in that scope will use this version.`,
+      okText: "Set Active",
+      cancelText: "Cancel",
+      onOk: () => activateTemplateVersion(record),
+    });
+  };
+
+  const loadEditVersions = async (template) => {
+    if (!template?.templateName || !template?.typeId) {
+      setEditingVersionOptions([]);
+      return;
+    }
+    setEditingVersionsLoading(true);
+    try {
+      const res = await axios.get(`${APIURL}/RPTTemplates/versions`, {
+        params: {
+          templateName: template.templateName,
+          typeId: template.typeId,
+          groupId: template.groupId,
+          projectId: template.projectId,
+        },
+      });
+      const list = res.data || [];
+      const options = list.map((item) => ({
+        value: resolveTemplateId(item),
+        label: `v${item?.version}${item?.isActive ? " (Active)" : ""}`,
+      }));
+      setEditingVersionOptions(options);
+      const active = list.find((item) => item?.isActive);
+      const activeId = resolveTemplateId(active) ?? resolveTemplateId(template);
+      setEditingVersionId(activeId);
+    } catch (err) {
+      console.error("Failed to fetch template versions", err);
+      setEditingVersionOptions([]);
+      setEditingVersionId(resolveTemplateId(template));
+    } finally {
+      setEditingVersionsLoading(false);
+    }
   };
 
   const startInlineEdit = (template) => {
@@ -862,12 +956,21 @@ const ProjectTemplates = () => {
     setEditingModuleIds(
       normalizeModuleIds(template?.moduleIds ?? template?.ModuleIds),
     );
+    setEditingVersionId(resolveTemplateId(template));
+    setEditingVersionOptions(
+      template?.version
+        ? [{ value: resolveTemplateId(template), label: `v${template.version}` }]
+        : [],
+    );
+    loadEditVersions(template);
   };
 
   const cancelInlineEdit = () => {
     setEditingTemplateId(null);
     setEditingTemplateName("");
     setEditingModuleIds([]);
+    setEditingVersionId(null);
+    setEditingVersionOptions([]);
   };
 
   const saveInlineEdit = async () => {
@@ -884,6 +987,9 @@ const ProjectTemplates = () => {
         moduleIds: editingModuleIds || [],
         applyToAllVersions: true,
       });
+      if (editingVersionId && editingVersionId !== editingTemplateId) {
+        await axios.post(`${APIURL}/RPTTemplates/${editingVersionId}/activate`);
+      }
       message.success("Template updated.");
       cancelInlineEdit();
       fetchAvailableRPTFiles();
@@ -1078,7 +1184,22 @@ const ProjectTemplates = () => {
         dataIndex: "version",
         key: "version",
         width: 100,
-        render: (value) => <Tag color="blue">v{value}</Tag>,
+        render: (value, record) => {
+          if (editingTemplateId === record?.templateId) {
+            return (
+              <Select
+                size="small"
+                value={editingVersionId}
+                options={editingVersionOptions}
+                loading={editingVersionsLoading}
+                onChange={(next) => setEditingVersionId(next)}
+                placeholder="Select version"
+                style={{ width: "100%" }}
+              />
+            );
+          }
+          return <Tag color="blue">v{value}</Tag>;
+        },
       },
       {
         title: "Uploaded By",
@@ -1252,6 +1373,9 @@ const ProjectTemplates = () => {
       editingTemplateId,
       editingTemplateName,
       editingModuleIds,
+      editingVersionId,
+      editingVersionOptions,
+      editingVersionsLoading,
       inlineEditSaving,
     ],
   );
@@ -1317,6 +1441,15 @@ const ProjectTemplates = () => {
             </Button>
             <Button
               size="small"
+              icon={<CheckOutlined />}
+              onClick={() => confirmActivateVersion(record)}
+              loading={resolveTemplateId(record) === activatingVersionId}
+              disabled={record?.isActive}
+            >
+              Set Active
+            </Button>
+            <Button
+              size="small"
               type="primary"
               onClick={() => handleGenerateReportFromVersion(record)}
             >
@@ -1326,7 +1459,7 @@ const ProjectTemplates = () => {
         ),
       },
     ],
-    [userMap],
+    [userMap, activatingVersionId, confirmActivateVersion, resolveTemplateId],
   );
 
   const sourceOptionGroups = useMemo(() => {
@@ -1350,7 +1483,7 @@ const ProjectTemplates = () => {
     pushOptions(mappingOptions.envColumns, "e.");
     pushOptions(mappingOptions.envBreakageColumns, "eb.");
     pushOptions(mappingOptions.nrColumns, "n.");
-    pushOptions(mappingOptions.nrJsonKeys, "n.", "(json)");
+    pushOptions(mappingOptions.nrJsonKeys, "n.");
     if (!seen.has(normalizeKey("SRNO"))) {
       options.push({ value: "calc:SRNO", label: "Auto SR No.", raw: "SRNO" });
       seen.add(normalizeKey("SRNO"));
@@ -1371,21 +1504,38 @@ const ProjectTemplates = () => {
     return flattened;
   }, [sourceOptionGroups]);
 
-  const mappingRows = useMemo(() => {
-    const rows = parsedFields.map((field, index) => ({
-      key: `${field}-${index}`,
-      field,
-      isMapped: Boolean(mappingSelections?.[field]),
-    }));
-    return rows.sort((a, b) => {
-      if (a.isMapped === b.isMapped) return 0;
-      return a.isMapped ? -1 : 1;
-    });
-  }, [parsedFields, mappingSelections]);
+  const mappingDisplayOrder = useMemo(() => {
+    const pinned = new Set(mappingPinnedFields || []);
+    const mapped = parsedFields
+      .filter((field) => pinned.has(field))
+      .sort((a, b) => a.localeCompare(b));
+    const unmapped = parsedFields
+      .filter((field) => !pinned.has(field))
+      .sort((a, b) => a.localeCompare(b));
+    return [...mapped, ...unmapped];
+  }, [parsedFields, mappingPinnedFields]);
+
+  const mappingRows = useMemo(
+    () =>
+      mappingDisplayOrder.map((field, index) => ({
+        key: `${field}-${index}`,
+        field,
+        isMapped: Boolean(mappingSelections?.[field]),
+      })),
+    [mappingDisplayOrder, mappingSelections],
+  );
+  const mappedFieldNames = useMemo(
+    () =>
+      parsedFields
+        .filter((field) => mappingSelections?.[field])
+        .sort((a, b) => a.localeCompare(b)),
+    [parsedFields, mappingSelections],
+  );
 
   useEffect(() => {
     if (!mappingModalOpen) return;
     if (parsedFields.length === 0 || flatSourceOptions.length === 0) return;
+    let autoMapped = [];
     setMappingSelections((prev) => {
       let changed = false;
       const next = { ...prev };
@@ -1397,10 +1547,18 @@ const ProjectTemplates = () => {
         if (match) {
           next[field] = match.value;
           changed = true;
+          autoMapped.push(field);
         }
       });
       return changed ? next : prev;
     });
+    if (autoMapped.length > 0) {
+      setMappingPinnedFields((prev) => {
+        const next = new Set(prev || []);
+        autoMapped.forEach((field) => next.add(field));
+        return Array.from(next);
+      });
+    }
   }, [mappingModalOpen, parsedFields, flatSourceOptions]);
 
   return (
@@ -1439,6 +1597,13 @@ const ProjectTemplates = () => {
           padding: 12px;
           max-height: calc(100vh - 220px);
           overflow-y: auto;
+        }
+        .rpt-mapping-card .ant-card-head {
+          min-height: 32px;
+          padding: 4px 8px;
+        }
+        .rpt-mapping-card .ant-card-head-title {
+          padding: 0;
         }
         .rpt-side-panel-body {
           padding: 12px;
@@ -1921,25 +2086,22 @@ const ProjectTemplates = () => {
         {showMappingPanel && (
           <Card
             style={{
-              borderRadius: 12,
+              borderRadius: 8,
             }}
             bodyStyle={{ padding: 0 }}
+            headStyle={{ padding: "6px 12px" }}
             className="rpt-mapping-card"
             title={
-              <Space direction="vertical" size={2} style={{ width: "100%" }}>
-                <Space style={{ display: "flex", justifyContent: "space-between" }}>
-                  <Typography.Text strong>Template Mapping ( {mappingTemplate?.templateName || "Selected template"})</Typography.Text>
-                  <Button
-                    size="small"
-                    icon={<CloseOutlined />}
-                    onClick={closeMappingPanel}
-                  />
-                </Space>
-                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                 
-                  Update mapping and group-by for the selected template.
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <Typography.Text strong style={{ fontSize: 13, lineHeight: "16px" }}>
+                  Template Mapping ({mappingTemplate?.templateName || "Selected template"})
                 </Typography.Text>
-              </Space>
+                <Button
+                  size="small"
+                  icon={<CloseOutlined />}
+                  onClick={closeMappingPanel}
+                />
+              </div>
             }
           >
             <div className="rpt-mapping-card-body">
@@ -1961,8 +2123,13 @@ const ProjectTemplates = () => {
                 }}
               >
                 <Typography.Text strong>Field Mapping</Typography.Text>
-                <Button onClick={handleAutoMap} disabled={mappingOptionsLoading}>
-                  Auto-map
+                <Button
+                  type="primary"
+                  onClick={handleSaveMapping}
+                  loading={mappingLoading}
+                  disabled={!mappingTemplate?.templateId}
+                >
+                  Save Mapping
                 </Button>
               </Space>
               {mappingOptionsLoading ? (
@@ -2017,6 +2184,17 @@ const ProjectTemplates = () => {
                 />
               )}
             </Card>
+            <div style={{ marginBottom: 12 }}>
+              <Typography.Text strong>Mapped Fields:</Typography.Text>
+              <Typography.Text
+                type="secondary"
+                style={{ display: "block", marginTop: 4, lineHeight: "1.4em" }}
+              >
+                {mappedFieldNames.length > 0
+                  ? mappedFieldNames.join(", ")
+                  : "None"}
+              </Typography.Text>
+            </div>
             <Card size="small" bodyStyle={{ padding: 12 }}>
               <Typography.Text strong>Group By</Typography.Text>
               <Typography.Text type="secondary" style={{ display: "block" }}>
@@ -2038,16 +2216,7 @@ const ProjectTemplates = () => {
                 }
               />
             </Card>
-            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}>
-              <Button
-                type="primary"
-                onClick={handleSaveMapping}
-                loading={mappingLoading}
-                disabled={!mappingTemplate?.templateId}
-              >
-                Save Mapping
-              </Button>
-            </div>
+            <div style={{ marginTop: 12 }} />
           </div>
           </Card>
         )}
