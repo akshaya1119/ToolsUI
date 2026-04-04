@@ -78,14 +78,14 @@ const Master = () => {
       ),
       children: <NodalUnivExtra />
     },
-    // {
-    //   key: '7',
-    //   label: (
-    //     <span style={{ display: 'flex', alignItems: 'center' }}> 
-    //     <HiTemplate style={{ color: '#1890ff', marginRight: 8 }} />RPT Templates </span>
-    //   ),
-    //   children: <RPTFiles />
-    // },
+    {
+      key: '7',
+      label: (
+        <span style={{ display: 'flex', alignItems: 'center' }}> 
+        <HiTemplate style={{ color: '#1890ff', marginRight: 8 }} />RPT Templates </span>
+      ),
+      children: <RPTFiles />
+    },
     // {
     //   key: '8',
     //   label: (
