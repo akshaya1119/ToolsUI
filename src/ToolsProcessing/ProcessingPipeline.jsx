@@ -231,7 +231,7 @@ const ProcessingPipeline = () => {
   };
 
   const runBoxBreaking = async (projectId) => {
-    const res = await API.get(`/EnvelopeBreakages/Replication?ProjectId=${projectId}`);
+    const res = await API.post(`/BoxBreakingProcessing/ProcessBoxBreaking?ProjectId=${projectId}`);
     message.success(res?.data?.message || "Box breaking completed");
   };
 
@@ -501,7 +501,7 @@ const ProcessingPipeline = () => {
           if (step.key === "duplicate") await runDuplicate(projectId);
           else if (step.key === "enhancement") await runEnhancement(projectId);
           else if (step.key === "extra") await runExtras(projectId);
-          else if (step.key === "envelope") await runEnvelope(projectId);
+          else if (step.key === "envelopebreaking") await runEnvelope(projectId);
           else if (step.key === "box") await runBoxBreaking(projectId);
           else if (step.key === "envelopeSummary") await runEnvelopeSummary(projectId);
           else if (step.key === "catchSummary") await runCatchSummary(projectId);
