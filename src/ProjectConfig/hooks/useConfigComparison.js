@@ -118,6 +118,14 @@ export const compareConfigurations = (existingConfig, newConfig, enabledModules 
       label: "Enhancement",
       moduleName: "Envelope Setup and Enhancement",
     },
+    mssTypes: {
+      label: "MSS Types",
+      moduleName: "Envelope Setup and Enhancement",
+    },
+    mssAttached: {
+      label: "MSS Row Insert Position",
+      moduleName: "Envelope Setup and Enhancement",
+    },
   };
 
   // Check for extras configuration changes

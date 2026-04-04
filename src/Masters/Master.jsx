@@ -78,32 +78,32 @@ const Master = () => {
       ),
       children: <NodalUnivExtra />
     },
-    {
-      key: '7',
-      label: (
-        <span style={{ display: 'flex', alignItems: 'center' }}> 
-        <HiTemplate style={{ color: '#1890ff', marginRight: 8 }} />RPT Templates </span>
-      ),
-      children: <RPTFiles />
-    },
-    {
-      key: '8',
-      label: (
-        <span style={{ display: 'flex', alignItems: 'center' }}>
-          <CopyOutlined style={{ color: '#1890ff', marginRight: 8 }} /><span>Report Builder</span> 
-        </span>
-      ),
-      children: <ReportBuilder />
-    },
-    {
-      key: '9',
-      label: (
-        <span style={{ display: 'flex', alignItems: 'center' }}>
-          <FileTextOutlined style={{ color: '#1890ff', marginRight: 8 }} /><span>Crystal Reports</span> 
-        </span>
-      ),
-      children: <CrystalReports />
-    },
+    // {
+    //   key: '7',
+    //   label: (
+    //     <span style={{ display: 'flex', alignItems: 'center' }}> 
+    //     <HiTemplate style={{ color: '#1890ff', marginRight: 8 }} />RPT Templates </span>
+    //   ),
+    //   children: <RPTFiles />
+    // },
+    // {
+    //   key: '8',
+    //   label: (
+    //     <span style={{ display: 'flex', alignItems: 'center' }}>
+    //       <CopyOutlined style={{ color: '#1890ff', marginRight: 8 }} /><span>Report Builder</span> 
+    //     </span>
+    //   ),
+    //   children: <ReportBuilder />
+    // },
+    // {
+    //   key: '9',
+    //   label: (
+    //     <span style={{ display: 'flex', alignItems: 'center' }}>
+    //       <FileTextOutlined style={{ color: '#1890ff', marginRight: 8 }} /><span>Crystal Reports</span> 
+    //     </span>
+    //   ),
+    //   children: <CrystalReports />
+    // },
   ];
 
   return (
