@@ -23,7 +23,8 @@ export const useConfigChangeDetection = (
   isInnerBundlingDone,
   innerBundlingCriteria,
   extraProcessingConfig,
-  duplicateConfig
+  duplicateConfig,
+  mssInsertPosition
 ) => {
   const previousSnapshotRef = useRef(null);
   const [hasChanges, setHasChanges] = useState(false);
@@ -50,6 +51,7 @@ export const useConfigChangeDetection = (
     innerBundlingCriteria: JSON.stringify(innerBundlingCriteria),
     extraProcessingConfig: JSON.stringify(extraProcessingConfig),
     duplicateConfig: JSON.stringify(duplicateConfig),
+    mssInsertPosition: String(mssInsertPosition),
   });
 
   // Map field keys to user-friendly names
@@ -74,6 +76,7 @@ export const useConfigChangeDetection = (
       innerBundlingCriteria: "Inner Bundling Criteria",
       extraProcessingConfig: "Extra Processing Configuration",
       duplicateConfig: "Duplicate Configuration",
+      mssInsertPosition: "MSS Row Insert Position",
     };
     return displayNames[fieldKey] || fieldKey;
   };
@@ -120,6 +123,7 @@ export const useConfigChangeDetection = (
     innerBundlingCriteria,
     extraProcessingConfig,
     duplicateConfig,
+    mssInsertPosition,
   ]);
 
   // Reset change detection after save

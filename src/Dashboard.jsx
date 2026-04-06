@@ -18,16 +18,20 @@ export default function Dashboard() {
   const getProjects = async () => {
     try {
       const response = await API.get('/Projects/UserId');
+      console.log("Projects Response:", response);
       const projectIds = response.data.map((config) => config.projectId);
+      console.log("Project IDs:", projectIds);
+
 
       const projectNameRequests = projectIds.map((projectId) =>
         axios.get(`${url}/Project/${projectId}`, {
           headers: { Authorization: `Bearer ${token}` },
         })
       );
+      console.log("Project Name Requests:", projectNameRequests);
 
       const projectNameResponses = await Promise.all(projectNameRequests);
-
+      console.log("Project Name Responses:", projectNameResponses);
       // Combine ID and name in one object
       const combinedProjects = response.data.map((project, index) => {
         const projData = projectNameResponses[index].data;
@@ -40,7 +44,7 @@ export default function Dashboard() {
           typeId: projData.typeId,
         };
       });
-
+      console.log("Combined Projects:", combinedProjects);
       setProjects(combinedProjects);  // Store array of { id, name }
     } catch (err) {
       console.error("Failed to fetch projects", err);

@@ -22,7 +22,11 @@ const EnvelopeMakingCriteriaCard = ({
   setResetBookletSerialOnCatchChange,
   onReset,
   importedSnapshot,
-  typeId,
+  mssList,
+  selectedMss,
+  setSelectedMss,
+  mssInsertPosition,
+  setMssInsertPosition,
 }) => {
   const isDirty = (current, snapshotVal) => {
     if (!importedSnapshot || importedSnapshot === "pending") return false;
@@ -30,22 +34,6 @@ const EnvelopeMakingCriteriaCard = ({
   };
   const DIRTY_STYLE = { borderLeft: "3px solid #faad14", paddingLeft: 4 };
 
-  const resolveDefaultMssCount = (value) => {
-    const numericType = Number(value);
-    if (numericType === 2) return 1; // Paper
-    if (numericType === 1) return 3; // Booklet
-    return 1;
-  };
-
-  const [mssCount, setMssCount] = useState(() => resolveDefaultMssCount(typeId));
-  const [mssTouched, setMssTouched] = useState(false);
-  const [mssInsertPosition, setMssInsertPosition] = useState("end");
-
-  useEffect(() => {
-    if (!mssTouched) {
-      setMssCount(resolveDefaultMssCount(typeId));
-    }
-  }, [typeId, mssTouched]);
 
   const getDynamicSortLabel = (selectedIds) => {
     if (!selectedIds || selectedIds.length === 0) {
@@ -182,31 +170,24 @@ const EnvelopeMakingCriteriaCard = ({
             />
           </div>
 
-          {/* MSS Count - 50% */}
-          <div style={{ flex: "1 1 48%" }}>
-            <Text strong>MSS Count</Text>
-            <InputNumber
-              min={0}
-              disabled={!isEnabled("Envelope Breaking")}
-              value={mssCount}
-              onChange={(value) => {
-                setMssTouched(true);
-                setMssCount(value ?? 0);
-              }}
-              placeholder="Enter MSS count"
-              style={{ width: "100%", marginTop: 4 }}
-            />
-            <Text type="secondary" style={{ display: "block", fontSize: 12, marginTop: 2 }}>
-              {Number(typeId) === 2
-                ? "Type: Paper (default MSS count 1)"
-                : Number(typeId) === 1
-                  ? "Type: Booklet (default MSS count 3)"
-                  : "Type not set (default MSS count 1)"}
-            </Text>
+          {/* MSS Types */}
+          <div style={{ flex: "1 1 48%", ...(isDirty(selectedMss, importedSnapshot?.selectedMss) ? DIRTY_STYLE : {}) }}>
+            <Text strong style={{ display: "block", marginBottom: 4 }}>MSS Types</Text>
+            {mssList && mssList.length > 0 ? (
+              <Checkbox.Group
+                disabled={!isEnabled("Envelope Breaking")}
+                value={selectedMss}
+                onChange={setSelectedMss}
+                options={mssList.map(m => ({ label: m.mssType, value: m.id }))}
+                style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}
+              />
+            ) : (
+              <Text type="secondary">No MSS Types available</Text>
+            )}
           </div>
 
           {/* MSS Row Insert Position - 50% */}
-          <div style={{ flex: "1 1 48%" }}>
+          <div style={{ flex: "1 1 48%", ...(isDirty(mssInsertPosition, importedSnapshot?.mssInsertPosition) ? DIRTY_STYLE : {}) }}>
             <Text strong>MSS Row Insert Position</Text>
             <Select
               disabled={!isEnabled("Envelope Breaking")}

@@ -17,24 +17,12 @@ export const compareConfigurations = (existingConfig, newConfig, enabledModules 
 
   // If no existing config, treat all enabled modules as changed
   if (!existingConfig) {
-    const enabledModulesLower = (enabledModules || []).map((m) => String(m).toLowerCase());
-    
-    // Map enabled modules to their affected reports
-    const moduleToReportsMap = {
-      "duplicate tool": ["duplicate", "envelope", "box", "envelopeSummary", "catchSummary"],
-      "extra configuration": ["extra", "envelope", "box", "envelopeSummary", "catchSummary"],
-      "envelope breaking": ["envelope", "envelopeSummary", "catchSummary"],
-      "box breaking": ["box", "catchSummary"],
-    };
-
-    enabledModules.forEach((module) => {
+    (enabledModules || []).forEach((module) => {
       changes.changedModules.push(module);
-      const reports = moduleToReportsMap[String(module).toLowerCase()] || [];
-      reports.forEach((report) => {
-        if (!changes.affectedReports.includes(report)) {
-          changes.affectedReports.push(report);
-        }
-      });
+      // Add module name to affectedReports (we now use module names as seeds for dependency resolution)
+      if (!changes.affectedReports.includes(module)) {
+        changes.affectedReports.push(module);
+      }
     });
 
     // Check if extras are configured
@@ -42,11 +30,9 @@ export const compareConfigurations = (existingConfig, newConfig, enabledModules 
       if (!changes.changedModules.includes("Extra Configuration")) {
         changes.changedModules.push("Extra Configuration");
       }
-      ["extra", "envelope", "box", "envelopeSummary", "catchSummary"].forEach((report) => {
-        if (!changes.affectedReports.includes(report)) {
-          changes.affectedReports.push(report);
-        }
-      });
+      if (!changes.affectedReports.includes("Extra Configuration")) {
+        changes.affectedReports.push("Extra Configuration");
+      }
     }
 
     return changes;
@@ -65,72 +51,80 @@ export const compareConfigurations = (existingConfig, newConfig, enabledModules 
   // Map of config fields to their corresponding modules and affected reports
   const fieldToModuleMap = {
     modules: {
-      moduleName: "Enabled Modules",
-      affectedReports: ["duplicate", "extra", "envelope", "box", "envelopeSummary", "catchSummary"],
+      label: "Enabled Modules",
+      moduleName: "Duplicate Tool",
     },
     envelope: {
-      moduleName: "Envelope Setup",
-      affectedReports: ["envelope", "envelopeSummary", "catchSummary"],
+      label: "Envelope Setup",
+      moduleName: "Envelope Setup and Enhancement",
     },
     envelopeMakingCriteria: {
-      moduleName: "Envelope Making Criteria",
-      affectedReports: ["envelope", "envelopeSummary", "catchSummary"],
+      label: "Envelope Making Criteria",
+      moduleName: "Envelope Setup and Enhancement",
     },
     omrSerialNumber: {
-      moduleName: "OMR Serial Number",
-      affectedReports: ["envelope", "envelopeSummary", "catchSummary"],
+      label: "OMR Serial Number",
+      moduleName: "Envelope Setup and Enhancement",
     },
     resetOmrSerialOnCatchChange: {
-      moduleName: "Reset OMR Serial on Catch Change",
-      affectedReports: ["envelope", "envelopeSummary", "catchSummary"],
+      label: "Reset OMR Serial on Catch Change",
+      moduleName: "Envelope Setup and Enhancement",
     },
     bookletSerialNumber: {
-      moduleName: "Booklet Serial Number",
-      affectedReports: ["envelope", "envelopeSummary", "catchSummary"],
+      label: "Booklet Serial Number",
+      moduleName: "Envelope Setup and Enhancement",
     },
     resetBookletSerialOnCatchChange: {
-      moduleName: "Reset Booklet Serial on Catch Change",
-      affectedReports: ["envelope", "envelopeSummary", "catchSummary"],
+      label: "Reset Booklet Serial on Catch Change",
+      moduleName: "Envelope Setup and Enhancement",
     },
     boxBreakingCriteria: {
-      moduleName: "Box Breaking Criteria",
-      affectedReports: ["box", "catchSummary"],
+      label: "Box Breaking Criteria",
+      moduleName: "Box Breaking",
     },
     boxCapacity: {
-      moduleName: "Box Capacity",
-      affectedReports: ["box", "catchSummary"],
+      label: "Box Capacity",
+      moduleName: "Box Breaking",
     },
     boxNumber: {
-      moduleName: "Starting Box Number",
-      affectedReports: ["box", "catchSummary"],
+      label: "Starting Box Number",
+      moduleName: "Box Breaking",
     },
     duplicateRemoveFields: {
-      moduleName: "Duplicate Removal Fields",
-      affectedReports: ["duplicate", "envelope", "box", "envelopeSummary", "catchSummary"],
+      label: "Duplicate Removal Fields",
+      moduleName: "Duplicate Tool",
     },
     sortingBoxReport: {
-      moduleName: "Sorting Fields",
-      affectedReports: ["box", "catchSummary"],
+      label: "Sorting Fields",
+      moduleName: "Box Breaking",
     },
     resetOnSymbolChange: {
-      moduleName: "Reset on Symbol Change",
-      affectedReports: ["box", "catchSummary"],
+      label: "Reset on Symbol Change",
+      moduleName: "Box Breaking",
     },
     isInnerBundlingDone: {
-      moduleName: "Inner Bundling Status",
-      affectedReports: ["box", "catchSummary"],
+      label: "Inner Bundling Status",
+      moduleName: "Box Breaking",
     },
     innerBundlingCriteria: {
-      moduleName: "Inner Bundling Criteria",
-      affectedReports: ["box", "catchSummary"],
+      label: "Inner Bundling Criteria",
+      moduleName: "Box Breaking",
     },
     duplicateCriteria: {
-      moduleName: "Duplicate Criteria",
-      affectedReports: ["duplicate", "envelope", "box", "envelopeSummary", "catchSummary"],
+      label: "Duplicate Criteria",
+      moduleName: "Duplicate Tool",
     },
     enhancement: {
-      moduleName: "Enhancement",
-      affectedReports: ["duplicate", "extra", "envelope", "box", "envelopeSummary", "catchSummary"],
+      label: "Enhancement",
+      moduleName: "Envelope Setup and Enhancement",
+    },
+    mssTypes: {
+      label: "MSS Types",
+      moduleName: "Envelope Setup and Enhancement",
+    },
+    mssAttached: {
+      label: "MSS Row Insert Position",
+      moduleName: "Envelope Setup and Enhancement",
     },
   };
 
@@ -146,47 +140,64 @@ export const compareConfigurations = (existingConfig, newConfig, enabledModules 
     if (hasChanged(oldValue, newValue)) {
       const mapping = fieldToModuleMap[field];
       changes.details[field] = {
-        moduleName: mapping.moduleName,
+        label: mapping.label,
         oldValue,
         newValue,
-        affectedReports: mapping.affectedReports,
+        moduleName: mapping.moduleName,
       };
 
-      // Add to changed modules if not already present
-      if (!changes.changedModules.includes(mapping.moduleName)) {
-        changes.changedModules.push(mapping.moduleName);
+      // Add to changed modules (the human readable label)
+      if (!changes.changedModules.includes(mapping.label)) {
+        changes.changedModules.push(mapping.label);
       }
 
-      // Add affected reports (avoid duplicates)
-      mapping.affectedReports.forEach((report) => {
-        if (!changes.affectedReports.includes(report)) {
-          changes.affectedReports.push(report);
-        }
-      });
+      // Add affected module DB name (avoid duplicates)
+      if (!changes.affectedReports.includes(mapping.moduleName)) {
+        changes.affectedReports.push(mapping.moduleName);
+      }
     }
   });
 
   // Check for extras configuration changes
-  const oldExtrasStr = JSON.stringify(existingExtrasConfig || {});
-  const newExtrasStr = JSON.stringify(newExtrasConfig || {});
+  // Remove empty entries (where no mode is selected or nothing is configured)
+  const filterEmptyExtras = (config) => {
+    const filtered = {};
+    Object.entries(config || {}).forEach(([type, item]) => {
+      const hasEnvelope = item.envelopeType && (item.envelopeType.Inner || item.envelopeType.Outer);
+      const hasRange = item.rangeConfig && Array.isArray(item.rangeConfig.ranges) && item.rangeConfig.ranges.length > 0;
+      
+      const hasContent = item.mode && (
+        (item.value && String(item.value) !== "0") || 
+        hasEnvelope || 
+        hasRange
+      );
+      if (hasContent) {
+        filtered[type] = item;
+      }
+    });
+    return filtered;
+  };
+
+  const oldExtrasFiltered = filterEmptyExtras(existingExtrasConfig);
+  const newExtrasFiltered = filterEmptyExtras(newExtrasConfig);
+
+  const oldExtrasStr = JSON.stringify(oldExtrasFiltered);
+  const newExtrasStr = JSON.stringify(newExtrasFiltered);
   
   if (oldExtrasStr !== newExtrasStr) {
     if (!changes.changedModules.includes("Extra Configuration")) {
       changes.changedModules.push("Extra Configuration");
     }
     
-    const extrasReports = ["extra", "envelope", "box", "envelopeSummary", "catchSummary"];
-    extrasReports.forEach((report) => {
-      if (!changes.affectedReports.includes(report)) {
-        changes.affectedReports.push(report);
-      }
-    });
+    if (!changes.affectedReports.includes("Extra Configuration")) {
+      changes.affectedReports.push("Extra Configuration");
+    }
     
     changes.details.extrasConfiguration = {
       moduleName: "Extra Configuration",
-      oldValue: existingExtrasConfig,
-      newValue: newExtrasConfig,
-      affectedReports: extrasReports,
+      oldValue: oldExtrasFiltered,
+      newValue: newExtrasFiltered,
+      moduleDbName: "Extra Configuration",
     };
   }
 
@@ -198,59 +209,115 @@ export const compareConfigurations = (existingConfig, newConfig, enabledModules 
  * Only includes reports that are actually needed and enabled
  * - If a report is affected, include it and its dependents (not dependencies)
  * - Only include dependents if they are enabled in the configuration
- * - Don't include upstream reports unless they're directly affected
  */
-export const getReportDependencies = (affectedReports, enabledModules = []) => {
+export const getReportDependencies = (affectedModules, enabledModules = [], toolModules = []) => {
   // Normalize enabled modules to lowercase for comparison
   const enabledModulesLower = (enabledModules || []).map((m) => String(m).toLowerCase());
 
-  // Map report keys to module names for checking if enabled
-  const reportToModuleMap = {
-    duplicate: "duplicate tool",
-    extra: "extra configuration",
-    envelope: "envelope breaking",
-    box: "box breaking",
-    envelopeSummary: "envelope summary",
-    catchSummary: "catch summary",
-  };
+  // If toolModules is provided, use it to build dependencies dynamically
+  if (toolModules && toolModules.length > 0) {
+    const reportList = ["duplicate", "extra", "envelope", "box", "envelopeSummary", "catchSummary", "catchOmrSerialing"];
+    
+    // Reverse mapping: Database module name -> Report key
+    const moduleToReportKeyMap = {
+      "duplicate tool": "duplicate",
+      "extra configuration": "extra",
+      "envelope breaking": "envelope",
+      "box breaking": "box",
+      "envelope summary": "envelopeSummary",
+      "catch summary report": "catchSummary",
+      "catchomrserialingreport": "catchOmrSerialing",
+    };
 
-  // Define which reports depend on each report (downstream dependencies)
-  const dependents = {
-    duplicate: ["extra", "envelope", "box", "envelopeSummary", "catchSummary"],
-    extra: ["envelope", "box", "envelopeSummary", "catchSummary"],
-    envelope: ["box", "envelopeSummary", "catchSummary"],
-    box: ["envelopeSummary", "catchSummary"],
-    envelopeSummary: [],
-    catchSummary: [],
-  };
+    // Find module info from toolModules
+    const moduleMap = {};
+    toolModules.forEach(m => {
+      moduleMap[m.id] = m;
+      moduleMap[m.name.toLowerCase()] = m;
+    });
 
-  // Helper to check if a report's module is enabled
-  const isReportEnabled = (report) => {
-    const moduleName = reportToModuleMap[report];
-    if (!moduleName) return true; // If not in map, assume enabled
-    return enabledModulesLower.some((m) => m.includes(moduleName));
+    // Build downstream dependents map
+    const dependentsMap = {};
+    toolModules.forEach(m => {
+      const parentIds = m.parentModuleIds || (m.parentModuleId ? [m.parentModuleId] : []);
+      parentIds.forEach(parentId => {
+        const parent = moduleMap[parentId];
+        if (parent) {
+          const parentName = parent.name.toLowerCase();
+          if (!dependentsMap[parentName]) dependentsMap[parentName] = [];
+          
+          if (!dependentsMap[parentName].includes(m.name.toLowerCase())) {
+            dependentsMap[parentName].push(m.name.toLowerCase());
+          }
+        }
+      });
+    });
+
+    // Check if a module name is enabled
+    const isModuleEnabled = (name) => enabledModulesLower.some(m => m.includes(name));
+
+    const finalModules = new Set();
+
+    // Start with explicitly affected modules
+    affectedModules.forEach(moduleNameOrKey => {
+      const nameLower = String(moduleNameOrKey).toLowerCase();
+      // It might be a report key (fallback) or a module name
+      const modName = moduleToReportKeyMap[nameLower] ? nameLower : 
+                     Object.keys(moduleToReportKeyMap).find(k => k.includes(nameLower)) || nameLower;
+      
+      if (isModuleEnabled(modName)) {
+        finalModules.add(modName);
+      }
+    });
+
+    // Recursively add downstream dependents
+    const addDependents = (moduleName) => {
+      const children = dependentsMap[moduleName] || [];
+      children.forEach(child => {
+        if (isModuleEnabled(child) && !finalModules.has(child)) {
+          finalModules.add(child);
+          addDependents(child);
+        }
+      });
+    };
+
+    const initialModules = Array.from(finalModules);
+    initialModules.forEach(addDependents);
+
+    const resultReports = Array.from(finalModules)
+      .map(m => moduleToReportKeyMap[m])
+      .filter(Boolean);
+
+    // Sort by standard execution order
+    return reportList.filter(r => resultReports.includes(r));
+  }
+
+  // Unify the argument name to affectedModules and update the fallback logic to handle module names reliably. This ensures consistency when toolModules is not available.
+  const moduleToReportKeyMap = {
+    "duplicate tool": "duplicate",
+    "extra configuration": "extra",
+    "envelope breaking": "envelope",
+    "box breaking": "box",
+    "envelope summary": "envelopeSummary",
+    "catch summary report": "catchSummary",
+    "catchomrserialingreport": "catchOmrSerialing",
   };
 
   const finalReports = new Set();
-
-  // Add affected reports that are enabled
-  affectedReports.forEach((report) => {
-    if (isReportEnabled(report)) {
-      finalReports.add(report);
+  
+  // Standardize input (could be module name or report key)
+  affectedModules.forEach((item) => {
+    const itemLower = String(item).toLowerCase();
+    const reportKey = moduleToReportKeyMap[itemLower] || itemLower;
+    
+    if (Object.values(moduleToReportKeyMap).includes(reportKey)) {
+      finalReports.add(reportKey);
     }
   });
 
-  // Add downstream dependents only if they are enabled
-  affectedReports.forEach((report) => {
-    const deps = dependents[report] || [];
-    deps.forEach((dep) => {
-      if (isReportEnabled(dep)) {
-        finalReports.add(dep);
-      }
-    });
-  });
+  // NOTE: We no longer have hardcoded downstream dependency resolution here.
+  // Dependency resolution is now fully driven by toolModules data from the database.
 
-  // Sort by execution order
-  const order = ["duplicate", "extra", "envelope", "box", "envelopeSummary", "catchSummary"];
+  const order = ["duplicate", "extra", "envelope", "box", "envelopeSummary", "catchSummary", "catchOmrSerialing"];
   return order.filter((r) => finalReports.has(r));
 };

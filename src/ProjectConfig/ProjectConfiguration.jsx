@@ -26,7 +26,7 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
   const navigate = useNavigate();
   const projectId = useStore((state) => state.projectId);
   const url = import.meta.env.VITE_API_BASE_URL;
-
+  const [mssInsertPosition, setMssInsertPosition] = useState("end");
   // Group and Type options - use props if provided, otherwise fetch
   const [groupOptions, setGroupOptions] = useState(propGroupOptions || []);
   const [typeOptions, setTypeOptions] = useState(propTypeOptions || []);
@@ -149,8 +149,8 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
     extraTypeSelection,
     setExtraTypeSelection,
   } = useProjectConfigData(token);
-
-
+  const [mss, setMss] = useState([]);
+  const [selectedMss, setSelectedMss] = useState([]);
 
 
   // Change detection hook
@@ -175,6 +175,8 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
       innerBundlingCriteria,
       extraProcessingConfig,
       duplicateConfig,
+      selectedMss,
+      mssInsertPosition
     );
 
   const fetchProjectConfigData = async (projectId, typeId = null, groupId = null) => {
@@ -262,6 +264,21 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
       );
     }
 
+    let fetchedMss = [];
+    try {
+      const typeToUse = typeId || selectedType || localStorage.getItem("selectedType");
+      if (typeToUse) {
+        const response = await API.get(`Projects/GetMssByType?typeId=${typeToUse}`);
+        fetchedMss = response.data;
+        setMss(fetchedMss);
+      }
+    } catch (err) {
+      console.error(
+        "Failed to get MSS",
+        err.response?.data || err.message,
+      );
+    }
+
     // Build values locally (don't rely on state — state is async)
     let parsedValues = {
       enabledModules: [],
@@ -283,6 +300,8 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
       duplicateConfig: duplicateConfigRes,
       extraProcessingConfig: {},
       extraTypeSelection: {},
+      selectedMss: fetchedMss.map(m => m.id),
+      mssInsertPosition: "end",
     };
 
     if (projectConfig && toolModules.length > 0) {
@@ -342,6 +361,8 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
         resetOnSymbolChange: projectConfig.resetOnSymbolChange ?? false,
         isInnerBundlingDone: projectConfig.isInnerBundlingDone ?? false,
         innerBundlingCriteria: parsedInnerBundlingCriteria,
+        selectedMss: projectConfig.mssTypes ?? fetchedMss.map(m => m.id),
+        mssInsertPosition: projectConfig.mssAttached || "end",
       };
 
       setEnabledModules([...parsedValues.enabledModules]);
@@ -365,6 +386,8 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
       setResetOnSymbolChange(parsedValues.resetOnSymbolChange);
       setIsInnerBundlingDone(parsedValues.isInnerBundlingDone);
       setInnerBundlingCriteria([...parsedValues.innerBundlingCriteria]);
+      setSelectedMss([...parsedValues.selectedMss]);
+      setMssInsertPosition(parsedValues.mssInsertPosition);
     } else {
       setEnabledModules([]);
       setInnerEnvelopes([]);
@@ -381,6 +404,8 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
       setStartBookletSerialNumber(0);
       setIsInnerBundlingDone(false);
       setInnerBundlingCriteria([]);
+      setSelectedMss(fetchedMss.map(m => m.id));
+      setMssInsertPosition("end");
     }
 
     // Process Extra Configurations
@@ -431,6 +456,7 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
     );
     setExtraProcessingConfig(JSON.parse(JSON.stringify(extraProcessingParsed)));
     setExtraTypeSelection(JSON.parse(JSON.stringify(extraSelections)));
+    setImportedSnapshot(parsedValues);
 
     return parsedValues;
   };
@@ -506,6 +532,8 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
           duplicateConfig: duplicateConfigRes,
           extraProcessingConfig: {},
           extraTypeSelection: {},
+          selectedMss: mss.map(m => m.id),
+          mssInsertPosition: "end",
         };
 
         if (projectConfig && toolModules.length > 0) {
@@ -565,6 +593,8 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
             resetOnSymbolChange: projectConfig.resetOnSymbolChange ?? false,
             isInnerBundlingDone: projectConfig.isInnerBundlingDone ?? false,
             innerBundlingCriteria: parsedInnerBundlingCriteria,
+            selectedMss: projectConfig.mssTypes ?? mss.map(m => m.id),
+            mssInsertPosition: projectConfig.mssAttached || "end",
           };
 
           setEnabledModules([...parsedValues.enabledModules]);
@@ -588,6 +618,8 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
           setResetOnSymbolChange(parsedValues.resetOnSymbolChange);
           setIsInnerBundlingDone(parsedValues.isInnerBundlingDone);
           setInnerBundlingCriteria([...parsedValues.innerBundlingCriteria]);
+          setSelectedMss([...parsedValues.selectedMss]);
+          setMssInsertPosition(parsedValues.mssInsertPosition);
         }
 
         // Process Extra Configurations
@@ -678,6 +710,8 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
       enhancementEnabled: false,
       enhancementType: "round",
     });
+    setSelectedMss(mss.map(m => m.id));
+    setMssInsertPosition("end");
     setImportedSnapshot(null);
   };
 
@@ -705,6 +739,8 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
     innerBundlingCriteria,
     extraProcessingConfig,
     duplicateConfig,
+    selectedMss,
+    mssInsertPosition,
     fetchProjectConfigData,
     showToast,
     resetForm,
@@ -757,12 +793,16 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
       setResetBookletSerialOnCatchChange(
         importedSnapshot.resetBookletSerialOnCatchChange,
       );
+      setSelectedMss([...(importedSnapshot.selectedMss || [])]);
+      setMssInsertPosition(importedSnapshot.mssInsertPosition || "end");
     } else {
       setSelectedEnvelopeFields([]);
       setStartOmrEnvelopeNumber(0);
       setResetOmrSerialOnCatchChange(false);
       setStartBookletSerialNumber(0);
       setResetBookletSerialOnCatchChange(false);
+      setSelectedMss(mss.map(m => m.id));
+      setMssInsertPosition("end");
     }
   };
 
@@ -826,7 +866,7 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
 
   // Configuration status
   const envelopeConfigured =
-    isEnabled("Envelope Setup and Enhancement") || isEnabled("Envelope Breaking");
+    isEnabled("Envelope Setup and Enhancement");
   const boxConfigured = isEnabled("Box Breaking");
   const extraConfigured = isEnabled(EXTRA_ALIAS_NAME);
   const duplicateConfigured = isEnabled("Duplicate Tool");
@@ -880,6 +920,8 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
       duplicateConfig: JSON.parse(JSON.stringify(duplicateConfig)),
       extraProcessingConfig: JSON.parse(JSON.stringify(extraProcessingConfig)),
       extraTypeSelection: JSON.parse(JSON.stringify(extraTypeSelection)),
+      selectedMss: [...selectedMss],
+      mssInsertPosition,
     });
   }, [importedSnapshot]);
 
@@ -890,6 +932,39 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
   const handleConfirmRerun = async () => {
     setIsRerunning(true);
     try {
+      // Map affected report keys to module IDs
+      const moduleIds = [];
+      const reportToModuleNameMap = {
+        duplicate: "duplicate tool",
+        extra: "extra configuration",
+        envelope: "envelope breaking",
+        box: "box breaking",
+        envelopeSummary: "envelope summary",
+        catchSummary: "catch summary report",
+        catchOmrSerialing: "catchomrserialingreport",
+      };
+
+      if (changeData && changeData.affectedReports && toolModules) {
+        changeData.affectedReports.forEach((reportKey) => {
+          const targetModuleName = reportToModuleNameMap[reportKey] || reportKey;
+          const module = toolModules.find(
+            (m) => m.name.toLowerCase().includes(targetModuleName.toLowerCase())
+          );
+          if (module && module.id) {
+            moduleIds.push(Number(module.id));
+          }
+        });
+      }
+
+      // Send the POST API call if we have module IDs
+      if (moduleIds.length > 0) {
+        console.log("Sending rerun API call for moduleIds:", moduleIds);
+        await API.post("/ProjectConfigs/DeleteModuleReports", {
+          projectId: Number(projectId),
+          moduleIds: moduleIds,
+        });
+      }
+
       setShowChangeModal(false);
 
       // Store the affected reports in sessionStorage for ProcessingPipeline to pick up
@@ -907,10 +982,10 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
 
       // Navigate to ProcessingPipeline
       navigate("/ProcessingPipeline");
-      message.success("Navigating to Processing Pipeline to re-run reports");
+      message.success("Reports re-generation initiated successfully");
     } catch (err) {
       console.error("Error during rerun:", err);
-      message.error("Failed to initiate report re-run");
+      message.error(err.response?.data?.message || "Failed to initiate report re-run");
     } finally {
       setIsRerunning(false);
     }
@@ -1042,6 +1117,11 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
             onReset={resetEnvelopeMakingCriteria}
             importedSnapshot={importedSnapshot}
             typeId={effectiveTypeId}
+            mssList={mss}
+            selectedMss={selectedMss}
+            setSelectedMss={setSelectedMss}
+            mssInsertPosition={mssInsertPosition}
+            setMssInsertPosition={setMssInsertPosition}
           />
           <BoxBreakingCard
             isEnabled={isEnabled}

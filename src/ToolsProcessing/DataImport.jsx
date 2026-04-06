@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState } from 'react';
+﻿import React, { useEffect, useRef, useState } from 'react';
 import '@ant-design/v5-patch-for-react-19'
 import { Row, Col, Card, Select, Upload, Button, Typography, Space, Table, Tabs, Checkbox, Input, Modal, Radio } from 'antd';
 import { useToast } from '../hooks/useToast';
@@ -12,6 +12,8 @@ import useStore from '../stores/ProjectData';
 import useDebounce from '../services/useDebounce';
 import MissingData from '../components/MissingData';
 import DataImportConflictReport from '../components/DataImportConflictReport';
+import LotsBifurcation from "./components/LotsBifurcation";
+import MergeCatchNumbers from "./components/MergeCatchNumbers";
 
 const { Text } = Typography;
 const { Option } = Select;
@@ -55,6 +57,9 @@ const DataImport = () => {
   const [modules, setModules] = useState([]);
   const [loadingModules, setLoadingModules] = useState(false);
   const [uploadedTableSorter, setUploadedTableSorter] = useState({ field: null, order: null });
+  const lotBifurcationRef = useRef(null);
+  const mergeCatchRef = useRef(null);
+  const [mergeSelectionCount, setMergeSelectionCount] = useState(0);
   // Load projects
   useEffect(() => {
     if (!projectId) return;
@@ -2122,17 +2127,23 @@ const handleFieldChange = (fieldName, value) => {
                       Download Conflict PDF
                     </Button>
                   </Space>
-                ) : (
+                ) : activeTab === "4" ? (
                   <Button
                     type="primary"
                     size="small"
-                    disabled={activeTab !== "1" || selectedUploadedCatchNos.length !== 2}
-                    loading={loading}
-                    onClick={openMergeModal}
+                    onClick={() => lotBifurcationRef.current?.openBifurcationModal?.()}
                   >
-                    Merge Catch Numbers
+                    Bifurcate Lots
                   </Button>
-                )
+                ) : activeTab === "5" ? (
+                  <Button
+                    size="small"
+                    disabled={mergeSelectionCount < 2}
+                    onClick={() => mergeCatchRef.current?.openMergeModal?.()}
+                  >
+                    Merge Selected
+                  </Button>
+                ) : null
               }
             >
               <TabPane tab="Uploaded Data" key="1">
@@ -2227,46 +2238,18 @@ const handleFieldChange = (fieldName, value) => {
               <TabPane tab="Fill Missing Data" key="3">
                 <MissingData />
               </TabPane>
+              <TabPane tab="Lot Bifurcation" key="4">
+                <LotsBifurcation ref={lotBifurcationRef} />
+              </TabPane>
+              <TabPane tab="Merge Catch Numbers" key="5">
+                <MergeCatchNumbers
+                  ref={mergeCatchRef}
+                  onSelectionCountChange={setMergeSelectionCount}
+                />
+              </TabPane>
             </Tabs>
 
-            <Modal
-              title="Merge Catch Numbers"
-              open={mergeModalOpen}
-              okText="Merge"
-              onOk={confirmMerge}
-              onCancel={() => setMergeModalOpen(false)}
-              okButtonProps={{ disabled: selectedUploadedCatchNos.length !== 2, loading }}
-            >
-              <Space direction="vertical" size={12} style={{ width: "100%" }}>
-                <Text type="secondary">
-                  Choose how to join the catch numbers:
-                </Text>
-                <Radio.Group
-                  value={mergeModalSeparator}
-                  onChange={(event) => setMergeModalSeparator(event.target.value)}
-                >
-                  <Radio value="/">Catch1/Catch2</Radio>
-                  <Radio value="-">Catch1-Catch2</Radio>
-                </Radio.Group>
-              </Space>
-              <Space direction="vertical" size={12} style={{ width: "100%", marginTop: 16 }}>
-                <Text type="secondary">
-                  Which module you want to run after the merge:
-                </Text>
-                <Select
-                  style={{ width: "100%" }}
-                  placeholder={loadingModules ? "Loading modules..." : "Select a module (optional)"}
-                  value={mergeModuleId}
-                  loading={loadingModules}
-                  allowClear
-                  onChange={(value) => setMergeModuleId(value)}
-                  options={(modules || []).map((m) => ({
-                    value: m.id,
-                    label: m.name,
-                  }))}
-                />
-              </Space>
-            </Modal>
+            
           </Card>
         </motion.div>
       </>
