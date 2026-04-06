@@ -168,3 +168,25 @@ export const resolveTemplateId = (record) =>
 
 export const getScopeLabel = (record) =>
   record?.projectId ? "Project" : record?.groupId ? "Group" : "Standard";
+
+export const buildReportFileName = ({
+  templateName,
+  projectName,
+  typeId,
+  ext = "pdf",
+}) => {
+  const sanitize = (value, fallback) => {
+    const raw = (value ?? fallback ?? "").toString().trim();
+    const cleaned = raw
+      .replace(/[\\/:*?"<>|]+/g, "_")
+      .replace(/\s+/g, "_")
+      .replace(/_+/g, "_")
+      .replace(/^_+|_+$/g, "");
+    return cleaned || fallback || "report";
+  };
+  const name = sanitize(templateName, "Template");
+  const project = sanitize(projectName, "Project");
+  const type = sanitize(typeId ?? "TypeId", "TypeId");
+  const extension = ext.startsWith(".") ? ext.slice(1) : ext;
+  return `${name}_${project}_${type}.${extension}`;
+};

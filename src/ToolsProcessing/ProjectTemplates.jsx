@@ -4,6 +4,7 @@ import axios from "axios";
 import useStore from "../stores/ProjectData";
 import {
   extractParsedFields,
+  buildReportFileName,
   getErrorMessage,
   getErrorMessageAsync,
   getScopeLabel,
@@ -403,12 +404,14 @@ const ProjectTemplates = () => {
   const showSidePanel = Boolean(addModalOpen || importModalOpen);
 
   const filteredGroupOptions = useMemo(() => {
+    if (importAvailability.loading) return groupOptions;
     return groupOptions.filter(
       (group) => (importAvailability.groupTypes[group.value] || []).length > 0,
     );
   }, [groupOptions, importAvailability]);
 
   const filteredProjectOptions = useMemo(() => {
+    if (importAvailability.loading) return projectOptions;
     return projectOptions.filter(
       (project) =>
         (importAvailability.projectTypes[project.value] || []).length > 0,
@@ -416,6 +419,7 @@ const ProjectTemplates = () => {
   }, [projectOptions, importAvailability]);
 
   const standardTypeOptions = useMemo(() => {
+    if (importAvailability.loading) return typeOptions;
     return typeOptions.filter((type) =>
       importAvailability.standardTypes.includes(type.value),
     );
@@ -423,12 +427,14 @@ const ProjectTemplates = () => {
 
   const groupTypeOptions = useMemo(() => {
     if (!importGroupId) return [];
+    if (importAvailability.loading) return typeOptions;
     const typesForGroup = importAvailability.groupTypes[importGroupId] || [];
     return typeOptions.filter((type) => typesForGroup.includes(type.value));
   }, [typeOptions, importAvailability, importGroupId]);
 
   const projectTypeOptions = useMemo(() => {
     if (!importProjectId) return [];
+    if (importAvailability.loading) return typeOptions;
     const typesForProject = importAvailability.projectTypes[importProjectId] || [];
     return typeOptions.filter((type) => typesForProject.includes(type.value));
   }, [typeOptions, importAvailability, importProjectId]);
@@ -461,12 +467,17 @@ const ProjectTemplates = () => {
   }, [importScope, selectedImportProjectType, importForm]);
 
   const sourceScopeOptions = useMemo(() => {
-    const standardAvailable = standardTypeOptions.length > 0;
-    const groupAvailable = filteredGroupOptions.length > 0;
-    const projectAvailable = filteredProjectOptions.length > 0;
+    const allowAll = importAvailability.loading;
+    const standardAvailable = allowAll ? true : standardTypeOptions.length > 0;
+    const groupAvailable = allowAll ? true : filteredGroupOptions.length > 0;
+    const projectAvailable = allowAll ? true : filteredProjectOptions.length > 0;
     return [
       { label: "Select import source", value: "", disabled: true },
-      { label: "Standard Templates", value: "standard", disabled: !standardAvailable },
+      {
+        label: "Standard Templates",
+        value: "standard",
+        disabled: !standardAvailable,
+      },
       {
         label: "Group Templates (includes standard)",
         value: "group",
@@ -995,11 +1006,11 @@ const ProjectTemplates = () => {
         payload,
         { responseType: "blob" },
       );
-      const contentDisposition = res.headers["content-disposition"] || "";
-      const fileNameMatch = contentDisposition.match(/filename="?([^\"]+)"?/i);
-      const fileName =
-        fileNameMatch?.[1] ||
-        `report_template${payload.templateId}_proj${payload.projectId}.pdf`;
+      const fileName = buildReportFileName({
+        templateName: template?.templateName,
+        projectName: projectName || (projectId ? `Project ${projectId}` : undefined),
+        typeId: template?.typeId ?? projectTypeId,
+      });
       const fileBlob = new Blob([res.data], { type: "application/pdf" });
       const url = window.URL.createObjectURL(fileBlob);
       const link = document.createElement("a");

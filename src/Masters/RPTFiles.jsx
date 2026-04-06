@@ -358,12 +358,14 @@ const RPTFiles = () => {
   const showSidePanel = Boolean(addModalOpen || importModalOpen);
 
   const filteredGroupOptions = useMemo(() => {
+    if (importAvailability.loading) return groupOptions;
     return groupOptions.filter(
       (group) => (importAvailability.groupTypes[group.value] || []).length > 0,
     );
   }, [groupOptions, importAvailability]);
 
   const filteredProjectOptions = useMemo(() => {
+    if (importAvailability.loading) return projectOptions;
     return projectOptions.filter(
       (project) =>
         (importAvailability.projectTypes[project.value] || []).length > 0,
@@ -371,6 +373,7 @@ const RPTFiles = () => {
   }, [projectOptions, importAvailability]);
 
   const standardTypeOptions = useMemo(() => {
+    if (importAvailability.loading) return typeOptions;
     return typeOptions.filter((type) =>
       importAvailability.standardTypes.includes(type.value),
     );
@@ -378,12 +381,14 @@ const RPTFiles = () => {
 
   const groupTypeOptions = useMemo(() => {
     if (!importGroupId) return [];
+    if (importAvailability.loading) return typeOptions;
     const typesForGroup = importAvailability.groupTypes[importGroupId] || [];
     return typeOptions.filter((type) => typesForGroup.includes(type.value));
   }, [typeOptions, importAvailability, importGroupId]);
 
   const projectTypeOptions = useMemo(() => {
     if (!importProjectId) return [];
+    if (importAvailability.loading) return typeOptions;
     const typesForProject = importAvailability.projectTypes[importProjectId] || [];
     return typeOptions.filter((type) => typesForProject.includes(type.value));
   }, [typeOptions, importAvailability, importProjectId]);
@@ -416,12 +421,17 @@ const RPTFiles = () => {
   }, [importScope, selectedImportProjectType, importForm]);
 
   const sourceScopeOptions = useMemo(() => {
-    const standardAvailable = standardTypeOptions.length > 0;
-    const groupAvailable = filteredGroupOptions.length > 0;
-    const projectAvailable = filteredProjectOptions.length > 0;
+    const allowAll = importAvailability.loading;
+    const standardAvailable = allowAll ? true : standardTypeOptions.length > 0;
+    const groupAvailable = allowAll ? true : filteredGroupOptions.length > 0;
+    const projectAvailable = allowAll ? true : filteredProjectOptions.length > 0;
     return [
       { label: "Select import source", value: "", disabled: true },
-      { label: "Standard Templates", value: "standard", disabled: !standardAvailable },
+      {
+        label: "Standard Templates",
+        value: "standard",
+        disabled: !standardAvailable,
+      },
       {
         label: "Group Templates (includes standard)",
         value: "group",

@@ -16,6 +16,7 @@ import { motion } from "framer-motion";
 import axios from "axios";
 import API from "../hooks/api";
 import useStore from "../stores/ProjectData";
+import { buildReportFileName } from "../utils/rptTemplateUtils";
 
 const { Text, Title } = Typography;
 const url3 = import.meta.env.VITE_API_FILE_URL;
@@ -48,6 +49,11 @@ const ProjectDashboard = () => {
   const [templateOptions, setTemplateOptions] = useState([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState(null);
   const [templatesLoading, setTemplatesLoading] = useState(false);
+  const selectedTemplate = useMemo(
+    () =>
+      templateOptions.find((t) => t.templateId === selectedTemplateId) || null,
+    [templateOptions, selectedTemplateId],
+  );
   const [generateLoading, setGenerateLoading] = useState(false);
 
   // Fetch project configuration to determine if the project is configured
@@ -312,11 +318,11 @@ const ProjectDashboard = () => {
         payload,
         { responseType: "blob" }
       );
-      const contentDisposition = res.headers["content-disposition"] || "";
-      const fileNameMatch = contentDisposition.match(/filename="?([^\"]+)"?/i);
-      const fileName =
-        fileNameMatch?.[1] ||
-        `report_template${payload.templateId}_proj${payload.projectId}.pdf`;
+      const fileName = buildReportFileName({
+        templateName: selectedTemplate?.templateName,
+        projectName: projectName || (projectId ? `Project ${projectId}` : undefined),
+        typeId: selectedTemplate?.typeId ?? typeId,
+      });
       const fileBlob = new Blob([res.data], { type: "application/pdf" });
       const url = window.URL.createObjectURL(fileBlob);
       const link = document.createElement("a");

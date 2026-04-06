@@ -17,6 +17,7 @@ import { motion } from "framer-motion";
 import axios from "axios";
 import API from "../hooks/api";
 import useStore from "../stores/ProjectData";
+import { buildReportFileName } from "../utils/rptTemplateUtils";
 
 const { Text } = Typography;
 
@@ -43,6 +44,7 @@ const ProcessingPipeline = () => {
   const [bulkDownloading, setBulkDownloading] = useState(false);
   const [mappingUpdateMap, setMappingUpdateMap] = useState({});
   const projectId = useStore((state) => state.projectId);
+  const projectName = useStore((state) => state.projectName);
   const storedGroupId = localStorage.getItem("selectedGroup");
   const storedTypeId = localStorage.getItem("selectedType");
   const groupId = storedGroupId ? Number(storedGroupId) : null;
@@ -577,11 +579,11 @@ const ProcessingPipeline = () => {
         payload,
         { responseType: "blob" }
       );
-      const contentDisposition = res.headers["content-disposition"] || "";
-      const fileNameMatch = contentDisposition.match(/filename="?([^\"]+)"?/i);
-      const fileName =
-        fileNameMatch?.[1] ||
-        `report_template${payload.templateId}_proj${payload.projectId}.pdf`;
+      const fileName = buildReportFileName({
+        templateName: template?.templateName,
+        projectName: projectName || (projectId ? `Project ${projectId}` : undefined),
+        typeId: template?.typeId ?? typeId,
+      });
       const fileBlob = new Blob([res.data], { type: "application/pdf" });
       const url = window.URL.createObjectURL(fileBlob);
 
@@ -647,9 +649,11 @@ const ProcessingPipeline = () => {
         },
         responseType: "blob",
       });
-      const contentDisposition = res.headers["content-disposition"] || "";
-      const fileNameMatch = contentDisposition.match(/filename="?([^\"]+)"?/i);
-      const fileName = fileNameMatch?.[1] || `report_template${templateId}.pdf`;
+      const fileName = buildReportFileName({
+        templateName: template?.templateName,
+        projectName: projectName || (projectId ? `Project ${projectId}` : undefined),
+        typeId: template?.typeId ?? typeId,
+      });
       const fileBlob = new Blob([res.data], { type: "application/pdf" });
       const url = window.URL.createObjectURL(fileBlob);
       const link = document.createElement("a");
