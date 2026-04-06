@@ -94,6 +94,7 @@ export const fetchMappingOptions = async (apiUrl, { groupId, typeId }) => {
     envBreakageColumns: res.data?.envBreakageColumns || [],
     boxColumns: res.data?.boxColumns || [],
     nrJsonKeys: res.data?.nrJsonKeys || [],
+    envBreakageJsonKeys: res.data?.envBreakageJsonKeys || [],
   };
 };
 

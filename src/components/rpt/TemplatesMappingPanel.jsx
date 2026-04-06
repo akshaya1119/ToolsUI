@@ -1,5 +1,5 @@
 import React from "react";
-import { Button, Card, Select, Space, Table, Typography } from "antd";
+import { Button, Card, Select, Space, Switch, Table, Typography } from "antd";
 import { CloseOutlined } from "@ant-design/icons";
 
 const TemplatesMappingPanel = ({
@@ -15,6 +15,9 @@ const TemplatesMappingPanel = ({
   mappedFieldNames,
   groupBySelections,
   setGroupBySelections,
+  showDuplicateToggle = false,
+  duplicateLabelsEnabled = true,
+  onDuplicateLabelsChange,
   handleSaveMapping,
   mappingLoading,
   closeMappingPanel,
@@ -41,6 +44,23 @@ const TemplatesMappingPanel = ({
           <Typography.Text type="secondary" style={{ display: "block", marginBottom: 8 }}>
             No saved mapping found for this template yet.
           </Typography.Text>
+        )}
+
+        {showDuplicateToggle && (
+          <Card size="small" style={{ marginBottom: 12 }} bodyStyle={{ padding: 12 }}>
+            <Space style={{ display: "flex", justifyContent: "space-between" }}>
+              <div>
+                <Typography.Text strong>Duplicate box labels</Typography.Text>
+                <Typography.Text type="secondary" style={{ display: "block" }}>
+                  Generates two identical labels for each box.
+                </Typography.Text>
+              </div>
+              <Switch
+                checked={duplicateLabelsEnabled}
+                onChange={onDuplicateLabelsChange}
+              />
+            </Space>
+          </Card>
         )}
 
         <Card size="small" style={{ marginBottom: 12 }} bodyStyle={{ padding: 12 }}>

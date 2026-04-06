@@ -73,6 +73,7 @@ const RPTFiles = () => {
     envBreakageColumns: [],
     boxColumns: [],
     nrJsonKeys: [],
+    envBreakageJsonKeys: [],
   });
   const [mappingOptionsLoading, setMappingOptionsLoading] = useState(false);
   const [mappingSelections, setMappingSelections] = useState({});
@@ -1086,7 +1087,7 @@ const RPTFiles = () => {
     const pushOptions = (items, prefix, extraLabel) => {
       if (!Array.isArray(items) || items.length === 0) return;
       items.forEach((item) => {
-        const key = normalizeKey(item);
+        const key = `${prefix}${normalizeKey(item)}`;
         if (seen.has(key)) return;
         seen.add(key);
         options.push({
@@ -1097,11 +1098,12 @@ const RPTFiles = () => {
       });
     };
 
-    pushOptions(mappingOptions.boxColumns, "b.");
-    pushOptions(mappingOptions.envColumns, "e.");
-    pushOptions(mappingOptions.envBreakageColumns, "eb.");
     pushOptions(mappingOptions.nrColumns, "n.");
     pushOptions(mappingOptions.nrJsonKeys, "n.");
+    pushOptions(mappingOptions.envColumns, "e.");
+    pushOptions(mappingOptions.envBreakageColumns, "eb.");
+    pushOptions(mappingOptions.envBreakageJsonKeys, "eb.");
+    pushOptions(mappingOptions.boxColumns, "b.");
     if (!seen.has(normalizeKey("SRNO"))) {
       options.push({ value: "calc:SRNO", label: "Auto SR No.", raw: "SRNO" });
       seen.add(normalizeKey("SRNO"));
