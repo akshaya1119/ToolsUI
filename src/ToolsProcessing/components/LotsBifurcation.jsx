@@ -43,8 +43,11 @@ const isMeaningfulValue = (value) => {
 
 const parseExamDate = (value) => {
   if (!value) return null;
-  const parsed = dayjs(String(value).trim(), DATE_FORMATS, true);
-  return parsed.isValid() ? parsed : null;
+  const normalized = String(value).trim();
+  const parsed = dayjs(normalized, DATE_FORMATS, true);
+  if (parsed.isValid()) return parsed;
+  const relaxed = dayjs(normalized);
+  return relaxed.isValid() ? relaxed : null;
 };
 
 const coerceNumber = (value, fallback = 0) => {
@@ -52,6 +55,90 @@ const coerceNumber = (value, fallback = 0) => {
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : fallback;
 };
+
+const formatDate = (value) => (value ? dayjs(value).format("DD-MM-YYYY") : "");
+
+const getDateBounds = (dates) => {
+  let start = null;
+  let end = null;
+  dates.forEach((date) => {
+    if (!date) return;
+    if (!start || date.isBefore(start)) start = date;
+    if (!end || date.isAfter(end)) end = date;
+  });
+  return { start, end };
+};
+
+const getNextLotNumber = (rows, targetLot) => {
+  const lots = rows
+    .map((row) => coerceNumber(row.lotNumber, 0))
+    .filter((lot) => lot > targetLot);
+  if (!lots.length) return null;
+  return Math.min(...lots);
+};
+
+const getPrevLotNumber = (rows, targetLot) => {
+  const lots = rows
+    .map((row) => coerceNumber(row.lotNumber, 0))
+    .filter((lot) => lot > 0 && lot < targetLot);
+  if (!lots.length) return null;
+  return Math.max(...lots);
+};
+
+const getLotRange = (rows, lotNumber) => {
+  const dates = rows
+    .filter((row) => coerceNumber(row.lotNumber, 0) === lotNumber)
+    .map((row) => parseExamDate(row.examDate))
+    .filter(Boolean);
+  if (!dates.length) return null;
+  return getDateBounds(dates);
+};
+
+const getAutoStartDate = (rows, targetLot) => {
+  const dates = rows
+    .map((row) => parseExamDate(row.examDate))
+    .filter(Boolean)
+    .sort((a, b) => a.valueOf() - b.valueOf());
+
+  if (!dates.length) return null;
+
+  const normalizedTarget = coerceNumber(targetLot, 0);
+  if (normalizedTarget > 0) {
+    const prevLotNumber = getPrevLotNumber(rows, normalizedTarget);
+    if (!prevLotNumber) return dates[0];
+
+    const prevRange = getLotRange(rows, prevLotNumber);
+    if (!prevRange?.end) return dates[0];
+
+    return dates.find((date) => date.isAfter(prevRange.end, "day")) || null;
+  }
+
+  const unassignedDates = rows
+    .filter((row) => coerceNumber(row.lotNumber, 0) <= 0)
+    .map((row) => parseExamDate(row.examDate))
+    .filter(Boolean)
+    .sort((a, b) => a.valueOf() - b.valueOf());
+
+  return unassignedDates[0] || dates[0] || null;
+};
+
+const hasLotDate = (rows, lotNumber, date) =>
+  rows.some((row) => {
+    if (coerceNumber(row.lotNumber, 0) !== lotNumber) return false;
+    const parsed = parseExamDate(row.examDate);
+    return parsed ? parsed.isSame(date, "day") : false;
+  });
+
+const hasLotDateInRange = (rows, lotNumber, start, end) =>
+  rows.some((row) => {
+    if (coerceNumber(row.lotNumber, 0) !== lotNumber) return false;
+    const parsed = parseExamDate(row.examDate);
+    if (!parsed) return false;
+    return (
+      (parsed.isAfter(start) || parsed.isSame(start, "day")) &&
+      (parsed.isBefore(end) || parsed.isSame(end, "day"))
+    );
+  });
 
 const mergeRows = (base, patch) => ({
   ...base,
@@ -74,6 +161,7 @@ const LotsBifurcation = forwardRef((_, ref) => {
   const [rows, setRows] = useState([]);
   const [dateRange, setDateRange] = useState([null, null]);
   const [lotNumber, setLotNumber] = useState(null);
+  const [startTouched, setStartTouched] = useState(false);
   const [activeLotTab, setActiveLotTab] = useState("all");
   const [searchText, setSearchText] = useState("");
   const [searchedColumn, setSearchedColumn] = useState("");
@@ -83,6 +171,15 @@ const LotsBifurcation = forwardRef((_, ref) => {
   const [lotAssignmentFilter, setLotAssignmentFilter] = useState("all");
   const [editingCatchNo, setEditingCatchNo] = useState(null);
   const [editingLotValue, setEditingLotValue] = useState(0);
+  const [endPickerValue, setEndPickerValue] = useState(null);
+
+  const closeBifurcationPanel = () => {
+    setBifurcationModalOpen(false);
+    setDateRange([null, null]);
+    setLotNumber(null);
+    setEndPickerValue(null);
+    setStartTouched(false);
+  };
 
   const loadRows = async () => {
     if (!projectId) return;
@@ -156,6 +253,25 @@ const LotsBifurcation = forwardRef((_, ref) => {
     loadRows();
   }, [projectId]);
 
+  useEffect(() => {
+    if (activeLotTab !== "0") {
+      setEditingCatchNo(null);
+      setEditingLotValue(0);
+    }
+  }, [activeLotTab]);
+
+  useEffect(() => {
+    if (!bifurcationModalOpen) return;
+    if (!rows.length) return;
+    if (startTouched) return;
+
+    const targetLot = lotNumber;
+    const autoStart = getAutoStartDate(rows, targetLot);
+    if (!autoStart) return;
+
+    setDateRange((prev) => [autoStart, prev?.[1] || null]);
+    setEndPickerValue(autoStart);
+  }, [bifurcationModalOpen, rows, lotNumber, startTouched]);
 
   const lotTabs = useMemo(() => {
     const uniqueLots = Array.from(
@@ -244,18 +360,64 @@ const LotsBifurcation = forwardRef((_, ref) => {
       return;
     }
 
-    if (inRangeCatchNos.length) {
-      const targetLot = coerceNumber(lotNumber, 0);
-      const inRangeSet = new Set(inRangeCatchNos);
+    const targetLot = coerceNumber(lotNumber, 0);
+    const inRangeSet = new Set(inRangeCatchNos);
+
+    const outOfRangeTargetRows = rows.filter((row) => {
+      const parsedDate = parseExamDate(row.examDate);
+      if (!parsedDate) return false;
+      const isTargetLot = coerceNumber(row.lotNumber, 0) === targetLot;
+      return isTargetLot && !inRangeSet.has(row.catchNo);
+    });
+
+    const applyBifurcation = async ({
+      mergeToNextLot,
+      nextLotNumber,
+      allowBoundaryOverlap,
+      forceBoundaryToNextLot,
+      boundaryDateForNext,
+      boundaryDateForPrev,
+      prevLotNumber,
+      nextLotStartLotNumber,
+    }) => {
       const prevRows = rows;
+      const shouldShiftPrevTail = Boolean(prevLotNumber && hasPrevOverlap);
       const nextRows = rows.map((row) => {
-        const hasValidDate = Boolean(parseExamDate(row.examDate));
+        const parsedDate = parseExamDate(row.examDate);
+        const hasValidDate = Boolean(parsedDate);
         const isTargetLot = coerceNumber(row.lotNumber, 0) === targetLot;
+        const isPrevLot =
+          prevLotNumber &&
+          coerceNumber(row.lotNumber, 0) === coerceNumber(prevLotNumber, 0);
         if (inRangeSet.has(row.catchNo)) {
+          if (
+            allowBoundaryOverlap &&
+            forceBoundaryToNextLot &&
+            boundaryDateForNext &&
+            nextLotNumber
+          ) {
+            if (parsedDate && parsedDate.isSame(boundaryDateForNext, "day")) {
+              return { ...row, lotNumber: nextLotNumber };
+            }
+          }
           return { ...row, lotNumber: targetLot };
         }
+        if (
+          shouldShiftPrevTail &&
+          isPrevLot &&
+          parsedDate &&
+          parsedDate.isAfter(end, "day")
+        ) {
+          return {
+            ...row,
+            lotNumber: nextLotNumber ? nextLotNumber : 0,
+          };
+        }
         if (hasValidDate && isTargetLot) {
-          return { ...row, lotNumber: 0 };
+          return {
+            ...row,
+            lotNumber: mergeToNextLot && nextLotNumber ? nextLotNumber : 0,
+          };
         }
         return row;
       });
@@ -276,12 +438,178 @@ const LotsBifurcation = forwardRef((_, ref) => {
       );
       if (!ok) {
         setRows(prevRows);
+      } else if (targetLot > 0) {
+        setActiveLotTab(String(targetLot));
       }
+
+      closeBifurcationPanel();
+      return true;
+    };
+
+    const nextLotNumber = getNextLotNumber(rows, targetLot);
+    const prevLotNumber = getPrevLotNumber(rows, targetLot);
+    const prevRange = prevLotNumber ? getLotRange(rows, prevLotNumber) : null;
+    const nextRange = nextLotNumber ? getLotRange(rows, nextLotNumber) : null;
+    const boundaryDateForPrev =
+      prevRange && start.isSame(prevRange.end, "day") && prevLotNumber
+        ? prevRange.end
+        : null;
+    const boundaryDateForNext =
+      nextRange && end.isSame(nextRange.start, "day") && nextLotNumber
+        ? nextRange.start
+        : null;
+    const hasPrevBoundary =
+      boundaryDateForPrev &&
+      hasLotDate(rows, prevLotNumber, boundaryDateForPrev);
+    const hasNextBoundary =
+      boundaryDateForNext &&
+      hasLotDate(rows, nextLotNumber, boundaryDateForNext);
+    const hasPrevOverlap =
+      prevRange &&
+      hasLotDateInRange(rows, prevLotNumber, start, end);
+    const hasNextOverlap =
+      nextRange &&
+      hasLotDateInRange(rows, nextLotNumber, start, end);
+    const hasPrevTailBeyondRange =
+      prevRange && end.isBefore(prevRange.end, "day");
+
+    if (prevRange && !end.isAfter(prevRange.start, "day")) {
+      showToast(
+        `Lot ${targetLot} must come after Lot ${prevLotNumber}. Select dates after ${formatDate(
+          prevRange.start
+        )}.`,
+        "warning"
+      );
+      return;
     }
 
-    setBifurcationModalOpen(false);
-    setDateRange([null, null]);
-    setLotNumber(null);
+    if (nextRange && !start.isBefore(nextRange.end, "day")) {
+      showToast(
+        `Lot ${targetLot} must come before Lot ${nextLotNumber}. Select dates before ${formatDate(
+          nextRange.end
+        )}.`,
+        "warning"
+      );
+      return;
+    }
+
+    if (hasNextOverlap && !hasNextBoundary) {
+      showToast(
+        `Date ${formatDate(
+          nextRange.start
+        )} is already covered in Lot ${nextLotNumber}. Please change the date range (end before this date) or adjust Lot ${nextLotNumber}.`,
+        "warning"
+      );
+      return;
+    }
+
+    const proceedWithBifurcation = (allowBoundaryOverlap) => {
+      if (nextLotNumber && outOfRangeTargetRows.length) {
+        const nextLotDates = rows
+          .filter(
+            (row) => coerceNumber(row.lotNumber, 0) === nextLotNumber
+          )
+          .map((row) => parseExamDate(row.examDate))
+          .filter(Boolean);
+        const movedDates = outOfRangeTargetRows
+          .map((row) => parseExamDate(row.examDate))
+          .filter(Boolean);
+        const { start: nextStart, end: nextEnd } = getDateBounds([
+          ...nextLotDates,
+          ...movedDates,
+        ]);
+        const rangeLabel =
+          nextStart && nextEnd
+            ? `${formatDate(nextStart)} - ${formatDate(nextEnd)}`
+            : null;
+
+        Modal.confirm({
+          title: "Merge into next lot?",
+          content: (
+            <Space direction="vertical" size={4}>
+              <Text>
+                Some catch numbers from Lot {targetLot} fall outside the selected
+                range.
+              </Text>
+              <Text>
+                They will be merged into Lot {nextLotNumber}.
+              </Text>
+              {rangeLabel && (
+                <Text type="secondary">
+                  Lot {nextLotNumber} will cover {rangeLabel}.
+                </Text>
+              )}
+            </Space>
+          ),
+          okText: "Proceed",
+          cancelText: "Cancel",
+          onOk: () =>
+            applyBifurcation({
+              mergeToNextLot: true,
+              nextLotNumber,
+              allowBoundaryOverlap,
+              forceBoundaryToNextLot: Boolean(hasNextBoundary),
+              boundaryDateForNext: hasNextBoundary ? boundaryDateForNext : null,
+              boundaryDateForPrev: hasPrevBoundary ? boundaryDateForPrev : null,
+              prevLotNumber,
+              nextLotStartLotNumber: nextLotNumber,
+            }),
+        });
+        return;
+      }
+
+      applyBifurcation({
+        mergeToNextLot: false,
+        nextLotNumber,
+        allowBoundaryOverlap,
+        forceBoundaryToNextLot: Boolean(hasNextBoundary),
+        boundaryDateForNext: hasNextBoundary ? boundaryDateForNext : null,
+        boundaryDateForPrev: hasPrevBoundary ? boundaryDateForPrev : null,
+        prevLotNumber,
+        nextLotStartLotNumber: nextLotNumber,
+      });
+    };
+
+    if (hasPrevOverlap || hasNextBoundary) {
+      const overlapEndForPrev =
+        prevRange && end.isBefore(prevRange.end) ? end : prevRange?.end;
+      const prevTailTargetLabel = nextLotNumber
+        ? `Lot ${nextLotNumber}`
+        : "unassigned";
+      Modal.confirm({
+        title: "Force overlap?",
+        content: (
+          <Space direction="vertical" size={4}>
+            {hasPrevOverlap && (
+              <Text>
+                Dates {formatDate(start)} - {formatDate(overlapEndForPrev)} are
+                already covered in Lot {prevLotNumber}. If you proceed, they
+                will be moved to Lot {targetLot}.
+              </Text>
+            )}
+            {hasPrevOverlap && hasPrevTailBeyondRange && (
+              <Text>
+                Dates after {formatDate(end)} from Lot {prevLotNumber} will be
+                moved to {prevTailTargetLabel}.
+              </Text>
+            )}
+            {hasNextBoundary && (
+              <Text>
+                Date {formatDate(boundaryDateForNext)} is already covered in Lot{" "}
+                {nextLotNumber}. If you proceed, it will stay in Lot{" "}
+                {nextLotNumber}.
+              </Text>
+            )}
+          </Space>
+        ),
+        okText: "Proceed",
+        cancelText: "Cancel",
+        onOk: () => proceedWithBifurcation(true),
+      });
+      return;
+    }
+
+    proceedWithBifurcation(false);
   };
 
   useImperativeHandle(ref, () => ({
@@ -410,7 +738,11 @@ const LotsBifurcation = forwardRef((_, ref) => {
       key: "lotNumber",
       width: 170,
       render: (_, record) => {
+        const allowInlineEdit = activeLotTab === "0";
         const isEditing = editingCatchNo === record.catchNo;
+        if (!allowInlineEdit) {
+          return <span>{coerceNumber(record?.lotNumber, 0)}</span>;
+        }
         if (!isEditing) {
           return (
             <Space size={6}>
@@ -542,6 +874,167 @@ const LotsBifurcation = forwardRef((_, ref) => {
             `}
           </style>
           <Space direction="vertical" size={8} style={{ width: "100%" }}>
+            {bifurcationModalOpen && (
+              <Card
+                size="small"
+                style={{
+                  background:
+                    "linear-gradient(120deg, rgba(59,130,246,0.08), rgba(255,255,255,1) 35%)",
+                  borderColor: "#dbeafe",
+                  boxShadow: "0 10px 22px rgba(15, 23, 42, 0.08)",
+                }}
+                bodyStyle={{ padding: 14 }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: 12,
+                    alignItems: "center",
+                    marginBottom: 10,
+                  }}
+                >
+                  <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                    <div
+                      style={{
+                        width: 36,
+                        height: 36,
+                        borderRadius: 10,
+                        background: "#1d4ed8",
+                        color: "#fff",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontWeight: 700,
+                        fontSize: 12,
+                      }}
+                    >
+                      LOT
+                    </div>
+                    <div>
+                      <Text strong style={{ fontSize: 14 }}>
+                        Bifurcate Lots
+                      </Text>
+                      <Text
+                        type="secondary"
+                        style={{ display: "block", fontSize: 12 }}
+                      >
+                        Select a date range and lot number. Conflicts will ask for
+                        confirmation.
+                      </Text>
+                    </div>
+                  </div>
+                  <Space>
+                    <Button size="small" onClick={closeBifurcationPanel}>
+                      Close
+                    </Button>
+                  </Space>
+                </div>
+
+                <div
+                  style={{
+                    background: "#ffffff",
+                    borderRadius: 10,
+                    border: "1px solid #e2e8f0",
+                    padding: 12,
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                      gap: 12,
+                      alignItems: "end",
+                    }}
+                  >
+                    <div>
+                      <Text type="secondary" style={{ fontSize: 11, fontWeight: 600 }}>
+                        Start Date
+                      </Text>
+                      <DatePicker
+                        value={dateRange?.[0] || null}
+                        format="DD-MM-YYYY"
+                        style={{ width: "100%", marginTop: 6 }}
+                        onChange={(value) => {
+                          setStartTouched(true);
+                          setDateRange((prev) => {
+                            const nextEnd =
+                              prev?.[1] &&
+                              value &&
+                              prev[1].isBefore(value, "day")
+                                ? null
+                                : prev?.[1] || null;
+                            return [value, nextEnd];
+                          });
+                          if (value) {
+                            setEndPickerValue(value);
+                          }
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <Text type="secondary" style={{ fontSize: 11, fontWeight: 600 }}>
+                        End Date
+                      </Text>
+                      <DatePicker
+                        value={dateRange?.[1] || null}
+                        format="DD-MM-YYYY"
+                        style={{ width: "100%", marginTop: 6 }}
+                        onChange={(value) =>
+                          setDateRange((prev) => [prev?.[0] || null, value])
+                        }
+                        disabledDate={(current) => {
+                          const start = dateRange?.[0];
+                          if (!start || !current) return false;
+                          return current.isBefore(start, "day");
+                        }}
+                        pickerValue={
+                          endPickerValue ||
+                          dateRange?.[1] ||
+                          dateRange?.[0] ||
+                          undefined
+                        }
+                        onPanelChange={(value) => setEndPickerValue(value)}
+                        onOpenChange={(open) => {
+                          if (open && dateRange?.[0]) {
+                            setEndPickerValue(dateRange[0]);
+                          }
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <Text type="secondary" style={{ fontSize: 11, fontWeight: 600 }}>
+                        Lot Number
+                      </Text>
+                      <InputNumber
+                        min={0}
+                        value={lotNumber}
+                        style={{ width: "100%", marginTop: 6 }}
+                        placeholder="Enter lot number"
+                        onChange={(value) => setLotNumber(value)}
+                      />
+                    </div>
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: 8,
+                        justifyContent: "flex-end",
+                        paddingTop: 6,
+                      }}
+                    >
+                      <Button onClick={closeBifurcationPanel}>Cancel</Button>
+                      <Button
+                        type="primary"
+                        onClick={handleBifurcate}
+                        disabled={loading || !rows.length}
+                      >
+                        Apply
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </Card>
+            )}
             <div className="lot-tab-row">
               <Tabs
                 className="lot-tabs"
@@ -614,60 +1107,6 @@ const LotsBifurcation = forwardRef((_, ref) => {
           </Space>
         </Card>
       </motion.div>
-
-      <Modal
-        title="Bifurcate Lots"
-        open={bifurcationModalOpen}
-        onCancel={() => {
-          setBifurcationModalOpen(false);
-          setDateRange([null, null]);
-          setLotNumber(null);
-        }}
-        onOk={handleBifurcate}
-        okText="Apply"
-        okButtonProps={{ disabled: loading || !rows.length }}
-      >
-        <Space direction="vertical" size={12} style={{ width: "100%" }}>
-          <div>
-            <Text type="secondary" className="mb-1 block text-[11px] font-medium">
-              Start Date
-            </Text>
-            <DatePicker
-              value={dateRange?.[0] || null}
-              format="DD-MM-YYYY"
-              style={{ width: "100%" }}
-              onChange={(value) =>
-                setDateRange((prev) => [value, prev?.[1] || null])
-              }
-            />
-          </div>
-          <div>
-            <Text type="secondary" className="mb-1 block text-[11px] font-medium">
-              End Date
-            </Text>
-            <DatePicker
-              value={dateRange?.[1] || null}
-              format="DD-MM-YYYY"
-              style={{ width: "100%" }}
-              onChange={(value) =>
-                setDateRange((prev) => [prev?.[0] || null, value])
-              }
-            />
-          </div>
-          <div>
-            <Text type="secondary" className="mb-1 block text-[11px] font-medium">
-              Lot Number
-            </Text>
-            <InputNumber
-              min={0}
-              value={lotNumber}
-              style={{ width: "100%" }}
-              placeholder="Enter lot number"
-              onChange={(value) => setLotNumber(value)}
-            />
-          </div>
-        </Space>
-      </Modal>
 
     </div>
   )
