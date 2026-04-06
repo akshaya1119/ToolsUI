@@ -41,6 +41,7 @@ export default function Sidebar({ collapsed }) {
             { label: "Project Configuration", path: "/projectconfiguration" },
             { label: "Data Import", path: "/dataimport" },
             { label: "Processing Pipeline", path: "/processingpipeline" },
+            { label: "RPT Reports", path: "/rptreports" },
           ],
         },
       ]

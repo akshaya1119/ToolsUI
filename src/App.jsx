@@ -14,6 +14,7 @@ import DuplicateTool from "./ToolsProcessing/DuplicateTool";
 import Master from "./Masters/Master";
 import EnvelopeBreaking from "./ToolsProcessing/Envelope/EnvelopeBreaking";
 import ProcessingPipeline from "./ToolsProcessing/ProcessingPipeline";
+import RPTReports from "./ToolsProcessing/RPTReports";
 import HorizontalToVertical from "./ToolsProcessing/HToV"
 import Report from "./pages/Report/Report";
 import ReportBuilder from "./pages/Report/ReportBuilder";
@@ -178,6 +179,15 @@ export default function App() {
                   <ProtectedRoute token={token}>
                     <MainLayout >
                       <ProcessingPipeline />
+                    </MainLayout></ProtectedRoute>
+                }
+              />
+              <Route
+                path="/rptreports"
+                element={
+                  <ProtectedRoute token={token}>
+                    <MainLayout >
+                      <RPTReports />
                     </MainLayout></ProtectedRoute>
                 }
               />

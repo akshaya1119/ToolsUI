@@ -11,6 +11,7 @@ import {
   Checkbox,
   Alert,
   Modal,
+  Tabs,
 } from "antd";
 import { motion } from "framer-motion";
 import API from "../hooks/api";
@@ -30,6 +31,11 @@ const ProcessingPipeline = () => {
   const [configChanged, setConfigChanged] = useState(false);
   const [changedFieldsInfo, setChangedFieldsInfo] = useState([]);
   const [dependencyModal, setDependencyModal] = useState({ visible: false, unprocessedSteps: [], selectedStep: null });
+  const [selectedModuleForDetails, setSelectedModuleForDetails] = useState(null);
+  const [isDetailPanelOpen, setIsDetailPanelOpen] = useState(false);
+  const [detailViewType, setDetailViewType] = useState("reports"); // "reports" | "templates"
+  const [detailGrouping, setDetailGrouping] = useState("lot"); // "lot" | "catch"
+  const [selectedItems, setSelectedItems] = useState({}); // { groupName: [itemIds] }
   const projectId = useStore((state) => state.projectId);
 
   const currentStep = useMemo(
@@ -550,7 +556,7 @@ const ProcessingPipeline = () => {
       dataIndex: "select",
       key: "select",
       width: 100,
-      render: (_, record, index) => {
+      render: (_, record) => {
         let disabled = isProcessing;
 
         return (
@@ -624,10 +630,337 @@ const ProcessingPipeline = () => {
           <Text type="secondary">—</Text>
         ),
     },
+    // {
+    //   title: "Actions",
+    //   key: "actions",
+    //   width: 120,
+    //   render: (_, record) => {
+    //     const hasData = record.report || record.status === "completed";
+    //     return 
+    //   },
+    // },
   ];
 
+  // Check if module has data
+  const moduleHasData = (record) => {
+    return record.report || record.status === "completed";
+  };
+
+  // Handle opening detail panel
+  const handleOpenDetailPanel = (record) => {
+    if (!moduleHasData(record)) return;
+    
+    setSelectedModuleForDetails(record);
+    setIsDetailPanelOpen(true);
+    
+    // Initialize all items as selected by default
+    const mockLotData = {
+      "LOT-001": [
+        { id: "lot1-1", name: "report1.pdf", url: "#" },
+        { id: "lot1-2", name: "report2.pdf", url: "#" },
+      ],
+      "LOT-002": [
+        { id: "lot2-1", name: "report3.pdf", url: "#" },
+      ],
+    };
+
+    const mockCatchData = {
+      "CATCH-A": [
+        { id: "catch-a-1", name: "report1.pdf", url: "#" },
+      ],
+      "CATCH-B": [
+        { id: "catch-b-1", name: "report2.pdf", url: "#" },
+      ],
+    };
+
+    const dataToUse = detailGrouping === "lot" ? mockLotData : mockCatchData;
+    
+    // Select all items by default
+    const initialSelection = {};
+    Object.entries(dataToUse).forEach(([groupName, items]) => {
+      initialSelection[groupName] = items.map(item => item.id);
+    });
+    setSelectedItems(initialSelection);
+  };
+
+  // Handle closing detail panel
+  const handleCloseDetailPanel = () => {
+    setIsDetailPanelOpen(false);
+    setSelectedModuleForDetails(null);
+    setSelectedItems({});
+  };
+
+  // Handle row click
+  const handleRowClick = (record) => {
+    if (moduleHasData(record)) {
+      handleOpenDetailPanel(record);
+    }
+  };
+
+  // Handle item selection
+  const handleItemToggle = (groupName, itemId) => {
+    setSelectedItems(prev => {
+      const groupItems = prev[groupName] || [];
+      const isSelected = groupItems.includes(itemId);
+      
+      return {
+        ...prev,
+        [groupName]: isSelected
+          ? groupItems.filter(id => id !== itemId)
+          : [...groupItems, itemId]
+      };
+    });
+  };
+
+  // Handle group selection
+  const handleGroupToggle = (groupName, allItemIds) => {
+    setSelectedItems(prev => {
+      const groupItems = prev[groupName] || [];
+      const allSelected = allItemIds.every(id => groupItems.includes(id));
+      
+      return {
+        ...prev,
+        [groupName]: allSelected ? [] : allItemIds
+      };
+    });
+  };
+
+  // Get total selected count
+  const getTotalSelectedCount = () => {
+    return Object.values(selectedItems).reduce((sum, items) => sum + items.length, 0);
+  };
+
+  // Render detail panel content
+  const renderDetailPanel = () => {
+      if (!selectedModuleForDetails) {
+        return (
+          <div style={{ 
+            display: "flex", 
+            alignItems: "center", 
+            justifyContent: "center", 
+            height: "100%",
+            color: "#999",
+            fontSize: "14px"
+          }}>
+            Select a module to view details
+          </div>
+        );
+      }
+
+      const { moduleName, status, key: moduleKey } = selectedModuleForDetails;
+      const config = getConfigForModule(moduleKey);
+
+      // Mock data structure - replace with actual API data when available
+      const mockLotData = {
+        "LOT-001": [
+          { id: "lot1-1", name: "report1.pdf", url: "#" },
+          { id: "lot1-2", name: "report2.pdf", url: "#" },
+        ],
+        "LOT-002": [
+          { id: "lot2-1", name: "report3.pdf", url: "#" },
+        ],
+      };
+
+      const mockCatchData = {
+        "CATCH-A": [
+          { id: "catch-a-1", name: "report1.pdf", url: "#" },
+        ],
+        "CATCH-B": [
+          { id: "catch-b-1", name: "report2.pdf", url: "#" },
+        ],
+      };
+
+      const dataToDisplay = detailGrouping === "lot" ? mockLotData : mockCatchData;
+      const totalSelected = getTotalSelectedCount();
+
+      // Render data list with grouping
+      const renderDataList = () => (
+        <div style={{ 
+          flex: 1, 
+          overflowY: "auto", 
+          padding: "16px"
+        }}>
+          {Object.entries(dataToDisplay).map(([groupName, items]) => {
+            const groupItemIds = items.map(item => item.id);
+            const groupSelectedItems = selectedItems[groupName] || [];
+            const allSelected = groupItemIds.every(id => groupSelectedItems.includes(id));
+            const someSelected = groupSelectedItems.length > 0 && !allSelected;
+
+            return (
+              <div key={groupName} style={{ marginBottom: 16 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                  <Checkbox
+                    checked={allSelected}
+                    indeterminate={someSelected}
+                    onChange={() => handleGroupToggle(groupName, groupItemIds)}
+                  />
+                  <Text strong style={{ fontSize: "13px" }}>
+                    {groupName}
+                  </Text>
+                </div>
+                <div style={{ paddingLeft: 32 }}>
+                  {items.map((item, idx) => {
+                    const isSelected = groupSelectedItems.includes(item.id);
+                    return (
+                      <div key={item.id} style={{ 
+                        display: "flex", 
+                        alignItems: "center", 
+                        justifyContent: "space-between",
+                        padding: "6px 0",
+                        borderBottom: idx < items.length - 1 ? "1px solid #f5f5f5" : "none"
+                      }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <Checkbox
+                            checked={isSelected}
+                            onChange={() => handleItemToggle(groupName, item.id)}
+                          />
+                          <Text style={{ fontSize: "12px" }}>{item.name}</Text>
+                        </div>
+                        <Button type="link" size="small" style={{ fontSize: "12px" }}>
+                          Download
+                        </Button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      );
+
+      // Tab items for Reports and Templates
+      const tabItems = [
+        {
+          key: "reports",
+          label: "Reports",
+          children: (
+            <div style={{ display: "flex",flexDirection: "column", height: "100%" }}>
+              {/* Grouping Toggle */}
+              <div 
+  style={{ 
+    padding: "12px 16px", 
+    borderBottom: "1px solid #f0f0f0",
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center"
+  }}
+>
+  <Button.Group size="small">
+    <Button
+      type={detailGrouping === "lot" ? "primary" : "default"}
+      onClick={() => setDetailGrouping("lot")}
+    >
+      Lot-wise
+    </Button>
+    <Button
+      type={detailGrouping === "catch" ? "primary" : "default"}
+      onClick={() => setDetailGrouping("catch")}
+    >
+      Catch-wise
+    </Button>
+  </Button.Group>
+
+  <Button size="small" type="primary">
+    Generate All
+  </Button>
+</div>
+
+              {/* Action Buttons */}
+              <div style={{ padding: "12px 16px", borderBottom: "1px solid #f0f0f0" }}>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  
+                  <Button size="small">Download All</Button>
+                  <Button size="small" disabled={totalSelected === 0}>
+                    Download Selected ({totalSelected})
+                  </Button>
+                </div>
+              </div>
+
+              {/* Data List */}
+              {renderDataList()}
+            </div>
+          ),
+        },
+        {
+          key: "templates",
+          label: "Templates",
+          children: (
+            <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+              {/* Grouping Toggle */}
+              <div style={{ padding: "12px 16px", borderBottom: "1px solid #f0f0f0" }}>
+                <Button.Group size="small">
+                  <Button
+                    type={detailGrouping === "lot" ? "primary" : "default"}
+                    onClick={() => setDetailGrouping("lot")}
+                  >
+                    Lot-wise
+                  </Button>
+                  <Button
+                    type={detailGrouping === "catch" ? "primary" : "default"}
+                    onClick={() => setDetailGrouping("catch")}
+                  >
+                    Catch-wise
+                  </Button>
+                </Button.Group>
+              </div>
+
+              {/* Action Buttons */}
+              <div style={{ padding: "12px 16px", borderBottom: "1px solid #f0f0f0" }}>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <Button size="small" type="primary">Generate All</Button>
+                  <Button size="small">Download All</Button>
+                  <Button size="small" disabled={totalSelected === 0}>
+                    Download Selected ({totalSelected})
+                  </Button>
+                </div>
+              </div>
+
+              {/* Data List */}
+              {renderDataList()}
+            </div>
+          ),
+        },
+      ];
+
+      return (
+        <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+          {/* Header */}
+<div style={{ 
+  padding: "12px 16px", 
+  borderBottom: "1px solid #f0f0f0",
+  backgroundColor: "#fafafa",
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center"
+}}>
+  <Text strong style={{ fontSize: "14px" }}>
+    {moduleName} Details
+  </Text>
+
+  <Button 
+    type="text" 
+    size="small" 
+    onClick={handleCloseDetailPanel}
+  >
+    ✕
+  </Button>
+</div>
+
+          {/* Tabs for Reports/Templates */}
+          <Tabs
+            activeKey={detailViewType}
+            onChange={setDetailViewType}
+            items={tabItems}
+            style={{ flex: 1, display: "flex", flexDirection: "column" }}
+            tabBarStyle={{ margin: 0, paddingLeft: 16, paddingRight: 16 }}
+          />
+        </div>
+      );
+    }
+
   return (
-    <div className=" p-4">
+    <div className="p-4">
       {configChanged && (
         <Alert
           message="Configuration Updated"
@@ -665,34 +998,75 @@ const ProcessingPipeline = () => {
         </div>
       </div>
 
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3 }}
-      >
-        <Card
-          size="small"
-          title="Enabled Modules Status & Reports"
-          style={{
-            marginBottom: 12,
-            border: "1px solid #d9d9d9",
-            boxShadow: "0 4px 8px rgba(0,0,0,0.1)",
-          }}
+      {/* Split Layout */}
+      <div style={{ display: "flex", gap: 16, transition: "all 0.3s ease" }}>
+        {/* Left Side - Table */}
+        <motion.div 
+          style={{ flex: isDetailPanelOpen ? "0 0 70%" : "1" }}
+          animate={{ flex: isDetailPanelOpen ? "0 0 70%" : "1" }}
+          transition={{ duration: 0.3 }}
         >
+          <Card
+            size="small"
+            title="Enabled Modules Status & Reports"
+            style={{
+              marginBottom: 12,
+              border: "1px solid #d9d9d9",
+              boxShadow: "0 4px 8px rgba(0,0,0,0.1)",
+            }}
+          >
+            {enabledModuleNames.length === 0 ? (
+              <p>No modules selected for this project</p>
+            ) : (
+              <Table
+                columns={columns}
+                dataSource={data}
+                pagination={false}
+                loading={loadingModules}
+                rowKey="key"
+                onRow={(record) => ({
+                  onClick: () => handleRowClick(record),
+                  style: { 
+                    cursor: moduleHasData(record) ? "pointer" : "default"
+                  },
+                  onMouseEnter: (e) => {
+                    if (moduleHasData(record)) {
+                      e.currentTarget.style.backgroundColor = "#f5f5f5";
+                    }
+                  },
+                  onMouseLeave: (e) => {
+                    e.currentTarget.style.backgroundColor = "";
+                  }
+                })}
+              />
+            )}
+          </Card>
+        </motion.div>
 
-          {enabledModuleNames.length === 0 ? (
-            <p>No modules selected for this project</p>
-          ) : (
-            <Table
-              columns={columns}
-              dataSource={data}
-              pagination={false}
-              loading={loadingModules}
-              rowKey="key"
-            />
-          )}
-        </Card>
-      </motion.div>
+        {/* Right Side - Detail Panel */}
+        {isDetailPanelOpen && (
+          <motion.div 
+            style={{ flex: "0 0 30%" }}
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 20 }}
+            transition={{ duration: 0.3 }}
+          >
+            <Card
+              size="small"
+              title="Detail View"
+              style={{
+                height: "calc(100vh - 220px)",
+                border: "1px solid #d9d9d9",
+                boxShadow: "0 4px 8px rgba(0,0,0,0.1)",
+              }}
+              bodyStyle={{ padding: 0, height: "calc(100% - 48px)", overflow: "hidden" }}
+            >
+              {renderDetailPanel()}
+            </Card>
+          </motion.div>
+        )}
+      </div>
 
       <Modal
         title="Unprocessed Dependencies Detected"
