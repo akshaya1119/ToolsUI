@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
 import { FaHome, FaWrench, FaChartBar, FaSignOutAlt, FaBookmark, FaBook, FaChevronDown, FaChevronRight } from "react-icons/fa"; // Using filled versions from FontAwesome
 import useStore from "../stores/ProjectData";
+import Footer from "./Footer";
 
 export default function Sidebar({ collapsed }) {
   const navigate = useNavigate();
@@ -40,7 +41,7 @@ export default function Sidebar({ collapsed }) {
           children: [
             { label: "Project Configuration", path: "/projectconfiguration" },
             { label: "Data Import", path: "/dataimport" },
-            //{ label: "Project Templates", path: "/projecttemplates" },
+            { label: "Project Templates", path: "/projecttemplates" },
             { label: "Processing Pipeline", path: "/processingpipeline" },
           ],
         },
@@ -165,13 +166,19 @@ export default function Sidebar({ collapsed }) {
         {menuItems.map((item) => (item.children ? renderGroupItem(item) : renderMenuItem(item)))}
       </ul>
 
-      {/* Logout Button */}
-      {projectName && (
-        <div onClick={handleLogout} className={`mt-auto flex items-center gap-3 px-3 py-2 rounded-md cursor-pointer text-gray-800 hover:bg-gray-100 transition-all duration-150 ${collapsed ? "justify-center" : ""}`}>
-          <FaSignOutAlt className={collapsed ? "text-2xl" : "text-base"} /> {/* Filled log-out icon */}
-          {!collapsed && <span>Logout</span>}
-        </div>
-      )}
+      <div className="mt-auto">
+        {/* Logout Button */}
+        {projectName && (
+          <div
+            onClick={handleLogout}
+            className={`flex items-center gap-3 px-3 py-2 rounded-md cursor-pointer text-gray-800 hover:bg-gray-100 transition-all duration-150 ${collapsed ? "justify-center" : ""}`}
+          >
+            <FaSignOutAlt className={collapsed ? "text-2xl" : "text-base"} /> {/* Filled log-out icon */}
+            {!collapsed && <span>Logout</span>}
+          </div>
+        )}
+        <Footer collapsed={collapsed} />
+      </div>
     </aside>
   );
 }
