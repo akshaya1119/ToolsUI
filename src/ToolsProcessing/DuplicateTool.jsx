@@ -2,13 +2,13 @@ import React, { useEffect, useState } from "react";
 import { Card, Select, Typography, Tag, Button } from "antd";
 import API from "./../hooks/api";
 import useStore from "./../stores/ProjectData";
-import { CopyFilled, LockFilled, UndoOutlined } from "@ant-design/icons";
+import { CopyFilled, LockFilled, UndoOutlined, DeleteOutlined } from "@ant-design/icons";
 import { iconStyle, PRIMARY_COLOR } from "../ProjectConfig/components/constants";
 
 const { Text } = Typography;
 const { Option } = Select;
 
-const DuplicateTool = ({ isEnabled, duplicateConfig = {}, setDuplicateConfig, onReset, importedSnapshot }) => {
+const DuplicateTool = ({ isEnabled, duplicateConfig = {}, setDuplicateConfig, onReset, onClear, importedSnapshot }) => {
   const projectId = useStore((state) => state.projectId);
   const [fields, setFields] = useState([]);
 
@@ -47,15 +47,26 @@ const DuplicateTool = ({ isEnabled, duplicateConfig = {}, setDuplicateConfig, on
       extra={
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {enabled && (
-            <Button
-              type="text"
-              size="small"
-              icon={<UndoOutlined />}
-              onClick={onReset}
-              style={{ color: PRIMARY_COLOR }}
-            >
-              Reset
-            </Button>
+            <>
+              <Button
+                type="text"
+                size="small"
+                icon={<UndoOutlined />}
+                onClick={onReset}
+                style={{ color: PRIMARY_COLOR }}
+              >
+                Reset
+              </Button>
+              <Button
+                type="text"
+                size="small"
+                icon={<DeleteOutlined />}
+                onClick={onClear}
+                style={{ color: "#ff4d4f" }}
+              >
+                Clear
+              </Button>
+            </>
           )}
           {!enabled && (
             <Tag icon={<LockFilled style={{ color: PRIMARY_COLOR }} />}>Disabled</Tag>

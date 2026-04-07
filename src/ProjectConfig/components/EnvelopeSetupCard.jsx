@@ -1,6 +1,6 @@
 import React from "react";
 import { Card, Select, Typography, Tag, Button, InputNumber, Checkbox, Row, Col } from "antd";
-import { MailFilled, LockFilled, UndoOutlined } from "@ant-design/icons";
+import { MailFilled, LockFilled, UndoOutlined, DeleteOutlined } from "@ant-design/icons";
 import AnimatedCard from "./AnimatedCard";
 import { cardStyle, iconStyle, PRIMARY_COLOR } from "./constants";
 
@@ -15,6 +15,7 @@ const EnvelopeSetupCard = ({
   setOuterEnvelopes,
   envelopeOptions,
   onReset,
+  onClear,
   importedSnapshot,
   duplicateConfig,
   setDuplicateConfig,
@@ -65,20 +66,29 @@ const EnvelopeSetupCard = ({
         extra={
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             {envelopeModuleEnabled && (
-              <Button
-                type="text"
-                size="small"
-                icon={<UndoOutlined />}
-                onClick={onReset}
-                style={{ color: PRIMARY_COLOR }}
-              >
-                Reset
-              </Button>
+              <>
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<UndoOutlined />}
+                  onClick={onReset}
+                  style={{ color: PRIMARY_COLOR }}
+                >
+                  Reset
+                </Button>
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<DeleteOutlined />}
+                  onClick={onClear}
+                  style={{ color: "#ff4d4f" }}
+                >
+                  Clear
+                </Button>
+              </>
             )}
             {!envelopeModuleEnabled && (
-              <Tag icon={<LockFilled style={{ color: PRIMARY_COLOR }} />}>
-                Disabled
-              </Tag>
+              <Tag icon={<LockFilled style={{ color: PRIMARY_COLOR }} />}>Disabled</Tag>
             )}
           </div>
         }

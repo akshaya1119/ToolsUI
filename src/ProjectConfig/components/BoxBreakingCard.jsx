@@ -1,6 +1,6 @@
 import React from "react";
 import { Card, Select, Typography, Tag, Checkbox, InputNumber, Button } from "antd";
-import { DatabaseFilled, LockFilled, UndoOutlined } from "@ant-design/icons";
+import { DatabaseFilled, LockFilled, UndoOutlined, DeleteOutlined } from "@ant-design/icons";
 import AnimatedCard from "./AnimatedCard";
 import { cardStyle, iconStyle, PRIMARY_COLOR } from "./constants";
 
@@ -29,6 +29,7 @@ const BoxBreakingCard = ({
   innerBundlingCriteria,
   setInnerBundlingCriteria,
   onReset,
+  onClear,
   importedSnapshot,
 }) => {
   const isDirty = (current, snapshotVal) => {
@@ -98,15 +99,26 @@ const BoxBreakingCard = ({
         extra={
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             {isEnabled("Box Breaking") && (
-              <Button
-                type="text"
-                size="small"
-                icon={<UndoOutlined />}
-                onClick={onReset}
-                style={{ color: PRIMARY_COLOR }}
-              >
-                Reset
-              </Button>
+              <>
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<UndoOutlined />}
+                  onClick={onReset}
+                  style={{ color: PRIMARY_COLOR }}
+                >
+                  Reset
+                </Button>
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<DeleteOutlined />}
+                  onClick={onClear}
+                  style={{ color: "#ff4d4f" }}
+                >
+                  Clear
+                </Button>
+              </>
             )}
             {!isEnabled("Box Breaking") && (
               <Tag icon={<LockFilled style={{ color: PRIMARY_COLOR }} />}>
