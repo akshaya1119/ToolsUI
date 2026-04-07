@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Button, Modal, Select, message, Radio, Space } from "antd";
+import { Button, Modal, Select, message, Radio, Space, Checkbox, Alert, Typography } from "antd";
 import API from "../../hooks/api";
 import axios from "axios";
 
@@ -19,8 +19,12 @@ const ImportConfig = ({ onImport, disabled }) => {
   const [typeOptions, setTypeOptions] = useState([]);
   const [selectedGroup, setSelectedGroup] = useState(null);
   const [selectedType, setSelectedType] = useState(null);
-
+  const [importTemplates, setImportTemplates] = useState(true);
+  const [configuredProjectIds, setConfiguredProjectIds] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [validationLoading, setValidationLoading] = useState(false);
+  const [templatesExist, setTemplatesExist] = useState(null);
+  const [masterConfigExists, setMasterConfigExists] = useState(null);
 
   const fetchAllProjects = async () => {
     const pageSize = 200;
@@ -68,6 +72,16 @@ const ImportConfig = ({ onImport, disabled }) => {
         );
       }
 
+      // Fetch all project configurations to identify configured projects
+      promises.push(
+        API.get("/ProjectConfigs")
+          .then(res => {
+            const ids = (res.data || []).map(c => c.projectId);
+            setConfiguredProjectIds(ids);
+          })
+          .catch(() => console.warn("Failed to load project configurations for filtering"))
+      );
+
       await Promise.allSettled(promises);
     } catch (err) {
       console.error("Error fetching import data", err);
@@ -75,6 +89,50 @@ const ImportConfig = ({ onImport, disabled }) => {
       setLoading(false);
     }
   };
+
+  // Real-time validation for templates and master config
+  useEffect(() => {
+    const validateSource = async () => {
+      setTemplatesExist(null);
+      setMasterConfigExists(null);
+
+      if (importMethod === "project" && selectedProjectId) {
+        setValidationLoading(true);
+        try {
+          // Check templates
+          if (importTemplates) {
+            const res = await axios.get(`${import.meta.env.VITE_API_URL}/RPTTemplates/by-group?projectId=${selectedProjectId}`);
+            setTemplatesExist(res.data && res.data.length > 0);
+          }
+          // Configuration existence is already filtered in dropdown, but we could double check here if needed
+          setMasterConfigExists(true); 
+        } catch (err) {
+          console.error("Validation failed", err);
+        } finally {
+          setValidationLoading(false);
+        }
+      } else if (importMethod === "groupType" && selectedGroup && selectedType) {
+        setValidationLoading(true);
+        try {
+          // Check Master Config
+          const configRes = await API.get(`/MProjectConfigs/ByTypeGroup/${selectedType}/${selectedGroup}`).catch(() => null);
+          setMasterConfigExists(!!configRes?.data);
+
+          // Check templates
+          if (importTemplates) {
+            const res = await axios.get(`${import.meta.env.VITE_API_URL}/RPTTemplates/by-group?typeId=${selectedType}&groupId=${selectedGroup}`);
+            setTemplatesExist(res.data && res.data.length > 0);
+          }
+        } catch (err) {
+          console.error("Validation failed", err);
+        } finally {
+          setValidationLoading(false);
+        }
+      }
+    };
+
+    validateSource();
+  }, [importMethod, selectedProjectId, selectedGroup, selectedType, importTemplates]);
 
   const showModal = () => {
     fetchData();
@@ -87,13 +145,13 @@ const ImportConfig = ({ onImport, disabled }) => {
         message.warning("Please select a project to import from.");
         return;
       }
-      onImport({ projectId: selectedProjectId });
+      onImport({ projectId: selectedProjectId, importTemplates });
     } else {
       if (!selectedGroup || !selectedType) {
         message.warning("Please select both a group and a type to import from.");
         return;
       }
-      onImport({ groupId: selectedGroup, typeId: selectedType });
+      onImport({ groupId: selectedGroup, typeId: selectedType, importTemplates });
     }
 
     setIsModalVisible(false);
@@ -158,8 +216,9 @@ const ImportConfig = ({ onImport, disabled }) => {
                 option?.children?.toLowerCase().includes(input.toLowerCase())
               }
             >
-              {(Array.isArray(projectList) ? projectList : []).map((project) => (
-                
+              {(Array.isArray(projectList) ? projectList : [])
+                .filter(p => configuredProjectIds.includes(p.projectId))
+                .map((project) => (
                 <Select.Option
                   key={project.projectId}
                   value={project.projectId}
@@ -199,6 +258,38 @@ const ImportConfig = ({ onImport, disabled }) => {
             </div>
           </Space>
         )}
+
+        <div style={{ marginTop: 20 }}>
+          {importMethod === "groupType" && selectedGroup && selectedType && masterConfigExists === false && (
+            <Alert
+              message="No Master Configuration found for this Group & Type."
+              type="error"
+              showIcon
+              style={{ marginBottom: 12 }}
+            />
+          )}
+
+          {importTemplates && templatesExist === false && (
+            <Alert
+              message="No Templates found for this source. Templates will not be imported."
+              type="warning"
+              showIcon
+              style={{ marginBottom: 12 }}
+            />
+          )}
+        </div>
+
+        <div style={{ marginTop: 24, borderTop: '1px solid #f0f0f0', paddingTop: 16 }}>
+          <Checkbox
+            checked={importTemplates}
+            onChange={(e) => setImportTemplates(e.target.checked)}
+          >
+            Import Templates (RPT) from source
+          </Checkbox>
+          <p style={{ color: '#8c8c8c', fontSize: '12px', marginTop: 4, marginLeft: 24 }}>
+            Ensures all report designs are also synchronized with the source.
+          </p>
+        </div>
       </Modal>
     </>
   );

@@ -20,12 +20,15 @@ import { EXTRA_ALIAS_NAME } from "./components/constants";
 import DuplicateTool from "../ToolsProcessing/DuplicateTool";
 import API from "../hooks/api";
 import ImportConfig from "./components/ImportConfig";
+import { importTemplatesFromGroup } from "../services/rptTemplatesService";
+import { normalizeId } from "../utils/rptTemplateUtils";
 
 const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, selectedGroup = null, onTypeChange = null, onGroupChange = null, typeOptions: propTypeOptions = [], groupOptions: propGroupOptions = [], onReset = null, onResetAll = null }) => {
   const { showToast } = useToast();
   const navigate = useNavigate();
   const projectId = useStore((state) => state.projectId);
   const url = import.meta.env.VITE_API_BASE_URL;
+  const APIURL = import.meta.env.VITE_API_URL;
   const [mssInsertPosition, setMssInsertPosition] = useState("end");
   // Group and Type options - use props if provided, otherwise fetch
   const [groupOptions, setGroupOptions] = useState(propGroupOptions || []);
@@ -469,10 +472,12 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
 
   const handleImport = async (importData) => {
     let parsed = null;
+    const { importTemplates } = importData;
 
-    if (importData.projectId) {
-      parsed = await fetchProjectConfigData(importData.projectId);
-    } else if (importData.typeId && importData.groupId) {
+    try {
+      if (importData.projectId) {
+        parsed = await fetchProjectConfigData(importData.projectId);
+      } else if (importData.typeId && importData.groupId) {
       // Temporarily bypass the isMasterConfig check inside fetchProjectConfigData
       // and call the endpoints directly to get the imported snapshot
       const fetchGroupTypeConfigParams = async (typeId, groupId) => {
@@ -686,6 +691,56 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
     if (parsed) {
       setImportedSnapshot(parsed); // snapshot from freshly parsed data — not from stale state
       message.success("Configuration imported successfully! Review and save.");
+
+      // Handle template import if requested
+      if (importTemplates) {
+        try {
+          // Detect current project context (Group/Type) for the import target
+          let targetGroupId = projectGroupId;
+          let targetTypeId = projectTypeId;
+
+          // If not in master config, we might need to fetch the current project's group/type
+          if (!isMasterConfig && (!targetGroupId || !targetTypeId)) {
+            const res = await axios.get(`${url}/Project`);
+            const p = (res.data || []).find(proj => normalizeId(proj.projectId) === normalizeId(projectId));
+            if (p) {
+              targetGroupId = normalizeId(p.groupId);
+              targetTypeId = normalizeId(p.typeId);
+            }
+          }
+
+          if (targetGroupId && targetTypeId) {
+            const payload = {
+              targetProjectId: isMasterConfig ? null : normalizeId(projectId),
+              targetGroupId: targetGroupId,
+              targetTypeId: targetTypeId,
+              copyMappings: true,
+            };
+
+            if (importData.projectId) {
+              payload.sourceScope = "project";
+              payload.sourceProjectId = normalizeId(importData.projectId);
+            } else {
+              payload.sourceScope = "group";
+              payload.sourceGroupId = normalizeId(importData.groupId);
+              payload.sourceTypeId = normalizeId(importData.typeId);
+              payload.includeStandard = true;
+            }
+
+            await importTemplatesFromGroup(APIURL, payload);
+            message.success("Templates imported successfully");
+          } else {
+            console.warn("Could not determine target Group/Type for template import");
+          }
+        } catch (templateErr) {
+          console.error("Template import failed:", templateErr);
+          message.error("Configuration imported, but template import failed.");
+        }
+      }
+    }
+    } catch (err) {
+      console.error("Critical import error:", err);
+      message.error("Import failed");
     }
   };
 
