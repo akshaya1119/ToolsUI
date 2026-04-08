@@ -31,6 +31,7 @@ import {
   CheckOutlined,
 } from "@ant-design/icons";
 import axios from "axios";
+import { uploadWithDesignCheck } from "../services/reportApi";
 
 const RPTFiles = () => {
   const url = import.meta.env.VITE_API_BASE_URL;
@@ -345,7 +346,59 @@ const RPTFiles = () => {
     projectId,
     moduleIds,
     forceUpload,
+    isUpdate = false,
+    existingTemplateId = null,
   }) => {
+    // If it's an update, use the design-check API
+    if (isUpdate && existingTemplateId) {
+      console.log("🔍 Using design-check API for template update", {
+        templateId: existingTemplateId,
+        fileName: file?.name
+      });
+
+      const formData = new FormData();
+      formData.append("templateId", existingTemplateId);
+      formData.append("file", file);
+
+      try {
+        const result = await uploadWithDesignCheck(formData);
+        console.log("✅ Design check result:", result);
+        
+        // Show design change status with detailed info
+        if (result.designChanged) {
+          const changedFields = result.changedFields || [];
+          const fieldsList = changedFields.length > 0 
+            ? changedFields.map(f => f.fieldName || f).join(", ")
+            : "Unknown fields";
+          
+          message.warning({
+            content: (
+              <div>
+                <div><strong>Design has changed!</strong></div>
+                <div>{changedFields.length} field(s) modified</div>
+                {changedFields.length > 0 && changedFields.length <= 5 && (
+                  <div style={{ fontSize: '12px', marginTop: '4px' }}>
+                    Changed: {fieldsList}
+                  </div>
+                )}
+              </div>
+            ),
+            duration: 6,
+          });
+        } else {
+          message.success("Design unchanged - same structure as previous version.");
+        }
+        
+        return result;
+      } catch (error) {
+        console.error("❌ Design check failed:", error);
+        message.error(`Design check failed: ${error.response?.data?.message || error.message}`);
+        throw error;
+      }
+    }
+
+    // Original upload logic for new templates
+    console.log("📤 Using regular upload for new template");
     const formData = new FormData();
     formData.append("typeId", typeId);
     formData.append("templateName", templateName);
@@ -875,6 +928,8 @@ const RPTFiles = () => {
             file,
             moduleIds: record.moduleIds ?? record.ModuleIds ?? [],
             forceUpload,
+            isUpdate: true, // Mark as update
+            existingTemplateId: record.templateId, // Pass existing template ID
           });
 
         const onUploadSuccess = (result) => {

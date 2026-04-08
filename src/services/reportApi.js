@@ -2,7 +2,7 @@ import API from '../hooks/api';
 import axios from 'axios';
 
 const url = import.meta.env.VITE_API_BASE_URL;
-
+const BASE_URL = import.meta.env.VITE_RPT_API_URL;
  // 👇 fetch groups
   export const getGroups = async () => {
     try {
@@ -57,59 +57,84 @@ export const getModules = async () => {
   }
 };
 
-/**
- * Download report file
- */
-export const downloadReport = async ({ templateId }) => {
+
+//  PREVIEW
+export const previewReport = async ({ projectId, templateId }) => {
+  const res = await axios.post(
+    `${BASE_URL}/report/generate-dynamic?debug=true`,
+    { projectId, templateId }
+  );
+  return res.data;
+};
+
+//  DOWNLOAD
+export const downloadReport = async ({ projectId, templateId }) => {
   try {
-    const response = await API.get(`/RPTTemplates/${templateId}/download`, {
-      responseType: 'blob',
+    const res = await axios.post(
+      `${BASE_URL}/report/generate-dynamic`, // ✅ FIXED
+      { projectId, templateId },
+      { responseType: "blob" }
+    );
+
+    const blob = new Blob([res.data], {
+      type: "application/pdf", // ✅ correct type
     });
 
-    const blob = new Blob([response.data]);
     const url = window.URL.createObjectURL(blob);
 
-    const link = document.createElement('a');
+    const link = document.createElement("a");
     link.href = url;
-    link.download = 'report.rpt';
+    link.download = `report_${templateId}.pdf`; // ✅ correct extension
+
+    document.body.appendChild(link);
     link.click();
+    link.remove();
 
     window.URL.revokeObjectURL(url);
+  } catch (err) {
+    console.error("Download failed:", err);
+  }
+};
+
+/**
+ * Create design snapshot for a template
+ */
+export const createDesignSnapshot = async (templateId) => {
+  try {
+    const response = await axios.post(`${BASE_URL}/report/design-snapshot`, { templateId });
+    return response.data;
   } catch (error) {
+    console.error('Error creating design snapshot:', error);
     throw error;
   }
 };
 
 /**
- * Download template file (.rpt)
+ * Upload template with design check
  */
-export const downloadTemplate = async (templateId) => {
+export const uploadWithDesignCheck = async (formData) => {
   try {
-    const response = await API.get(`/RPTTemplates/${templateId}/download`, {
-      responseType: 'blob',
+    console.log("📡 Calling upload-with-design-check API...");
+    console.log("FormData contents:", {
+      templateId: formData.get('templateId'),
+      file: formData.get('file')?.name
     });
-
-    const contentDisposition = response.headers['content-disposition'];
-    let filename = 'template.rpt';
     
-    if (contentDisposition) {
-      const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
-      if (filenameMatch && filenameMatch[1]) {
-        filename = filenameMatch[1].replace(/['"]/g, '');
-      }
-    }
-
-    const url = window.URL.createObjectURL(new Blob([response.data]));
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', filename);
-    document.body.appendChild(link);
-    link.click();
+    const response = await axios.post(
+      `${BASE_URL}/report/upload-with-design-check`,
+      formData,
+      { headers: { 'Content-Type': 'multipart/form-data' } }
+    );
     
-    link.parentNode.removeChild(link);
-    window.URL.revokeObjectURL(url);
+    console.log("📥 API Response:", response.data);
+    return response.data;
   } catch (error) {
-    console.error('Error downloading template:', error);
+    console.error('❌ Error uploading with design check:', error);
+    console.error('Error details:', {
+      status: error.response?.status,
+      data: error.response?.data,
+      message: error.message
+    });
     throw error;
   }
 };

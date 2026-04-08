@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Button,
   Card,
@@ -81,6 +81,7 @@ const ProjectTemplates = () => {
   const [versionsData, setVersionsData] = useState([]);
   const [versionsTemplate, setVersionsTemplate] = useState(null);
   const [pendingGenerateTemplate, setPendingGenerateTemplate] = useState(null);
+  // const templateId = selectedTemplate?.templateId || null;
 
   const [addFileList, setAddFileList] = useState([]);
   const [addSubmitting, setAddSubmitting] = useState(false);
@@ -386,18 +387,23 @@ const ProjectTemplates = () => {
     }
   }, [mappingModalOpen, projectGroupId, projectTypeId, mappingTemplate]);
 
-  const uploadTemplate = async ({
-    groupId,
-    typeId,
-    templateName,
-    file,
-    projectId,
-    moduleIds,
-    forceUpload,
-  }) => {
+  const uploadTemplate = async (params) => {
+    const {
+      groupId,
+      typeId,
+      templateName,
+      templateId,
+      file,
+      projectId,
+      moduleIds,
+      forceUpload,
+    } = params;
     const formData = new FormData();
     formData.append("typeId", typeId);
     formData.append("templateName", templateName);
+    if (templateId) {
+      formData.append("templateId", templateId);
+    }
     formData.append("file", file);
     if (groupId !== null && groupId !== undefined) {
       formData.append("groupId", groupId);
@@ -413,73 +419,100 @@ const ProjectTemplates = () => {
     }
 
     const res = await axios.post(`${APIURL}/RPTTemplates/upload`, formData, {
-      headers: { "Content-Type": "multipart/form-data" },
+      headers: { "Content-Type": "multipart/form-data" }
     });
 
-    return res.data;
+    const data = res.data;
+
+    if (data.requireConfirmation && !forceUpload) {
+      return new Promise((resolve, reject) => {
+        if (data.designCheck?.changed === true) {
+          Modal.confirm({
+            title: "Design Changes Detected",
+            width: 600,
+            content: (
+              <div>
+                <p><b>{data.designCheck.message || "Differences were found between your file and the active template."}</b></p>
+                {data.designCheck.changes && data.designCheck.changes.length > 0 && (
+                  <ul>
+                    {data.designCheck.changes.map((change, index) => (
+                      <li key={index}>{change}</li>
+                    ))}
+                  </ul>
+                )}
+                {!data.designCheck.changes && <p>No detailed changes available</p>}
+              </div>
+            ),
+            okText: "Proceed",
+            cancelText: "Cancel",
+            onOk: async () => {
+              try {
+                const forcedRes = await uploadTemplate({ ...params, forceUpload: true });
+                resolve(forcedRes);
+              } catch (e) {
+                reject(e);
+              }
+            },
+            onCancel: () => reject(new Error("User cancelled upload"))
+          });
+        } else {
+          Modal.confirm({
+            title: "No Design Change",
+            content: "No changes detected. Do you still want to upload the template?",
+            okText: "Upload Anyway",
+            cancelText: "Cancel",
+            onOk: async () => {
+              try {
+                const forcedRes = await uploadTemplate({ ...params, forceUpload: true });
+                resolve(forcedRes);
+              } catch (e) {
+                reject(e);
+              }
+            },
+            onCancel: () => reject(new Error("User cancelled upload"))
+          });
+        }
+      });
+    }
+
+    return data;
   };
 
-  const handleAddTemplate = async () => {
+  const handleAddSubmit = async () => {
     try {
       const values = await addForm.validateFields();
-      const file = addFileList[0]?.originFileObj || addFileList[0];
-      if (!file) {
-        message.warning("Please select a .rpt file.");
+      if (!addFileList || addFileList.length === 0) {
+        message.warning("Please select a file to upload.");
         return;
       }
-
       setAddSubmitting(true);
-      const doUpload = async (forceUpload = false) =>
-        uploadTemplate({
-          groupId: projectGroupId,
-          typeId: projectTypeId,
-          projectId: normalizeId(projectId),
-          templateName: values.templateName,
-          file,
-          moduleIds: values.moduleIds || [],
-          forceUpload,
-        });
+      const file = addFileList[0].originFileObj || addFileList[0];
+      
+      const result = await uploadTemplate({
+        groupId: projectGroupId,
+        typeId: projectTypeId,
+        projectId: normalizeId(projectId),
+        templateName: values.templateName,
+        file,
+        moduleIds: values.moduleIds
+      });
 
-      const onSuccess = (result) => {
-        message.success("Template uploaded successfully.");
-        setAddModalOpen(false);
-        setAddFileList([]);
-        addForm.resetFields(["templateName", "moduleIds"]);
-        if (selectionReady) fetchAvailableRPTFiles();
-
-        const uploadedTemplate = {
-          templateId: result?.templateId,
-          templateName: result?.templateName || values.templateName,
-          groupId: projectGroupId,
-          typeId: projectTypeId,
-          projectId: normalizeId(projectId),
-        };
-
-        if (uploadedTemplate.templateId) {
-          openMappingModal(uploadedTemplate);
-        }
-      };
-
-      try {
-        const result = await doUpload(false);
-        onSuccess(result);
-      } catch (err) {
-        const allowForce =
-          err?.response?.status === 409 && err?.response?.data?.allowForceUpload;
-        if (allowForce) {
-          setAddSubmitting(false);
-          confirmForceUpload(async () => {
-            const forced = await doUpload(true);
-            onSuccess(forced);
-          });
-          return;
-        }
-        throw err;
-      }
+      message.success("Upload successful");
+      setAddModalOpen(false);
+      addForm.resetFields();
+      setAddFileList([]);
+      fetchAvailableRPTFiles();
+      confirmMappingUpdate({
+        templateId: result?.templateId,
+        templateName: values.templateName,
+        groupId: projectGroupId,
+        typeId: projectTypeId,
+        projectId: normalizeId(projectId),
+      });
     } catch (err) {
-      if (err?.errorFields) return;
-      console.error("Failed to upload template", err);
-      showError(err, "Failed to upload template. Please try again.");
+      if (err.message !== "User cancelled upload") {
+        showError(err, "Upload failed.");
+      }
     } finally {
       setAddSubmitting(false);
     }
@@ -1017,16 +1050,9 @@ const ProjectTemplates = () => {
           const result = await doUpload(false);
           onUploadSuccess(result);
         } catch (err) {
-          const allowForce =
-            err?.response?.status === 409 && err?.response?.data?.allowForceUpload;
-          if (allowForce) {
-            confirmForceUpload(async () => {
-              const forced = await doUpload(true);
-              onUploadSuccess(forced);
-            });
-            return;
+          if (err.message !== "User cancelled upload") {
+            throw err;
           }
-          throw err;
         }
       } catch (err) {
         onError?.(err);
@@ -1737,7 +1763,7 @@ const ProjectTemplates = () => {
                     <Button onClick={() => setAddModalOpen(false)}>Cancel</Button>
                     <Button
                       type="primary"
-                      onClick={handleAddTemplate}
+                      onClick={handleAddSubmit}
                       loading={addSubmitting}
                     >
                       Upload Template
