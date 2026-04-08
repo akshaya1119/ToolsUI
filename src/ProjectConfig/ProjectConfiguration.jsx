@@ -696,8 +696,8 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
       if (importTemplates) {
         try {
           // Detect current project context (Group/Type) for the import target
-          let targetGroupId = projectGroupId;
-          let targetTypeId = projectTypeId;
+          let targetGroupId = isMasterConfig ? selectedGroup : null;
+          let targetTypeId = isMasterConfig ? selectedType : null;
 
           // If not in master config, we might need to fetch the current project's group/type
           if (!isMasterConfig && (!targetGroupId || !targetTypeId)) {
