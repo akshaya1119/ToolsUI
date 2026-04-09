@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Card, Select, Typography, Tag, InputNumber, Checkbox, Button } from "antd";
-import { ContainerFilled, LockFilled, UndoOutlined } from "@ant-design/icons";
+import { ContainerFilled, LockFilled, UndoOutlined, DeleteOutlined } from "@ant-design/icons";
 import AnimatedCard from "./AnimatedCard";
 import { cardStyle, iconStyle, PRIMARY_COLOR } from "./constants";
 
@@ -21,6 +21,7 @@ const EnvelopeMakingCriteriaCard = ({
   resetBookletSerialOnCatchChange,
   setResetBookletSerialOnCatchChange,
   onReset,
+  onClear,
   importedSnapshot,
   mssList,
   selectedMss,
@@ -63,18 +64,29 @@ const EnvelopeMakingCriteriaCard = ({
         }
         extra={
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            {isEnabled("Envelope Breaking") && (
-              <Button
-                type="text"
-                size="small"
-                icon={<UndoOutlined />}
-                onClick={onReset}
-                style={{ color: PRIMARY_COLOR }}
-              >
-                Reset
-              </Button>
+            {isEnabled("Envelope Setup and Enhancement") && (
+              <>
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<UndoOutlined />}
+                  onClick={onReset}
+                  style={{ color: PRIMARY_COLOR }}
+                >
+                  Reset
+                </Button>
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<DeleteOutlined />}
+                  onClick={onClear}
+                  style={{ color: "#ff4d4f" }}
+                >
+                  Clear
+                </Button>
+              </>
             )}
-            {!isEnabled("Envelope Breaking") && (
+            {!isEnabled("Envelope Setup and Enhancement") && (
               <Tag icon={<LockFilled style={{ color: PRIMARY_COLOR }} />}>
                 Disabled
               </Tag>
@@ -95,7 +107,7 @@ const EnvelopeMakingCriteriaCard = ({
             <Text strong>Select sort fields</Text>
             <Select
               mode="multiple"
-              disabled={!isEnabled("Envelope Breaking")}
+              disabled={!isEnabled("Envelope Setup and Enhancement")}
               allowClear
               showSearch
               style={{ width: "100%", marginTop: 4 }}
@@ -121,7 +133,7 @@ const EnvelopeMakingCriteriaCard = ({
           {/* Reset OMR - 50% */}
           <div style={{ flex: "1 1 48%", ...(isDirty(resetOmrSerialOnCatchChange, importedSnapshot?.resetOmrSerialOnCatchChange) ? DIRTY_STYLE : {}) }}>
             <Checkbox
-              disabled={!isEnabled("Envelope Breaking")}
+              disabled={!isEnabled("Envelope Setup and Enhancement")}
               checked={resetOmrSerialOnCatchChange}
               onChange={(e) =>
                 setResetOmrSerialOnCatchChange(e.target.checked)
@@ -136,7 +148,7 @@ const EnvelopeMakingCriteriaCard = ({
             <Text strong>Starting OMR Serial Number</Text>
             <InputNumber
               min={0}
-              disabled={!isEnabled("Envelope Breaking")}
+              disabled={!isEnabled("Envelope Setup and Enhancement")}
               value={startOmrEnvelopeNumber}
               onChange={(value) => setStartOmrEnvelopeNumber(value ?? 0)}
               placeholder="Enter Start OMR Serial Number"
@@ -147,7 +159,7 @@ const EnvelopeMakingCriteriaCard = ({
           {/* Reset Booklet Serial - 50% */}
           <div style={{ flex: "1 1 48%", ...(isDirty(resetBookletSerialOnCatchChange, importedSnapshot?.resetBookletSerialOnCatchChange) ? DIRTY_STYLE : {}) }}>
             <Checkbox
-              disabled={!isEnabled("Envelope Breaking")}
+              disabled={!isEnabled("Envelope Setup and Enhancement")}
               checked={resetBookletSerialOnCatchChange}
               onChange={(e) =>
                 setResetBookletSerialOnCatchChange(e.target.checked)
@@ -162,7 +174,7 @@ const EnvelopeMakingCriteriaCard = ({
             <Text strong>Starting Booklet Serial Number</Text>
             <InputNumber
               min={0}
-              disabled={!isEnabled("Envelope Breaking")}
+              disabled={!isEnabled("Envelope Setup and Enhancement")}
               value={startBookletSerialNumber}
               onChange={(value) => setStartBookletSerialNumber(value ?? 0)}
               placeholder="Enter Start Booklet Serial Number"
@@ -175,7 +187,7 @@ const EnvelopeMakingCriteriaCard = ({
             <Text strong style={{ display: "block", marginBottom: 4 }}>MSS Types</Text>
             {mssList && mssList.length > 0 ? (
               <Checkbox.Group
-                disabled={!isEnabled("Envelope Breaking")}
+                disabled={!isEnabled("Envelope Setup and Enhancement")}
                 value={selectedMss}
                 onChange={setSelectedMss}
                 options={mssList.map(m => ({ label: m.mssType, value: m.id }))}
@@ -190,7 +202,7 @@ const EnvelopeMakingCriteriaCard = ({
           <div style={{ flex: "1 1 48%", ...(isDirty(mssInsertPosition, importedSnapshot?.mssInsertPosition) ? DIRTY_STYLE : {}) }}>
             <Text strong>MSS Row Insert Position</Text>
             <Select
-              disabled={!isEnabled("Envelope Breaking")}
+              disabled={!isEnabled("Envelope Setup and Enhancement")}
               value={mssInsertPosition}
               onChange={setMssInsertPosition}
               style={{ width: "100%", marginTop: 4 }}
