@@ -2,10 +2,20 @@ import React from "react";
 import { Button, Card, InputNumber, Select, Space, Switch, Table, Typography } from "antd";
 import { CloseOutlined, DeleteOutlined, PlusOutlined } from "@ant-design/icons";
 
-// Strip table prefix (n., e., eb., b., x.) from a saved value for display
+// Map raw SQL expressions or calc: values to friendly display labels
+const RAW_EXPR_LABELS = {
+  "calc:BOX_RANGE": "Box Range",
+  "CONCAT(MIN(b.BoxNo),' to ',MAX(b.BoxNo))": "Box Range",
+  "calc:TOTAL_BOXES": "Total Boxes",
+  "COUNT(DISTINCT b.BoxNo)": "Total Boxes",
+};
+
+// Strip table prefix (n., e., eb., b., x., c.) from a saved value for display
 const stripPrefix = (value) => {
   if (!value) return value;
-  return String(value).replace(/^(eb\.|n\.|e\.|b\.|x\.)/, "");
+  const str = String(value);
+  if (RAW_EXPR_LABELS[str]) return RAW_EXPR_LABELS[str];
+  return str.replace(/^(eb\.|n\.|e\.|b\.|x\.|c\.)/, "");
 };
 
 const TemplatesMappingPanel = ({
