@@ -10,6 +10,7 @@ import API from "../hooks/api";
 const Project = () => {
     const [projects, setProjects] = useState([]); // List of project records from /Projects API
     const [projectNames, setProjectNames] = useState([]); // List of project names fetched from /Project API
+    const [createdProjectIds, setCreatedProjectIds] = useState([]); // All project IDs already created
     const [users, setUsers] = useState([]); // List of users with roleId 3
     const [loading, setLoading] = useState(false);
     const [editingItem, setEditingItem] = useState(null);
@@ -27,6 +28,7 @@ const Project = () => {
     });
     useEffect(() => {
         fetchProjects(pagination.current, pagination.pageSize);
+        fetchCreatedProjectIds();
         fetchProjectNames();
         getUsers();
     }, []);
@@ -49,6 +51,33 @@ const Project = () => {
         }
 
         setLoading(false);
+    };
+
+    const fetchCreatedProjectIds = async () => {
+        try {
+            const pageSize = 200;
+            let page = 1;
+            let collected = [];
+
+            while (true) {
+                const res = await API.get(`/Projects?page=${page}&pageSize=${pageSize}`);
+                const data = res.data?.data || [];
+                collected = collected.concat(data);
+                const total = res.data?.totalRecords ?? data.length;
+                if (data.length === 0 || page * pageSize >= total) {
+                    break;
+                }
+                page += 1;
+            }
+
+            const ids = collected
+                .map((item) => item?.projectId)
+                .filter((id) => id !== null && id !== undefined);
+            setCreatedProjectIds(ids);
+        } catch (err) {
+            console.error("Failed to fetch created project ids", err);
+            setCreatedProjectIds([]);
+        }
     };
 
     const handleTableChange = (pagination) => {
@@ -118,6 +147,7 @@ const Project = () => {
 
             setModalVisible(false);
             fetchProjects(); // Refresh project data
+            fetchCreatedProjectIds();
         } catch {
             message.error('Save failed');
         }
@@ -246,7 +276,7 @@ const Project = () => {
                         // filter out projects already added unless editing that same project
                         .filter(
                             (p) =>
-                                !projects.some((pr) => pr.projectId === p.projectId) ||
+                                !createdProjectIds.includes(p.projectId) ||
                                 (editingItem && editingItem.projectId === p.projectId)
                         )
                         .map((p) => (

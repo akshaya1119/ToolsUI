@@ -22,6 +22,25 @@ const ImportConfig = ({ onImport, disabled }) => {
 
   const [loading, setLoading] = useState(false);
 
+  const fetchAllProjects = async () => {
+    const pageSize = 200;
+    let page = 1;
+    let collected = [];
+
+    while (true) {
+      const res = await API.get(`/Projects?page=${page}&pageSize=${pageSize}`);
+      const data = res.data?.data || [];
+      collected = collected.concat(data);
+      const total = res.data?.totalRecords ?? data.length;
+      if (data.length === 0 || page * pageSize >= total) {
+        break;
+      }
+      page += 1;
+    }
+
+    return collected;
+  };
+
   const fetchData = async () => {
     setLoading(true);
     try {
@@ -30,7 +49,9 @@ const ImportConfig = ({ onImport, disabled }) => {
       // Fetch Projects if needed
       if (projectList.length === 0 || projectNames.length === 0) {
         promises.push(
-          API.get("/Projects").then(res => setProjectList(res.data || [])).catch(() => message.error("Failed to load project list")),
+          fetchAllProjects()
+            .then((data) => setProjectList(data || []))
+            .catch(() => message.error("Failed to load project list")),
           axios.get(`${url}/Project`).then(res => setProjectNames(res.data || [])).catch(() => message.error("Failed to load project names"))
         );
       }
@@ -137,7 +158,7 @@ const ImportConfig = ({ onImport, disabled }) => {
                 option?.children?.toLowerCase().includes(input.toLowerCase())
               }
             >
-              {(Array.isArray(projectList?.data) ? projectList?.data : []).map((project) => (
+              {(Array.isArray(projectList) ? projectList : []).map((project) => (
                 
                 <Select.Option
                   key={project.projectId}

@@ -1,22 +1,15 @@
-﻿import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import { Form, Modal, Select, message } from "antd";
 import {
-  Button,
-  Card,
-  Divider,
-  Empty,
-  Form,
-  Input,
-  Modal,
-  Select,
-  Space,
-  Switch,
-  Table,
-  Tag,
-  Tooltip,
-  Typography,
-  Upload,
-  message,
-} from "antd";
+  extractParsedFields,
+  getErrorMessage,
+  getScopeLabel,
+  normalizeId,
+  normalizeKey,
+  normalizeModuleIds,
+  parseMappingJson,
+  resolveTemplateId,
+} from "../utils/rptTemplateUtils";
 import {
   CopyOutlined,
   CloseOutlined,
@@ -60,54 +53,48 @@ const RPTFiles = () => {
   const [mappingNotFound, setMappingNotFound] = useState(false);
   const [parsedFields, setParsedFields] = useState([]);
   const [parsedFieldsLoading, setParsedFieldsLoading] = useState(false);
-  const [mappingOptions, setMappingOptions] = useState({
-    nrColumns: [],
-    envColumns: [],
-    envBreakageColumns: [],
-    boxColumns: [],
-    nrJsonKeys: [],
-  });
+  const [mappingOptions, setMappingOptions] = useState([]);
   const [mappingOptionsLoading, setMappingOptionsLoading] = useState(false);
   const [mappingSelections, setMappingSelections] = useState({});
   const [groupBySelections, setGroupBySelections] = useState([]);
+  const [orderBySelections, setOrderBySelections] = useState([]);
+  const [labelCopies, setLabelCopies] = useState(1);
+  const [mappingPinnedFields, setMappingPinnedFields] = useState([]);
 
   const [versionsOpen, setVersionsOpen] = useState(false);
   const [versionsLoading, setVersionsLoading] = useState(false);
   const [versionsData, setVersionsData] = useState([]);
   const [versionsTemplate, setVersionsTemplate] = useState(null);
+  const [pendingGenerateTemplate, setPendingGenerateTemplate] = useState(null);
+  const [activatingVersionId, setActivatingVersionId] = useState(null);
 
   const [addFileList, setAddFileList] = useState([]);
   const [addSubmitting, setAddSubmitting] = useState(false);
   const [importSubmitting, setImportSubmitting] = useState(false);
+  const [importAvailability, setImportAvailability] = useState({
+    loading: false,
+    standardTypes: [],
+    groupTypes: {},
+    projectTypes: {},
+  });
   const [editingTemplateId, setEditingTemplateId] = useState(null);
   const [editingTemplateName, setEditingTemplateName] = useState("");
   const [editingModuleIds, setEditingModuleIds] = useState([]);
   const [inlineEditSaving, setInlineEditSaving] = useState(false);
+  const [editingVersionId, setEditingVersionId] = useState(null);
+  const [editingVersionOptions, setEditingVersionOptions] = useState([]);
+  const [editingVersionsLoading, setEditingVersionsLoading] = useState(false);
 
   const [addForm] = Form.useForm();
   const [importForm] = Form.useForm();
+  const importScope = Form.useWatch("sourceScope", importForm);
+  const importGroupId = Form.useWatch("sourceGroupId", importForm);
+  const importProjectId = Form.useWatch("sourceProjectId", importForm);
+  const importTypeId = Form.useWatch("sourceTypeId", importForm);
 
   const selectionReady = Boolean(
     selectedType && (templateScope === "standard" || selectedGroup)
   );
-
-  const getErrorMessage = (err, fallback) => {
-    if (!err) return fallback;
-    const data = err?.response?.data;
-    if (typeof data === "string" && data.trim()) return data;
-    if (typeof data?.message === "string" && data.message.trim())
-      return data.message;
-    if (typeof data?.Message === "string" && data.Message.trim())
-      return data.Message;
-    if (Array.isArray(data) && data.length) return data.join(", ");
-    if (data?.errors) {
-      const first = Object.values(data.errors).flat()[0];
-      if (first) return first;
-    }
-    if (typeof err?.message === "string" && err.message.trim())
-      return err.message;
-    return fallback;
-  };
 
   const showError = (err, fallback) => {
     message.error(getErrorMessage(err, fallback));
@@ -141,11 +128,7 @@ const RPTFiles = () => {
 
   const fetchGroup = async () => {
     try {
-      const res = await axios.get(`${url}/Groups`);
-      const formatted = (res.data || []).map((group) => ({
-        label: group.name || group.groupName,
-        value: group.id || group.groupId,
-      }));
+      const formatted = await fetchGroupOptions(url);
       setGroupOptions(formatted);
       if (selectedGroup) {
         const found = formatted.find((g) => g.value === selectedGroup);
@@ -158,11 +141,7 @@ const RPTFiles = () => {
 
   const fetchType = async () => {
     try {
-      const res = await axios.get(`${url}/PaperTypes`);
-      const formatted = (res.data || []).map((type) => ({
-        label: type.types,
-        value: type.typeId,
-      }));
+      const formatted = await fetchTypeOptions(url);
       setTypeOptions(formatted);
       if (selectedType) {
         const found = formatted.find((t) => t.value === selectedType);
@@ -175,43 +154,21 @@ const RPTFiles = () => {
 
   const fetchProjects = async () => {
     try {
-      const res = await axios.get(`${url}/Project`);
-      const list = Array.isArray(res.data) ? res.data : [];
-      const formatted = list
-        .map((project) => ({
-          label: project?.name ? project.name : `Project ${project?.projectId}`,
-          value: project?.projectId,
-        }))
-        .filter((p) => p.value);
+      const formatted = await fetchProjectOptions({
+        baseUrl: url,
+        apiUrl: APIURL,
+        normalizeId,
+      });
       setProjectOptions(formatted);
     } catch (err) {
       console.error("Failed to fetch project names", err);
-      try {
-        const res = await axios.get(`${APIURL}/Projects?page=1&pageSize=1000`);
-        const data = Array.isArray(res.data?.data) ? res.data.data : res.data;
-        const formatted = (data || []).map((project) => {
-          const id = project.projectId ?? project.id;
-          const name = project.name ?? project.projectName;
-          return {
-            label: name ? `${name} (ID ${id})` : `Project ${id}`,
-            value: id,
-          };
-        });
-        setProjectOptions(formatted.filter((p) => p.value));
-      } catch (innerErr) {
-        console.error("Failed to fetch projects", innerErr);
-        setProjectOptions([]);
-      }
+      setProjectOptions([]);
     }
   };
 
   const fetchModules = async () => {
     try {
-      const res = await axios.get(`${APIURL}/Modules`);
-      const formatted = (res.data || []).map((m) => ({
-        label: m.name,
-        value: m.id,
-      }));
+      const formatted = await fetchModuleOptions(APIURL);
       setModuleOptions(formatted);
     } catch (err) {
       console.error("Failed to fetch modules", err);
@@ -221,10 +178,8 @@ const RPTFiles = () => {
 
   const fetchUsers = async () => {
     try {
-      const res = await axios.get(`${url}/User`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-      });
-      setUserOptions(Array.isArray(res.data) ? res.data : []);
+      const data = await fetchUsersService({ baseUrl: url, token });
+      setUserOptions(data);
     } catch (err) {
       console.error("Failed to fetch users", err);
       setUserOptions([]);
@@ -254,20 +209,90 @@ const RPTFiles = () => {
     if (!selectionReady) return;
     setLoadingTemplates(true);
     try {
-      const params = new URLSearchParams();
-      params.set("typeId", selectedType);
-      if (templateScope === "group" && selectedGroup) {
-        params.set("groupId", selectedGroup);
-      }
-      const res = await axios.get(
-        `${APIURL}/RPTTemplates/by-group?${params.toString()}`,
-      );
-      setAvailableRPTFiles(res.data || []);
+      const data = await fetchTemplatesByGroup(APIURL, {
+        typeId: selectedType,
+        groupId: templateScope === "group" ? selectedGroup : null,
+      });
+      setAvailableRPTFiles(data || []);
     } catch (err) {
       console.error("Failed to fetch available RPT files", err);
       showError(err, "Failed to fetch templates.");
     } finally {
       setLoadingTemplates(false);
+    }
+  };
+
+  const loadImportAvailability = async () => {
+    if (!importModalOpen || typeOptions.length === 0) return;
+    setImportAvailability((prev) => ({ ...prev, loading: true }));
+
+    const standardTypes = [];
+    const groupTypes = {};
+    const projectTypes = {};
+
+    try {
+      for (const type of typeOptions) {
+        const data = await fetchTemplatesByGroup(APIURL, { typeId: type.value });
+        const hasStandard = (data || []).some(
+          (item) => !normalizeId(item?.groupId) && !normalizeId(item?.projectId),
+        );
+        if (hasStandard) {
+          standardTypes.push(type.value);
+        }
+      }
+
+      for (const group of groupOptions) {
+        const typeIds = [];
+        for (const type of typeOptions) {
+          const data = await fetchTemplatesByGroup(APIURL, {
+            typeId: type.value,
+            groupId: group.value,
+          });
+          const hasGroupTemplate = (data || []).some(
+            (item) =>
+              normalizeId(item?.groupId) === normalizeId(group.value) &&
+              !normalizeId(item?.projectId),
+          );
+          if (hasGroupTemplate) {
+            typeIds.push(type.value);
+          }
+        }
+        if (typeIds.length > 0) {
+          groupTypes[group.value] = typeIds;
+        }
+      }
+
+      for (const project of projectOptions) {
+        const typeCandidates = project?.typeId
+          ? [project.typeId]
+          : typeOptions.map((type) => type.value);
+        const typeIds = [];
+        for (const typeId of typeCandidates) {
+          const data = await fetchTemplatesByGroup(APIURL, {
+            typeId,
+            groupId: project?.groupId,
+            projectId: project?.value,
+          });
+          const hasProjectTemplate = (data || []).some(
+            (item) => normalizeId(item?.projectId) === normalizeId(project?.value),
+          );
+          if (hasProjectTemplate) {
+            typeIds.push(typeId);
+          }
+        }
+        if (typeIds.length > 0) {
+          projectTypes[project.value] = typeIds;
+        }
+      }
+    } catch (err) {
+      console.error("Failed to load import availability", err);
+    } finally {
+      setImportAvailability({
+        loading: false,
+        standardTypes,
+        groupTypes,
+        projectTypes,
+      });
     }
   };
 
@@ -279,19 +304,12 @@ const RPTFiles = () => {
         (templateScope === "group" ? selectedGroup : 0) ??
         0;
       const typeId = template?.typeId ?? selectedType ?? 0;
-      const res = await axios.get(`${APIURL}/RPTTemplates/mapping-options`, {
-        params: {
-          groupId,
-          typeId,
-        },
+      const options = await fetchMappingOptionsService(APIURL, {
+        groupId,
+        typeId,
       });
-      setMappingOptions({
-        nrColumns: res.data?.nrColumns || [],
-        envColumns: res.data?.envColumns || [],
-        envBreakageColumns: res.data?.envBreakageColumns || [],
-        boxColumns: res.data?.boxColumns || [],
-        nrJsonKeys: res.data?.nrJsonKeys || [],
-      });
+      console.log("[MappingOptions] groupId:", groupId, "typeId:", typeId, "options:", options);
+      setMappingOptions(options);
     } catch (err) {
       console.error("Failed to load mapping options", err);
       showError(err, "Failed to load mapping options.");
@@ -315,11 +333,130 @@ const RPTFiles = () => {
       setMappingNotFound(false);
       setMappingSelections({});
       setGroupBySelections([]);
+      setOrderBySelections([]);
+      setLabelCopies(1);
+      setMappingPinnedFields([]);
     }
   }, [mappingModalOpen]);
 
   const showMappingPanel = Boolean(mappingModalOpen && mappingTemplate);
   const showSidePanel = Boolean(addModalOpen || importModalOpen);
+
+  const filteredGroupOptions = useMemo(() => {
+    if (importAvailability.loading) return groupOptions;
+    return groupOptions.filter(
+      (group) => (importAvailability.groupTypes[group.value] || []).length > 0,
+    );
+  }, [groupOptions, importAvailability]);
+
+  const filteredProjectOptions = useMemo(() => {
+    if (importAvailability.loading) return projectOptions;
+    return projectOptions.filter(
+      (project) =>
+        (importAvailability.projectTypes[project.value] || []).length > 0,
+    );
+  }, [projectOptions, importAvailability]);
+
+  const standardTypeOptions = useMemo(() => {
+    if (importAvailability.loading) return typeOptions;
+    return typeOptions.filter((type) =>
+      importAvailability.standardTypes.includes(type.value),
+    );
+  }, [typeOptions, importAvailability]);
+
+  const groupTypeOptions = useMemo(() => {
+    if (!importGroupId) return [];
+    if (importAvailability.loading) return typeOptions;
+    const typesForGroup = importAvailability.groupTypes[importGroupId] || [];
+    return typeOptions.filter((type) => typesForGroup.includes(type.value));
+  }, [typeOptions, importAvailability, importGroupId]);
+
+  const projectTypeOptions = useMemo(() => {
+    if (!importProjectId) return [];
+    if (importAvailability.loading) return typeOptions;
+    const typesForProject = importAvailability.projectTypes[importProjectId] || [];
+    return typeOptions.filter((type) => typesForProject.includes(type.value));
+  }, [typeOptions, importAvailability, importProjectId]);
+
+  const sourceTypeOptions = useMemo(() => {
+    if (importScope === "standard") return standardTypeOptions;
+    if (importScope === "group") return groupTypeOptions;
+    if (importScope === "project") return projectTypeOptions;
+    return typeOptions;
+  }, [importScope, standardTypeOptions, groupTypeOptions, projectTypeOptions, typeOptions]);
+
+  const disableSourceTypeSelect =
+    (importScope === "group" && !importGroupId) ||
+    (importScope === "project" && !importProjectId);
+
+  const selectedImportProjectType = useMemo(() => {
+    if (!importProjectId) return null;
+    const match = projectOptions.find((project) => project.value === importProjectId);
+    return match ? normalizeId(match.typeId) : null;
+  }, [importProjectId, projectOptions]);
+
+  useEffect(() => {
+    if (importScope === "project") {
+      if (selectedImportProjectType) {
+        importForm.setFieldsValue({ sourceTypeId: selectedImportProjectType });
+      } else {
+        importForm.setFieldsValue({ sourceTypeId: undefined });
+      }
+    }
+  }, [importScope, selectedImportProjectType, importForm]);
+
+  const sourceScopeOptions = useMemo(() => {
+    const allowAll = importAvailability.loading;
+    const standardAvailable = allowAll ? true : standardTypeOptions.length > 0;
+    const groupAvailable = allowAll ? true : filteredGroupOptions.length > 0;
+    const projectAvailable = allowAll ? true : filteredProjectOptions.length > 0;
+    return [
+      { label: "Select import source", value: "", disabled: true },
+      {
+        label: "Standard Templates",
+        value: "standard",
+        disabled: !standardAvailable,
+      },
+      {
+        label: "Group Templates (includes standard)",
+        value: "group",
+        disabled: !groupAvailable,
+      },
+      { label: "Project Templates", value: "project", disabled: !projectAvailable },
+    ];
+  }, [standardTypeOptions, filteredGroupOptions, filteredProjectOptions]);
+
+  useEffect(() => {
+    if (!importModalOpen) return;
+    if (importScope === "group" && importGroupId) {
+      if (!filteredGroupOptions.some((opt) => opt.value === importGroupId)) {
+        importForm.setFieldsValue({ sourceGroupId: undefined });
+      }
+    }
+    if (importScope === "project" && importProjectId) {
+      if (!filteredProjectOptions.some((opt) => opt.value === importProjectId)) {
+        importForm.setFieldsValue({ sourceProjectId: undefined });
+      }
+    }
+    if (
+      importTypeId &&
+      !sourceTypeOptions.some((opt) => opt.value === importTypeId) &&
+      importScope !== "project"
+    ) {
+      importForm.setFieldsValue({ sourceTypeId: undefined });
+    }
+  }, [
+    importModalOpen,
+    importScope,
+    importGroupId,
+    importProjectId,
+    importTypeId,
+    filteredGroupOptions,
+    filteredProjectOptions,
+    sourceTypeOptions,
+    importForm,
+    importScope,
+  ]);
 
   useEffect(() => {
     if (mappingModalOpen) {
@@ -338,6 +475,12 @@ const RPTFiles = () => {
     importForm.setFieldsValue({ copyMappings: true });
   }, [importModalOpen, importForm]);
 
+  useEffect(() => {
+    if (importModalOpen) {
+      loadImportAvailability();
+    }
+  }, [importModalOpen, typeOptions, groupOptions, projectOptions]);
+
   const uploadTemplate = async ({
     groupId,
     typeId,
@@ -349,78 +492,15 @@ const RPTFiles = () => {
     isUpdate = false,
     existingTemplateId = null,
   }) => {
-    // If it's an update, use the design-check API
-    if (isUpdate && existingTemplateId) {
-      console.log("🔍 Using design-check API for template update", {
-        templateId: existingTemplateId,
-        fileName: file?.name
-      });
-
-      const formData = new FormData();
-      formData.append("templateId", existingTemplateId);
-      formData.append("file", file);
-
-      try {
-        const result = await uploadWithDesignCheck(formData);
-        console.log("✅ Design check result:", result);
-        
-        // Show design change status with detailed info
-        if (result.designChanged) {
-          const changedFields = result.changedFields || [];
-          const fieldsList = changedFields.length > 0 
-            ? changedFields.map(f => f.fieldName || f).join(", ")
-            : "Unknown fields";
-          
-          message.warning({
-            content: (
-              <div>
-                <div><strong>Design has changed!</strong></div>
-                <div>{changedFields.length} field(s) modified</div>
-                {changedFields.length > 0 && changedFields.length <= 5 && (
-                  <div style={{ fontSize: '12px', marginTop: '4px' }}>
-                    Changed: {fieldsList}
-                  </div>
-                )}
-              </div>
-            ),
-            duration: 6,
-          });
-        } else {
-          message.success("Design unchanged - same structure as previous version.");
-        }
-        
-        return result;
-      } catch (error) {
-        console.error("❌ Design check failed:", error);
-        message.error(`Design check failed: ${error.response?.data?.message || error.message}`);
-        throw error;
-      }
-    }
-
-    // Original upload logic for new templates
-    console.log("📤 Using regular upload for new template");
-    const formData = new FormData();
-    formData.append("typeId", typeId);
-    formData.append("templateName", templateName);
-    formData.append("file", file);
-    if (groupId !== null && groupId !== undefined) {
-      formData.append("groupId", groupId);
-    }
-    if (projectId !== null && projectId !== undefined) {
-      formData.append("projectId", projectId);
-    }
-    if (Array.isArray(moduleIds)) {
-      moduleIds.forEach((id) => formData.append("moduleIds", id));
-    }
-    if (forceUpload) {
-      formData.append("forceUpload", "true");
-    }
-
-    const res = await axios.post(`${APIURL}/RPTTemplates/upload`, formData, {
-      headers: { "Content-Type": "multipart/form-data" },
+    return uploadTemplateService(APIURL, {
+      groupId,
+      typeId,
+      templateName,
+      file,
+      projectId,
+      moduleIds,
+      forceUpload,
     });
-
-    return res.data;
   };
 
   const handleAddTemplate = async () => {
@@ -490,6 +570,10 @@ const RPTFiles = () => {
   const handleImportTemplates = async () => {
     try {
       const values = await importForm.validateFields();
+      if (values.sourceScope === "project" && !selectedImportProjectType) {
+        message.warning("Selected project has no type configured.");
+        return;
+      }
       setImportSubmitting(true);
       const sourceScope = values.sourceScope || "group";
       const payload = {
@@ -498,19 +582,17 @@ const RPTFiles = () => {
         targetTypeId: selectedType,
         copyMappings: values.copyMappings ?? true,
       };
-      if (values.sourceTypeId) {
-        payload.sourceTypeId = values.sourceTypeId;
-      }
-
       if (sourceScope === "group") {
         payload.sourceGroupId = values.sourceGroupId;
         payload.includeStandard = true;
+        payload.sourceTypeId = values.sourceTypeId;
+      } else if (sourceScope === "standard") {
+        payload.sourceTypeId = values.sourceTypeId;
       } else if (sourceScope === "project") {
         payload.sourceProjectId = values.sourceProjectId;
+        payload.sourceTypeId = selectedImportProjectType;
       }
-      await axios.post(`${APIURL}/RPTTemplates/import-from-group`, {
-        ...payload,
-      });
+      await importTemplatesFromGroup(APIURL, { ...payload });
       message.success("Templates imported successfully.");
       setImportModalOpen(false);
       importForm.resetFields();
@@ -556,18 +638,20 @@ const RPTFiles = () => {
     setParsedFields(extractParsedFields(template));
     fetchMappingOptions(template);
     try {
-      const details = await axios.get(
-        `${APIURL}/RPTTemplates/${template.templateId}`,
+      const details = await fetchTemplateDetails(
+        APIURL,
+        template.templateId,
       );
-      const fieldsFromDetails = extractParsedFields(details.data);
+      const fieldsFromDetails = extractParsedFields(details);
       setParsedFields(fieldsFromDetails);
       if (!fieldsFromDetails || fieldsFromDetails.length === 0) {
         setParsedFieldsLoading(true);
         try {
-          const parsedRes = await axios.post(
-            `${APIURL}/RPTTemplates/${template.templateId}/parse-fields`,
+          const parsedRes = await parseTemplateFields(
+            APIURL,
+            template.templateId,
           );
-          const parsed = parsedRes.data?.parsedFields || [];
+          const parsed = parsedRes?.parsedFields || [];
           setParsedFields(parsed);
         } catch (err) {
           showError(err, "Failed to parse fields for this template.");
@@ -576,13 +660,14 @@ const RPTFiles = () => {
         }
       }
 
-      const res = await axios.get(
-        `${APIURL}/RPTTemplates/${template.templateId}/mapping`,
-      );
-      const mapping = res.data?.mappingJson ?? res.data?.MappingJson ?? "";
+      const res = await fetchTemplateMapping(APIURL, template.templateId);
+      const mapping = res?.mappingJson ?? res?.MappingJson ?? "";
       const parsed = parseMappingJson(mapping);
       setMappingSelections(parsed.mappings || {});
       setGroupBySelections(Array.isArray(parsed.groupBy) ? parsed.groupBy : []);
+      setOrderBySelections(Array.isArray(parsed.orderBy) ? parsed.orderBy : []);
+      setLabelCopies(Number.isFinite(parsed.labelCopies) && parsed.labelCopies >= 1 ? parsed.labelCopies : 1);
+      setMappingPinnedFields(Object.keys(parsed.mappings || {}));
       const emptyMapping =
         Object.keys(parsed.mappings || {}).length === 0 &&
         (!parsed.groupBy || parsed.groupBy.length === 0);
@@ -592,6 +677,7 @@ const RPTFiles = () => {
         setMappingSelections({});
         setGroupBySelections([]);
         setMappingNotFound(true);
+        setMappingPinnedFields([]);
       } else {
         showError(err, "Failed to load mapping.");
       }
@@ -603,6 +689,21 @@ const RPTFiles = () => {
   const closeMappingPanel = () => {
     setMappingModalOpen(false);
     setMappingTemplate(null);
+  };
+
+  const recordMappingUpdate = (templateId) => {
+    if (!templateId) return;
+    const key = "rptTemplateMappingUpdatedAt";
+    const now = new Date().toISOString();
+    try {
+      const raw = localStorage.getItem(key);
+      const parsed = raw ? JSON.parse(raw) : {};
+      const next = parsed && typeof parsed === "object" ? { ...parsed } : {};
+      next[templateId] = now;
+      localStorage.setItem(key, JSON.stringify(next));
+    } catch (err) {
+      localStorage.setItem(key, JSON.stringify({ [templateId]: now }));
+    }
   };
 
   const handleSaveMapping = async () => {
@@ -618,19 +719,21 @@ const RPTFiles = () => {
       const mappingPayload = {
         mappings: mappingsPayload,
         groupBy: groupBySelections || [],
+        orderBy: orderBySelections || [],
+        labelCopies: labelCopies ?? 1,
       };
       const mappingJson =
-        mappingsPayload.length > 0 || (groupBySelections || []).length > 0
+        mappingsPayload.length > 0 || (groupBySelections || []).length > 0 || (orderBySelections || []).length > 0 || (labelCopies ?? 1) > 1
           ? JSON.stringify(mappingPayload)
           : "";
-      await axios.post(
-        `${APIURL}/RPTTemplates/${mappingTemplate.templateId}/mapping`,
-        {
-          mappingJson,
-        },
+      await saveTemplateMapping(
+        APIURL,
+        mappingTemplate.templateId,
+        mappingJson,
       );
       message.success("Mapping saved.");
       setMappingNotFound(false);
+      recordMappingUpdate(mappingTemplate.templateId);
       closeMappingPanel();
     } catch (err) {
       console.error("Failed to save mapping", err);
@@ -659,74 +762,6 @@ const RPTFiles = () => {
     });
   };
 
-  const downloadTemplateBlob = async (template) => {
-    const res = await axios.get(
-      `${APIURL}/RPTTemplates/${template.templateId}/download`,
-      { responseType: "blob" },
-    );
-    const contentDisposition = res.headers["content-disposition"] || "";
-    const fileNameMatch = contentDisposition.match(/filename="?([^\"]+)"?/i);
-    const fileName =
-      fileNameMatch?.[1] || `${template.templateName || "template"}.rpt`;
-    return { blob: res.data, fileName };
-  };
-
-  const extractParsedFields = (template) => {
-    if (!template) return [];
-    const raw =
-      template.parsedFieldsJson ??
-      template.ParsedFieldsJson ??
-      template.parsedFields ??
-      template.ParsedFields ??
-      null;
-    if (Array.isArray(raw)) return raw;
-    if (typeof raw === "string" && raw.trim().length > 0) {
-      try {
-        const parsed = JSON.parse(raw);
-        return Array.isArray(parsed) ? parsed : [];
-      } catch {
-        return [];
-      }
-    }
-    return [];
-  };
-
-  const normalizeKey = (value) =>
-    (value ?? "")
-      .toString()
-      .toLowerCase()
-      .replace(/[^a-z0-9]/g, "");
-
-  const parseMappingJson = (raw) => {
-    if (!raw) return { mappings: {}, groupBy: [] };
-    try {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        const map = {};
-        parsed.forEach((item) => {
-          if (item?.rptField && item?.source) map[item.rptField] = item.source;
-        });
-        return { mappings: map, groupBy: [] };
-      }
-      if (Array.isArray(parsed?.mappings)) {
-        const map = {};
-        parsed.mappings.forEach((item) => {
-          if (item?.rptField && item?.source) map[item.rptField] = item.source;
-        });
-        return { mappings: map, groupBy: parsed?.groupBy || [] };
-      }
-      if (parsed?.mappings && typeof parsed.mappings === "object") {
-        return { mappings: parsed.mappings, groupBy: parsed?.groupBy || [] };
-      }
-      if (parsed && typeof parsed === "object") {
-        return { mappings: parsed, groupBy: [] };
-      }
-    } catch (err) {
-      return { mappings: {}, groupBy: [] };
-    }
-    return { mappings: {}, groupBy: [] };
-  };
-
   const userMap = useMemo(() => {
     const map = new Map();
     (userOptions || []).forEach((user) => {
@@ -744,93 +779,17 @@ const RPTFiles = () => {
     return map;
   }, [moduleOptions]);
 
-  const normalizeModuleIds = (raw) => {
-    if (!raw) return [];
-    if (Array.isArray(raw)) return raw.filter((id) => Number.isFinite(Number(id)));
-    if (typeof raw === "string") {
-      try {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) {
-          return parsed.filter((id) => Number.isFinite(Number(id)));
-        }
-      } catch {
-        // fall through to comma parsing
-      }
-      return raw
-        .split(",")
-        .map((val) => Number(val.trim()))
-        .filter((id) => Number.isFinite(id));
-    }
-    return [];
-  };
-
-  const resolveModuleLabels = (record) => {
-    const ids = normalizeModuleIds(record?.moduleIds ?? record?.ModuleIds);
-    if (!ids.length) return "-";
-    const labels = ids.map((id) => moduleMap.get(id) || `#${id}`);
-    const visible = labels.slice(0, 2);
-    if (labels.length <= 2) return visible.join(", ");
-    return `${visible.join(", ")} +${labels.length - 2} more`;
-  };
-
-  const resolveModuleTooltip = (record) => {
-    const ids = normalizeModuleIds(record?.moduleIds ?? record?.ModuleIds);
-    if (!ids.length) return "-";
-    return ids.map((id) => moduleMap.get(id) || `#${id}`).join(", ");
-  };
-
-  const getModuleDisplay = (record) => {
-    const ids = normalizeModuleIds(record?.moduleIds ?? record?.ModuleIds);
-    if (!ids.length) return { line1: "-", line2: "", more: 0, hasMore: false };
-    const labels = ids.map((id) => moduleMap.get(id) || `#${id}`);
-    const line1 = labels[0] || "-";
-    const line2Labels = labels[1] ? [labels[1]] : [];
-    const more = labels.length - 2;
-    return {
-      line1,
-      line2: line2Labels.join(", "),
-      more: more > 0 ? more : 0,
-      hasMore: labels.length > 2,
-    };
-  };
-
-
-  const resolveUploaderLabel = (record) => {
-    const uploaderId =
-      record?.uploadedByUserId ??
-      record?.UploadedByUserId ??
-      record?.createdByUserId ??
-      record?.CreatedByUserId ??
-      null;
-    if (!uploaderId) return "-";
-    const user = userMap.get(uploaderId);
-    const name = [user?.firstName, user?.lastName].filter(Boolean).join(" ");
-    return name || user?.userName || `User ${uploaderId}`;
-  };
-
-  const formatDateTime = (value) => {
-    if (!value) return "-";
-    const parsed = new Date(value);
-    if (Number.isNaN(parsed.getTime())) return "-";
-    return parsed.toLocaleString();
-  };
-
-  const getScopeLabel = (record) =>
-    record?.projectId ? "Project" : record?.groupId ? "Group" : "Standard";
-
   const fetchTemplateVersions = async (template) => {
     if (!template?.templateName || !template?.typeId) return;
     setVersionsLoading(true);
     try {
-      const res = await axios.get(`${APIURL}/RPTTemplates/versions`, {
-        params: {
-          templateName: template.templateName,
-          typeId: template.typeId,
-          groupId: template.groupId,
-          projectId: template.projectId,
-        },
+      const data = await fetchTemplateVersionsService(APIURL, {
+        templateName: template.templateName,
+        typeId: template.typeId,
+        groupId: template.groupId,
+        projectId: template.projectId,
       });
-      setVersionsData(res.data || []);
+      setVersionsData(data || []);
     } catch (err) {
       console.error("Failed to fetch template versions", err);
       showError(err, "Failed to load template history.");
@@ -850,6 +809,70 @@ const RPTFiles = () => {
     setVersionsOpen(false);
     setVersionsTemplate(null);
     setVersionsData([]);
+    setActivatingVersionId(null);
+  };
+
+  const activateTemplateVersion = async (record) => {
+    const templateId = resolveTemplateId(record);
+    if (!templateId) {
+      message.warning("Template not found.");
+      return;
+    }
+    setActivatingVersionId(templateId);
+    try {
+      await activateTemplateVersionService(APIURL, templateId);
+      message.success("Template activated.");
+      if (versionsTemplate) {
+        fetchTemplateVersions(versionsTemplate);
+      }
+      fetchAvailableRPTFiles();
+    } catch (err) {
+      console.error("Failed to activate template", err);
+      showError(err, "Failed to activate template.");
+    } finally {
+      setActivatingVersionId(null);
+    }
+  };
+
+  const confirmActivateVersion = (record) => {
+    const scopeLabel = getScopeLabel(record);
+    Modal.confirm({
+      title: "Set active version?",
+      content: `This will make v${record?.version} the active template for the ${scopeLabel.toLowerCase()} scope. All projects using this template in that scope will use this version.`,
+      okText: "Set Active",
+      cancelText: "Cancel",
+      onOk: () => activateTemplateVersion(record),
+    });
+  };
+
+  const loadEditVersions = async (template) => {
+    if (!template?.templateName || !template?.typeId) {
+      setEditingVersionOptions([]);
+      return;
+    }
+    setEditingVersionsLoading(true);
+    try {
+      const list = await fetchTemplateVersionsService(APIURL, {
+        templateName: template.templateName,
+        typeId: template.typeId,
+        groupId: template.groupId,
+        projectId: template.projectId,
+      });
+      const options = list.map((item) => ({
+        value: resolveTemplateId(item),
+        label: `v${item?.version}${item?.isActive ? " (Active)" : ""}`,
+      }));
+      setEditingVersionOptions(options);
+      const active = list.find((item) => item?.isActive);
+      const activeId = resolveTemplateId(active) ?? resolveTemplateId(template);
+      setEditingVersionId(activeId);
+    } catch (err) {
+      console.error("Failed to fetch template versions", err);
+      setEditingVersionOptions([]);
+      setEditingVersionId(resolveTemplateId(template));
+    } finally {
+      setEditingVersionsLoading(false);
+    }
   };
 
   const startInlineEdit = (template) => {
@@ -858,12 +881,21 @@ const RPTFiles = () => {
     setEditingModuleIds(
       normalizeModuleIds(template?.moduleIds ?? template?.ModuleIds),
     );
+    setEditingVersionId(resolveTemplateId(template));
+    setEditingVersionOptions(
+      template?.version
+        ? [{ value: resolveTemplateId(template), label: `v${template.version}` }]
+        : [],
+    );
+    loadEditVersions(template);
   };
 
   const cancelInlineEdit = () => {
     setEditingTemplateId(null);
     setEditingTemplateName("");
     setEditingModuleIds([]);
+    setEditingVersionId(null);
+    setEditingVersionOptions([]);
   };
 
   const saveInlineEdit = async () => {
@@ -875,11 +907,14 @@ const RPTFiles = () => {
     }
     try {
       setInlineEditSaving(true);
-      await axios.put(`${APIURL}/RPTTemplates/${editingTemplateId}`, {
+      await updateTemplate(APIURL, editingTemplateId, {
         templateName: name,
         moduleIds: editingModuleIds || [],
         applyToAllVersions: true,
       });
+      if (editingVersionId && editingVersionId !== editingTemplateId) {
+        await activateTemplateVersionService(APIURL, editingVersionId);
+      }
       message.success("Template updated.");
       cancelInlineEdit();
       fetchAvailableRPTFiles();
@@ -894,9 +929,16 @@ const RPTFiles = () => {
     }
   };
 
+  const runReportGeneration = () => {
+    message.warning("Report generation is available from Project Templates.");
+  };
+
   const handleDownload = async (template) => {
     try {
-      const { blob, fileName } = await downloadTemplateBlob(template);
+      const { blob, fileName } = await downloadTemplateBlobService(
+        APIURL,
+        template,
+      );
       const fileBlob = new Blob([blob], { type: "application/octet-stream" });
       const url = window.URL.createObjectURL(fileBlob);
       const link = document.createElement("a");
@@ -973,343 +1015,111 @@ const RPTFiles = () => {
   });
 
   const columns = useMemo(
-    () => [
-      {
-        title: "Template",
-        dataIndex: "templateName",
-        key: "templateName",
-        render: (value, record) => {
-          const scopeLabel = record?.projectId
-            ? "Project"
-            : record?.groupId
-              ? "Group"
-              : "Standard";
-          if (editingTemplateId === record?.templateId) {
-            return (
-              <Space direction="vertical" size={4}>
-                <Input
-                  size="small"
-                  value={editingTemplateName}
-                  onChange={(event) => setEditingTemplateName(event.target.value)}
-                  placeholder="Template name"
-                />
-                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                  {scopeLabel} template
-                </Typography.Text>
-              </Space>
-            );
-          }
-          return (
-          <Space direction="vertical" size={0}>
-            <Typography.Text strong>{value}</Typography.Text>
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              {scopeLabel} template
-            </Typography.Text>
-          </Space>
-          );
-        },
-      },
-      {
-        title: "Version",
-        dataIndex: "version",
-        key: "version",
-        width: 100,
-        render: (value) => <Tag color="blue">v{value}</Tag>,
-      },
-      {
-        title: "Uploaded By",
-        key: "uploadedBy",
-        width: 160,
-        render: (_, record) => (
-          <Typography.Text>{resolveUploaderLabel(record)}</Typography.Text>
-        ),
-      },
-      {
-        title: "Dependent Modules",
-        key: "dependentModules",
-        width: 220,
-        render: (_, record) => {
-          if (editingTemplateId === record?.templateId) {
-            return (
-              <Select
-                mode="multiple"
-                size="small"
-                options={moduleOptions}
-                value={editingModuleIds}
-                onChange={(values) => setEditingModuleIds(values)}
-                placeholder="Select modules"
-                showSearch
-                optionFilterProp="label"
-                style={{ width: "100%" }}
-              />
-            );
-          }
-          const display = getModuleDisplay(record);
-          return (
-            <Tooltip title={resolveModuleTooltip(record)}>
-              <div style={{ maxWidth: 200 }}>
-                <Typography.Text
-                  style={{
-                    display: "block",
-                    whiteSpace: "nowrap",
-                    overflow: "hidden",
-                    textOverflow: "clip",
-                    lineHeight: "1.2em",
-                  }}
-                >
-                  {display.line1}
-                </Typography.Text>
-                {display.line2 || display.more > 0 ? (
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 6,
-                    }}
-                  >
-                    <Typography.Text
-                      style={{
-                        flex: 1,
-                        minWidth: 0,
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        lineHeight: "1.2em",
-                      }}
-                    >
-                      {display.line2}
-                    </Typography.Text>
-                    {display.more > 0 && (
-                      <Typography.Text>
-                        +{display.more > 0 ? display.more : 0} more
-                      </Typography.Text>
-                    )}
-                  </div>
-                ) : null}
-              </div>
-            </Tooltip>
-          );
-        },
-      },
-      {
-        title: "Mapping",
-        key: "mapping",
-        width: 110,
-        render: (_, record) => (
-          <Button
-            size="small"
-            icon={<SettingOutlined />}
-            onClick={() => openMappingModal(record)}
-          >
-            Mapping
-          </Button>
-        ),
-      },
-      {
-        title: "History",
-        key: "history",
-        width: 110,
-        render: (_, record) => (
-          <Button
-            size="small"
-            icon={<HistoryOutlined />}
-            onClick={() => openVersionsModal(record)}
-          >
-            Versions
-          </Button>
-        ),
-      },
-      {
-        title: "Actions",
-        key: "actions",
-        width: 180,
-        render: (_, record) =>
-          editingTemplateId === record?.templateId ? (
-            <Space size={6}>
-              <Tooltip title="Save">
-                <Button
-                  size="small"
-                  type="primary"
-                  shape="circle"
-                  icon={<CheckOutlined />}
-                  onClick={saveInlineEdit}
-                  loading={inlineEditSaving}
-                />
-              </Tooltip>
-              <Tooltip title="Cancel">
-                <Button
-                  size="small"
-                  shape="circle"
-                  icon={<CloseOutlined />}
-                  onClick={cancelInlineEdit}
-                  disabled={inlineEditSaving}
-                />
-              </Tooltip>
-            </Space>
-          ) : (
-            <Space size={6}>
-              <Button
-                size="small"
-                title="Download"
-                icon={<DownloadOutlined />}
-                onClick={() => handleDownload(record)}
-              >
-                {" "}
-              </Button>
-              <Upload {...rowUploadProps(record)}>
-                <Button
-                  size="small"
-                  icon={<UploadOutlined />}
-                  title="Upload New Version"
-                >
-                  {" "}
-                </Button>
-              </Upload>
-              <Button
-                size="small"
-                icon={<EditOutlined />}
-                title="Edit Template"
-                onClick={() => startInlineEdit(record)}
-              >
-                {" "}
-              </Button>
-            </Space>
-          ),
-      },
-    ],
+    () =>
+      buildTemplateColumns({
+        userMap,
+        moduleMap,
+        moduleOptions,
+        editingTemplateId,
+        editingTemplateName,
+        setEditingTemplateName,
+        editingModuleIds,
+        setEditingModuleIds,
+        editingVersionId,
+        editingVersionOptions,
+        editingVersionsLoading,
+        setEditingVersionId,
+        openMappingModal,
+        openVersionsModal,
+        handleDownload,
+        rowUploadProps,
+        startInlineEdit,
+        saveInlineEdit,
+        cancelInlineEdit,
+        inlineEditSaving,
+      }),
     [
-      availableRPTFiles,
       userMap,
       moduleMap,
       moduleOptions,
       editingTemplateId,
       editingTemplateName,
       editingModuleIds,
+      editingVersionId,
+      editingVersionOptions,
+      editingVersionsLoading,
       inlineEditSaving,
+      setEditingTemplateName,
+      setEditingModuleIds,
+      setEditingVersionId,
+      openMappingModal,
+      openVersionsModal,
+      handleDownload,
+      rowUploadProps,
+      startInlineEdit,
+      saveInlineEdit,
+      cancelInlineEdit,
     ],
   );
 
   const versionsColumns = useMemo(
-    () => [
-      {
-        title: "Version",
-        dataIndex: "version",
-        key: "version",
-        width: 140,
-        render: (value, record) => (
-          <Space size={4}>
-            <Tag color="blue">v{value}</Tag>
-          </Space>
-        ),
-      },
-      {
-        title: "Scope",
-        key: "scope",
-        width: 120,
-        render: (_, record) => <Tag>{getScopeLabel(record)}</Tag>,
-      },
-      {
-        title: "Uploaded On",
-        key: "uploadedOn",
-        width: 180,
-        render: (_, record) => (
-          <Typography.Text>{formatDateTime(record?.createdDate)}</Typography.Text>
-        ),
-      },
-      {
-        title: "Uploaded By",
-        key: "uploadedBy",
-        width: 160,
-        render: (_, record) => (
-          <Typography.Text>{resolveUploaderLabel(record)}</Typography.Text>
-        ),
-      },
-      {
-        title: "Status",
-        key: "status",
-        width: 120,
-        render: (_, record) =>
-          record?.isActive ? (
-            <Tag color="green">Active</Tag>
-          ) : (
-            <Tag>Archived</Tag>
-          ),
-      },
-      {
-        title: "Actions",
-        key: "actions",
-        width: 120,
-        render: (_, record) => (
-          <Button
-            size="small"
-            icon={<DownloadOutlined />}
-            onClick={() => handleDownload(record)}
-          >
-            Download
-          </Button>
-        ),
-      },
-    ],
-    [userMap],
+    () =>
+      buildVersionsColumns({
+        userMap,
+        activatingVersionId,
+        confirmActivateVersion,
+        handleDownload,
+      }),
+    [userMap, activatingVersionId, confirmActivateVersion, handleDownload],
   );
 
   const sourceOptionGroups = useMemo(() => {
-    const options = [];
-    const seen = new Set();
-    const pushOptions = (items, prefix, extraLabel) => {
-      if (!Array.isArray(items) || items.length === 0) return;
-      items.forEach((item) => {
-        const key = normalizeKey(item);
-        if (seen.has(key)) return;
-        seen.add(key);
-        options.push({
-          value: `${prefix}${item}`,
-          label: extraLabel ? `${item} ${extraLabel}` : `${item}`,
-          raw: item,
-        });
-      });
-    };
-
-    pushOptions(mappingOptions.boxColumns, "b.");
-    pushOptions(mappingOptions.envColumns, "e.");
-    pushOptions(mappingOptions.envBreakageColumns, "eb.");
-    pushOptions(mappingOptions.nrColumns, "n.");
-    pushOptions(mappingOptions.nrJsonKeys, "n.", "(json)");
-    if (!seen.has(normalizeKey("SRNO"))) {
-      options.push({ value: "calc:SRNO", label: "Auto SR No.", raw: "SRNO" });
-      seen.add(normalizeKey("SRNO"));
-    }
+    const options = Array.isArray(mappingOptions) ? [...mappingOptions] : [];
+    console.log("[sourceOptionGroups] mappingOptions length:", mappingOptions?.length, "sample:", mappingOptions?.[0]);
+    options.push({ value: "calc:SRNO", label: "Auto SR No.", raw: "SRNO" });
     return options;
   }, [mappingOptions]);
 
   const flatSourceOptions = useMemo(() => {
-    const flattened = [];
-    sourceOptionGroups.forEach((option) => {
-      const baseName = option.raw ?? option.value;
-      flattened.push({
-        value: option.value,
-        label: option.label,
-        normalized: normalizeKey(baseName),
-      });
-    });
-    return flattened;
+    return sourceOptionGroups.map((option) => ({
+      value: option.value,
+      label: option.label,
+      normalized: normalizeKey(option.label ?? option.value),
+    }));
   }, [sourceOptionGroups]);
 
-  const mappingRows = useMemo(() => {
-    const rows = parsedFields.map((field, index) => ({
-      key: `${field}-${index}`,
-      field,
-      isMapped: Boolean(mappingSelections?.[field]),
-    }));
-    return rows.sort((a, b) => {
-      if (a.isMapped === b.isMapped) return 0;
-      return a.isMapped ? -1 : 1;
-    });
-  }, [parsedFields, mappingSelections]);
+  const mappingDisplayOrder = useMemo(() => {
+    const pinned = new Set(mappingPinnedFields || []);
+    const mapped = parsedFields
+      .filter((field) => pinned.has(field))
+      .sort((a, b) => a.localeCompare(b));
+    const unmapped = parsedFields
+      .filter((field) => !pinned.has(field))
+      .sort((a, b) => a.localeCompare(b));
+    return [...mapped, ...unmapped];
+  }, [parsedFields, mappingPinnedFields]);
+
+  const mappingRows = useMemo(
+    () =>
+      mappingDisplayOrder.map((field, index) => ({
+        key: `${field}-${index}`,
+        field,
+        isMapped: Boolean(mappingSelections?.[field]),
+      })),
+    [mappingDisplayOrder, mappingSelections],
+  );
+  const mappedFieldNames = useMemo(
+    () =>
+      parsedFields
+        .filter((field) => mappingSelections?.[field])
+        .sort((a, b) => a.localeCompare(b)),
+    [parsedFields, mappingSelections],
+  );
 
   useEffect(() => {
     if (!mappingModalOpen) return;
     if (parsedFields.length === 0 || flatSourceOptions.length === 0) return;
+    let autoMapped = [];
     setMappingSelections((prev) => {
       let changed = false;
       const next = { ...prev };
@@ -1321,139 +1131,34 @@ const RPTFiles = () => {
         if (match) {
           next[field] = match.value;
           changed = true;
+          autoMapped.push(field);
         }
       });
       return changed ? next : prev;
     });
+    if (autoMapped.length > 0) {
+      setMappingPinnedFields((prev) => {
+        const next = new Set(prev || []);
+        autoMapped.forEach((field) => next.add(field));
+        return Array.from(next);
+      });
+    }
   }, [mappingModalOpen, parsedFields, flatSourceOptions]);
 
   return (
     <div className="rpt-templates">
-      <style>{`
-        .rpt-templates { padding: 10px; }
-        .rpt-header {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          margin-bottom: 16px;
-          gap: 12px;
-          flex-wrap: wrap;
-        }
-        .rpt-filters {
-          display: flex;
-          gap: 8px;
-          align-items: flex-start;
-          flex: 1;
-          max-width: 720px;
-          flex-wrap: wrap;
-        }
-        .rpt-filter { flex: 1; min-width: 170px; }
-        .rpt-main {
-          display: grid;
-          gap: 12px;
-          align-items: start;
-        }
-        .rpt-main--with-panel {
-          grid-template-columns: minmax(0, 2fr) minmax(320px, 1fr);
-        }
-        .rpt-main--single {
-          grid-template-columns: minmax(0, 1fr);
-        }
-        .rpt-mapping-card-body {
-          padding: 12px;
-          max-height: calc(100vh - 220px);
-          overflow-y: auto;
-        }
-        .rpt-side-panel-body {
-          padding: 12px;
-        }
-        @media (max-width: 1200px) {
-          .rpt-main--with-panel {
-            grid-template-columns: minmax(0, 1fr);
-          }
-          .rpt-mapping-card {
-            order: 2;
-          }
-          .rpt-side-panel {
-            order: -1;
-          }
-        }
-        @media (max-width: 768px) {
-          .rpt-header {
-            align-items: stretch;
-          }
-          .rpt-filters {
-            max-width: none;
-          }
-          .rpt-filter {
-            min-width: 140px;
-          }
-          .rpt-mapping-card-body {
-            max-height: none;
-          }
-        }
-      `}</style>
-      <div className="rpt-header">
-        <Typography.Title level={4} style={{ margin: 0 }}>
-          RPT Templates
-        </Typography.Title>
-        <div className="rpt-filters">
-          <div className="rpt-filter">
-            <Select
-              placeholder="Scope"
-              value={templateScope}
-              onChange={onScopeChange}
-              options={[
-                { label: "Group", value: "group" },
-                { label: "Standard", value: "standard" },
-              ]}
-              style={{ width: "100%" }}
-              size="large"
-            />
-          </div>
-          <div className="rpt-filter">
-            <Select
-              placeholder="Select Group"
-              value={selectedGroup}
-              onChange={onGroupChange}
-              options={groupOptions}
-              style={{ width: "100%" }}
-              size="large"
-              allowClear
-              clearIcon={<span style={{ fontSize: 12 }}>x</span>}
-              disabled={templateScope === "standard"}
-            />
-            {!selectedGroup && templateScope === "group" && (
-              <Typography.Text
-                type="danger"
-                style={{ fontSize: 11, display: "block", marginTop: 2 }}
-              >
-                Please select a group
-              </Typography.Text>
-            )}
-          </div>
-          <div className="rpt-filter">
-            <Select
-              placeholder="Select Type"
-              value={selectedType}
-              onChange={onTypeChange}
-              options={typeOptions}
-              style={{ width: "100%" }}
-              size="large"
-              allowClear
-              clearIcon={<span style={{ fontSize: 12 }}>x</span>}
-            />
-            {!selectedType && (
-              <Typography.Text
-                type="danger"
-                style={{ fontSize: 11, display: "block", marginTop: 2 }}
-              >
-                Please select a type
-              </Typography.Text>
-            )}
-          </div>
-        </div>
-      </div>
+      <style>{rptTemplatesStyles}</style>
+      <RPTFilesHeader
+        templateScope={templateScope}
+        onScopeChange={onScopeChange}
+        selectedGroup={selectedGroup}
+        onGroupChange={onGroupChange}
+        groupOptions={groupOptions}
+        selectedType={selectedType}
+        onTypeChange={onTypeChange}
+        typeOptions={typeOptions}
+        groupLabel={groupLabel}
+      />
 
       <div
         className={`rpt-main ${
@@ -1462,157 +1167,57 @@ const RPTFiles = () => {
             : "rpt-main--single"
         }`}
       >
-        <Card
-          style={{ borderRadius: 12 }}
-          bodyStyle={{ padding: 16 }}
-          title={
-            <Space>
-              <Typography.Text strong>Templates</Typography.Text>
-              {selectionReady && (
-                <>
-                  {templateScope === "standard" ? (
-                    <Tag>Standard</Tag>
-                  ) : (
-                    <Tag>{groupLabel}</Tag>
-                  )}
-                  <Tag>{typeLabel}</Tag>
-                </>
-              )}
-            </Space>
-          }
-          extra={
-            <Space>
-              <Button
-              title=" Refresh"
-                icon={<ReloadOutlined />}
-                onClick={fetchAvailableRPTFiles}
-                disabled={!selectionReady}
-              >
-               
-              </Button>
-              <Button
-                type="primary"
-                icon={<PlusOutlined />}
-                onClick={() => {
-                  setAddModalOpen(true);
-                  setImportModalOpen(false);
-                  setMappingModalOpen(false);
-                  setMappingTemplate(null);
-                  cancelInlineEdit();
-                }}
-              >
-                Add
-              </Button>
-              <Button
-                icon={<CopyOutlined />}
-                onClick={() => {
-                  setImportModalOpen(true);
-                  setAddModalOpen(false);
-                  setMappingModalOpen(false);
-                  setMappingTemplate(null);
-                  cancelInlineEdit();
-                  importForm.resetFields();
-                  importForm.setFieldsValue({ copyMappings: true });
-                }}
-                disabled={!selectionReady || templateScope !== "group"}
-              >
-                Import
-              </Button>
-            </Space>
-          }
-        >
-          {!selectionReady ? (
-            <Empty
-              description="Select a group and type to view templates."
-              image={Empty.PRESENTED_IMAGE_SIMPLE}
-            />
-          ) : availableRPTFiles.length === 0 ? (
-            <Empty
-              image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description={
-                <Space direction="vertical" size={6}>
-                  <Typography.Text>
-                    No templates found for this group and type.
-                  </Typography.Text>
-                  <Typography.Text type="secondary">
-                    You can import from an existing group or add a new template.
-                  </Typography.Text>
-                </Space>
-              }
-            >
-              <Space>
-                <Button
-                  type="primary"
-                  icon={<PlusOutlined />}
-                  onClick={() => {
-                    setAddModalOpen(true);
-                    setImportModalOpen(false);
-                    setMappingModalOpen(false);
-                    setMappingTemplate(null);
-                    cancelInlineEdit();
-                  }}
-                >
-                  Add Template
-                </Button>
-                <Button
-                  icon={<CopyOutlined />}
-                  onClick={() => {
-                    setImportModalOpen(true);
-                    setAddModalOpen(false);
-                    setMappingModalOpen(false);
-                    setMappingTemplate(null);
-                    cancelInlineEdit();
-                    importForm.resetFields();
-                    importForm.setFieldsValue({ copyMappings: true });
-                  }}
-                  disabled={templateScope !== "group"}
-                >
-                  Import Templates
-                </Button>
-              </Space>
-            </Empty>
-          ) : (
-            <Table
-              rowKey="templateId"
-              dataSource={availableRPTFiles}
-              columns={columns}
-              pagination={false}
-              loading={loadingTemplates}
-            />
-          )}
-        </Card>
+        <TemplatesCard
+          selectionReady={selectionReady}
+          tags={[
+            templateScope === "standard" ? "Standard" : groupLabel,
+            typeLabel,
+          ]}
+          data={availableRPTFiles}
+          columns={columns}
+          loading={loadingTemplates}
+          selectionEmptyText="Select a group and type to view templates."
+          noTemplatesTitle="No templates found for this group and type."
+          noTemplatesSubtitle="You can import from an existing group or add a new template."
+          onRefresh={fetchAvailableRPTFiles}
+          onAdd={() => {
+            setAddModalOpen(true);
+            setImportModalOpen(false);
+            setMappingModalOpen(false);
+            setMappingTemplate(null);
+            cancelInlineEdit();
+          }}
+          onImport={() => {
+            setImportModalOpen(true);
+            setAddModalOpen(false);
+            setMappingModalOpen(false);
+            setMappingTemplate(null);
+            cancelInlineEdit();
+            importForm.resetFields();
+            importForm.setFieldsValue({ copyMappings: true });
+          }}
+          disableAdd={false}
+          disableImport={!selectionReady || templateScope !== "group"}
+          showImportAction
+        />
 
         {showSidePanel && (
-          <Card
-            style={{ borderRadius: 12 }}
-            bodyStyle={{ padding: 0 }}
-            className="rpt-side-panel"
-            title={
-              <Space style={{ display: "flex", justifyContent: "space-between" }}>
-                <Typography.Text strong>
-                  {addModalOpen ? "Add Template" : "Import Templates"}
-                </Typography.Text>
-                <Button
-                  size="small"
-                  icon={<CloseOutlined />}
-                  onClick={() => {
-                    setAddModalOpen(false);
-                    setImportModalOpen(false);
-                  }}
-                />
-              </Space>
-            }
-          >
-            <div className="rpt-side-panel-body">
-              {addModalOpen ? (
-                <Form layout="vertical" form={addForm}>
-                  <Form.Item
-                    label="Template Name"
-                    name="templateName"
-                    rules={[{ required: true, message: "Template name is required" }]}
-                  >
-                    <Input placeholder="Enter template name" />
-                  </Form.Item>
+          <TemplatesSidePanel
+            addModalOpen={addModalOpen}
+            importModalOpen={importModalOpen}
+            onClose={() => {
+              setAddModalOpen(false);
+              setImportModalOpen(false);
+            }}
+            addFormProps={{
+              form: addForm,
+              addFileList,
+              setAddFileList,
+              onSubmit: handleAddTemplate,
+              submitting: addSubmitting,
+              moduleOptions,
+              children: (
+                <>
                   {templateScope === "group" && (
                     <Form.Item
                       label="Group"
@@ -1629,370 +1234,63 @@ const RPTFiles = () => {
                   >
                     <Select options={typeOptions} placeholder="Select type" />
                   </Form.Item>
-                  <Form.Item
-                    label="Modules"
-                    name="moduleIds"
-                    rules={[{ required: true, message: "Select at least one module" }]}
-                  >
-                    <Select
-                      mode="multiple"
-                      options={moduleOptions}
-                      placeholder="Select modules"
-                      showSearch
-                      optionFilterProp="label"
-                    />
-                  </Form.Item>
-                  <Form.Item label="RPT File">
-                    <Upload.Dragger
-                      accept=".rpt"
-                      multiple={false}
-                      beforeUpload={() => false}
-                      onChange={(info) => setAddFileList(info.fileList.slice(-1))}
-                      onRemove={() => setAddFileList([])}
-                      fileList={addFileList}
-                    >
-                      <p className="ant-upload-drag-icon">
-                        <InboxOutlined />
-                      </p>
-                      <p className="ant-upload-text">
-                        Click or drag an RPT file to upload
-                      </p>
-                      <p className="ant-upload-hint">
-                        Only .rpt files are supported.
-                      </p>
-                    </Upload.Dragger>
-                  </Form.Item>
-                  <Space style={{ display: "flex", justifyContent: "flex-end" }}>
-                    <Button onClick={() => setAddModalOpen(false)}>Cancel</Button>
-                    <Button
-                      type="primary"
-                      onClick={handleAddTemplate}
-                      loading={addSubmitting}
-                    >
-                      Upload Template
-                    </Button>
-                  </Space>
-                </Form>
-              ) : (
-                <Form
-                  layout="vertical"
-                  form={importForm}
-                  initialValues={{ copyMappings: true }}
-                  preserve={false}
-                >
-                  <Form.Item
-                    label="Import From"
-                    name="sourceScope"
-                    rules={[
-                      {
-                        validator: (_, value) =>
-                          value
-                            ? Promise.resolve()
-                            : Promise.reject("Import source is required"),
-                      },
-                    ]}
-                    style={{ marginBottom: 8 }}
-                  >
-                    <Select
-                      options={[
-                        { label: "Select import source", value: "", disabled: true },
-                        { label: "Standard Templates", value: "standard" },
-                        { label: "Group Templates (includes standard)", value: "group" },
-                        { label: "Project Templates", value: "project" },
-                      ]}
-                      placeholder="Select import source"
-                      showSearch
-                      optionFilterProp="label"
-                      allowClear
-                    />
-                  </Form.Item>
-
-                  <Form.Item shouldUpdate noStyle>
-                    {({ getFieldValue }) => {
-                      const scope = getFieldValue("sourceScope");
-                      if (scope === "group") {
-                        return (
-                          <Form.Item
-                            label="Source Group"
-                            name="sourceGroupId"
-                            rules={[
-                              {
-                                validator: (_, value) =>
-                                  value
-                                    ? Promise.resolve()
-                                    : Promise.reject("Source group is required"),
-                              },
-                            ]}
-                            style={{ marginBottom: 8 }}
-                          >
-                            <Select
-                              options={[
-                                {
-                                  label: "Select source group",
-                                  value: "",
-                                  disabled: true,
-                                },
-                                ...groupOptions,
-                              ]}
-                              placeholder="Select source group"
-                              showSearch
-                              optionFilterProp="label"
-                              allowClear
-                            />
-                          </Form.Item>
-                        );
-                      }
-                      if (scope === "project") {
-                        return (
-                          <Form.Item
-                            label="Source Project"
-                            name="sourceProjectId"
-                            rules={[
-                              {
-                                validator: (_, value) =>
-                                  value
-                                    ? Promise.resolve()
-                                    : Promise.reject(
-                                      "Source project id is required",
-                                    ),
-                              },
-                            ]}
-                            style={{ marginBottom: 8 }}
-                          >
-                            <Select
-                              options={[
-                                {
-                                  label: "Select source project",
-                                  value: "",
-                                  disabled: true,
-                                },
-                                ...projectOptions,
-                              ]}
-                              placeholder="Select source project"
-                              showSearch
-                              optionFilterProp="label"
-                              allowClear
-                            />
-                          </Form.Item>
-                        );
-                      }
-                      return null;
-                    }}
-                  </Form.Item>
-
-                  <Form.Item
-                    label="Source Type"
-                    name="sourceTypeId"
-                    style={{ marginBottom: 8 }}
-                  >
-                    <Select
-                      options={[
-                        { label: "All types (optional)", value: "", disabled: true },
-                        ...typeOptions,
-                      ]}
-                      placeholder="All types (optional)"
-                      showSearch
-                      optionFilterProp="label"
-                      allowClear
-                    />
-                  </Form.Item>
-
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      gap: 12,
-                      marginBottom: 16,
-                    }}
-                  >
-                    <div>
-                      <Typography.Text strong>Copy mappings</Typography.Text>
-                      <Typography.Text type="secondary" style={{ display: "block" }}>
-                        If enabled, existing mappings are cloned as well.
-                      </Typography.Text>
-                    </div>
-                    <Form.Item
-                      name="copyMappings"
-                      valuePropName="checked"
-                      initialValue={true}
-                      style={{ marginBottom: 0 }}
-                    >
-                      <Switch />
-                    </Form.Item>
-                  </div>
-                  <Space style={{ display: "flex", justifyContent: "flex-end" }}>
-                    <Button onClick={() => setImportModalOpen(false)}>Cancel</Button>
-                    <Button
-                      type="primary"
-                      onClick={handleImportTemplates}
-                      loading={importSubmitting}
-                    >
-                      Import Templates
-                    </Button>
-                  </Space>
-                </Form>
-              )}
-            </div>
-          </Card>
-        )}
-
-        {showMappingPanel && (
-          <Card
-            style={{
-              borderRadius: 12,
+                </>
+              ),
             }}
-            bodyStyle={{ padding: 0 }}
-            className="rpt-mapping-card"
-            title={
-              <Space direction="vertical" size={2} style={{ width: "100%" }}>
-                <Space style={{ display: "flex", justifyContent: "space-between" }}>
-                  <Typography.Text strong>Template Mapping ( {mappingTemplate?.templateName || "Selected template"})</Typography.Text>
-                  <Button
-                    size="small"
-                    icon={<CloseOutlined />}
-                    onClick={closeMappingPanel}
-                  />
-                </Space>
-                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                 
-                  Update mapping and group-by for the selected template.
-                </Typography.Text>
-              </Space>
-            }
-          >
-            <div className="rpt-mapping-card-body">
-            {mappingNotFound && (
-              <Typography.Text
-                type="secondary"
-                style={{ display: "block", marginBottom: 8 }}
-              >
-                No saved mapping found for this template yet.
-              </Typography.Text>
-            )}
-            
-            <Card size="small" style={{ marginBottom: 12 }} bodyStyle={{ padding: 12 }}>
-              <Space
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  marginBottom: 8,
-                }}
-              >
-                <Typography.Text strong>Field Mapping</Typography.Text>
-                <Button onClick={handleAutoMap} disabled={mappingOptionsLoading}>
-                  Auto-map
-                </Button>
-              </Space>
-              {mappingOptionsLoading ? (
-                <Typography.Text type="secondary">
-                  Loading available columns...
-                </Typography.Text>
-              ) : parsedFields.length === 0 ? (
-                <Typography.Text type="secondary">
-                  No parsed fields to map for this template.
-                </Typography.Text>
-              ) : (
-                <Table
-                  dataSource={mappingRows}
-                  pagination={false}
-                  size="small"
-                  scroll={{ y: 260 }}
-                  columns={[
-                    {
-                      title: "RPT Field",
-                      dataIndex: "field",
-                      key: "field",
-                      width: "45%",
-                      render: (value) => <Typography.Text>{value}</Typography.Text>,
-                    },
-                    {
-                      title: "Map To Column",
-                      key: "mapTo",
-                      render: (_, record) => (
-                        <Select
-                          showSearch
-                          allowClear
-                          placeholder="Select source column"
-                          value={mappingSelections[record.field]}
-                          options={sourceOptionGroups}
-                          style={{ width: "100%" }}
-                          filterOption={(input, option) =>
-                            (option?.label ?? "")
-                              .toString()
-                              .toLowerCase()
-                              .includes(input.toLowerCase())
-                          }
-                          onChange={(value) =>
-                            setMappingSelections((prev) => ({
-                              ...prev,
-                              [record.field]: value,
-                            }))
-                          }
-                        />
-                      ),
-                    },
-                  ]}
-                />
-              )}
-            </Card>
-            <Card size="small" bodyStyle={{ padding: 12 }}>
-              <Typography.Text strong>Group By</Typography.Text>
-              <Typography.Text type="secondary" style={{ display: "block" }}>
-                Select one or more columns to group the report output.
-              </Typography.Text>
-              <Select
-                mode="multiple"
-                allowClear
-                placeholder="Choose group by columns"
-                options={sourceOptionGroups}
-                value={groupBySelections}
-                onChange={(values) => setGroupBySelections(values)}
-                style={{ width: "100%", marginTop: 8 }}
-                filterOption={(input, option) =>
-                  (option?.label ?? "")
-                    .toString()
-                    .toLowerCase()
-                    .includes(input.toLowerCase())
-                }
-              />
-            </Card>
-            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}>
-              <Button
-                type="primary"
-                onClick={handleSaveMapping}
-                loading={mappingLoading}
-                disabled={!mappingTemplate?.templateId}
-              >
-                Save Mapping
-              </Button>
-            </div>
-          </div>
-          </Card>
+            importFormProps={{
+              form: importForm,
+              importScope,
+              sourceScopeOptions,
+              filteredGroupOptions,
+              filteredProjectOptions,
+              importAvailability,
+              importGroupId,
+              importProjectId,
+              sourceTypeOptions,
+              disableSourceTypeSelect,
+              selectedImportProjectTypeLabel: typeOptions.find(
+                (type) => type.value === selectedImportProjectType,
+              )?.label,
+              importSubmitting,
+              onSubmit: handleImportTemplates,
+            }}
+          />
         )}
+
+        <TemplatesMappingPanel
+          showMappingPanel={showMappingPanel}
+          mappingTemplate={mappingTemplate}
+          mappingNotFound={mappingNotFound}
+          mappingOptionsLoading={mappingOptionsLoading}
+          parsedFields={parsedFields}
+          mappingRows={mappingRows}
+          sourceOptionGroups={sourceOptionGroups}
+          mappingSelections={mappingSelections}
+          setMappingSelections={setMappingSelections}
+          mappedFieldNames={mappedFieldNames}
+          groupBySelections={groupBySelections}
+          setGroupBySelections={setGroupBySelections}
+          orderBySelections={orderBySelections}
+          setOrderBySelections={setOrderBySelections}
+          labelCopies={labelCopies}
+          setLabelCopies={setLabelCopies}
+          handleSaveMapping={handleSaveMapping}
+          mappingLoading={mappingLoading}
+          closeMappingPanel={closeMappingPanel}
+        />
       </div>
 
-      <Modal
-        title={`Template Versions${versionsTemplate?.templateName ? ` - ${versionsTemplate.templateName}` : ""}`}
-        open={versionsOpen}
-        onCancel={closeVersionsModal}
-        footer={null}
-        width={820}
-      >
-        <Space direction="vertical" size={8} style={{ width: "100%" }}>
-          <Typography.Text type="secondary">
-            Showing all saved versions for this template.
-          </Typography.Text>
-          <Table
-            rowKey="templateId"
-            dataSource={versionsData}
-            columns={versionsColumns}
-            pagination={false}
-            loading={versionsLoading}
-            locale={{ emptyText: "No versions found." }}
-          />
-        </Space>
-      </Modal>
+      <TemplatesVersionsModal
+        versionsOpen={versionsOpen}
+        versionsTemplate={versionsTemplate}
+        closeVersionsModal={closeVersionsModal}
+        pendingGenerateTemplate={pendingGenerateTemplate}
+        setPendingGenerateTemplate={setPendingGenerateTemplate}
+        runReportGeneration={runReportGeneration}
+        versionsData={versionsData}
+        versionsColumns={versionsColumns}
+        versionsLoading={versionsLoading}
+      />
 
     </div>
   );

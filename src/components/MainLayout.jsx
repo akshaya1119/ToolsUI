@@ -1,7 +1,6 @@
 import { useState } from "react";
 import Navbar from "./Navbar";
 import Sidebar from "./Sidebar";
-import Footer from "./Footer";
 import { useNavigate } from "react-router-dom";
 import { useUserTokenActions } from "../stores/UserToken";
 
@@ -33,8 +32,6 @@ export default function MainLayout({ children }) {
         </main>
       </div>
 
-      {/* Footer outside scrollable area */}
-      <Footer />
     </div>
   );
 }

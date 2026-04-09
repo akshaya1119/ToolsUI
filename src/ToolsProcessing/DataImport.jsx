@@ -32,6 +32,7 @@ const DataImport = () => {
   const [existingData, setExistingData] = useState([]); // âœ… default to []
   const [columns, setColumns] = useState([]); // âœ… default to []
   const [loading, setLoading] = useState(false); // âœ… added
+  const [uploading, setUploading] = useState(false);
   const [activeTab, setActiveTab] = useState("1");
   const token = localStorage.getItem('token');
   const projectId = useStore((state) => state.projectId);
@@ -1004,6 +1005,7 @@ const DataImport = () => {
     }
 
     setLoading(true);
+    setUploading(true);
 
     if (keepZeroQuantity) {
       mappedData = mappedData.map((row) => {
@@ -1053,6 +1055,7 @@ const DataImport = () => {
       resetForm();
     } finally {
       setLoading(false);
+      setUploading(false);
       setFileList([]);
     }
   };
@@ -1789,6 +1792,8 @@ const handleFieldChange = (fieldName, value) => {
                     <Button
                       type="primary"
                       onClick={handleUpload}
+                      loading={uploading}
+                      disabled={uploading}
                     >
                       Upload Data
                     </Button>
