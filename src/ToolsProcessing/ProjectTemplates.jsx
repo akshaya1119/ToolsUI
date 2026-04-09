@@ -119,6 +119,7 @@ const ProjectTemplates = () => {
   const [versionsData, setVersionsData] = useState([]);
   const [versionsTemplate, setVersionsTemplate] = useState(null);
   const [pendingGenerateTemplate, setPendingGenerateTemplate] = useState(null);
+  const [activatingVersionId, setActivatingVersionId] = useState(null);
   // const templateId = selectedTemplate?.templateId || null;
 
   const [addFileList, setAddFileList] = useState([]);
@@ -1402,7 +1403,7 @@ const ProjectTemplates = () => {
               form: addForm,
               addFileList,
               setAddFileList,
-              onSubmit: handleAddTemplate,
+              onSubmit: handleAddSubmit,
               submitting: addSubmitting,
               moduleOptions,
               children: (
