@@ -43,6 +43,7 @@ const ProcessingPipeline = () => {
   const [bulkGenerating, setBulkGenerating] = useState(false);
   const [bulkDownloading, setBulkDownloading] = useState(false);
   const [mappingUpdateMap, setMappingUpdateMap] = useState({});
+  const [staleTemplateIds, setStaleTemplateIds] = useState(new Set());
   const projectId = useStore((state) => state.projectId);
   const projectName = useStore((state) => state.projectName);
   const storedGroupId = localStorage.getItem("selectedGroup");
@@ -157,6 +158,7 @@ const ProcessingPipeline = () => {
     setTemplateDownloads({});
     setGeneratingTemplates({});
     setTemplateReportStatus({});
+    setStaleTemplateIds(new Set());
   }, [projectId]);
 
   const loadMappingUpdates = () => {
@@ -604,6 +606,12 @@ const ProcessingPipeline = () => {
         },
       }));
       clearMappingUpdate(templateId);
+      // Clear stale flag for this specific template once regenerated
+      setStaleTemplateIds((prev) => {
+        const next = new Set(prev);
+        next.delete(templateId);
+        return next;
+      });
 
       message.success({ content: "Report generated.", key: messageKey });
     } catch (err) {
@@ -680,10 +688,8 @@ const ProcessingPipeline = () => {
     const pending = templates.filter((template) => {
       const templateId = resolveTemplateId(template);
       if (!templateId) return false;
-      return (
-        !templateReportStatus[templateId]?.exists ||
-        isMappingNewerThanReport(templateId)
-      );
+      const exists = templateReportStatus[templateId]?.exists;
+      return !exists || isMappingNewerThanReport(templateId) || staleTemplateIds.has(templateId);
     });
 
     if (pending.length === 0) {
@@ -869,6 +875,7 @@ const ProcessingPipeline = () => {
     setIsProcessing(true);
     const stepTimers = new Map();
     const completedSteps = new Set();
+    const freshlyRunSteps = new Set();
     const fileNames = {
       duplicate: "DuplicateTool.xlsx",
       extra: "ExtrasCalculation.xlsx",
@@ -911,11 +918,11 @@ const ProcessingPipeline = () => {
           break;
         }
 
-        // Check if report already exists
+        // Check if report already exists — skip only if user did NOT explicitly select this module
         const fileName = fileNames[step.key];
         let reportExists = false;
 
-        if (fileName) {
+        if (fileName && !modulesToProcess.includes(step.key)) {
           try {
             const res = await API.get(
               `/EnvelopeBreakages/Reports/Exists?projectId=${projectId}&fileName=${fileName}`
@@ -926,7 +933,7 @@ const ProcessingPipeline = () => {
           }
         }
 
-        // If report already exists, mark as completed and skip processing
+        // If report already exists and not explicitly selected, mark as completed and skip
         if (reportExists) {
           const fileUrl = `${url3}/${projectId}/${fileName}?DateTime=${new Date().toISOString()}`;
           updateStepStatus(step.key, {
@@ -969,6 +976,31 @@ const ProcessingPipeline = () => {
       }
       await checkReportExistence(projectId);
       message.success("Data processing completed");
+
+      // Mark modules with templates as stale if their processing step was re-run
+      // Also mark downstream modules (steps that come after a re-run step) as stale
+      const freshlyRun = modulesToProcess.filter((key) => completedSteps.has(key));
+      const staleIds = new Set();
+      freshlyRun.forEach((runKey) => {
+        const runIndex = allOrder.findIndex((s) => s.key === runKey);
+        allOrder.slice(runIndex).forEach((s) => {
+          getTemplatesForModuleKey(s.key).forEach((t) => {
+            const id = resolveTemplateId(t);
+            if (id) staleIds.add(id);
+          });
+        });
+      });
+      if (staleIds.size > 0) {
+        setStaleTemplateIds((prev) => new Set([...prev, ...staleIds]));
+        // Reset report status for stale templates so Generate All re-enables
+        setTemplateReportStatus((prev) => {
+          const next = { ...prev };
+          staleIds.forEach((id) => {
+            if (next[id]) next[id] = { ...next[id], exists: false };
+          });
+          return next;
+        });
+      }
 
       // Clear selections and close alert after successful processing
       setSelectedModules([]);
@@ -1274,8 +1306,9 @@ const ProcessingPipeline = () => {
                           const hasMappingUpdate = templateId
                             ? isMappingNewerThanReport(templateId)
                             : false;
+                          const isStale = staleTemplateIds.has(templateId);
                           const canGenerate = templateId
-                            ? !reportStatus?.exists || hasMappingUpdate
+                            ? !reportStatus?.exists || hasMappingUpdate || isStale
                             : true;
                           return (
                             <Card

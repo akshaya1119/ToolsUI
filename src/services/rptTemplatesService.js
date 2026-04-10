@@ -81,21 +81,16 @@ export const fetchTemplatesByGroup = async (
   return Array.isArray(res.data) ? res.data : [];
 };
 
-export const fetchMappingOptions = async (apiUrl, { groupId, typeId }) => {
-  const res = await axios.get(`${apiUrl}/RPTTemplates/mapping-options`, {
-    params: {
-      groupId,
-      typeId,
-    },
-  });
-  return {
-    nrColumns: res.data?.nrColumns || [],
-    envColumns: res.data?.envColumns || [],
-    envBreakageColumns: res.data?.envBreakageColumns || [],
-    boxColumns: res.data?.boxColumns || [],
-    nrJsonKeys: res.data?.nrJsonKeys || [],
-    envBreakageJsonKeys: res.data?.envBreakageJsonKeys || [],
-  };
+export const fetchMappingOptions = async (apiUrl, { groupId, typeId, projectId }) => {
+  const params = { groupId, typeId };
+  if (projectId) params.projectId = projectId;
+  const res = await axios.get(`${apiUrl}/RPTTemplates/mapping-options`, { params });
+  // API returns a flat deduplicated array of { value, label }
+  const data = res.data;
+  if (Array.isArray(data)) return data;
+  // handle $values wrapper (reference handling)
+  if (data && Array.isArray(data.$values)) return data.$values;
+  return [];
 };
 
 export const uploadTemplate = async (

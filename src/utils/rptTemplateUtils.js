@@ -64,7 +64,7 @@ export const normalizeKey = (value) =>
     .replace(/[^a-z0-9]/g, "");
 
 export const parseMappingJson = (raw) => {
-  if (!raw) return { mappings: {}, groupBy: [] };
+  if (!raw) return { mappings: {}, groupBy: [], orderBy: [], labelCopies: 1 };
   try {
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed)) {
@@ -72,25 +72,39 @@ export const parseMappingJson = (raw) => {
       parsed.forEach((item) => {
         if (item?.rptField && item?.source) map[item.rptField] = item.source;
       });
-      return { mappings: map, groupBy: [] };
+      return { mappings: map, groupBy: [], orderBy: [], labelCopies: 1 };
     }
     if (Array.isArray(parsed?.mappings)) {
       const map = {};
       parsed.mappings.forEach((item) => {
         if (item?.rptField && item?.source) map[item.rptField] = item.source;
       });
-      return { mappings: map, groupBy: parsed?.groupBy || [] };
+      return {
+        mappings: map,
+        groupBy: parsed?.groupBy || [],
+        orderBy: parsed?.orderBy || [],
+        labelCopies: Number.isFinite(Number(parsed?.labelCopies)) && Number(parsed.labelCopies) >= 1
+          ? Math.round(Number(parsed.labelCopies))
+          : 1,
+      };
     }
     if (parsed?.mappings && typeof parsed.mappings === "object") {
-      return { mappings: parsed.mappings, groupBy: parsed?.groupBy || [] };
+      return {
+        mappings: parsed.mappings,
+        groupBy: parsed?.groupBy || [],
+        orderBy: parsed?.orderBy || [],
+        labelCopies: Number.isFinite(Number(parsed?.labelCopies)) && Number(parsed.labelCopies) >= 1
+          ? Math.round(Number(parsed.labelCopies))
+          : 1,
+      };
     }
     if (parsed && typeof parsed === "object") {
-      return { mappings: parsed, groupBy: [] };
+      return { mappings: parsed, groupBy: [], orderBy: [], labelCopies: 1 };
     }
   } catch (err) {
-    return { mappings: {}, groupBy: [] };
+    return { mappings: {}, groupBy: [], orderBy: [], labelCopies: 1 };
   }
-  return { mappings: {}, groupBy: [] };
+  return { mappings: {}, groupBy: [], orderBy: [], labelCopies: 1 };
 };
 
 export const normalizeModuleIds = (raw) => {
