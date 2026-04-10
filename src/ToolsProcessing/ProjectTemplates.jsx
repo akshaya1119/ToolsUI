@@ -76,17 +76,12 @@ const ProjectTemplates = () => {
   const [mappingNotFound, setMappingNotFound] = useState(false);
   const [parsedFields, setParsedFields] = useState([]);
   const [parsedFieldsLoading, setParsedFieldsLoading] = useState(false);
-  const [mappingOptions, setMappingOptions] = useState({
-    nrColumns: [],
-    envColumns: [],
-    envBreakageColumns: [],
-    boxColumns: [],
-    nrJsonKeys: [],
-    envBreakageJsonKeys: [],
-  });
+  const [mappingOptions, setMappingOptions] = useState([]);
   const [mappingOptionsLoading, setMappingOptionsLoading] = useState(false);
   const [mappingSelections, setMappingSelections] = useState({});
   const [groupBySelections, setGroupBySelections] = useState([]);
+  const [orderBySelections, setOrderBySelections] = useState([]);
+  const [labelCopies, setLabelCopies] = useState(1);
   const [mappingPinnedFields, setMappingPinnedFields] = useState([]);
 
   const [versionsOpen, setVersionsOpen] = useState(false);
@@ -372,6 +367,7 @@ const ProjectTemplates = () => {
       const options = await fetchMappingOptionsService(APIURL, {
         groupId,
         typeId,
+        projectId: normalizeId(template?.projectId) ?? normalizeId(projectId) ?? undefined,
       });
       setMappingOptions(options);
     } catch (err) {
@@ -397,6 +393,8 @@ const ProjectTemplates = () => {
       setMappingNotFound(false);
       setMappingSelections({});
       setGroupBySelections([]);
+      setOrderBySelections([]);
+      setLabelCopies(1);
       setMappingPinnedFields([]);
     }
   }, [mappingModalOpen]);
@@ -717,6 +715,8 @@ const ProjectTemplates = () => {
       const parsed = parseMappingJson(mapping);
       setMappingSelections(parsed.mappings || {});
       setGroupBySelections(Array.isArray(parsed.groupBy) ? parsed.groupBy : []);
+      setOrderBySelections(Array.isArray(parsed.orderBy) ? parsed.orderBy : []);
+      setLabelCopies(Number.isFinite(parsed.labelCopies) && parsed.labelCopies >= 1 ? parsed.labelCopies : 1);
       setMappingPinnedFields(Object.keys(parsed.mappings || {}));
       const emptyMapping =
         Object.keys(parsed.mappings || {}).length === 0 &&
@@ -769,9 +769,11 @@ const ProjectTemplates = () => {
       const mappingPayload = {
         mappings: mappingsPayload,
         groupBy: groupBySelections || [],
+        orderBy: orderBySelections || [],
+        labelCopies: labelCopies ?? 1,
       };
       const mappingJson =
-        mappingsPayload.length > 0 || (groupBySelections || []).length > 0
+        mappingsPayload.length > 0 || (groupBySelections || []).length > 0 || (orderBySelections || []).length > 0 || (labelCopies ?? 1) > 1
           ? JSON.stringify(mappingPayload)
           : "";
       await saveTemplateMapping(
@@ -1186,46 +1188,17 @@ const ProjectTemplates = () => {
   );
 
   const sourceOptionGroups = useMemo(() => {
-    const options = [];
-    const seen = new Set();
-    const pushOptions = (items, prefix, extraLabel) => {
-      if (!Array.isArray(items) || items.length === 0) return;
-      items.forEach((item) => {
-        const key = `${prefix}${normalizeKey(item)}`;
-        if (seen.has(key)) return;
-        seen.add(key);
-        options.push({
-          value: `${prefix}${item}`,
-          label: extraLabel ? `${item} ${extraLabel}` : `${item}`,
-          raw: item,
-        });
-      });
-    };
-
-    pushOptions(mappingOptions.nrColumns, "n.");
-    pushOptions(mappingOptions.nrJsonKeys, "n.");
-    pushOptions(mappingOptions.envColumns, "e.");
-    pushOptions(mappingOptions.envBreakageColumns, "eb.");
-    pushOptions(mappingOptions.envBreakageJsonKeys, "eb.");
-    pushOptions(mappingOptions.boxColumns, "b.");
-    if (!seen.has(normalizeKey("SRNO"))) {
-      options.push({ value: "calc:SRNO", label: "Auto SR No.", raw: "SRNO" });
-      seen.add(normalizeKey("SRNO"));
-    }
+    const options = Array.isArray(mappingOptions) ? [...mappingOptions] : [];
+    options.push({ value: "calc:SRNO", label: "Auto SR No." });
     return options;
   }, [mappingOptions]);
 
   const flatSourceOptions = useMemo(() => {
-    const flattened = [];
-    sourceOptionGroups.forEach((option) => {
-      const baseName = option.raw ?? option.value;
-      flattened.push({
-        value: option.value,
-        label: option.label,
-        normalized: normalizeKey(baseName),
-      });
-    });
-    return flattened;
+    return sourceOptionGroups.map((option) => ({
+      value: option.value,
+      label: option.label,
+      normalized: normalizeKey(option.label ?? option.value),
+    }));
   }, [sourceOptionGroups]);
 
   const mappingDisplayOrder = useMemo(() => {
@@ -1411,6 +1384,10 @@ const ProjectTemplates = () => {
           mappedFieldNames={mappedFieldNames}
           groupBySelections={groupBySelections}
           setGroupBySelections={setGroupBySelections}
+          orderBySelections={orderBySelections}
+          setOrderBySelections={setOrderBySelections}
+          labelCopies={labelCopies}
+          setLabelCopies={setLabelCopies}
           handleSaveMapping={handleSaveMapping}
           mappingLoading={mappingLoading}
           closeMappingPanel={closeMappingPanel}
