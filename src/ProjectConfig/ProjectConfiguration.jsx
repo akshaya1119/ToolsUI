@@ -779,6 +779,7 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
   const { handleSave } = useProjectConfigSave(
     projectId,
     enabledModules,
+    setEnabledModules,
     toolModules,
     innerEnvelopes,
     outerEnvelopes,
