@@ -268,16 +268,31 @@ export const useProjectConfigSave = (
       // Trigger callback with change information only if not skipping change detection
       // (i.e., when saving as master config, don't show the modal)
       if (onConfigSaved && !isMasterConfig && !skipChangeDetection) {
-        console.log("Calling onConfigSaved callback with:", {
-          changes,
-          affectedReports: affectedReportsWithDeps,
-          changedModules: changes.changedModules,
-        });
-        onConfigSaved({
-          changes,
-          affectedReports: affectedReportsWithDeps,
-          changedModules: changes.changedModules,
-        });
+        try {
+          // Only show the modal if the project already has data (NR data > 0)
+          const nrRes = await API.get(`/NRDatas/Counts?ProjectId=${projectId}`);
+          if (nrRes.data && nrRes.data.nrData > 0) {
+            console.log("Calling onConfigSaved callback with:", {
+              changes,
+              affectedReports: affectedReportsWithDeps,
+              changedModules: changes.changedModules,
+            });
+            onConfigSaved({
+              changes,
+              affectedReports: affectedReportsWithDeps,
+              changedModules: changes.changedModules,
+            });
+          } else {
+            console.log("No NR data found for project, skipping configuration change modal");
+          }
+        } catch (err) {
+          console.warn("Could not check NR data counts, defaulting to showing modal if changes exist", err);
+          onConfigSaved({
+            changes,
+            affectedReports: affectedReportsWithDeps,
+            changedModules: changes.changedModules,
+          });
+        }
       } else {
         console.log("No onConfigSaved callback provided or in master config mode or skipping change detection");
       }

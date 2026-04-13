@@ -20,12 +20,15 @@ import { EXTRA_ALIAS_NAME } from "./components/constants";
 import DuplicateTool from "../ToolsProcessing/DuplicateTool";
 import API from "../hooks/api";
 import ImportConfig from "./components/ImportConfig";
+import { importTemplatesFromGroup } from "../services/rptTemplatesService";
+import { normalizeId } from "../utils/rptTemplateUtils";
 
 const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, selectedGroup = null, onTypeChange = null, onGroupChange = null, typeOptions: propTypeOptions = [], groupOptions: propGroupOptions = [], onReset = null, onResetAll = null }) => {
   const { showToast } = useToast();
   const navigate = useNavigate();
   const projectId = useStore((state) => state.projectId);
   const url = import.meta.env.VITE_API_BASE_URL;
+  const APIURL = import.meta.env.VITE_API_URL;
   const [mssInsertPosition, setMssInsertPosition] = useState("end");
   // Group and Type options - use props if provided, otherwise fetch
   const [groupOptions, setGroupOptions] = useState(propGroupOptions || []);
@@ -180,6 +183,12 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
     );
 
   const fetchProjectConfigData = async (projectId, typeId = null, groupId = null) => {
+    // Safety: Wait for metadata to be loaded before processing project config
+    if (toolModules.length === 0 || fields.length === 0 || extraTypes.length === 0) {
+      console.log("Metadata not yet loaded, postpone config fetch");
+      return null;
+    }
+
     if (isMasterConfig && (!typeId || !groupId)) {
       console.log("Master config mode: waiting for type and group selection");
       resetForm();
@@ -404,7 +413,7 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
       setStartBookletSerialNumber(0);
       setIsInnerBundlingDone(false);
       setInnerBundlingCriteria([]);
-      setSelectedMss(fetchedMss.map(m => m.id));
+      setSelectedMss([]);
       setMssInsertPosition("end");
     }
 
@@ -463,10 +472,12 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
 
   const handleImport = async (importData) => {
     let parsed = null;
+    const { importTemplates } = importData;
 
-    if (importData.projectId) {
-      parsed = await fetchProjectConfigData(importData.projectId);
-    } else if (importData.typeId && importData.groupId) {
+    try {
+      if (importData.projectId) {
+        parsed = await fetchProjectConfigData(importData.projectId);
+      } else if (importData.typeId && importData.groupId) {
       // Temporarily bypass the isMasterConfig check inside fetchProjectConfigData
       // and call the endpoints directly to get the imported snapshot
       const fetchGroupTypeConfigParams = async (typeId, groupId) => {
@@ -680,6 +691,56 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
     if (parsed) {
       setImportedSnapshot(parsed); // snapshot from freshly parsed data — not from stale state
       message.success("Configuration imported successfully! Review and save.");
+
+      // Handle template import if requested
+      if (importTemplates) {
+        try {
+          // Detect current project context (Group/Type) for the import target
+          let targetGroupId = isMasterConfig ? selectedGroup : null;
+          let targetTypeId = isMasterConfig ? selectedType : null;
+
+          // If not in master config, we might need to fetch the current project's group/type
+          if (!isMasterConfig && (!targetGroupId || !targetTypeId)) {
+            const res = await axios.get(`${url}/Project`);
+            const p = (res.data || []).find(proj => normalizeId(proj.projectId) === normalizeId(projectId));
+            if (p) {
+              targetGroupId = normalizeId(p.groupId);
+              targetTypeId = normalizeId(p.typeId);
+            }
+          }
+
+          if (targetGroupId && targetTypeId) {
+            const payload = {
+              targetProjectId: isMasterConfig ? null : normalizeId(projectId),
+              targetGroupId: targetGroupId,
+              targetTypeId: targetTypeId,
+              copyMappings: true,
+            };
+
+            if (importData.projectId) {
+              payload.sourceScope = "project";
+              payload.sourceProjectId = normalizeId(importData.projectId);
+            } else {
+              payload.sourceScope = "group";
+              payload.sourceGroupId = normalizeId(importData.groupId);
+              payload.sourceTypeId = normalizeId(importData.typeId);
+              payload.includeStandard = true;
+            }
+
+            await importTemplatesFromGroup(APIURL, payload);
+            message.success("Templates imported successfully");
+          } else {
+            console.warn("Could not determine target Group/Type for template import");
+          }
+        } catch (templateErr) {
+          console.error("Template import failed:", templateErr);
+          message.error("Configuration imported, but template import failed.");
+        }
+      }
+    }
+    } catch (err) {
+      console.error("Critical import error:", err);
+      message.error("Import failed");
     }
   };
 
@@ -712,7 +773,6 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
     });
     setSelectedMss(mss.map(m => m.id));
     setMssInsertPosition("end");
-    setImportedSnapshot(null);
   };
 
   // Save logic using custom hook
@@ -772,26 +832,45 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
   const isEnabled = (toolName) => enabledModules.includes(toolName);
 
   // Per-module reset handlers — reverts to snapshot if import was done, else clears
+  const resetModuleSelection = () => {
+    if (importedSnapshot && importedSnapshot !== "pending") {
+      setEnabledModules([...(importedSnapshot.enabledModules || [])]);
+    } else {
+      setEnabledModules([]);
+    }
+  };
+
   const resetEnvelopeSetup = () => {
     if (importedSnapshot && importedSnapshot !== "pending") {
-      setInnerEnvelopes([...importedSnapshot.innerEnvelopes]);
-      setOuterEnvelopes([...importedSnapshot.outerEnvelopes]);
+      setInnerEnvelopes([...(importedSnapshot.innerEnvelopes || [])]);
+      setOuterEnvelopes([...(importedSnapshot.outerEnvelopes || [])]);
+      setDuplicateConfig(
+        importedSnapshot.duplicateConfig 
+          ? JSON.parse(JSON.stringify(importedSnapshot.duplicateConfig))
+          : { duplicateCriteria: [], enhancement: 0, enhancementEnabled: false, enhancementType: "round" }
+      );
     } else {
       setInnerEnvelopes([]);
       setOuterEnvelopes([]);
+      setDuplicateConfig({
+        duplicateCriteria: [],
+        enhancement: 0,
+        enhancementEnabled: false,
+        enhancementType: "round",
+      });
     }
   };
 
   const resetEnvelopeMakingCriteria = () => {
     if (importedSnapshot && importedSnapshot !== "pending") {
-      setSelectedEnvelopeFields([...importedSnapshot.selectedEnvelopeFields]);
-      setStartOmrEnvelopeNumber(importedSnapshot.startOmrEnvelopeNumber);
+      setSelectedEnvelopeFields([...(importedSnapshot.selectedEnvelopeFields || [])]);
+      setStartOmrEnvelopeNumber(importedSnapshot.startOmrEnvelopeNumber || 0);
       setResetOmrSerialOnCatchChange(
-        importedSnapshot.resetOmrSerialOnCatchChange,
+        importedSnapshot.resetOmrSerialOnCatchChange ?? false,
       );
-      setStartBookletSerialNumber(importedSnapshot.startBookletSerialNumber);
+      setStartBookletSerialNumber(importedSnapshot.startBookletSerialNumber || 0);
       setResetBookletSerialOnCatchChange(
-        importedSnapshot.resetBookletSerialOnCatchChange,
+        importedSnapshot.resetBookletSerialOnCatchChange ?? false,
       );
       setSelectedMss([...(importedSnapshot.selectedMss || [])]);
       setMssInsertPosition(importedSnapshot.mssInsertPosition || "end");
@@ -801,24 +880,24 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
       setResetOmrSerialOnCatchChange(false);
       setStartBookletSerialNumber(0);
       setResetBookletSerialOnCatchChange(false);
-      setSelectedMss(mss.map(m => m.id));
+      setSelectedMss([]);
       setMssInsertPosition("end");
     }
   };
 
   const resetBoxBreaking = () => {
     if (importedSnapshot && importedSnapshot !== "pending") {
-      setSelectedBoxFields([...importedSnapshot.selectedBoxFields]);
+      setSelectedBoxFields([...(importedSnapshot.selectedBoxFields || [])]);
       setSelectedCapacity(importedSnapshot.selectedCapacity);
-      setStartBoxNumber(importedSnapshot.startBoxNumber);
-      setSelectedDuplicatefields([...importedSnapshot.selectedDuplicatefields]);
-      setSelectedSortingField([...importedSnapshot.selectedSortingField]);
-      setResetOnSymbolChange(importedSnapshot.resetOnSymbolChange);
-      setIsInnerBundlingDone(importedSnapshot.isInnerBundlingDone);
-      setInnerBundlingCriteria([...importedSnapshot.innerBundlingCriteria]);
+      setStartBoxNumber(importedSnapshot.startBoxNumber || 0);
+      setSelectedDuplicatefields([...(importedSnapshot.selectedDuplicatefields || [])]);
+      setSelectedSortingField([...(importedSnapshot.selectedSortingField || [])]);
+      setResetOnSymbolChange(importedSnapshot.resetOnSymbolChange ?? false);
+      setIsInnerBundlingDone(importedSnapshot.isInnerBundlingDone ?? false);
+      setInnerBundlingCriteria([...(importedSnapshot.innerBundlingCriteria || [])]);
       setBoxBreakingCriteria([
         "capacity",
-        ...importedSnapshot.selectedBoxFields,
+        ...(importedSnapshot.selectedBoxFields || []),
       ]);
     } else {
       setSelectedBoxFields([]);
@@ -852,7 +931,9 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
   const resetDuplicateTool = () => {
     if (importedSnapshot && importedSnapshot !== "pending") {
       setDuplicateConfig(
-        JSON.parse(JSON.stringify(importedSnapshot.duplicateConfig)),
+        importedSnapshot.duplicateConfig
+          ? JSON.parse(JSON.stringify(importedSnapshot.duplicateConfig))
+          : { duplicateCriteria: [], enhancement: 0, enhancementEnabled: false, enhancementType: "round" }
       );
     } else {
       setDuplicateConfig({
@@ -862,6 +943,51 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
         enhancementType: "round",
       });
     }
+  };
+
+  // Per-module clear handlers — always blanks out the card for "filling from scratch"
+  const clearModuleSelection = () => setEnabledModules([]);
+  
+  const clearEnvelopeSetup = () => {
+    setInnerEnvelopes([]);
+    setOuterEnvelopes([]);
+    setDuplicateConfig(prev => ({ ...prev, enhancement: 0, enhancementEnabled: false }));
+  };
+
+  const clearEnvelopeMakingCriteria = () => {
+    setSelectedEnvelopeFields([]);
+    setStartOmrEnvelopeNumber(0);
+    setResetOmrSerialOnCatchChange(false);
+    setStartBookletSerialNumber(0);
+    setResetBookletSerialOnCatchChange(false);
+    setSelectedMss([]);
+    setMssInsertPosition("end");
+  };
+
+  const clearBoxBreaking = () => {
+    setSelectedBoxFields([]);
+    setBoxBreakingCriteria(["capacity"]);
+    setSelectedCapacity(boxCapacities.length > 0 ? boxCapacities[0].id : null);
+    setStartBoxNumber(0);
+    setSelectedDuplicatefields([]);
+    setSelectedSortingField([]);
+    setResetOnSymbolChange(false);
+    setIsInnerBundlingDone(false);
+    setInnerBundlingCriteria([]);
+  };
+
+  const clearExtraProcessing = () => {
+    setExtraProcessingConfig({});
+    setExtraTypeSelection({});
+  };
+
+  const clearDuplicateTool = () => {
+    setDuplicateConfig({
+      duplicateCriteria: [],
+      enhancement: 0,
+      enhancementEnabled: false,
+      enhancementType: "round",
+    });
   };
 
   // Configuration status
@@ -878,8 +1004,8 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
         fetchProjectConfigData(null, selectedType, selectedGroup);
       }
     } else {
-      // In project config mode, fetch when projectId is available
-      if (!projectId) return;
+      // In project config mode, fetch when projectId and toolModules are available
+      if (!projectId || (toolModules && toolModules.length === 0)) return;
       fetchProjectConfigData(projectId);
     }
   }, [isMasterConfig, projectId, selectedType, selectedGroup, token, extraTypes, fields, showToast, toolModules]);
@@ -1063,12 +1189,16 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
             mergedModules={mergedModules}
             enabledModules={enabledModules}
             setEnabledModules={setEnabledModules}
+            onReset={resetModuleSelection}
+            onClear={clearModuleSelection}
+            importedSnapshot={importedSnapshot}
           />
           <DuplicateTool
             isEnabled={isEnabled}
             duplicateConfig={duplicateConfig}
             setDuplicateConfig={setDuplicateConfig}
             onReset={resetDuplicateTool}
+            onClear={clearDuplicateTool}
             importedSnapshot={importedSnapshot}
           />
           <EnvelopeSetupCard
@@ -1079,6 +1209,7 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
             setOuterEnvelopes={setOuterEnvelopes}
             envelopeOptions={envelopeOptions}
             onReset={resetEnvelopeSetup}
+            onClear={clearEnvelopeSetup}
             importedSnapshot={importedSnapshot}
             duplicateConfig={duplicateConfig}
             setDuplicateConfig={setDuplicateConfig}
@@ -1093,6 +1224,7 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
             setExtraProcessingConfig={setExtraProcessingConfig}
             envelopeOptions={envelopeOptions}
             onReset={resetExtraProcessing}
+            onClear={clearExtraProcessing}
             importedSnapshot={importedSnapshot}
           />
         </Col>
@@ -1115,6 +1247,7 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
               setResetBookletSerialOnCatchChange
             }
             onReset={resetEnvelopeMakingCriteria}
+            onClear={clearEnvelopeMakingCriteria}
             importedSnapshot={importedSnapshot}
             typeId={effectiveTypeId}
             mssList={mss}
@@ -1147,6 +1280,7 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
             innerBundlingCriteria={innerBundlingCriteria}
             setInnerBundlingCriteria={setInnerBundlingCriteria}
             onReset={resetBoxBreaking}
+            onClear={clearBoxBreaking}
             importedSnapshot={importedSnapshot}
           />
 

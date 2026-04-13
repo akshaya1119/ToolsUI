@@ -1517,7 +1517,7 @@ const ProcessingPipeline = () => {
 
       <div className="flex justify-between items-center mb-4">
         <Typography.Title level={3} style={{ marginBottom: 24 }}>
-          Project Configuration
+          Processing Pipeline
         </Typography.Title>
         <div className="text-sm flex items-center gap-2">
           <span>Status:</span>

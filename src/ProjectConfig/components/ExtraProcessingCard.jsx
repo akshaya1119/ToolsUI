@@ -11,7 +11,7 @@ import {
   Button,
   Switch,
 } from "antd";
-import { FolderAddFilled, LockFilled, UndoOutlined, PlusOutlined, MinusCircleOutlined } from "@ant-design/icons";
+import { FolderAddFilled, LockFilled, UndoOutlined, PlusOutlined, MinusCircleOutlined, DeleteOutlined } from "@ant-design/icons";
 import AnimatedCard from "./AnimatedCard";
 import {
   cardStyle,
@@ -31,6 +31,7 @@ const ExtraProcessingCard = ({
   setExtraProcessingConfig,
   envelopeOptions,
   onReset,
+  onClear,
   importedSnapshot,
 }) => {
   const isDirty = (current, snapshotVal) => {
@@ -61,15 +62,26 @@ const ExtraProcessingCard = ({
         extra={
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             {extraEnabled && (
-              <Button
-                type="text"
-                size="small"
-                icon={<UndoOutlined />}
-                onClick={onReset}
-                style={{ color: PRIMARY_COLOR }}
-              >
-                Reset
-              </Button>
+              <>
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<UndoOutlined />}
+                  onClick={onReset}
+                  style={{ color: PRIMARY_COLOR }}
+                >
+                  Reset
+                </Button>
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<DeleteOutlined />}
+                  onClick={onClear}
+                  style={{ color: "#ff4d4f" }}
+                >
+                  Clear
+                </Button>
+              </>
             )}
             {!extraEnabled && (
               <Tag icon={<LockFilled style={{ color: PRIMARY_COLOR }} />}>

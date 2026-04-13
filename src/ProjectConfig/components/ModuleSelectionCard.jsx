@@ -1,15 +1,21 @@
 import React from "react";
-import { Card, Checkbox, Typography } from "antd";
-import { SettingFilled  } from "@ant-design/icons";
+import { Card, Checkbox, Typography, Button } from "antd";
+import { SettingFilled, LockFilled, UndoOutlined, DeleteOutlined } from "@ant-design/icons";
 import AnimatedCard from "./AnimatedCard";
-import { cardStyle, iconStyle } from "./constants";
+import { cardStyle, iconStyle, PRIMARY_COLOR } from "./constants";
 
 const { Text } = Typography;
 
 // Modules allowed without Envelope Setup and Enhancement
 const ALWAYS_ALLOWED = ["Duplicate Tool", "Extra Configuration"];
 
-const ModuleSelectionCard = ({ mergedModules, enabledModules, setEnabledModules }) => {
+const ModuleSelectionCard = ({ mergedModules, enabledModules, setEnabledModules, onReset, onClear, importedSnapshot }) => {
+  const isDirty = (current, snapshotVal) => {
+    if (!importedSnapshot || importedSnapshot === "pending") return false;
+    return JSON.stringify(current) !== JSON.stringify(snapshotVal);
+  };
+  const DIRTY_STYLE = { borderLeft: "3px solid #faad14", paddingLeft: 4 };
+
   const envelopeEnabled = enabledModules.includes("Envelope Setup and Enhancement");
 
   const handleChange = (newValues) => {
@@ -28,7 +34,7 @@ const ModuleSelectionCard = ({ mergedModules, enabledModules, setEnabledModules 
         title={
           <div>
             <span>
-              <SettingFilled  style={iconStyle} /> Module Selection
+              <SettingFilled style={iconStyle} /> Module Selection
             </span>
             <br />
             <Text type="secondary">
@@ -36,12 +42,35 @@ const ModuleSelectionCard = ({ mergedModules, enabledModules, setEnabledModules 
             </Text>
           </div>
         }
+        extra={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Button
+              type="text"
+              size="small"
+              icon={<UndoOutlined />}
+              onClick={onReset}
+              style={{ color: PRIMARY_COLOR }}
+            >
+              Reset
+            </Button>
+            <Button
+              type="text"
+              size="small"
+              icon={<DeleteOutlined />}
+              onClick={onClear}
+              style={{ color: "#ff4d4f" }}
+            >
+              Clear
+            </Button>
+          </div>
+        }
       >
-        <Checkbox.Group
-          style={{ display: "block", marginTop: 12 }}
-          value={enabledModules}
-          onChange={handleChange}
-        >
+        <div style={isDirty(enabledModules, importedSnapshot?.enabledModules) ? DIRTY_STYLE : {}}>
+          <Checkbox.Group
+            style={{ display: "block", marginTop: 12 }}
+            value={enabledModules}
+            onChange={handleChange}
+          >
           <div
             style={{
               display: "grid",
@@ -64,8 +93,9 @@ const ModuleSelectionCard = ({ mergedModules, enabledModules, setEnabledModules 
                 </Checkbox>
               );
             })}
-          </div>
-        </Checkbox.Group>
+            </div>
+          </Checkbox.Group>
+        </div>
       </Card>
     </AnimatedCard>
   );
