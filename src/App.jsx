@@ -23,6 +23,7 @@ import ProjectDashboard from "./components/ProjectDashboard";
 import ProtectedRoute from "./routes/ProtectedRoute";
 import { useUserToken, useUserTokenActions } from "./stores/UserToken";
 import HToV from "./ToolsProcessing/HToV";
+import MessageServiceDemo from "./components/MessageServiceDemo";
 
 function isTokenExpired(token) {
   if (!token) return true;
@@ -85,6 +86,7 @@ export default function App() {
             element={token ? <Navigate to="/dashboard" /> : <Navigate to="/login" />}
           />
           <Route path="/login" element={<Login />} />
+          <Route path="/demo-messages" element={<MessageServiceDemo />} />
 
           {token && (
             <>

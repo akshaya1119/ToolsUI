@@ -1,6 +1,7 @@
-﻿import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import '@ant-design/v5-patch-for-react-19'
 import { Row, Col, Card, Select, Upload, Button, Typography, Space, Table, Tabs, Checkbox, Input, Modal, Radio } from 'antd';
+import { MessageService } from "../services/MessageService";
 import { useToast } from '../hooks/useToast';
 import { CheckCircleOutlined, UploadOutlined, ToolOutlined, SearchOutlined, PlusOutlined, EditOutlined,CloseCircleOutlined } from '@ant-design/icons';
 import * as XLSX from 'xlsx-js-style';
@@ -1856,17 +1857,19 @@ const handleFieldChange = (fieldName, value) => {
                 borderColor: "#ff4d4f",
                 color: "#fff",
               }}
-              onClick={() => {
-                const modal = Modal.confirm({
-                  title: "Confirm Deletion",
-                  content: "Are you sure you want to delete NR data for this project?",
-                  okText: "Yes, Delete",
-                  cancelText: "Cancel",
-                  okButtonProps: { danger: true },
-                  onOk: async () => {
-                    await deleteNRData(() => modal.destroy());
-                  },
-                });
+              onClick={async () => {
+                const confirmed = await MessageService.confirm(
+                  "Are you sure you want to delete NR data for this project?",
+                  {
+                    title: "Confirm Deletion",
+                    confirmText: "Yes, Delete",
+                    cancelText: "Cancel",
+                    type: 'error'
+                  }
+                );
+                if (confirmed) {
+                  await deleteNRData();
+                }
               }}
             >
               🗑️ Delete NR Data

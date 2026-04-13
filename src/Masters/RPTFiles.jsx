@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Form, Modal, Select, message } from "antd";
+import { MessageService } from "../services/MessageService";
 import {
   extractParsedFields,
   getErrorMessage,
@@ -606,25 +607,30 @@ const RPTFiles = () => {
     }
   };
 
-  const confirmForceUpload = (onConfirm) => {
-    Modal.confirm({
-      title: "No changes detected",
-      content: "No changes detected between this file and the latest version.",
-      okText: "Upload Anyway",
-      cancelText: "Cancel",
-      onOk: onConfirm,
-    });
+  const confirmForceUpload = async (onConfirm) => {
+    const confirmed = await MessageService.confirm(
+      "No changes detected between this file and the latest version.",
+      {
+        title: "No changes detected",
+        confirmText: "Upload Anyway",
+        cancelText: "Cancel",
+        type: 'info'
+      }
+    );
+    if (confirmed) onConfirm();
   };
 
-  const confirmMappingUpdate = (template) => {
-    Modal.confirm({
-      title: "Update mapping?",
-      content:
-        "Do you want to update the mapping for this new template version?",
-      okText: "Update Mapping",
-      cancelText: "Skip",
-      onOk: () => openMappingModal(template),
-    });
+  const confirmMappingUpdate = async (template) => {
+    const confirmed = await MessageService.confirm(
+      "Do you want to update the mapping for this new template version?",
+      {
+        title: "Update mapping?",
+        confirmText: "Update Mapping",
+        cancelText: "Skip",
+        type: 'confirm'
+      }
+    );
+    if (confirmed) openMappingModal(template);
   };
 
   const openMappingModal = async (template) => {
@@ -834,15 +840,18 @@ const RPTFiles = () => {
     }
   };
 
-  const confirmActivateVersion = (record) => {
+  const confirmActivateVersion = async (record) => {
     const scopeLabel = getScopeLabel(record);
-    Modal.confirm({
-      title: "Set active version?",
-      content: `This will make v${record?.version} the active template for the ${scopeLabel.toLowerCase()} scope. All projects using this template in that scope will use this version.`,
-      okText: "Set Active",
-      cancelText: "Cancel",
-      onOk: () => activateTemplateVersion(record),
-    });
+    const confirmed = await MessageService.confirm(
+      `This will make v${record?.version} the active template for the ${scopeLabel.toLowerCase()} scope. All projects using this template in that scope will use this version.`,
+      {
+        title: "Set active version?",
+        confirmText: "Set Active",
+        cancelText: "Cancel",
+        type: 'warning'
+      }
+    );
+    if (confirmed) activateTemplateVersion(record);
   };
 
   const loadEditVersions = async (template) => {

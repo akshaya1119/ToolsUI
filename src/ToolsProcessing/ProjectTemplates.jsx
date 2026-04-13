@@ -16,6 +16,7 @@ import {
   Upload,
   message,
 } from "antd";
+import { MessageService } from "../services/MessageService";
 import {
   CopyOutlined,
   CloseOutlined,
@@ -594,66 +595,58 @@ const ProjectTemplates = () => {
     const data = res.data;
 
     if (data.requireConfirmation && !forceUpload) {
-      return new Promise((resolve, reject) => {
-        if (data.designCheck?.changed === true) {
-          Modal.confirm({
+      if (data.designCheck?.changed === true) {
+        const confirmed = await MessageService.confirm(
+          <div>
+            <p>
+              <b>
+                {data.designCheck.message ||
+                  "Differences were found between your file and the active template."}
+              </b>
+            </p>
+            {data.designCheck.changes && data.designCheck.changes.length > 0 && (
+              <ul className="mt-2 list-disc pl-4 text-[10px] space-y-1">
+                {data.designCheck.changes.map((change, index) => (
+                  <li key={index}>{change}</li>
+                ))}
+              </ul>
+            )}
+            {!data.designCheck.changes && <p>No detailed changes available</p>}
+          </div>,
+          {
             title: "Design Changes Detected",
-            width: 600,
-            content: (
-              <div>
-                <p>
-                  <b>
-                    {data.designCheck.message ||
-                      "Differences were found between your file and the active template."}
-                  </b>
-                </p>
-                {data.designCheck.changes && data.designCheck.changes.length > 0 && (
-                  <ul>
-                    {data.designCheck.changes.map((change, index) => (
-                      <li key={index}>{change}</li>
-                    ))}
-                  </ul>
-                )}
-                {!data.designCheck.changes && <p>No detailed changes available</p>}
-              </div>
-            ),
-            okText: "Proceed",
+            confirmText: "Proceed",
             cancelText: "Cancel",
-            onOk: async () => {
-              try {
-                const forcedRes = await uploadTemplate({
-                  ...params,
-                  forceUpload: true,
-                });
-                resolve(forcedRes);
-              } catch (e) {
-                reject(e);
-              }
-            },
-            onCancel: () => reject(new Error("User cancelled upload")),
-          });
-        } else {
-          Modal.confirm({
-            title: "No Design Change",
-            content:
-              "No changes detected. Do you still want to upload the template?",
-            okText: "Upload Anyway",
-            cancelText: "Cancel",
-            onOk: async () => {
-              try {
-                const forcedRes = await uploadTemplate({
-                  ...params,
-                  forceUpload: true,
-                });
-                resolve(forcedRes);
-              } catch (e) {
-                reject(e);
-              }
-            },
-            onCancel: () => reject(new Error("User cancelled upload")),
+            type: 'warning'
+          }
+        );
+
+        if (confirmed) {
+          return await uploadTemplate({
+            ...params,
+            forceUpload: true,
           });
         }
-      });
+        throw new Error("User cancelled upload");
+      } else {
+        const confirmed = await MessageService.confirm(
+          "No changes detected. Do you still want to upload the template?",
+          {
+            title: "No Design Change",
+            confirmText: "Upload Anyway",
+            cancelText: "Cancel",
+            type: 'info'
+          }
+        );
+
+        if (confirmed) {
+          return await uploadTemplate({
+            ...params,
+            forceUpload: true,
+          });
+        }
+        throw new Error("User cancelled upload");
+      }
     }
 
     return data;
@@ -745,25 +738,30 @@ const ProjectTemplates = () => {
     }
   };
 
-  const confirmForceUpload = (onConfirm) => {
-    Modal.confirm({
-      title: "No changes detected",
-      content: "No changes detected between this file and the latest version.",
-      okText: "Upload Anyway",
-      cancelText: "Cancel",
-      onOk: onConfirm,
-    });
+  const confirmForceUpload = async (onConfirm) => {
+    const confirmed = await MessageService.confirm(
+      "No changes detected between this file and the latest version.",
+      {
+        title: "No changes detected",
+        confirmText: "Upload Anyway",
+        cancelText: "Cancel",
+        type: 'info'
+      }
+    );
+    if (confirmed) onConfirm();
   };
 
-  const confirmMappingUpdate = (template) => {
-    Modal.confirm({
-      title: "Update mapping?",
-      content:
-        "Do you want to update the mapping for this new template version?",
-      okText: "Update Mapping",
-      cancelText: "Skip",
-      onOk: () => openMappingModal(template),
-    });
+  const confirmMappingUpdate = async (template) => {
+    const confirmed = await MessageService.confirm(
+      "Do you want to update the mapping for this new template version?",
+      {
+        title: "Update mapping?",
+        confirmText: "Update Mapping",
+        cancelText: "Skip",
+        type: 'confirm'
+      }
+    );
+    if (confirmed) openMappingModal(template);
   };
 
   const openMappingModal = async (template) => {
@@ -974,15 +972,18 @@ const ProjectTemplates = () => {
     }
   };
 
-  const confirmActivateVersion = (record) => {
+  const confirmActivateVersion = async (record) => {
     const scopeLabel = getScopeLabel(record);
-    Modal.confirm({
-      title: "Set active version?",
-      content: `This will make v${record?.version} the active template for the ${scopeLabel.toLowerCase()} scope. All projects using this template in that scope will use this version.`,
-      okText: "Set Active",
-      cancelText: "Cancel",
-      onOk: () => activateTemplateVersion(record),
-    });
+    const confirmed = await MessageService.confirm(
+      `This will make v${record?.version} the active template for the ${scopeLabel.toLowerCase()} scope. All projects using this template in that scope will use this version.`,
+      {
+        title: "Set active version?",
+        confirmText: "Set Active",
+        cancelText: "Cancel",
+        type: 'warning'
+      }
+    );
+    if (confirmed) activateTemplateVersion(record);
   };
 
   const loadEditVersions = async (template) => {
