@@ -30,6 +30,7 @@ import {
   fetchUsers as fetchUsersService,
   importTemplatesFromGroup,
   parseTemplateFields,
+  restoreTemplate,
   saveTemplateMapping,
   softDeleteTemplate,
   updateTemplate,
@@ -861,7 +862,10 @@ const RPTFiles = () => {
       content: `This will make v${record?.version} the active template for the ${scopeLabel.toLowerCase()} scope. All projects using this template in that scope will use this version.`,
       okText: "Set Active",
       cancelText: "Cancel",
-      onOk: () => activateTemplateVersion(record),
+      onOk: async () => {
+        await activateTemplateVersion(record);
+        closeVersionsModal();
+      },
     });
   };
 
@@ -951,17 +955,46 @@ const RPTFiles = () => {
 
   const handleRemoveTemplate = (record) => {
     const scope = record?.projectId ? "project" : record?.groupId ? "group" : "standard";
+
+    if (record?.isDeleted) {
+      Modal.confirm({
+        title: "Restore template?",
+        content: `This will restore "${record?.templateName}" and set it as active in the ${scope} scope.`,
+        okText: "Restore",
+        cancelText: "Cancel",
+        onOk: async () => {
+          try {
+            await restoreTemplate(APIURL, record.templateId);
+            message.success("Template restored.");
+            setAvailableRPTFiles((prev) =>
+              prev.map((t) =>
+                t.templateId === record.templateId ? { ...t, isDeleted: false, isActive: true } : t
+              )
+            );
+          } catch (err) {
+            console.error("Failed to restore template", err);
+            showError(err, "Failed to restore template.");
+          }
+        },
+      });
+      return;
+    }
+
     Modal.confirm({
       title: "Remove template?",
-      content: `This will remove "${record?.templateName}" from the ${scope} scope. It will no longer appear.`,
+      content: `This will mark "${record?.templateName}" as deleted in the ${scope} scope. It stays visible but marked deleted — you can restore it from the Versions panel.`,
       okText: "Remove",
       okButtonProps: { danger: true },
       cancelText: "Cancel",
       onOk: async () => {
         try {
           await softDeleteTemplate(APIURL, record.templateId, scope);
-          message.success("Template removed.");
-          fetchAvailableRPTFiles();
+          message.success("Template marked as deleted.");
+          setAvailableRPTFiles((prev) =>
+            prev.map((t) =>
+              t.templateId === record.templateId ? { ...t, isDeleted: true } : t
+            )
+          );
         } catch (err) {
           console.error("Failed to remove template", err);
           showError(err, "Failed to remove template.");

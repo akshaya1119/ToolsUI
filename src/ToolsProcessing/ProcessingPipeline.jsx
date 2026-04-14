@@ -137,7 +137,7 @@ const ProcessingPipeline = () => {
         },
       });
       setTemplateOptions(
-        (res.data || []).filter((t) => t.hasMapping !== false)
+        (res.data || []).filter((t) => t.hasMapping !== false && !t.isDeleted)
       );
     } catch (err) {
       console.error("Failed to fetch templates", err);

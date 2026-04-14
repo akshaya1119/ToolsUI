@@ -186,3 +186,7 @@ export const softDeleteTemplate = async (apiUrl, templateId, scope) => {
     params: { scope },
   });
 };
+
+export const restoreTemplate = async (apiUrl, templateId) => {
+  await axios.post(`${apiUrl}/RPTTemplates/${templateId}/activate`);
+};
