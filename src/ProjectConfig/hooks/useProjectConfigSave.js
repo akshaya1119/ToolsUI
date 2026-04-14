@@ -68,32 +68,58 @@ export const useProjectConfigSave = (
       const projectConfigEndpoint = finalIsMasterConfig ? '/MProjectConfigs' : '/ProjectConfigs';
       const extraConfigEndpoint = finalIsMasterConfig ? '/MExtraConfigs' : '/ExtrasConfigurations';
 
-      // 0️⃣ Validation & Auto-uncheck for Extra Configuration
+      // 0️⃣ Validation & Auto-check/uncheck for Extra Configuration
       let finalEnabledModules = [...enabledModules];
-      if (enabledModules.includes(EXTRA_ALIAS_NAME)) {
-        // Check if anything is actually configured in the extras processing
-        const hasConfigurations = Object.entries(extraTypeSelection).some(([typeName, mode]) => {
-          const config = extraProcessingConfig[typeName] || {};
-          const normalizedEnvelope = {
-            Inner: Array.isArray(config.envelopeType?.inner) ? config.envelopeType.inner[0] || "" : config.envelopeType?.inner || "",
-            Outer: Array.isArray(config.envelopeType?.outer) ? config.envelopeType.outer[0] || "" : config.envelopeType?.outer || "",
-          };
-          const hasEnvelope = normalizedEnvelope.Inner || normalizedEnvelope.Outer;
-          
-          let hasValue = false;
-          if (mode === "Fixed") hasValue = Number(config.fixedQty || 0) > 0;
-          else if (mode === "Percentage") hasValue = Number(config.percentage || 0) > 0;
-          else if (mode === "Range") hasValue = Array.isArray(config.range) && config.range.length > 0;
-          
-          return hasEnvelope || hasValue;
-        });
+      
+      console.log("=== EXTRA CONFIG VALIDATION START ===");
+      console.log("Current enabledModules:", enabledModules);
+      console.log("extraTypeSelection:", extraTypeSelection);
+      console.log("extraProcessingConfig:", extraProcessingConfig);
+      
+      // Check if anything is actually configured in the extras processing
+      // Requirement: Must have BOTH envelope setup AND mode selected AND value
+      const hasConfigurations = Object.entries(extraTypeSelection).some(([typeName, mode]) => {
+        const config = extraProcessingConfig[typeName] || {};
+        const normalizedEnvelope = {
+          Inner: Array.isArray(config.envelopeType?.inner) ? config.envelopeType.inner[0] || "" : config.envelopeType?.inner || "",
+          Outer: Array.isArray(config.envelopeType?.outer) ? config.envelopeType.outer[0] || "" : config.envelopeType?.outer || "",
+        };
+        const hasEnvelope = normalizedEnvelope.Inner || normalizedEnvelope.Outer;
+        
+        // Mode must be selected (not undefined/null)
+        const hasMode = mode && mode !== null && mode !== undefined;
+        
+        let hasValue = false;
+        if (mode === "Fixed") hasValue = Number(config.fixedQty || 0) > 0;
+        else if (mode === "Percentage") hasValue = Number(config.percentage || 0) > 0;
+        else if (mode === "Range") hasValue = Array.isArray(config.range) && config.range.length > 0;
+        
+        console.log(`Type: ${typeName}, Mode: ${mode}, HasEnvelope: ${hasEnvelope}, HasMode: ${hasMode}, HasValue: ${hasValue}`);
+        
+        // Must have envelope AND mode AND value
+        return hasEnvelope && hasMode && hasValue;
+      });
 
-        if (!hasConfigurations) {
-          finalEnabledModules = finalEnabledModules.filter(m => m !== EXTRA_ALIAS_NAME);
-          setEnabledModules(finalEnabledModules);
-          showToast(`${EXTRA_ALIAS_NAME} was not configured, so it has been unchecked.`, "warning");
-        }
+      console.log("hasConfigurations:", hasConfigurations);
+      console.log("EXTRA_ALIAS_NAME in finalEnabledModules:", finalEnabledModules.includes(EXTRA_ALIAS_NAME));
+
+      // Auto-check if has configurations but not already checked
+      if (hasConfigurations && !finalEnabledModules.includes(EXTRA_ALIAS_NAME)) {
+        finalEnabledModules.push(EXTRA_ALIAS_NAME);
+        setEnabledModules(finalEnabledModules);
+        console.log(`Auto-enabling ${EXTRA_ALIAS_NAME}. finalEnabledModules is now:`, finalEnabledModules);
+        showToast(`${EXTRA_ALIAS_NAME} has been automatically enabled because it has valid configuration.`, "info");
       }
+      // Auto-uncheck if no configurations but is checked
+      else if (!hasConfigurations && finalEnabledModules.includes(EXTRA_ALIAS_NAME)) {
+        finalEnabledModules = finalEnabledModules.filter(m => m !== EXTRA_ALIAS_NAME);
+        setEnabledModules(finalEnabledModules);
+        console.log(`Auto-disabling ${EXTRA_ALIAS_NAME}. finalEnabledModules is now:`, finalEnabledModules);
+        showToast(`${EXTRA_ALIAS_NAME} was not configured, so it has been unchecked.`, "warning");
+      }
+      
+      console.log("Final enabled modules before payload creation:", finalEnabledModules);
+      console.log("=== EXTRA CONFIG VALIDATION END ===")
 
       // 1️⃣ Save ProjectConfigs including Duplicate Tool
       const projectConfigPayload = {
@@ -101,9 +127,23 @@ export const useProjectConfigSave = (
         modules: finalEnabledModules.flatMap((m) => {
           if (m === EXTRA_ALIAS_NAME) {
             // Expand alias into actual module IDs
-            return toolModules
-              .filter((tm) => tm.name === NODAL_MODULE || tm.name === UNIVERSITY_MODULE)
+            // Strategy: Find all modules that are related to extra types
+            // These are typically modules with "Extra" in the name or specific module IDs
+            const extraModuleIds = toolModules
+              .filter((tm) => {
+                // Match by exact name
+                if (tm.name === NODAL_MODULE || tm.name === UNIVERSITY_MODULE) return true;
+                // Match by name containing "extra" (case-insensitive)
+                if (tm.name && tm.name.toLowerCase().includes("extra")) return true;
+                // Match by description containing "extra"
+                if (tm.description && tm.description.toLowerCase().includes("extra")) return true;
+                return false;
+              })
               .map((tm) => tm.id);
+            
+            console.log(`Expanding ${EXTRA_ALIAS_NAME} to module IDs:`, extraModuleIds);
+            console.log("toolModules available:", toolModules.map(tm => ({ id: tm.id, name: tm.name, description: tm.description })));
+            return extraModuleIds;
           }
           const mod = toolModules.find((tm) => tm.name === m);
           return mod ? [mod.id] : [];
@@ -251,9 +291,10 @@ export const useProjectConfigSave = (
           }
 
           const hasEnvelope = normalizedEnvelope.Inner || normalizedEnvelope.Outer;
+          const hasMode = mode && mode !== null && mode !== undefined;
 
-          // Skip if nothing configured
-          if (!hasValue && !hasEnvelope) return null;
+          // Skip if nothing configured - must have envelope AND mode AND value
+          if (!hasEnvelope || !hasMode || !hasValue) return null;
 
           const payload = {
             id: 0,
