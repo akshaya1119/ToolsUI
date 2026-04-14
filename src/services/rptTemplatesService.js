@@ -180,3 +180,9 @@ export const activateTemplateVersion = async (apiUrl, templateId) => {
 export const updateTemplate = async (apiUrl, templateId, payload) => {
   await axios.put(`${apiUrl}/RPTTemplates/${templateId}`, payload);
 };
+
+export const softDeleteTemplate = async (apiUrl, templateId, scope) => {
+  await axios.delete(`${apiUrl}/RPTTemplates/${templateId}/soft-delete`, {
+    params: { scope },
+  });
+};

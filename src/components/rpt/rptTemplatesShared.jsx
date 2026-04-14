@@ -3,11 +3,13 @@ import { Button, Input, Select, Space, Tag, Tooltip, Typography, Upload } from "
 import {
   CheckOutlined,
   CloseOutlined,
+  DeleteOutlined,
   DownloadOutlined,
   EditOutlined,
   HistoryOutlined,
   SettingOutlined,
   UploadOutlined,
+  WarningOutlined,
 } from "@ant-design/icons";
 import {
   formatDateTime,
@@ -111,6 +113,7 @@ export const buildTemplateColumns = ({
   saveInlineEdit,
   cancelInlineEdit,
   inlineEditSaving,
+  onRemove,
 }) => [
   {
     title: "Template",
@@ -139,10 +142,22 @@ export const buildTemplateColumns = ({
       }
       return (
         <Space direction="vertical" size={0}>
-          <Typography.Text strong>{value}</Typography.Text>
+          <Space size={6}>
+            <Typography.Text strong>{value}</Typography.Text>
+            {!record?.hasMapping && (
+              <Tooltip title="No mapping configured — this template will not appear in the processing pipeline.">
+                <WarningOutlined style={{ color: "#faad14", fontSize: 14 }} />
+              </Tooltip>
+            )}
+          </Space>
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>
             {scopeLabel} template
           </Typography.Text>
+          {!record?.hasMapping && (
+            <Typography.Text type="warning" style={{ fontSize: 11, color: "#d46b08" }}>
+              No mapping — excluded from pipeline
+            </Typography.Text>
+          )}
         </Space>
       );
     },
@@ -326,6 +341,17 @@ export const buildTemplateColumns = ({
           >
             {" "}
           </Button>
+          {onRemove && (
+            <Tooltip title="Remove from this scope">
+              <Button
+                size="small"
+                danger
+                icon={<DeleteOutlined />}
+                title="Remove Template"
+                onClick={() => onRemove(record)}
+              />
+            </Tooltip>
+          )}
         </Space>
       ),
   },

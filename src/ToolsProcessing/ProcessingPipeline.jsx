@@ -136,7 +136,9 @@ const ProcessingPipeline = () => {
           projectId,
         },
       });
-      setTemplateOptions(res.data || []);
+      setTemplateOptions(
+        (res.data || []).filter((t) => t.hasMapping !== false)
+      );
     } catch (err) {
       console.error("Failed to fetch templates", err);
       message.error("Failed to load templates for this project.");

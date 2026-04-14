@@ -31,6 +31,7 @@ import {
   importTemplatesFromGroup,
   parseTemplateFields,
   saveTemplateMapping,
+  softDeleteTemplate,
   updateTemplate,
   uploadTemplate as uploadTemplateService,
 } from "../services/rptTemplatesService";
@@ -746,6 +747,13 @@ const RPTFiles = () => {
       message.success("Mapping saved.");
       setMappingNotFound(false);
       recordMappingUpdate(mappingTemplate.templateId);
+      setAvailableRPTFiles((prev) =>
+        prev.map((t) =>
+          t.templateId === mappingTemplate.templateId
+            ? { ...t, hasMapping: true, mappingWarning: null }
+            : t
+        )
+      );
       closeMappingPanel();
     } catch (err) {
       console.error("Failed to save mapping", err);
@@ -941,6 +949,27 @@ const RPTFiles = () => {
     }
   };
 
+  const handleRemoveTemplate = (record) => {
+    const scope = record?.projectId ? "project" : record?.groupId ? "group" : "standard";
+    Modal.confirm({
+      title: "Remove template?",
+      content: `This will remove "${record?.templateName}" from the ${scope} scope. It will no longer appear.`,
+      okText: "Remove",
+      okButtonProps: { danger: true },
+      cancelText: "Cancel",
+      onOk: async () => {
+        try {
+          await softDeleteTemplate(APIURL, record.templateId, scope);
+          message.success("Template removed.");
+          fetchAvailableRPTFiles();
+        } catch (err) {
+          console.error("Failed to remove template", err);
+          showError(err, "Failed to remove template.");
+        }
+      },
+    });
+  };
+
   const runReportGeneration = () => {
     message.warning("Report generation is available from Project Templates.");
   };
@@ -1047,6 +1076,7 @@ const RPTFiles = () => {
         saveInlineEdit,
         cancelInlineEdit,
         inlineEditSaving,
+        onRemove: handleRemoveTemplate,
       }),
     [
       userMap,
