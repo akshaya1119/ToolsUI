@@ -701,9 +701,7 @@ const ProcessingPipeline = () => {
 
     setBulkGenerating(true);
     try {
-      for (const template of pending) {
-        await handleGenerateTemplate(template);
-      }
+      await Promise.all(pending.map((template) => handleGenerateTemplate(template)));
       await loadTemplateReportStatus(templatePanel.moduleKey);
     } finally {
       setBulkGenerating(false);
@@ -732,12 +730,24 @@ const ProcessingPipeline = () => {
       return;
     }
 
+    // Build friendly file names in the same order as ids
+    const fileNames = templates
+      .filter((t) => resolveTemplateId(t))
+      .map((t) =>
+        buildReportFileName({
+          templateName: t?.templateName,
+          projectName: projectName || (projectId ? `Project ${projectId}` : undefined),
+          typeId: t?.typeId ?? typeId,
+        })
+      );
+
     setBulkDownloading(true);
     try {
       const res = await axios.get(`${rptApiUrl}/report/generated-download-zip`, {
         params: {
           projectId: Number(projectId),
           templateIds: ids.join(","),
+          fileNames: fileNames.join(","),
         },
         responseType: "blob",
       });
