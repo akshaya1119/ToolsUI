@@ -19,12 +19,14 @@ const ImportConfig = ({ onImport, disabled }) => {
   const [typeOptions, setTypeOptions] = useState([]);
   const [selectedGroup, setSelectedGroup] = useState(null);
   const [selectedType, setSelectedType] = useState(null);
-  const [importTemplates, setImportTemplates] = useState(true);
+  const [importTemplates, setImportTemplates] = useState(false);
   const [configuredProjectIds, setConfiguredProjectIds] = useState([]);
   const [loading, setLoading] = useState(false);
   const [validationLoading, setValidationLoading] = useState(false);
   const [templatesExist, setTemplatesExist] = useState(null);
   const [masterConfigExists, setMasterConfigExists] = useState(null);
+  const [validGroupIds, setValidGroupIds] = useState([]);
+  const [validTypeIds, setValidTypeIds] = useState([]);
 
   const fetchAllProjects = async () => {
     const pageSize = 200;
@@ -79,7 +81,10 @@ const ImportConfig = ({ onImport, disabled }) => {
             const ids = (res.data || []).map(c => c.projectId);
             setConfiguredProjectIds(ids);
           })
-          .catch(() => console.warn("Failed to load project configurations for filtering"))
+          .catch(() => console.warn("Failed to load project configurations for filtering")),
+        API.get("/MProjectConfigs")
+          .then(res => setValidGroupIds(res.data || []))
+          .catch(() => console.warn("Failed to load master configurations for filtering"))
       );
 
       await Promise.allSettled(promises);
@@ -100,11 +105,10 @@ const ImportConfig = ({ onImport, disabled }) => {
         setValidationLoading(true);
         try {
           // Check templates
-          if (importTemplates) {
-            const res = await axios.get(`${import.meta.env.VITE_API_URL}/RPTTemplates/by-group?projectId=${selectedProjectId}`);
-            setTemplatesExist(res.data && res.data.length > 0);
-          }
-          // Configuration existence is already filtered in dropdown, but we could double check here if needed
+          const res = await axios.get(`${import.meta.env.VITE_API_URL}/RPTTemplates/by-group?projectId=${selectedProjectId}`);
+          setTemplatesExist(res.data && res.data.length > 0);
+
+          // Configuration existence is already filtered in dropdown
           setMasterConfigExists(true); 
         } catch (err) {
           console.error("Validation failed", err);
@@ -119,10 +123,8 @@ const ImportConfig = ({ onImport, disabled }) => {
           setMasterConfigExists(!!configRes?.data);
 
           // Check templates
-          if (importTemplates) {
-            const res = await axios.get(`${import.meta.env.VITE_API_URL}/RPTTemplates/by-group?typeId=${selectedType}&groupId=${selectedGroup}`);
-            setTemplatesExist(res.data && res.data.length > 0);
-          }
+          const res = await axios.get(`${import.meta.env.VITE_API_URL}/RPTTemplates/by-group?typeId=${selectedType}&groupId=${selectedGroup}`);
+          setTemplatesExist(res.data && res.data.length > 0);
         } catch (err) {
           console.error("Validation failed", err);
         } finally {
@@ -132,11 +134,30 @@ const ImportConfig = ({ onImport, disabled }) => {
     };
 
     validateSource();
-  }, [importMethod, selectedProjectId, selectedGroup, selectedType, importTemplates]);
+  }, [importMethod, selectedProjectId, selectedGroup, selectedType]);
 
   const showModal = () => {
     fetchData();
     setIsModalVisible(true);
+  };
+
+  const handleGroupChange = async (value) => {
+    setSelectedGroup(value);
+    setSelectedType(null); // Reset type selection
+    setValidTypeIds([]); // Clear valid types while loading
+
+    if (value) {
+      setLoading(true);
+      try {
+        const res = await API.get(`/MProjectConfigs/SelectedGroup?GroupId=${value}`);
+        setValidTypeIds(res.data || []);
+      } catch (err) {
+        console.error("Failed to fetch valid types for group", err);
+        message.error("Failed to load valid paper types for this group");
+      } finally {
+        setLoading(false);
+      }
+    }
   };
 
   const handleOk = () => {
@@ -155,14 +176,19 @@ const ImportConfig = ({ onImport, disabled }) => {
     }
 
     setIsModalVisible(false);
-    // Reset selections on successful import
     setSelectedProjectId(null);
     setSelectedGroup(null);
     setSelectedType(null);
+    setImportTemplates(false);
+    setTemplatesExist(null);
+    setMasterConfigExists(null);
   };
 
   const handleCancel = () => {
     setIsModalVisible(false);
+    setImportTemplates(false);
+    setTemplatesExist(null);
+    setMasterConfigExists(null);
   };
 
   const getDisplayName = (projectId) => {
@@ -217,7 +243,7 @@ const ImportConfig = ({ onImport, disabled }) => {
               }
             >
               {(Array.isArray(projectList) ? projectList : [])
-                .filter(p => configuredProjectIds.includes(p.projectId))
+                .filter(p => configuredProjectIds.includes(p.projectId) && p.status !== true)
                 .map((project) => (
                 <Select.Option
                   key={project.projectId}
@@ -237,9 +263,9 @@ const ImportConfig = ({ onImport, disabled }) => {
                 placeholder="Select a group"
                 showSearch
                 optionFilterProp="label"
-                onChange={(value) => setSelectedGroup(value)}
+                onChange={handleGroupChange}
                 value={selectedGroup}
-                options={groupOptions}
+                options={groupOptions.filter(g => validGroupIds.includes(g.value))}
                 loading={loading}
               />
             </div>
@@ -252,7 +278,8 @@ const ImportConfig = ({ onImport, disabled }) => {
                 optionFilterProp="label"
                 onChange={(value) => setSelectedType(value)}
                 value={selectedType}
-                options={typeOptions}
+                options={typeOptions.filter(t => validTypeIds.includes(t.value))}
+                disabled={!selectedGroup}
                 loading={loading}
               />
             </div>
@@ -269,10 +296,10 @@ const ImportConfig = ({ onImport, disabled }) => {
             />
           )}
 
-          {importTemplates && templatesExist === false && (
+          {templatesExist === false && (
             <Alert
-              message="No Templates found for this source. Templates will not be imported."
-              type="warning"
+              message={importMethod === "project" ? "Selected project doesn't have templates." : "Selected Group/Type doesn't have templates."}
+              type="error"
               showIcon
               style={{ marginBottom: 12 }}
             />
@@ -283,6 +310,7 @@ const ImportConfig = ({ onImport, disabled }) => {
           <Checkbox
             checked={importTemplates}
             onChange={(e) => setImportTemplates(e.target.checked)}
+            disabled={templatesExist === false}
           >
             Import Templates (RPT) from source
           </Checkbox>

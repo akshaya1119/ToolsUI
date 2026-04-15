@@ -1,5 +1,36 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Form, Input, Modal, message } from "antd";
+import {
+  Button,
+  Card,
+  Empty,
+  Form,
+  Input,
+  Modal,
+  Select,
+  Space,
+  Switch,
+  Table,
+  Tag,
+  Tooltip,
+  Typography,
+  Upload,
+  message,
+} from "antd";
+import { MessageService } from "../services/MessageService";
+import {
+  CopyOutlined,
+  CloseOutlined,
+  DownloadOutlined,
+  EditOutlined,
+  ExclamationCircleOutlined,
+  SettingOutlined,
+  HistoryOutlined,
+  InboxOutlined,
+  PlusOutlined,
+  ReloadOutlined,
+  UploadOutlined,
+  CheckOutlined,
+} from "@ant-design/icons";
 import axios from "axios";
 import useStore from "../stores/ProjectData";
 import {
@@ -92,6 +123,7 @@ const ProjectTemplates = () => {
   const [versionsTemplate, setVersionsTemplate] = useState(null);
   const [pendingGenerateTemplate, setPendingGenerateTemplate] = useState(null);
   const [activatingVersionId, setActivatingVersionId] = useState(null);
+  // const templateId = selectedTemplate?.templateId || null;
 
   const [addFileList, setAddFileList] = useState([]);
   const [addSubmitting, setAddSubmitting] = useState(false);
@@ -526,87 +558,137 @@ const ProjectTemplates = () => {
     }
   }, [mappingModalOpen, projectGroupId, projectTypeId, mappingTemplate]);
 
-  const uploadTemplate = async ({
-    groupId,
-    typeId,
-    templateName,
-    file,
-    projectId,
-    moduleIds,
-    forceUpload,
-  }) => {
-    return uploadTemplateService(APIURL, {
+  const uploadTemplate = async (params) => {
+    const {
       groupId,
       typeId,
       templateName,
+      templateId,
       file,
       projectId,
       moduleIds,
       forceUpload,
+    } = params;
+    
+    const formData = new FormData();
+    formData.append("typeId", typeId);
+    formData.append("templateName", templateName);
+    if (templateId) {
+      formData.append("templateId", templateId);
+    }
+    formData.append("file", file);
+    if (groupId !== null && groupId !== undefined) {
+      formData.append("groupId", groupId);
+    }
+    if (projectId !== null && projectId !== undefined) {
+      formData.append("projectId", projectId);
+    }
+    if (Array.isArray(moduleIds)) {
+      moduleIds.forEach((id) => formData.append("moduleIds", id));
+    }
+    if (forceUpload) {
+      formData.append("forceUpload", "true");
+    }
+
+    const res = await axios.post(`${APIURL}/RPTTemplates/upload`, formData, {
+      headers: { "Content-Type": "multipart/form-data" },
     });
+
+    const data = res.data;
+
+    if (data.requireConfirmation && !forceUpload) {
+      if (data.designCheck?.changed === true) {
+        const confirmed = await MessageService.confirm(
+          <div>
+            <p>
+              <b>
+                {data.designCheck.message ||
+                  "Differences were found between your file and the active template."}
+              </b>
+            </p>
+            {data.designCheck.changes && data.designCheck.changes.length > 0 && (
+              <ul className="mt-2 list-disc pl-4 text-[10px] space-y-1">
+                {data.designCheck.changes.map((change, index) => (
+                  <li key={index}>{change}</li>
+                ))}
+              </ul>
+            )}
+            {!data.designCheck.changes && <p>No detailed changes available</p>}
+          </div>,
+          {
+            title: "Design Changes Detected",
+            confirmText: "Proceed",
+            cancelText: "Cancel",
+            type: 'warning'
+          }
+        );
+
+        if (confirmed) {
+          return await uploadTemplate({
+            ...params,
+            forceUpload: true,
+          });
+        }
+        throw new Error("User cancelled upload");
+      } else {
+        const confirmed = await MessageService.confirm(
+          "No changes detected. Do you still want to upload the template?",
+          {
+            title: "No Design Change",
+            confirmText: "Upload Anyway",
+            cancelText: "Cancel",
+            type: 'info'
+          }
+        );
+
+        if (confirmed) {
+          return await uploadTemplate({
+            ...params,
+            forceUpload: true,
+          });
+        }
+        throw new Error("User cancelled upload");
+      }
+    }
+
+    return data;
   };
 
-  const handleAddTemplate = async () => {
+  const handleAddSubmit = async () => {
     try {
       const values = await addForm.validateFields();
-      const file = addFileList[0]?.originFileObj || addFileList[0];
-      if (!file) {
-        message.warning("Please select a .rpt file.");
+      if (!addFileList || addFileList.length === 0) {
+        message.warning("Please select a file to upload.");
         return;
       }
-
       setAddSubmitting(true);
-      const doUpload = async (forceUpload = false) =>
-        uploadTemplate({
-          groupId: projectGroupId,
-          typeId: projectTypeId,
-          projectId: normalizeId(projectId),
-          templateName: values.templateName,
-          file,
-          moduleIds: values.moduleIds || [],
-          forceUpload,
-        });
+      const file = addFileList[0].originFileObj || addFileList[0];
+      
+      const result = await uploadTemplate({
+        groupId: projectGroupId,
+        typeId: projectTypeId,
+        projectId: normalizeId(projectId),
+        templateName: values.templateName,
+        file,
+        moduleIds: values.moduleIds
+      });
 
-      const onSuccess = (result) => {
-        message.success("Template uploaded successfully.");
-        setAddModalOpen(false);
-        setAddFileList([]);
-        addForm.resetFields(["templateName", "moduleIds"]);
-        if (selectionReady) fetchAvailableRPTFiles();
-
-        const uploadedTemplate = {
-          templateId: result?.templateId,
-          templateName: result?.templateName || values.templateName,
-          groupId: projectGroupId,
-          typeId: projectTypeId,
-          projectId: normalizeId(projectId),
-        };
-
-        if (uploadedTemplate.templateId) {
-          openMappingModal(uploadedTemplate);
-        }
-      };
-
-      try {
-        const result = await doUpload(false);
-        onSuccess(result);
-      } catch (err) {
-        const allowForce =
-          err?.response?.status === 409 && err?.response?.data?.allowForceUpload;
-        if (allowForce) {
-          setAddSubmitting(false);
-          confirmForceUpload(async () => {
-            const forced = await doUpload(true);
-            onSuccess(forced);
-          });
-          return;
-        }
-        throw err;
-      }
+      message.success("Upload successful");
+      setAddModalOpen(false);
+      addForm.resetFields();
+      setAddFileList([]);
+      fetchAvailableRPTFiles();
+      confirmMappingUpdate({
+        templateId: result?.templateId,
+        templateName: values.templateName,
+        groupId: projectGroupId,
+        typeId: projectTypeId,
+        projectId: normalizeId(projectId),
+      });
     } catch (err) {
-      if (err?.errorFields) return;
-      console.error("Failed to upload template", err);
-      showError(err, "Failed to upload template. Please try again.");
+      if (err.message !== "User cancelled upload") {
+        showError(err, "Upload failed.");
+      }
     } finally {
       setAddSubmitting(false);
     }
@@ -658,25 +740,30 @@ const ProjectTemplates = () => {
     }
   };
 
-  const confirmForceUpload = (onConfirm) => {
-    Modal.confirm({
-      title: "No changes detected",
-      content: "No changes detected between this file and the latest version.",
-      okText: "Upload Anyway",
-      cancelText: "Cancel",
-      onOk: onConfirm,
-    });
+  const confirmForceUpload = async (onConfirm) => {
+    const confirmed = await MessageService.confirm(
+      "No changes detected between this file and the latest version.",
+      {
+        title: "No changes detected",
+        confirmText: "Upload Anyway",
+        cancelText: "Cancel",
+        type: 'info'
+      }
+    );
+    if (confirmed) onConfirm();
   };
 
-  const confirmMappingUpdate = (template) => {
-    Modal.confirm({
-      title: "Update mapping?",
-      content:
-        "Do you want to update the mapping for this new template version?",
-      okText: "Update Mapping",
-      cancelText: "Skip",
-      onOk: () => openMappingModal(template),
-    });
+  const confirmMappingUpdate = async (template) => {
+    const confirmed = await MessageService.confirm(
+      "Do you want to update the mapping for this new template version?",
+      {
+        title: "Update mapping?",
+        confirmText: "Update Mapping",
+        cancelText: "Skip",
+        type: 'confirm'
+      }
+    );
+    if (confirmed) openMappingModal(template);
   };
 
   const openMappingModal = async (template) => {
@@ -894,18 +981,18 @@ const ProjectTemplates = () => {
     }
   };
 
-  const confirmActivateVersion = (record) => {
+  const confirmActivateVersion = async (record) => {
     const scopeLabel = getScopeLabel(record);
-    Modal.confirm({
-      title: "Set active version?",
-      content: `This will make v${record?.version} the active template for the ${scopeLabel.toLowerCase()} scope. All projects using this template in that scope will use this version.`,
-      okText: "Set Active",
-      cancelText: "Cancel",
-      onOk: async () => {
-        await activateTemplateVersion(record);
-        closeVersionsModal();
-      },
-    });
+    const confirmed = await MessageService.confirm(
+      `This will make v${record?.version} the active template for the ${scopeLabel.toLowerCase()} scope. All projects using this template in that scope will use this version.`,
+      {
+        title: "Set active version?",
+        confirmText: "Set Active",
+        cancelText: "Cancel",
+        type: 'warning'
+      }
+    );
+    if (confirmed) activateTemplateVersion(record);
   };
 
   const loadEditVersions = async (template) => {
@@ -1164,16 +1251,9 @@ const ProjectTemplates = () => {
           const result = await doUpload(false);
           onUploadSuccess(result);
         } catch (err) {
-          const allowForce =
-            err?.response?.status === 409 && err?.response?.data?.allowForceUpload;
-          if (allowForce) {
-            confirmForceUpload(async () => {
-              const forced = await doUpload(true);
-              onUploadSuccess(forced);
-            });
-            return;
+          if (err.message !== "User cancelled upload") {
+            throw err;
           }
-          throw err;
         }
       } catch (err) {
         onError?.(err);
@@ -1384,7 +1464,7 @@ const ProjectTemplates = () => {
               form: addForm,
               addFileList,
               setAddFileList,
-              onSubmit: handleAddTemplate,
+              onSubmit: handleAddSubmit,
               submitting: addSubmitting,
               moduleOptions,
               children: (
@@ -1406,6 +1486,49 @@ const ProjectTemplates = () => {
                   <Form.Item label="Type" style={{ marginBottom: 8 }}>
                     <Input value={typeLabel || ""} placeholder="Type" disabled />
                   </Form.Item>
+                  <Form.Item
+                    label="Modules"
+                    name="moduleIds"
+                    rules={[{ required: true, message: "Select at least one module" }]}
+                  >
+                    <Select
+                      mode="multiple"
+                      options={moduleOptions}
+                      placeholder="Select modules"
+                      showSearch
+                      optionFilterProp="label"
+                    />
+                  </Form.Item>
+                  <Form.Item label="RPT File">
+                    <Upload.Dragger
+                      accept=".rpt"
+                      multiple={false}
+                      beforeUpload={() => false}
+                      onChange={(info) => setAddFileList(info.fileList.slice(-1))}
+                      onRemove={() => setAddFileList([])}
+                      fileList={addFileList}
+                    >
+                      <p className="ant-upload-drag-icon">
+                        <InboxOutlined />
+                      </p>
+                      <p className="ant-upload-text">
+                        Click or drag an RPT file to upload
+                      </p>
+                      <p className="ant-upload-hint">
+                        Only .rpt files are supported.
+                      </p>
+                    </Upload.Dragger>
+                  </Form.Item>
+                  <Space style={{ display: "flex", justifyContent: "flex-end" }}>
+                    <Button onClick={() => setAddModalOpen(false)}>Cancel</Button>
+                    <Button
+                      type="primary"
+                      onClick={handleAddSubmit}
+                      loading={addSubmitting}
+                    >
+                      Upload Template
+                    </Button>
+                  </Space>
                 </>
               ),
             }}
@@ -1430,6 +1553,176 @@ const ProjectTemplates = () => {
                 projectLabel ||
                 projectName ||
                 (projectId ? `Project ${projectId}` : ""),
+              children: (
+                <Form
+                  layout="vertical"
+                  form={importForm}
+                  initialValues={{ copyMappings: true }}
+                  preserve={false}
+                >
+                  <Form.Item label="Target Project" style={{ marginBottom: 8 }}>
+                    <Input
+                      value={
+                        projectLabel ||
+                        projectName ||
+                        (projectId ? `Project ${projectId}` : "")
+                      }
+                      placeholder="Target Project"
+                      disabled
+                    />
+                  </Form.Item>
+
+                  <Form.Item
+                    label="Import From"
+                    name="sourceScope"
+                    rules={[
+                      {
+                        validator: (_, value) =>
+                          value
+                            ? Promise.resolve()
+                            : Promise.reject("Import source is required"),
+                      },
+                    ]}
+                    style={{ marginBottom: 8 }}
+                  >
+                    <Select
+                      options={[
+                        { label: "Select import source", value: "", disabled: true },
+                        { label: "Standard Templates", value: "standard" },
+                        { label: "Group Templates (includes standard)", value: "group" },
+                        { label: "Project Templates", value: "project" },
+                      ]}
+                      placeholder="Select import source"
+                      showSearch
+                      optionFilterProp="label"
+                      allowClear
+                    />
+                  </Form.Item>
+
+                  <Form.Item shouldUpdate noStyle>
+                    {({ getFieldValue }) => {
+                      const scope = getFieldValue("sourceScope");
+                      if (scope === "group") {
+                        return (
+                          <Form.Item
+                            label="Source Group"
+                            name="sourceGroupId"
+                            rules={[
+                              {
+                                validator: (_, value) =>
+                                  value
+                                    ? Promise.resolve()
+                                    : Promise.reject("Source group is required"),
+                              },
+                            ]}
+                            style={{ marginBottom: 8 }}
+                          >
+                            <Select
+                              options={[
+                                {
+                                  label: "Select source group",
+                                  value: "",
+                                  disabled: true,
+                                },
+                                ...groupOptions,
+                              ]}
+                              placeholder="Select source group"
+                              showSearch
+                              optionFilterProp="label"
+                              allowClear
+                            />
+                          </Form.Item>
+                        );
+                      }
+                      if (scope === "project") {
+                        return (
+                          <Form.Item
+                            label="Source Project"
+                            name="sourceProjectId"
+                            rules={[
+                              {
+                                validator: (_, value) =>
+                                  value
+                                    ? Promise.resolve()
+                                    : Promise.reject("Source project is required"),
+                              },
+                            ]}
+                            style={{ marginBottom: 8 }}
+                          >
+                            <Select
+                              options={[
+                                {
+                                  label: "Select source project",
+                                  value: "",
+                                  disabled: true,
+                                },
+                                ...projectOptions,
+                              ]}
+                              placeholder="Select source project"
+                              showSearch
+                              optionFilterProp="label"
+                              allowClear
+                            />
+                          </Form.Item>
+                        );
+                      }
+                      return null;
+                    }}
+                  </Form.Item>
+
+                  <Form.Item
+                    label="Source Type"
+                    name="sourceTypeId"
+                    style={{ marginBottom: 8 }}
+                  >
+                    <Select
+                      options={[
+                        { label: "All types (optional)", value: "", disabled: true },
+                        ...typeOptions,
+                      ]}
+                      placeholder="All types (optional)"
+                      showSearch
+                      optionFilterProp="label"
+                      allowClear
+                    />
+                  </Form.Item>
+
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      gap: 12,
+                      marginBottom: 16,
+                    }}
+                  >
+                    <div>
+                      <Typography.Text strong>Copy mappings</Typography.Text>
+                      <Typography.Text type="secondary" style={{ display: "block" }}>
+                        If enabled, existing mappings are cloned as well.
+                      </Typography.Text>
+                    </div>
+                    <Form.Item
+                      name="copyMappings"
+                      valuePropName="checked"
+                      initialValue={true}
+                      style={{ marginBottom: 0 }}
+                    >
+                      <Switch />
+                    </Form.Item>
+                  </div>
+                  <Space style={{ display: "flex", justifyContent: "flex-end" }}>
+                    <Button onClick={() => setImportModalOpen(false)}>Cancel</Button>
+                    <Button
+                      type="primary"
+                      onClick={handleImportTemplates}
+                      loading={importSubmitting}
+                    >
+                      Import Templates
+                    </Button>
+                  </Space>
+                </Form>
+              ),
             }}
           />
         )}

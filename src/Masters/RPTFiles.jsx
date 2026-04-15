@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Form, Modal, Select, message } from "antd";
+import { MessageService } from "../services/MessageService";
 import {
   extractParsedFields,
   getErrorMessage,
@@ -41,6 +42,19 @@ import TemplatesCard from "../components/rpt/TemplatesCard";
 import TemplatesSidePanel from "../components/rpt/TemplatesSidePanel";
 import TemplatesMappingPanel from "../components/rpt/TemplatesMappingPanel";
 import TemplatesVersionsModal from "../components/rpt/TemplatesVersionsModal";
+  import { CopyOutlined,
+  CloseOutlined,
+  DownloadOutlined,
+  EditOutlined,
+  SettingOutlined,
+  HistoryOutlined,
+  InboxOutlined,
+  PlusOutlined,
+  ReloadOutlined,
+  UploadOutlined,
+  CheckOutlined,
+} from "@ant-design/icons";
+import { uploadWithDesignCheck } from "../services/reportApi";
 
 const RPTFiles = () => {
   const url = import.meta.env.VITE_API_BASE_URL;
@@ -505,6 +519,8 @@ const RPTFiles = () => {
     projectId,
     moduleIds,
     forceUpload,
+    isUpdate = false,
+    existingTemplateId = null,
   }) => {
     return uploadTemplateService(APIURL, {
       groupId,
@@ -620,25 +636,30 @@ const RPTFiles = () => {
     }
   };
 
-  const confirmForceUpload = (onConfirm) => {
-    Modal.confirm({
-      title: "No changes detected",
-      content: "No changes detected between this file and the latest version.",
-      okText: "Upload Anyway",
-      cancelText: "Cancel",
-      onOk: onConfirm,
-    });
+  const confirmForceUpload = async (onConfirm) => {
+    const confirmed = await MessageService.confirm(
+      "No changes detected between this file and the latest version.",
+      {
+        title: "No changes detected",
+        confirmText: "Upload Anyway",
+        cancelText: "Cancel",
+        type: 'info'
+      }
+    );
+    if (confirmed) onConfirm();
   };
 
-  const confirmMappingUpdate = (template) => {
-    Modal.confirm({
-      title: "Update mapping?",
-      content:
-        "Do you want to update the mapping for this new template version?",
-      okText: "Update Mapping",
-      cancelText: "Skip",
-      onOk: () => openMappingModal(template),
-    });
+  const confirmMappingUpdate = async (template) => {
+    const confirmed = await MessageService.confirm(
+      "Do you want to update the mapping for this new template version?",
+      {
+        title: "Update mapping?",
+        confirmText: "Update Mapping",
+        cancelText: "Skip",
+        type: 'confirm'
+      }
+    );
+    if (confirmed) openMappingModal(template);
   };
 
   const openMappingModal = async (template) => {
@@ -855,18 +876,18 @@ const RPTFiles = () => {
     }
   };
 
-  const confirmActivateVersion = (record) => {
+  const confirmActivateVersion = async (record) => {
     const scopeLabel = getScopeLabel(record);
-    Modal.confirm({
-      title: "Set active version?",
-      content: `This will make v${record?.version} the active template for the ${scopeLabel.toLowerCase()} scope. All projects using this template in that scope will use this version.`,
-      okText: "Set Active",
-      cancelText: "Cancel",
-      onOk: async () => {
-        await activateTemplateVersion(record);
-        closeVersionsModal();
-      },
-    });
+    const confirmed = await MessageService.confirm(
+      `This will make v${record?.version} the active template for the ${scopeLabel.toLowerCase()} scope. All projects using this template in that scope will use this version.`,
+      {
+        title: "Set active version?",
+        confirmText: "Set Active",
+        cancelText: "Cancel",
+        type: 'warning'
+      }
+    );
+    if (confirmed) activateTemplateVersion(record);
   };
 
   const loadEditVersions = async (template) => {
@@ -1044,6 +1065,8 @@ const RPTFiles = () => {
             file,
             moduleIds: record.moduleIds ?? record.ModuleIds ?? [],
             forceUpload,
+            isUpdate: true, // Mark as update
+            existingTemplateId: record.templateId, // Pass existing template ID
           });
 
         const onUploadSuccess = (result) => {

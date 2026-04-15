@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 
-import { Row, Col, Typography, message, Card, Select, Space, Button } from "antd";
-import { ReloadOutlined } from "@ant-design/icons";
+import { Row, Col, Typography, message, Card, Select, Space, Button, Popconfirm } from "antd";
+import { ReloadOutlined, DeleteOutlined } from "@ant-design/icons";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "../hooks/useToast";
@@ -775,6 +775,14 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
     setMssInsertPosition("end");
   };
 
+  const handleClearAll = () => {
+    resetForm();
+    setBoxBreakingCriteria([]); // Specifically clear the default "capacity"
+    setConfigExists(false);     // Force enable import
+    setImportedSnapshot(null);  // Clear snapshot/dirty state
+    message.info("Configuration cleared. You can now import or configure from scratch.");
+  };
+
   // Save logic using custom hook
   const { handleSave } = useProjectConfigSave(
     projectId,
@@ -1180,7 +1188,23 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
           </div>
         )}
 
-        {!isMasterConfig && <ImportConfig onImport={handleImport} disabled={configExists} />}
+        {!isMasterConfig && (
+          <Space>
+            <Popconfirm
+              title="Clear all configuration?"
+              description="This will wipe all current settings locally. Changes are not permanent until you save."
+              onConfirm={handleClearAll}
+              okText="Yes, Clear"
+              cancelText="No"
+              okButtonProps={{ danger: true }}
+            >
+              <Button icon={<DeleteOutlined />} danger>
+                Clear All
+              </Button>
+            </Popconfirm>
+            <ImportConfig onImport={handleImport} disabled={configExists} />
+          </Space>
+        )}
       </div>
 
       <Row gutter={16} align="top">

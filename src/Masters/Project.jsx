@@ -8,8 +8,10 @@ import {
 } from "@ant-design/icons";
 import axios from "axios";
 import API from "../hooks/api";
+import { useLocation } from "react-router-dom";
 
 const Project = () => {
+    const location = useLocation();
     const [projects, setProjects] = useState([]); // List of project records from /Projects API
     const [projectNames, setProjectNames] = useState([]); // List of project names fetched from /Project API
     const [createdProjectIds, setCreatedProjectIds] = useState([]); // All project IDs already created
@@ -28,11 +30,19 @@ const Project = () => {
         pageSize: 10,
         total: 0
     });
+    
     useEffect(() => {
         fetchProjects(pagination.current, pagination.pageSize);
         fetchCreatedProjectIds();
         fetchProjectNames();
         getUsers();
+        
+        // Auto-open modal if navigated from dashboard
+        if (location.state?.openProjectModal) {
+            handleAdd();
+            // Clear the state to prevent reopening on refresh
+            window.history.replaceState({}, document.title);
+        }
     }, []);
     // Fetch project records from /Projects API
     const fetchProjects = async (page = 1, pageSize = 10) => {

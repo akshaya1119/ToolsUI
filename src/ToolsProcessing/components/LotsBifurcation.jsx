@@ -21,8 +21,8 @@ import {
   Tooltip,
 } from "antd";
 import { motion } from "framer-motion";
-import { SearchOutlined } from "@ant-design/icons";
-import { EditOutlined } from "@ant-design/icons";
+import { SearchOutlined, EditOutlined } from "@ant-design/icons";
+import { MessageService } from "../../services/MessageService";
 import dayjs from "dayjs";
 import customParseFormat from "dayjs/plugin/customParseFormat";
 import API from "../../hooks/api";
@@ -503,7 +503,7 @@ const LotsBifurcation = forwardRef((_, ref) => {
       return;
     }
 
-    const proceedWithBifurcation = (allowBoundaryOverlap) => {
+    const proceedWithBifurcation = async (allowBoundaryOverlap) => {
       if (nextLotNumber && outOfRangeTargetRows.length) {
         const nextLotDates = rows
           .filter(
@@ -523,38 +523,41 @@ const LotsBifurcation = forwardRef((_, ref) => {
             ? `${formatDate(nextStart)} - ${formatDate(nextEnd)}`
             : null;
 
-        Modal.confirm({
-          title: "Merge into next lot?",
-          content: (
-            <Space direction="vertical" size={4}>
-              <Text>
-                Some catch numbers from Lot {targetLot} fall outside the selected
-                range.
+        const confirmed = await MessageService.confirm(
+          <Space direction="vertical" size={4}>
+            <Text>
+              Some catch numbers from Lot {targetLot} fall outside the selected
+              range.
+            </Text>
+            <Text>
+              They will be merged into Lot {nextLotNumber}.
+            </Text>
+            {rangeLabel && (
+              <Text type="secondary">
+                Lot {nextLotNumber} will cover {rangeLabel}.
               </Text>
-              <Text>
-                They will be merged into Lot {nextLotNumber}.
-              </Text>
-              {rangeLabel && (
-                <Text type="secondary">
-                  Lot {nextLotNumber} will cover {rangeLabel}.
-                </Text>
-              )}
-            </Space>
-          ),
-          okText: "Proceed",
-          cancelText: "Cancel",
-          onOk: () =>
-            applyBifurcation({
-              mergeToNextLot: true,
-              nextLotNumber,
-              allowBoundaryOverlap,
-              forceBoundaryToNextLot: Boolean(hasNextBoundary),
-              boundaryDateForNext: hasNextBoundary ? boundaryDateForNext : null,
-              boundaryDateForPrev: hasPrevBoundary ? boundaryDateForPrev : null,
-              prevLotNumber,
-              nextLotStartLotNumber: nextLotNumber,
-            }),
-        });
+            )}
+          </Space>,
+          {
+            title: "Merge into next lot?",
+            confirmText: "Proceed",
+            cancelText: "Cancel",
+            type: 'confirm'
+          }
+        );
+        
+        if (confirmed) {
+          await applyBifurcation({
+            mergeToNextLot: true,
+            nextLotNumber,
+            allowBoundaryOverlap,
+            forceBoundaryToNextLot: Boolean(hasNextBoundary),
+            boundaryDateForNext: hasNextBoundary ? boundaryDateForNext : null,
+            boundaryDateForPrev: hasPrevBoundary ? boundaryDateForPrev : null,
+            prevLotNumber,
+            nextLotStartLotNumber: nextLotNumber,
+          });
+        }
         return;
       }
 
@@ -576,36 +579,37 @@ const LotsBifurcation = forwardRef((_, ref) => {
       const prevTailTargetLabel = nextLotNumber
         ? `Lot ${nextLotNumber}`
         : "unassigned";
-      Modal.confirm({
-        title: "Force overlap?",
-        content: (
-          <Space direction="vertical" size={4}>
-            {hasPrevOverlap && (
-              <Text>
-                Dates {formatDate(start)} - {formatDate(overlapEndForPrev)} are
-                already covered in Lot {prevLotNumber}. If you proceed, they
-                will be moved to Lot {targetLot}.
-              </Text>
-            )}
-            {hasPrevOverlap && hasPrevTailBeyondRange && (
-              <Text>
-                Dates after {formatDate(end)} from Lot {prevLotNumber} will be
-                moved to {prevTailTargetLabel}.
-              </Text>
-            )}
-            {hasNextBoundary && (
-              <Text>
-                Date {formatDate(boundaryDateForNext)} is already covered in Lot{" "}
-                {nextLotNumber}. If you proceed, it will stay in Lot{" "}
-                {nextLotNumber}.
-              </Text>
-            )}
-          </Space>
-        ),
-        okText: "Proceed",
-        cancelText: "Cancel",
-        onOk: () => proceedWithBifurcation(true),
-      });
+      const confirmed = await MessageService.confirm(
+        <Space direction="vertical" size={4}>
+          {hasPrevOverlap && (
+            <Text>
+              Dates {formatDate(start)} - {formatDate(overlapEndForPrev)} are
+              already covered in Lot {prevLotNumber}. If you proceed, they
+              will be moved to Lot {targetLot}.
+            </Text>
+          )}
+          {hasPrevOverlap && hasPrevTailBeyondRange && (
+            <Text>
+              Dates after {formatDate(end)} from Lot {prevLotNumber} will be
+              moved to {prevTailTargetLabel}.
+            </Text>
+          )}
+          {hasNextBoundary && (
+            <Text>
+              Date {formatDate(boundaryDateForNext)} is already covered in Lot{" "}
+              {nextLotNumber}. If you proceed, it will stay in Lot{" "}
+              {nextLotNumber}.
+            </Text>
+          )}
+        </Space>,
+        {
+          title: "Force overlap?",
+          confirmText: "Proceed",
+          cancelText: "Cancel",
+          type: 'warning'
+        }
+      );
+      if (confirmed) await proceedWithBifurcation(true);
       return;
     }
 

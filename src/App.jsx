@@ -15,6 +15,7 @@ import DuplicateTool from "./ToolsProcessing/DuplicateTool";
 import Master from "./Masters/Master";
 import EnvelopeBreaking from "./ToolsProcessing/Envelope/EnvelopeBreaking";
 import ProcessingPipeline from "./ToolsProcessing/ProcessingPipeline";
+import RPTReports from "./ToolsProcessing/RPTReports";
 import HorizontalToVertical from "./ToolsProcessing/HToV"
 import Report from "./pages/Report/Report";
 import ReportBuilder from "./pages/Report/ReportBuilder";
@@ -22,6 +23,7 @@ import ProjectDashboard from "./components/ProjectDashboard";
 import ProtectedRoute from "./routes/ProtectedRoute";
 import { useUserToken, useUserTokenActions } from "./stores/UserToken";
 import HToV from "./ToolsProcessing/HToV";
+
 
 function isTokenExpired(token) {
   if (!token) return true;
@@ -189,6 +191,15 @@ export default function App() {
                   <ProtectedRoute token={token}>
                     <MainLayout >
                       <ProcessingPipeline />
+                    </MainLayout></ProtectedRoute>
+                }
+              />
+              <Route
+                path="/rptreports"
+                element={
+                  <ProtectedRoute token={token}>
+                    <MainLayout >
+                      <RPTReports />
                     </MainLayout></ProtectedRoute>
                 }
               />

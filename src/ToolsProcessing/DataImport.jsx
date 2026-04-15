@@ -1,8 +1,9 @@
-﻿import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import '@ant-design/v5-patch-for-react-19'
 import { Row, Col, Card, Select, Upload, Button, Typography, Space, Table, Tabs, Checkbox, Input, Modal, Radio } from 'antd';
+import { MessageService } from "../services/MessageService";
 import { useToast } from '../hooks/useToast';
-import { CheckCircleOutlined, UploadOutlined, ToolOutlined, SearchOutlined } from '@ant-design/icons';
+import { CheckCircleOutlined, UploadOutlined, ToolOutlined, SearchOutlined, PlusOutlined, EditOutlined,CloseCircleOutlined } from '@ant-design/icons';
 import * as XLSX from 'xlsx-js-style';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -1161,17 +1162,274 @@ const DataImport = () => {
   });
 
   // columnsFromBackend = response.columns
-  const enhancedColumns = columns.map(col => ({
-    title: col,
-    dataIndex: col,
-    key: col,
-    ellipsis: true,
-    ...getColumnSearchProps(col),  // search/filter props
-    sorter: true,
-    sortOrder: uploadedTableSorter.field === col ? uploadedTableSorter.order : null,
+  const enhancedColumns = [
+    ...columns.map(col => ({
+      title: col,
+      dataIndex: col,
+      key: col,
+      ellipsis: true,
+      ...getColumnSearchProps(col),
+      sorter: true,
+      sortOrder: uploadedTableSorter.field === col ? uploadedTableSorter.order : null,
+      render: (text, record) => {
+        if (editingRowId === record.id) {
+          return (
+            <Input
+              size="small"
+              value={editFormData[col] ?? text}
+              onChange={(e) => handleFieldChange(col, e.target.value)}
+              style={{ width: '100%' }}
+            />
+          );
+        }
+        return text;
+      }
+    })),
+    {
+      title: 'Actions',
+      key: 'actions',
+      fixed: 'right',
+      width: 80,
+      render: (_, record) => {
+        if (editingRowId === record.id) {
+          return (
+            <Space size="small">
+              <Button
+                type="link"
+                size="small"
+                onClick={handleSaveEdit}
+                loading={loading}
+                style={{ padding: 0, color: '#52c41a', fontSize: '16px' }}
+                title="Save"
+              >
+                <CheckCircleOutlined />
+              </Button>
+              <Button
+                type="link"
+                size="small"
+                onClick={handleCancelEdit}
+                style={{ padding: 0, color: '#ff4d4f', fontSize: '16px' }}
+                title="Cancel"
+              >
+                <CloseCircleOutlined />
+              </Button>
+            </Space>
+          );
+        }
+        return (
+          <Button
+            type="link"
+            size="small"
+            onClick={() => handleEditRow(record)}
+            style={{ padding: 0, fontSize: '16px' }}
+            title="Edit"
+          >
+            <EditOutlined />
+          </Button>
+        );
+      }
+    }
+  ];
+
+const [masterFields, setMasterFields] = useState([]);
+const [loadingFields, setLoadingFields] = useState(false);
+const [addRowOpen, setAddRowOpen] = useState(false);
+const [newRow, setNewRow] = useState({
+  catchNo: "",
+  fields: {},
+  extraFields: [],
+});
+const [configuredFields, setConfiguredFields] = useState([]);
+const [editingRowId, setEditingRowId] = useState(null);
+const [editFormData, setEditFormData] = useState({});
+
+const fetchMasterFields = async () => {
+  try {
+    setLoadingFields(true);
+
+    const [fieldsRes, configRes] = await Promise.all([
+      API.get("/Fields"),
+      API.get(`/ProjectConfigs/ByProject/${projectId}`)
+    ]);
+
+    const allFields = fieldsRes.data || [];
+    const config = configRes.data;
+
+    // Collect all field IDs referenced in the project configuration
+    const configuredFieldIds = new Set();
+    (config.envelopeMakingCriteria || []).forEach(id => configuredFieldIds.add(id));
+    (config.boxBreakingCriteria || []).forEach(id => configuredFieldIds.add(id));
+    (config.duplicateRemoveFields || []).forEach(id => configuredFieldIds.add(id));
+    (config.sortingBoxReport || []).forEach(id => configuredFieldIds.add(id));
+    (config.innerBundlingCriteria || []).forEach(id => configuredFieldIds.add(id));
+
+    const duplicateCriteria = Array.isArray(config.duplicateCriteria)
+      ? config.duplicateCriteria
+      : JSON.parse(config.duplicateCriteria || "[]");
+    duplicateCriteria.forEach(id => configuredFieldIds.add(id));
+
+    // Filter fields that are in the project configuration
+    // Exclude CatchNo, NRQuantity, LotNo, Pages as they are hardcoded in the form
+    const fieldsToShow = allFields.filter(f => 
+      configuredFieldIds.has(f.fieldId) && 
+      !["CatchNo", "NRQuantity", "LotNo", "Pages"].includes(f.name)
+    );
+
+    setMasterFields(allFields);
+    setConfiguredFields(fieldsToShow);
+
+  } catch (err) {
+    console.error("Failed to load fields:", err);
+    showToast("Failed to load fields", "error");
+  } finally {
+    setLoadingFields(false);
+  }
+};
+
+const handleInlineSave = async () => {
+  // Trim and validate CatchNo
+  const catchNo = newRow.catchNo?.trim();
+  
+  if (!catchNo) {
+    showToast("Catch No is required", "warning");
+    return;
+  }
+
+  // Validate mandatory fields: NRQuantity, LotNo, Pages
+  const mandatoryFields = ["NRQuantity", "LotNo", "Pages"];
+  const missingMandatory = mandatoryFields.filter(fieldName => {
+    const value = newRow.fields[fieldName];
+    return !value || String(value).trim() === "";
+  });
+
+  if (missingMandatory.length > 0) {
+    showToast(`Please fill mandatory fields: ${missingMandatory.join(", ")}`, "warning");
+    return;
+  }
+
+  // Check if all other required fields from configuration are filled
+  const missingRequired = requiredFieldNames.filter(fieldName => {
+    // Skip CatchNo (already validated) and mandatory fields (already validated)
+    if (fieldName === "CatchNo" || mandatoryFields.includes(fieldName)) {
+      return false;
+    }
+    const value = newRow.fields[fieldName];
+    return !value || String(value).trim() === "";
+  });
+
+  if (missingRequired.length > 0) {
+    showToast(`Please fill required fields: ${missingRequired.join(", ")}`, "warning");
+    return;
+  }
+
+  try {
+    // Build the data object for the new row
+    const rowData = {
+      CatchNo: catchNo,
+      ...newRow.fields
+    };
+    
+    // Add extra fields to the row data
+    (newRow.extraFields || []).forEach(f => {
+      if (f.key && f.key.trim() !== "") {
+        rowData[f.key] = f.value || "";
+      }
+    });
+
+    // Use the same endpoint as file upload
+    const payload = {
+      projectId: Number(projectId),
+      data: [rowData]
+    };
+
+    console.log("Sending payload:", payload);
+
+    const response = await API.post(`/NRDatas`, payload, {
+      headers: { 
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    console.log("Response:", response.data);
+
+    showToast("Data added successfully", "success");
+
+    setAddRowOpen(false);
+    setNewRow({
+      catchNo: "",
+      fields: {},
+      extraFields: []
+    });
+
+    fetchExistingData(projectId);
+
+  } catch (err) {
+    console.error("Full error:", err);
+    console.error("Error response:", err?.response);
+    console.error("Error data:", err?.response?.data);
+    
+    let errorMsg = "Failed to add data";
+    
+    if (err?.response?.data) {
+      if (typeof err.response.data === 'string') {
+        errorMsg = err.response.data;
+      } else if (err.response.data.message) {
+        errorMsg = err.response.data.message;
+      } else if (err.response.data.title) {
+        errorMsg = err.response.data.title;
+      }
+    } else if (err?.message) {
+      errorMsg = err.message;
+    }
+    
+    showToast(errorMsg, "error");
+  }
+};
+
+const handleEditRow = (record) => {
+  setEditingRowId(record.id);
+  setEditFormData({ ...record });
+};
+
+const handleCancelEdit = () => {
+  setEditingRowId(null);
+  setEditFormData({});
+};
+
+const handleSaveEdit = async () => {
+  if (!editingRowId) return;
+
+  try {
+    setLoading(true);
+
+    // Remove the id from the data to send (it's in the URL)
+    const { id, ...dataToSend } = editFormData;
+
+    // Use the new UpdateSingle endpoint
+    await API.put(`/NRDatas/UpdateSingle/${id}`, dataToSend, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+
+    showToast("Data updated successfully", "success");
+    setEditingRowId(null);
+    setEditFormData({});
+    await fetchExistingData(projectId);
+  } catch (err) {
+    console.error("Error updating data:", err);
+    const errorMsg = err?.response?.data?.message || err?.response?.data || err?.message || "Failed to update data";
+    showToast(errorMsg, "error");
+  } finally {
+    setLoading(false);
+  }
+};
+
+const handleFieldChange = (fieldName, value) => {
+  setEditFormData(prev => ({
+    ...prev,
+    [fieldName]: value
   }));
-
-
+};
 
   const deleteNRData = async (closeModal) => {
     setLoading(true);
@@ -1290,6 +1548,12 @@ const DataImport = () => {
     XLSX.writeFile(workbook, filename);
     showToast(`Downloaded report with ${skippedRows.length} skipped rows`, "success");
   };
+
+  useEffect(() => {
+  if (addRowOpen) {
+    fetchMasterFields();
+  }
+}, [addRowOpen]);
 
   return (
     <div style={{ padding: 0 }}>
@@ -1569,6 +1833,13 @@ const DataImport = () => {
           {/* Right side: Buttons */}
           <div style={{ display: "flex", gap: 8 }}>
             <Button
+  type="primary"
+  icon={<PlusOutlined />}
+  onClick={() => setAddRowOpen((prev) => !prev)}
+>
+  Add Data
+</Button>
+            <Button
               onClick={fetchConflictReport}
               style={{
                 backgroundColor: "#f0dc24ff",
@@ -1586,17 +1857,19 @@ const DataImport = () => {
                 borderColor: "#ff4d4f",
                 color: "#fff",
               }}
-              onClick={() => {
-                const modal = Modal.confirm({
-                  title: "Confirm Deletion",
-                  content: "Are you sure you want to delete NR data for this project?",
-                  okText: "Yes, Delete",
-                  cancelText: "Cancel",
-                  okButtonProps: { danger: true },
-                  onOk: async () => {
-                    await deleteNRData(() => modal.destroy());
-                  },
-                });
+              onClick={async () => {
+                const confirmed = await MessageService.confirm(
+                  "Are you sure you want to delete NR data for this project?",
+                  {
+                    title: "Confirm Deletion",
+                    confirmText: "Yes, Delete",
+                    cancelText: "Cancel",
+                    type: 'error'
+                  }
+                );
+                if (confirmed) {
+                  await deleteNRData();
+                }
               }}
             >
               🗑️ Delete NR Data
@@ -1604,7 +1877,225 @@ const DataImport = () => {
           </div>
         </div>
 
+{addRowOpen && (
+  <Card
+    size="small"
+    style={{
+      marginBottom: 12,
+      border: "1px dashed #d9d9d9",
+      background: "#fafafa",
+    }}
+  >
+    {loadingFields ? (
+      <Text type="secondary">Loading fields...</Text>
+    ) : (
+      <>
+        {/* Configured Fields in Compact Grid */}
+        <Row gutter={[8, 8]}>
+          {/* Catch No - Always First */}
+          <Col xs={24} sm={12} md={8} lg={6}>
+            <Text strong style={{ fontSize: 12 }}>
+              Catch No <span style={{ color: "#ff4d4f" }}>*</span>
+            </Text>
+            <Input
+              size="small"
+              placeholder="Catch No"
+              value={newRow.catchNo}
+              onChange={(e) => setNewRow({ ...newRow, catchNo: e.target.value })}
+            />
+          </Col>
 
+          {/* NRQuantity - Always Required */}
+          <Col xs={24} sm={12} md={8} lg={6}>
+            <Text strong style={{ fontSize: 12 }}>
+              NRQuantity <span style={{ color: "#ff4d4f" }}>*</span>
+            </Text>
+            <Input
+              size="small"
+              type="number"
+              placeholder="NRQuantity"
+              value={newRow.fields.NRQuantity || ""}
+              onChange={(e) => {
+                setNewRow((prev) => ({
+                  ...prev,
+                  fields: {
+                    ...prev.fields,
+                    NRQuantity: e.target.value,
+                  },
+                }));
+              }}
+            />
+          </Col>
+
+          {/* LotNo - Always Required */}
+          <Col xs={24} sm={12} md={8} lg={6}>
+            <Text strong style={{ fontSize: 12 }}>
+              LotNo <span style={{ color: "#ff4d4f" }}>*</span>
+            </Text>
+            <Input
+              size="small"
+              type="number"
+              placeholder="LotNo"
+              value={newRow.fields.LotNo || ""}
+              onChange={(e) => {
+                setNewRow((prev) => ({
+                  ...prev,
+                  fields: {
+                    ...prev.fields,
+                    LotNo: e.target.value,
+                  },
+                }));
+              }}
+            />
+          </Col>
+
+          {/* Pages - Always Required */}
+          <Col xs={24} sm={12} md={8} lg={6}>
+            <Text strong style={{ fontSize: 12 }}>
+              Pages <span style={{ color: "#ff4d4f" }}>*</span>
+            </Text>
+            <Input
+              size="small"
+              type="number"
+              placeholder="Pages"
+              value={newRow.fields.Pages || ""}
+              onChange={(e) => {
+                setNewRow((prev) => ({
+                  ...prev,
+                  fields: {
+                    ...prev.fields,
+                    Pages: e.target.value,
+                  },
+                }));
+              }}
+            />
+          </Col>
+
+          {/* Dynamic Configured Fields */}
+          {configuredFields
+            .filter(field => !["CatchNo", "NRQuantity", "LotNo", "Pages"].includes(field.name)) // Exclude hardcoded fields
+            .map((field) => {
+              const isRequired = requiredFieldNames.includes(field.name);
+              return (
+                <Col key={field.fieldId} xs={24} sm={12} md={8} lg={6}>
+                  <Text strong style={{ fontSize: 12 }}>
+                    {field.name}
+                    {isRequired && <span style={{ color: "#ff4d4f", marginLeft: 2 }}>*</span>}
+                  </Text>
+                  <Input
+                    size="small"
+                    placeholder={field.name}
+                    value={newRow.fields[field.name] || ""}
+                    onChange={(e) => {
+                      setNewRow((prev) => ({
+                        ...prev,
+                        fields: {
+                          ...prev.fields,
+                          [field.name]: e.target.value,
+                        },
+                      }));
+                    }}
+                  />
+                </Col>
+              );
+            })}
+        </Row>
+
+        {/* Extra Fields Section - Compact Inline */}
+        {newRow.extraFields.length > 0 && (
+          <div style={{ marginTop: 6 }}>
+            {newRow.extraFields.map((field, index) => (
+              <Row key={index} gutter={4} style={{ marginBottom: 4 }}>
+                <Col span={7}>
+                  <Select
+                    size="small"
+                    placeholder="Field"
+                    value={field.key || undefined}
+                    style={{ width: "100%" }}
+                    onChange={(value) => {
+                      setNewRow((prev) => {
+                        const updated = [...prev.extraFields];
+                        updated[index].key = value;
+                        return { ...prev, extraFields: updated };
+                      });
+                    }}
+                    options={masterFields
+                      .filter(f => 
+                        !configuredFields.some(cf => cf.name === f.name) && // Not in configured fields
+                        !newRow.extraFields.some((ef, i) => i !== index && ef.key === f.name) // Not already selected
+                      )
+                      .map(f => ({
+                        value: f.name,
+                        label: f.name
+                      }))
+                    }
+                  />
+                </Col>
+                <Col span={15}>
+                  <Input
+                    size="small"
+                    placeholder="Value"
+                    value={field.value}
+                    onChange={(e) => {
+                      setNewRow((prev) => {
+                        const updated = [...prev.extraFields];
+                        updated[index].value = e.target.value;
+                        return { ...prev, extraFields: updated };
+                      });
+                    }}
+                  />
+                </Col>
+                <Col span={2}>
+                  <Button
+                    size="small"
+                    danger
+                    type="text"
+                    icon={<span style={{ fontSize: 14 }}>✕</span>}
+                    onClick={() => {
+                      setNewRow((prev) => ({
+                        ...prev,
+                        extraFields: prev.extraFields.filter((_, i) => i !== index),
+                      }));
+                    }}
+                    style={{ padding: "0 4px", height: 24 }}
+                  />
+                </Col>
+              </Row>
+            ))}
+          </div>
+        )}
+
+        {/* Action Buttons */}
+        <div style={{ display: "flex", gap: 6, justifyContent: "space-between", marginTop: 8 }}>
+          <Button
+            size="small"
+            type="dashed"
+            onClick={() =>
+              setNewRow((prev) => ({
+                ...prev,
+                extraFields: [...prev.extraFields, { key: "", value: "" }],
+              }))
+            }
+            style={{ height: 24, fontSize: 12 }}
+          >
+            + Field
+          </Button>
+          <div style={{ display: "flex", gap: 6 }}>
+            <Button size="small" type="primary" onClick={handleInlineSave} loading={loading} style={{ height: 24 }}>
+              Save
+            </Button>
+            <Button size="small" onClick={() => {
+              setAddRowOpen(false);
+              setNewRow({ catchNo: "", fields: {}, extraFields: [] });
+            }} style={{ height: 24 }}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      </>
+    )}
+  </Card>
+)}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -1732,9 +2223,10 @@ const DataImport = () => {
                         },
                         getCheckboxProps: (record) => ({
                           disabled:
-                            Boolean(record.CatchNo) &&
+                            editingRowId !== null || // Disable selection when editing
+                            (Boolean(record.CatchNo) &&
                             selectedUploadedCatchNos.length >= 2 &&
-                            !selectedUploadedCatchNos.includes(record.CatchNo),
+                            !selectedUploadedCatchNos.includes(record.CatchNo)),
                         }),
                       }}
                       scroll={{ x: "max-content" }}
