@@ -61,10 +61,27 @@ export default function ArchivePage() {
 
   const getGroups = async () => {
     try {
+      // Check if groups are cached in localStorage
+      const cachedGroups = localStorage.getItem("cached_groups");
+      const cacheTimestamp = localStorage.getItem("cached_groups_timestamp");
+      const now = Date.now();
+      const cacheExpiry = 30 * 60 * 1000; // 30 minutes
+
+      // Use cached data if available and not expired
+      if (cachedGroups && cacheTimestamp && (now - parseInt(cacheTimestamp)) < cacheExpiry) {
+        setGroups(JSON.parse(cachedGroups));
+        return;
+      }
+
+      // Fetch from API if cache is invalid or expired
       const groupsRes = await axios.get(`${url}/Groups`, { 
         headers: { Authorization: `Bearer ${token}` } 
       });
       setGroups(groupsRes.data);
+      
+      // Cache the groups data
+      localStorage.setItem("cached_groups", JSON.stringify(groupsRes.data));
+      localStorage.setItem("cached_groups_timestamp", now.toString());
     } catch (err) {
       console.error("Failed to fetch groups:", err);
     }
