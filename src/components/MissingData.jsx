@@ -160,6 +160,9 @@ const MissingData = () => {
         pageSize: 10,
     });
 
+    // Track modified rows (from upload, inline editing, or bulk updates)
+    const [modifiedRows, setModifiedRows] = useState(new Set());
+
     // Dynamic fields state
     const [availableFields, setAvailableFields] = useState([]);
     const [displayFields, setDisplayFields] = useState([]);
@@ -183,31 +186,68 @@ const MissingData = () => {
 
         setLoadingTemplateData(true);
         try {
-            const res = await API.get(`/NRDatas/unique-catch-data/${projectId}`);
+            const res = await API.get(`/NRDatas/GetByProjectId/${projectId}`, {
+                params: {
+                    pageSize: 100000,
+                    pageNo: 1,
+                },
+            });
             console.log("Raw catch data from backend:", res.data);
-            const items = Array.isArray(res.data) ? res.data : [];
+            const items = Array.isArray(res.data?.items) ? res.data.items : [];
+            const uniqueByCatch = new Map();
 
-            const rows = items.map((item) => {
-                const rowData = {
-                    key: item.catchNo,
-                    catchNo: item.catchNo,
-                };
+            items.forEach((item) => {
+                const catchNo = item?.CatchNo ?? item?.catchNo;
+                if (!catchNo) return;
 
-                // Add all fields from the response (including dynamic fields)
-                Object.keys(item).forEach(key => {
-                    if (key !== 'catchNo') {
-                        rowData[key] = item[key] ?? "";
+                if (!uniqueByCatch.has(catchNo)) {
+                    const rowData = {
+                        key: catchNo,
+                        catchNo,
+                    };
+
+                    // Store ALL fields from the API response
+                    Object.keys(item).forEach(key => {
+                        if (key.toLowerCase() !== 'catchno' && key !== 'NRDatas' && key !== 'nrDatas') {
+                            if (key === 'ExamTime' || key === 'examTime') {
+                                rowData[key] = normalizeTimeValue(item[key] ?? "");
+                            } else {
+                                rowData[key] = item[key] ?? "";
+                            }
+                        }
+                    });
+
+                    // Parse NRDatas JSON field and merge dynamic fields
+                    const nrDatasJson = item.NRDatas || item.nrDatas;
+                    if (nrDatasJson && typeof nrDatasJson === 'string') {
+                        try {
+                            const parsedData = JSON.parse(nrDatasJson);
+                            // Merge all fields from NRDatas JSON into rowData
+                            Object.keys(parsedData).forEach(key => {
+                                if (key === 'ExamTime') {
+                                    rowData[key] = normalizeTimeValue(parsedData[key] ?? "");
+                                } else {
+                                    rowData[key] = parsedData[key] ?? "";
+                                }
+                            });
+                            console.log(`Parsed NRDatas for ${catchNo}:`, parsedData);
+                        } catch (e) {
+                            console.warn(`Failed to parse NRDatas JSON for catch ${catchNo}:`, e);
+                        }
                     }
-                });
 
-                return rowData;
-            }).sort((a, b) =>
+                    uniqueByCatch.set(catchNo, rowData);
+                }
+            });
+
+            const rows = Array.from(uniqueByCatch.values()).sort((a, b) =>
                 String(a.catchNo).localeCompare(String(b.catchNo), undefined, {
                     numeric: true,
                     sensitivity: "base",
                 })
             );
 
+            console.log("Processed rows with NRDatas:", rows);
             setTemplateRows(rows);
             setMissingDataRows(rows.map((row) => ({ ...row })));
         } catch (error) {
@@ -226,7 +266,7 @@ const MissingData = () => {
             const res = await API.get('/Fields');
             const uniqueFields = (res.data || []).filter(f => f.isUnique);
             
-            // Filter out standard field names from master fields to avoid duplicates
+            // Filter out fields that match standard field names to avoid duplicates
             const standardFieldNames = standardFields.map(f => f.name.toLowerCase());
             const filteredMasterFields = uniqueFields.filter(
                 f => !standardFieldNames.includes(f.name.toLowerCase())
@@ -252,9 +292,7 @@ const MissingData = () => {
     }, [projectId]);
 
     useEffect(() => {
-        if (projectId) {
-            loadCatchTemplateData();
-        }
+        loadCatchTemplateData();
     }, [projectId]);
 
     useEffect(() => {
@@ -274,9 +312,13 @@ const MissingData = () => {
                 "Catch No": row.catchNo,
             };
 
-            // Add selected template fields
+            // Add selected template fields with their actual data from API
             templateFields.forEach(field => {
-                rowData[field.name] = row[field.name] || "";
+                const fieldName = field.name;
+                // Try different case variations to find the field value
+                const value = row[fieldName] || row[fieldName.toLowerCase()] || 
+                              row[fieldName.toUpperCase()] || "";
+                rowData[fieldName] = value;
             });
 
             return rowData;
@@ -364,12 +406,15 @@ const MissingData = () => {
 
                 const mergedRows = templateRows.map((templateRow) => {
                     const uploaded = uniqueRows.get(templateRow.catchNo);
-                    return uploaded
-                        ? {
+                    if (uploaded) {
+                        // Mark this row as modified
+                        setModifiedRows(prev => new Set(prev).add(templateRow.catchNo));
+                        return {
                             ...templateRow,
                             ...uploaded,
-                        }
-                        : { ...templateRow };
+                        };
+                    }
+                    return { ...templateRow };
                 });
 
                 setMissingDataRows(mergedRows);
@@ -398,13 +443,31 @@ const MissingData = () => {
         setMissingDataRows(templateRows.map((row) => ({ ...row })));
         setSelectedRowKeys([]);
         setSelectedCatchNumbers([]);
+        setModifiedRows(new Set()); // Clear modified rows
         setTablePagination({
             current: 1,
             pageSize: 10,
         });
     };
 
-    const reviewRows = useMemo(() => missingDataRows, [missingDataRows]);
+    const reviewRows = useMemo(() => {
+        // Filter rows to only show selected display fields
+        return missingDataRows.map(row => {
+            const filteredRow = {
+                key: row.key,
+                catchNo: row.catchNo,
+            };
+            
+            // Add only the display fields
+            displayFields.forEach(field => {
+                const fieldName = field.name;
+                filteredRow[fieldName] = row[fieldName] || row[fieldName.toLowerCase()] || 
+                                         row[fieldName.toUpperCase()] || "";
+            });
+            
+            return filteredRow;
+        });
+    }, [missingDataRows, displayFields]);
     const allReviewRowKeys = useMemo(
         () => reviewRows.map((row) => row.catchNo),
         [reviewRows]
@@ -413,6 +476,7 @@ const MissingData = () => {
     const completedCount = useMemo(
         () =>
             missingDataRows.filter((row) => {
+                // A row is complete if it has at least one meaningful value in display fields
                 return displayFields.some(field => isMeaningfulValue(row[field.name]));
             }).length,
         [missingDataRows, displayFields]
@@ -472,6 +536,9 @@ const MissingData = () => {
         setMissingDataRows((prev) =>
             prev.map((row) => {
                 if (row.catchNo === catchNo) {
+                    // Mark this row as modified
+                    setModifiedRows(prevSet => new Set(prevSet).add(catchNo));
+                    
                     const updatedRow = { ...row };
                     
                     // Update all fields from editingDraft
@@ -502,7 +569,14 @@ const MissingData = () => {
         }
 
         setMissingDataRows((prev) =>
-            prev.map((row) => (matcher(row) ? { ...row, ...effectivePatch } : row))
+            prev.map((row) => {
+                if (matcher(row)) {
+                    // Mark this row as modified
+                    setModifiedRows(prevSet => new Set(prevSet).add(row.catchNo));
+                    return { ...row, ...effectivePatch };
+                }
+                return row;
+            })
         );
     };
 
@@ -528,42 +602,57 @@ const MissingData = () => {
             return;
         }
 
-        const payload = missingDataRows.map((row) => {
-            const additionalFields = {};
-            
-            // Add all fields except catchNo and key
-            Object.keys(row).forEach(key => {
-                if (key !== 'catchNo' && key !== 'key' && isMeaningfulValue(row[key])) {
-                    additionalFields[key] = row[key];
-                }
-            });
-
-            return {
-                catchNo: row.catchNo,
-                additionalFields: Object.keys(additionalFields).length > 0 ? additionalFields : null
-            };
-        });
-
-        const rowsToSubmit = payload.filter(row => row.additionalFields !== null);
-
-        if (!rowsToSubmit.length) {
-            showToast("At least one field value is required", "warning");
+        // Only submit rows that were actually modified
+        if (modifiedRows.size === 0) {
+            showToast("No changes to submit", "warning");
             return;
         }
+
+        // Build payload with dynamic fields - ONLY for modified rows
+        const payload = missingDataRows
+            .filter(row => modifiedRows.has(row.catchNo))
+            .map((row) => {
+                const additionalFields = {};
+                
+                // Add all display fields that have meaningful values
+                displayFields.forEach(field => {
+                    const fieldName = field.name;
+                    const value = row[fieldName];
+                    if (isMeaningfulValue(value)) {
+                        additionalFields[fieldName] = value;
+                    }
+                });
+
+                return {
+                    catchNo: row.catchNo,
+                    additionalFields: additionalFields
+                };
+            })
+            .filter(row => 
+                row.additionalFields && Object.keys(row.additionalFields).length > 0
+            );
+
+        if (!payload.length) {
+            showToast("No valid data to submit", "warning");
+            return;
+        }
+
+        console.log(`Submitting ${payload.length} modified rows out of ${missingDataRows.length} total rows`);
 
         setSubmitting(true);
         try {
             await API.post("/NRDatas/missing-data", {
                 projectId,
-                data: rowsToSubmit,
+                data: payload,
             });
-            showToast("Missing data saved successfully", "success");
+            showToast(`Successfully saved ${payload.length} row(s)`, "success");
             await loadCatchTemplateData();
             setFileList([]);
             setSelectedRowKeys([]);
             setSelectedCatchNumbers([]);
             setEditingRowKey(null);
             setShowBulkUpdate(false);
+            setModifiedRows(new Set());
             setTablePagination((prev) => ({
                 ...prev,
                 current: 1,
