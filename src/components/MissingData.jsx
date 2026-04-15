@@ -301,6 +301,26 @@ const MissingData = () => {
         }
     }, [selectedRowKeys]);
 
+    useEffect(() => {
+    if (!availableFields.length) return;
+
+    const saved = localStorage.getItem("missingData_displayFields");
+
+    if (saved) {
+        try {
+            const parsedIds = JSON.parse(saved);
+
+            const restoredFields = availableFields.filter(f =>
+                parsedIds.includes(f.fieldId)
+            );
+
+            setDisplayFields(restoredFields);
+        } catch (e) {
+            console.warn("Failed to restore display fields", e);
+        }
+    }
+}, [availableFields]);
+
     const handleDownloadTemplate = async () => {
         if (!templateRows.length) {
             showToast("No catch data available to generate template", "warning");
@@ -404,18 +424,39 @@ const MissingData = () => {
                     uniqueRows.set(catchNo, rowData);
                 });
 
-                const mergedRows = templateRows.map((templateRow) => {
-                    const uploaded = uniqueRows.get(templateRow.catchNo);
-                    if (uploaded) {
-                        // Mark this row as modified
-                        setModifiedRows(prev => new Set(prev).add(templateRow.catchNo));
-                        return {
-                            ...templateRow,
-                            ...uploaded,
-                        };
-                    }
-                    return { ...templateRow };
-                });
+                const newModifiedRows = new Set();
+
+const mergedRows = templateRows.map((templateRow) => {
+    const uploaded = uniqueRows.get(templateRow.catchNo);
+
+    if (uploaded) {
+        let isChanged = false;
+
+        displayFields.forEach(field => {
+            const key = field.name;
+
+            const oldValue = templateRow[key] ?? "";
+            const newValue = uploaded[key] ?? "";
+
+            if (String(oldValue).trim() !== String(newValue).trim()) {
+                isChanged = true;
+            }
+        });
+
+        if (isChanged) {
+            newModifiedRows.add(templateRow.catchNo);
+        }
+
+        return {
+            ...templateRow,
+            ...uploaded,
+        };
+    }
+
+    return { ...templateRow };
+});
+
+setModifiedRows(newModifiedRows);
 
                 setMissingDataRows(mergedRows);
                 setTablePagination((prev) => ({
@@ -1259,9 +1300,13 @@ const MissingData = () => {
                         style={{ width: "100%", display: "flex", flexDirection: "column", gap: 8 }}
                         value={displayFields.map(f => f.fieldId)}
                         onChange={(checkedValues) => {
-                            const selected = availableFields.filter(f => checkedValues.includes(f.fieldId));
-                            setDisplayFields(selected);
-                        }}
+    const selected = availableFields.filter(f => checkedValues.includes(f.fieldId));
+    setDisplayFields(selected);
+    localStorage.setItem(
+        "missingData_displayFields",
+        JSON.stringify(checkedValues)
+    );
+}}
                     >
                         {availableFields.map(field => (
                             <Checkbox key={field.fieldId} value={field.fieldId}>
