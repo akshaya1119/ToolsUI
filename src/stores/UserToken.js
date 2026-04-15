@@ -12,6 +12,8 @@ const useUserTokenStore = create((set) => ({
 
   clearToken: () => {
     localStorage.removeItem(USER_TOKEN_KEY);
+    localStorage.removeItem("cached_groups");
+    localStorage.removeItem("cached_all_projects");
     set({ token: "" });
   },
 
