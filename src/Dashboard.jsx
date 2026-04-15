@@ -121,6 +121,7 @@ export default function Dashboard({ externalSearchQuery, onSearchQueryChange }) 
           timeAgo: project.timeAgo,
           groupId: projData.groupId,
           typeId: projData.typeId,
+          isActive: project.isActive, // Get isActive from API response
         };
       });
       setProjects(combinedProjects);
@@ -147,7 +148,7 @@ export default function Dashboard({ externalSearchQuery, onSearchQueryChange }) 
     const lastAccessed = {};
     
     projects.forEach(p => {
-      // Only count active projects
+      // Only count active projects (treat undefined/null as active for backward compatibility)
       if (p.isActive !== false) {
         counts[p.groupId] = (counts[p.groupId] || 0) + 1;
         
