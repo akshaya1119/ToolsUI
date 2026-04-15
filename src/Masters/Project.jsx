@@ -1,8 +1,10 @@
-import { Table, Button, Select, Modal, Input, Space, message } from "antd";
 import React, { useEffect, useState } from "react";
+import { Table, Button, Select, Modal, Input, Space, message, Tag, Popconfirm } from "antd";
 import {
     EditOutlined,
     SearchOutlined,
+    FolderAddOutlined,
+    FolderOpenOutlined,
 } from "@ant-design/icons";
 import axios from "axios";
 import API from "../hooks/api";
@@ -133,6 +135,26 @@ const Project = () => {
         setModalVisible(true);
     };
 
+    const handleArchive = async (record) => {
+        try {
+            const nextStatus = !record.status;
+            const payload = {
+                ...record,
+                status: nextStatus,
+                // Ensure we only send necessary IDs for the backend if needed
+                userAssigned: record.userAssigned || [],
+            };
+            
+            // We use record.projectId as the key for the PUT request
+            await API.put(`/Projects/${record.projectId}`, payload);
+            message.success(nextStatus ? 'Project archived' : 'Project unarchived');
+            fetchProjects(pagination.current, pagination.pageSize);
+        } catch (err) {
+            console.error("Failed to update project status", err);
+            message.error('Operation failed');
+        }
+    };
+
     const handleSave = async () => {
         if (!selectedProjectId || selectedUserIds.length === 0) {
             message.warning('Project, and at least one User is required');
@@ -145,6 +167,7 @@ const Project = () => {
                 userAssigned: selectedUserIds,
                 groupId: selectedProject?.groupId,
                 typeId: selectedProject?.typeId, // Send the list of user IDs
+                status:selectedProject?.status,
             };
 
             if (editingItem) {
@@ -233,11 +256,32 @@ const Project = () => {
             ...getColumnSearchProps('userNames'),
         },
         {
+            title: 'Status',
+            key: 'status',
+            render: (_, record) => (
+                <Tag color={record.status ? 'red' : 'green'}>
+                    {record.status ? 'Archived' : 'Active'}
+                </Tag>
+            ),
+        },
+        {
             title: 'Actions',
             key: 'actions',
             render: (_, record) => (
                 <Space>
                     <Button type="link" icon={<EditOutlined />} onClick={() => handleEdit(record)} />
+                    <Popconfirm
+                        title={`Are you sure you want to ${record.status ? 'unarchive' : 'archive'} this project?`}
+                        onConfirm={() => handleArchive(record)}
+                        okText="Yes"
+                        cancelText="No"
+                    >
+                        <Button 
+                            type="link" 
+                            danger={!record.status}
+                            icon={record.status ? <FolderOpenOutlined /> : <FolderAddOutlined />} 
+                        />
+                    </Popconfirm>
                 </Space>
             ),
         },

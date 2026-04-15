@@ -124,7 +124,12 @@ export default function Dashboard({ externalSearchQuery, onSearchQueryChange }) 
           isActive: project.isActive, // Get isActive from API response
         };
       });
-      setProjects(combinedProjects);
+
+      console.log("Combined Projects:", combinedProjects);
+      // Filter out archived projects (where status is true)
+      const activeProjects = combinedProjects.filter(p => !p.status);
+      setProjects(activeProjects);  // Store array of active { id, name }
+
     } catch (err) {
       console.error("Failed to fetch projects", err);
     } finally {

@@ -1,9 +1,11 @@
 import API from "../../hooks/api";
 import { compareConfigurations, getReportDependencies } from "./useConfigComparison";
+import { EXTRA_ALIAS_NAME, NODAL_MODULE, UNIVERSITY_MODULE } from "../components/constants";
 
 export const useProjectConfigSave = (
   projectId,
   enabledModules,
+  setEnabledModules,
   toolModules,
   innerEnvelopes,
   outerEnvelopes,
@@ -66,12 +68,46 @@ export const useProjectConfigSave = (
       const projectConfigEndpoint = finalIsMasterConfig ? '/MProjectConfigs' : '/ProjectConfigs';
       const extraConfigEndpoint = finalIsMasterConfig ? '/MExtraConfigs' : '/ExtrasConfigurations';
 
+      // 0️⃣ Validation & Auto-uncheck for Extra Configuration
+      let finalEnabledModules = [...enabledModules];
+      if (enabledModules.includes(EXTRA_ALIAS_NAME)) {
+        // Check if anything is actually configured in the extras processing
+        const hasConfigurations = Object.entries(extraTypeSelection).some(([typeName, mode]) => {
+          const config = extraProcessingConfig[typeName] || {};
+          const normalizedEnvelope = {
+            Inner: Array.isArray(config.envelopeType?.inner) ? config.envelopeType.inner[0] || "" : config.envelopeType?.inner || "",
+            Outer: Array.isArray(config.envelopeType?.outer) ? config.envelopeType.outer[0] || "" : config.envelopeType?.outer || "",
+          };
+          const hasEnvelope = normalizedEnvelope.Inner || normalizedEnvelope.Outer;
+          
+          let hasValue = false;
+          if (mode === "Fixed") hasValue = Number(config.fixedQty || 0) > 0;
+          else if (mode === "Percentage") hasValue = Number(config.percentage || 0) > 0;
+          else if (mode === "Range") hasValue = Array.isArray(config.range) && config.range.length > 0;
+          
+          return hasEnvelope || hasValue;
+        });
+
+        if (!hasConfigurations) {
+          finalEnabledModules = finalEnabledModules.filter(m => m !== EXTRA_ALIAS_NAME);
+          setEnabledModules(finalEnabledModules);
+          showToast(`${EXTRA_ALIAS_NAME} was not configured, so it has been unchecked.`, "warning");
+        }
+      }
+
       // 1️⃣ Save ProjectConfigs including Duplicate Tool
       const projectConfigPayload = {
         ...(finalIsMasterConfig ? { typeId: Number(finalTypeId), groupId: Number(finalGroupId) } : { projectId: Number(projectId) }),
-        modules: enabledModules.map(
-          (m) => toolModules.find((tm) => tm.name === m)?.id
-        ),
+        modules: finalEnabledModules.flatMap((m) => {
+          if (m === EXTRA_ALIAS_NAME) {
+            // Expand alias into actual module IDs
+            return toolModules
+              .filter((tm) => tm.name === NODAL_MODULE || tm.name === UNIVERSITY_MODULE)
+              .map((tm) => tm.id);
+          }
+          const mod = toolModules.find((tm) => tm.name === m);
+          return mod ? [mod.id] : [];
+        }),
         envelope: JSON.stringify({
           Inner: innerEnvelopes.join(","),
           Outer: outerEnvelopes.join(","),
@@ -167,8 +203,8 @@ export const useProjectConfigSave = (
       }
 
       // Compare configurations to identify changes
-      const changes = compareConfigurations(existingConfig, projectConfigPayload, enabledModules, existingExtrasConfig, newExtrasConfig);
-      const affectedReportsWithDeps = getReportDependencies(changes.affectedReports, enabledModules, toolModules);
+      const changes = compareConfigurations(existingConfig, projectConfigPayload, finalEnabledModules, existingExtrasConfig, newExtrasConfig);
+      const affectedReportsWithDeps = getReportDependencies(changes.affectedReports, finalEnabledModules, toolModules);
 
       console.log("Existing Config:", existingConfig);
       console.log("New Config Payload:", projectConfigPayload);
