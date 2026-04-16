@@ -3,11 +3,13 @@ import { Button, Input, Select, Space, Tag, Tooltip, Typography, Upload } from "
 import {
   CheckOutlined,
   CloseOutlined,
+  DeleteOutlined,
   DownloadOutlined,
   EditOutlined,
   HistoryOutlined,
   SettingOutlined,
   UploadOutlined,
+  WarningOutlined,
 } from "@ant-design/icons";
 import {
   formatDateTime,
@@ -111,6 +113,7 @@ export const buildTemplateColumns = ({
   saveInlineEdit,
   cancelInlineEdit,
   inlineEditSaving,
+  onRemove,
 }) => [
   {
     title: "Template",
@@ -139,10 +142,25 @@ export const buildTemplateColumns = ({
       }
       return (
         <Space direction="vertical" size={0}>
-          <Typography.Text strong>{value}</Typography.Text>
+          <Space size={6}>
+            <Typography.Text strong>{value}</Typography.Text>
+            {record?.isDeleted && (
+              <Tag color="red" style={{ fontSize: 11 }}>Deleted</Tag>
+            )}
+            {!record?.isDeleted && !record?.hasMapping && (
+              <Tooltip title="No mapping configured — this template will not appear in the processing pipeline.">
+                <WarningOutlined style={{ color: "#faad14", fontSize: 14 }} />
+              </Tooltip>
+            )}
+          </Space>
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>
             {scopeLabel} template
           </Typography.Text>
+          {!record?.isDeleted && !record?.hasMapping && (
+            <Typography.Text type="warning" style={{ fontSize: 11, color: "#d46b08" }}>
+              No mapping — excluded from pipeline
+            </Typography.Text>
+          )}
         </Space>
       );
     },
@@ -326,6 +344,16 @@ export const buildTemplateColumns = ({
           >
             {" "}
           </Button>
+          {onRemove && (
+            <Tooltip title={record?.isDeleted ? "Restore template" : "Remove from this scope"}>
+              <Button
+                size="small"
+                danger={!record?.isDeleted}
+                icon={record?.isDeleted ? <CheckOutlined /> : <DeleteOutlined />}
+                onClick={() => onRemove(record)}
+              />
+            </Tooltip>
+          )}
         </Space>
       ),
   },
@@ -375,8 +403,10 @@ export const buildVersionsColumns = ({
     title: "Status",
     key: "status",
     width: 120,
-    render: (_, record) =>
-      record?.isActive ? <Tag color="green">Active</Tag> : <Tag>Archived</Tag>,
+    render: (_, record) => {
+      if (record?.isDeleted) return <Tag color="red">Deleted</Tag>;
+      return record?.isActive ? <Tag color="green">Active</Tag> : <Tag>Archived</Tag>;
+    },
   },
   {
     title: "Actions",
@@ -396,9 +426,9 @@ export const buildVersionsColumns = ({
           icon={<CheckOutlined />}
           onClick={() => confirmActivateVersion(record)}
           loading={resolveTemplateId(record) === activatingVersionId}
-          disabled={record?.isActive}
+          disabled={record?.isActive && !record?.isDeleted}
         >
-          Set Active
+          {record?.isDeleted ? "Restore & Activate" : "Set Active"}
         </Button>
         {onGenerate && (
           <Button size="small" type="primary" onClick={() => onGenerate(record)}>

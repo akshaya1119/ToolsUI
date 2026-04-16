@@ -136,7 +136,9 @@ const ProcessingPipeline = () => {
           projectId,
         },
       });
-      setTemplateOptions(res.data || []);
+      setTemplateOptions(
+        (res.data || []).filter((t) => t.hasMapping !== false && !t.isDeleted)
+      );
     } catch (err) {
       console.error("Failed to fetch templates", err);
       message.error("Failed to load templates for this project.");
@@ -699,9 +701,7 @@ const ProcessingPipeline = () => {
 
     setBulkGenerating(true);
     try {
-      for (const template of pending) {
-        await handleGenerateTemplate(template);
-      }
+      await Promise.all(pending.map((template) => handleGenerateTemplate(template)));
       await loadTemplateReportStatus(templatePanel.moduleKey);
     } finally {
       setBulkGenerating(false);
@@ -730,12 +730,24 @@ const ProcessingPipeline = () => {
       return;
     }
 
+    // Build friendly file names in the same order as ids
+    const fileNames = templates
+      .filter((t) => resolveTemplateId(t))
+      .map((t) =>
+        buildReportFileName({
+          templateName: t?.templateName,
+          projectName: projectName || (projectId ? `Project ${projectId}` : undefined),
+          typeId: t?.typeId ?? typeId,
+        })
+      );
+
     setBulkDownloading(true);
     try {
       const res = await axios.get(`${rptApiUrl}/report/generated-download-zip`, {
         params: {
           projectId: Number(projectId),
           templateIds: ids.join(","),
+          fileNames: fileNames.join(","),
         },
         responseType: "blob",
       });
@@ -1634,9 +1646,8 @@ const ProcessingPipeline = () => {
                             ? isMappingNewerThanReport(templateId)
                             : false;
                           const isStale = staleTemplateIds.has(templateId);
-                          const canGenerate = templateId
-                            ? !reportStatus?.exists || hasMappingUpdate || isStale
-                            : true;
+                          const needsRegenerate = hasMappingUpdate || isStale;
+                          const alreadyGenerated = reportStatus?.exists && !needsRegenerate;
                           return (
                             <Card
                               size="small"
@@ -1650,12 +1661,11 @@ const ProcessingPipeline = () => {
                               <Space>
                                 <Button
                                   size="small"
-                                  type="primary"
+                                  type={alreadyGenerated ? "default" : "primary"}
                                   onClick={() => handleGenerateTemplate(template)}
                                   loading={isGenerating}
-                                  disabled={!canGenerate}
                                 >
-                                  Generate
+                                  {alreadyGenerated ? "Regenerate" : "Generate"}
                                 </Button>
                                 <Button
                                   size="small"
