@@ -1118,7 +1118,17 @@ for (const row of missingDataRows) {
                                         Display Fields
                                     </Button>
                                     <Button
-                                        onClick={() => setShowBulkUpdate((prev) => !prev)}
+                                        onClick={() => {
+                                            if (displayFields.length === 0) {
+                                                showToast(
+                                                    "Please select display fields first before using Bulk Update",
+                                                    "warning"
+                                                );
+                                                setShowDisplayFieldsModal(true);
+                                                return;
+                                            }
+                                            setShowBulkUpdate((prev) => !prev);
+                                        }}
                                         disabled={!reviewRows.length}
                                     >
                                         {showBulkUpdate ? "Hide Bulk Update" : "Bulk Update"}
