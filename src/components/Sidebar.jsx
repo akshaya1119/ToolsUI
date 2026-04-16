@@ -43,7 +43,7 @@ export default function Sidebar({ collapsed }) {
             { label: "Data Import", path: "/dataimport" },
             { label: "Project Templates", path: "/projecttemplates" },
             { label: "Processing Pipeline", path: "/processingpipeline" },
-           // { label: "RPT Reports", path: "/rptreports" },
+            // { label: "RPT Reports", path: "/rptreports" },
           ],
         },
       ]

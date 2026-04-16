@@ -65,7 +65,9 @@ import {
   fetchUsers as fetchUsersService,
   importTemplatesFromGroup,
   parseTemplateFields,
+  restoreTemplate,
   saveTemplateMapping,
+  softDeleteTemplate,
   updateTemplate,
   uploadTemplate as uploadTemplateService,
 } from "../services/rptTemplatesService";
@@ -871,6 +873,13 @@ const ProjectTemplates = () => {
       message.success("Mapping saved.");
       setMappingNotFound(false);
       recordMappingUpdate(mappingTemplate.templateId);
+      setAvailableRPTFiles((prev) =>
+        prev.map((t) =>
+          t.templateId === mappingTemplate.templateId
+            ? { ...t, hasMapping: true, mappingWarning: null }
+            : t
+        )
+      );
       closeMappingPanel();
     } catch (err) {
       console.error("Failed to save mapping", err);
@@ -960,6 +969,7 @@ const ProjectTemplates = () => {
     try {
       await activateTemplateVersionService(APIURL, templateId);
       message.success("Template activated.");
+      recordMappingUpdate(templateId);
       if (versionsTemplate) {
         fetchTemplateVersions(versionsTemplate);
       }
@@ -1057,6 +1067,7 @@ const ProjectTemplates = () => {
         await activateTemplateVersionService(APIURL, editingVersionId);
       }
       message.success("Template updated.");
+      recordMappingUpdate(editingTemplateId);
       cancelInlineEdit();
       fetchAvailableRPTFiles();
       if (versionsOpen && versionsTemplate?.templateId === editingTemplateId) {
@@ -1068,6 +1079,56 @@ const ProjectTemplates = () => {
     } finally {
       setInlineEditSaving(false);
     }
+  };
+
+  const handleRemoveTemplate = (record) => {
+    const scope = record?.projectId ? "project" : record?.groupId ? "group" : "standard";
+
+    if (record?.isDeleted) {
+      Modal.confirm({
+        title: "Restore template?",
+        content: `This will restore "${record?.templateName}" and set it as active in the ${scope} scope.`,
+        okText: "Restore",
+        cancelText: "Cancel",
+        onOk: async () => {
+          try {
+            await restoreTemplate(APIURL, record.templateId);
+            message.success("Template restored.");
+            setAvailableRPTFiles((prev) =>
+              prev.map((t) =>
+                t.templateId === record.templateId ? { ...t, isDeleted: false, isActive: true } : t
+              )
+            );
+          } catch (err) {
+            console.error("Failed to restore template", err);
+            showError(err, "Failed to restore template.");
+          }
+        },
+      });
+      return;
+    }
+
+    Modal.confirm({
+      title: "Remove template?",
+      content: `This will mark "${record?.templateName}" as deleted in the ${scope} scope. It stays visible but marked deleted — you can restore it from the Versions panel.`,
+      okText: "Remove",
+      okButtonProps: { danger: true },
+      cancelText: "Cancel",
+      onOk: async () => {
+        try {
+          await softDeleteTemplate(APIURL, record.templateId, scope);
+          message.success("Template marked as deleted.");
+          setAvailableRPTFiles((prev) =>
+            prev.map((t) =>
+              t.templateId === record.templateId ? { ...t, isDeleted: true } : t
+            )
+          );
+        } catch (err) {
+          console.error("Failed to remove template", err);
+          showError(err, "Failed to remove template.");
+        }
+      },
+    });
   };
 
   const runReportGeneration = async (template) => {
@@ -1227,6 +1288,7 @@ const ProjectTemplates = () => {
         saveInlineEdit,
         cancelInlineEdit,
         inlineEditSaving,
+        onRemove: handleRemoveTemplate,
       }),
     [
       userMap,
@@ -1426,49 +1488,10 @@ const ProjectTemplates = () => {
                   <Form.Item label="Type" style={{ marginBottom: 8 }}>
                     <Input value={typeLabel || ""} placeholder="Type" disabled />
                   </Form.Item>
-                  <Form.Item
-                    label="Modules"
-                    name="moduleIds"
-                    rules={[{ required: true, message: "Select at least one module" }]}
-                  >
-                    <Select
-                      mode="multiple"
-                      options={moduleOptions}
-                      placeholder="Select modules"
-                      showSearch
-                      optionFilterProp="label"
-                    />
-                  </Form.Item>
-                  <Form.Item label="RPT File">
-                    <Upload.Dragger
-                      accept=".rpt"
-                      multiple={false}
-                      beforeUpload={() => false}
-                      onChange={(info) => setAddFileList(info.fileList.slice(-1))}
-                      onRemove={() => setAddFileList([])}
-                      fileList={addFileList}
-                    >
-                      <p className="ant-upload-drag-icon">
-                        <InboxOutlined />
-                      </p>
-                      <p className="ant-upload-text">
-                        Click or drag an RPT file to upload
-                      </p>
-                      <p className="ant-upload-hint">
-                        Only .rpt files are supported.
-                      </p>
-                    </Upload.Dragger>
-                  </Form.Item>
-                  <Space style={{ display: "flex", justifyContent: "flex-end" }}>
-                    <Button onClick={() => setAddModalOpen(false)}>Cancel</Button>
-                    <Button
-                      type="primary"
-                      onClick={handleAddSubmit}
-                      loading={addSubmitting}
-                    >
-                      Upload Template
-                    </Button>
-                  </Space>
+                  
+                  
+                
+                  
                 </>
               ),
             }}
