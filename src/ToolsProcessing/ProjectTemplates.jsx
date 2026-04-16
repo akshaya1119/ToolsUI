@@ -969,6 +969,7 @@ const ProjectTemplates = () => {
     try {
       await activateTemplateVersionService(APIURL, templateId);
       message.success("Template activated.");
+      recordMappingUpdate(templateId);
       if (versionsTemplate) {
         fetchTemplateVersions(versionsTemplate);
       }
@@ -1066,6 +1067,7 @@ const ProjectTemplates = () => {
         await activateTemplateVersionService(APIURL, editingVersionId);
       }
       message.success("Template updated.");
+      recordMappingUpdate(editingTemplateId);
       cancelInlineEdit();
       fetchAvailableRPTFiles();
       if (versionsOpen && versionsTemplate?.templateId === editingTemplateId) {
@@ -1486,49 +1488,10 @@ const ProjectTemplates = () => {
                   <Form.Item label="Type" style={{ marginBottom: 8 }}>
                     <Input value={typeLabel || ""} placeholder="Type" disabled />
                   </Form.Item>
-                  <Form.Item
-                    label="Modules"
-                    name="moduleIds"
-                    rules={[{ required: true, message: "Select at least one module" }]}
-                  >
-                    <Select
-                      mode="multiple"
-                      options={moduleOptions}
-                      placeholder="Select modules"
-                      showSearch
-                      optionFilterProp="label"
-                    />
-                  </Form.Item>
-                  <Form.Item label="RPT File">
-                    <Upload.Dragger
-                      accept=".rpt"
-                      multiple={false}
-                      beforeUpload={() => false}
-                      onChange={(info) => setAddFileList(info.fileList.slice(-1))}
-                      onRemove={() => setAddFileList([])}
-                      fileList={addFileList}
-                    >
-                      <p className="ant-upload-drag-icon">
-                        <InboxOutlined />
-                      </p>
-                      <p className="ant-upload-text">
-                        Click or drag an RPT file to upload
-                      </p>
-                      <p className="ant-upload-hint">
-                        Only .rpt files are supported.
-                      </p>
-                    </Upload.Dragger>
-                  </Form.Item>
-                  <Space style={{ display: "flex", justifyContent: "flex-end" }}>
-                    <Button onClick={() => setAddModalOpen(false)}>Cancel</Button>
-                    <Button
-                      type="primary"
-                      onClick={handleAddSubmit}
-                      loading={addSubmitting}
-                    >
-                      Upload Template
-                    </Button>
-                  </Space>
+                  
+                  
+                
+                  
                 </>
               ),
             }}

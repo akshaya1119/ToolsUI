@@ -1646,9 +1646,8 @@ const ProcessingPipeline = () => {
                             ? isMappingNewerThanReport(templateId)
                             : false;
                           const isStale = staleTemplateIds.has(templateId);
-                          const canGenerate = templateId
-                            ? !reportStatus?.exists || hasMappingUpdate || isStale
-                            : true;
+                          const needsRegenerate = hasMappingUpdate || isStale;
+                          const alreadyGenerated = reportStatus?.exists && !needsRegenerate;
                           return (
                             <Card
                               size="small"
@@ -1662,12 +1661,11 @@ const ProcessingPipeline = () => {
                               <Space>
                                 <Button
                                   size="small"
-                                  type="primary"
+                                  type={alreadyGenerated ? "default" : "primary"}
                                   onClick={() => handleGenerateTemplate(template)}
                                   loading={isGenerating}
-                                  disabled={!canGenerate}
                                 >
-                                  Generate
+                                  {alreadyGenerated ? "Regenerate" : "Generate"}
                                 </Button>
                                 <Button
                                   size="small"
