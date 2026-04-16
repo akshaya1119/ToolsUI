@@ -44,7 +44,7 @@ const TIME_PARSE_FORMATS = [
 dayjs.extend(customParseFormat);
 
 const normalizeHeader = (value = "") =>
-    String(value).trim().toLowerCase().replace(/\s+/g, "");
+    String(value).toLowerCase().replace(/[\s_-]+/g, "").trim();
 
 const formatDateForSheet = (value) => {
     if (!value) return "";
@@ -376,7 +376,7 @@ const MissingData = () => {
                 }
 
                 const headers = jsonData[0].map(normalizeHeader);
-                const catchIndex = headers.findIndex((h) => h === "catchno");
+                const catchIndex = headers.findIndex((h) =>["catchno", "catch"].includes(h));
 
                 if (catchIndex === -1) {
                     showToast(
