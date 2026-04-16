@@ -7,6 +7,7 @@ import {
     DatePicker,
     Input,
     InputNumber,
+    Modal,
     Select,
     Space,
     Table,
@@ -43,7 +44,7 @@ const TIME_PARSE_FORMATS = [
 dayjs.extend(customParseFormat);
 
 const normalizeHeader = (value = "") =>
-    String(value).trim().toLowerCase().replace(/\s+/g, "");
+    String(value).toLowerCase().replace(/[\s_-]+/g, "").trim();
 
 const formatDateForSheet = (value) => {
     if (!value) return "";
@@ -150,11 +151,7 @@ const MissingData = () => {
         examDate: "",
         examTime: "",
     });
-    const [bulkValues, setBulkValues] = useState({
-        pages: null,
-        examDate: "",
-        examTime: "",
-    });
+    const [bulkValues, setBulkValues] = useState({});
     const [showBulkUpdate, setShowBulkUpdate] = useState(false);
     const [searchText, setSearchText] = useState("");
     const [searchedColumn, setSearchedColumn] = useState("");
@@ -162,6 +159,24 @@ const MissingData = () => {
         current: 1,
         pageSize: 10,
     });
+
+    // Track modified rows (from upload, inline editing, or bulk updates)
+    const [modifiedRows, setModifiedRows] = useState(new Set());
+
+    // Dynamic fields state
+    const [availableFields, setAvailableFields] = useState([]);
+    const [displayFields, setDisplayFields] = useState([]);
+    const [templateFields, setTemplateFields] = useState([]);
+    const [showDisplayFieldsModal, setShowDisplayFieldsModal] = useState(false);
+    const [showTemplateFieldsModal, setShowTemplateFieldsModal] = useState(false);
+    const [loadingFields, setLoadingFields] = useState(false);
+
+    // Standard fields that can be selected (Pages, ExamDate, ExamTime)
+    const standardFields = [
+        { fieldId: 'Pages', name: 'Pages', isUnique: true },
+        { fieldId: 'ExamDate', name: 'ExamDate', isUnique: true },
+        { fieldId: 'ExamTime', name: 'ExamTime', isUnique: true }
+    ];
 
     const loadCatchTemplateData = async () => {
         if (!projectId) {
@@ -186,13 +201,42 @@ const MissingData = () => {
                 if (!catchNo) return;
 
                 if (!uniqueByCatch.has(catchNo)) {
-                    uniqueByCatch.set(catchNo, {
+                    const rowData = {
                         key: catchNo,
                         catchNo,
-                        pages: item?.Pages ?? item?.pages ?? "",
-                        examDate: item?.ExamDate ?? item?.examDate ?? "",
-                        examTime: normalizeTimeValue(item?.ExamTime ?? item?.examTime ?? ""),
+                    };
+
+                    // Store ALL fields from the API response
+                    Object.keys(item).forEach(key => {
+                        if (key.toLowerCase() !== 'catchno' && key !== 'NRDatas' && key !== 'nrDatas') {
+                            if (key === 'ExamTime' || key === 'examTime') {
+                                rowData[key] = normalizeTimeValue(item[key] ?? "");
+                            } else {
+                                rowData[key] = item[key] ?? "";
+                            }
+                        }
                     });
+
+                    // Parse NRDatas JSON field and merge dynamic fields
+                    const nrDatasJson = item.NRDatas || item.nrDatas;
+                    if (nrDatasJson && typeof nrDatasJson === 'string') {
+                        try {
+                            const parsedData = JSON.parse(nrDatasJson);
+                            // Merge all fields from NRDatas JSON into rowData
+                            Object.keys(parsedData).forEach(key => {
+                                if (key === 'ExamTime') {
+                                    rowData[key] = normalizeTimeValue(parsedData[key] ?? "");
+                                } else {
+                                    rowData[key] = parsedData[key] ?? "";
+                                }
+                            });
+                            console.log(`Parsed NRDatas for ${catchNo}:`, parsedData);
+                        } catch (e) {
+                            console.warn(`Failed to parse NRDatas JSON for catch ${catchNo}:`, e);
+                        }
+                    }
+
+                    uniqueByCatch.set(catchNo, rowData);
                 }
             });
 
@@ -203,6 +247,7 @@ const MissingData = () => {
                 })
             );
 
+            console.log("Processed rows with NRDatas:", rows);
             setTemplateRows(rows);
             setMissingDataRows(rows.map((row) => ({ ...row })));
         } catch (error) {
@@ -215,6 +260,37 @@ const MissingData = () => {
         }
     };
 
+    const fetchAvailableFields = async () => {
+        setLoadingFields(true);
+        try {
+            const res = await API.get('/Fields');
+            const uniqueFields = (res.data || []).filter(f => f.isUnique);
+            
+            // Filter out fields that match standard field names to avoid duplicates
+            const standardFieldNames = standardFields.map(f => f.name.toLowerCase());
+            const filteredMasterFields = uniqueFields.filter(
+                f => !standardFieldNames.includes(f.name.toLowerCase())
+            );
+            
+            // Combine standard fields with filtered master fields
+            const allFields = [...standardFields, ...filteredMasterFields];
+            setAvailableFields(allFields);
+        } catch (error) {
+            console.error("Failed to fetch fields:", error);
+            showToast("Failed to load fields", "error");
+            // If API fails, at least show standard fields
+            setAvailableFields(standardFields);
+        } finally {
+            setLoadingFields(false);
+        }
+    };
+
+    useEffect(() => {
+        if (projectId) {
+            fetchAvailableFields();
+        }
+    }, [projectId]);
+
     useEffect(() => {
         loadCatchTemplateData();
     }, [projectId]);
@@ -225,26 +301,55 @@ const MissingData = () => {
         }
     }, [selectedRowKeys]);
 
+    useEffect(() => {
+    if (!availableFields.length) return;
+
+    const saved = localStorage.getItem("missingData_displayFields");
+
+    if (saved) {
+        try {
+            const parsedIds = JSON.parse(saved);
+
+            const restoredFields = availableFields.filter(f =>
+                parsedIds.includes(f.fieldId)
+            );
+
+            setDisplayFields(restoredFields);
+        } catch (e) {
+            console.warn("Failed to restore display fields", e);
+        }
+    }
+}, [availableFields]);
+
     const handleDownloadTemplate = async () => {
         if (!templateRows.length) {
             showToast("No catch data available to generate template", "warning");
             return;
         }
 
-        const worksheetData = templateRows.map((row) => ({
-            "Catch No": row.catchNo,
-            Pages: row.pages || "",
-            ExamDate: row.examDate || "",
-            ExamTime: row.examTime || "",
-        }));
+        const worksheetData = templateRows.map((row) => {
+            const rowData = {
+                "Catch No": row.catchNo,
+            };
+
+            // Add selected template fields with their actual data from API
+            templateFields.forEach(field => {
+                const fieldName = field.name;
+                // Try different case variations to find the field value
+                const value = row[fieldName] || row[fieldName.toLowerCase()] || 
+                              row[fieldName.toUpperCase()] || "";
+                rowData[fieldName] = value;
+            });
+
+            return rowData;
+        });
 
         const worksheet = XLSX.utils.json_to_sheet(worksheetData);
-        worksheet["!cols"] = [
-            { wch: 22 },
-            { wch: 12 },
-            { wch: 16 },
-            { wch: 16 },
+        const colWidths = [
+            { wch: 22 }, // Catch No
+            ...templateFields.map(() => ({ wch: 18 }))
         ];
+        worksheet["!cols"] = colWidths;
 
         const workbook = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(workbook, worksheet, "MissingDataTemplate");
@@ -253,6 +358,7 @@ const MissingData = () => {
             `missing_data_template_project_${projectId || "sample"}.xlsx`
         );
         showToast("Template downloaded", "success");
+        setShowTemplateFieldsModal(false);
     };
 
     const parseUploadedSheet = (file) => {
@@ -270,18 +376,24 @@ const MissingData = () => {
                 }
 
                 const headers = jsonData[0].map(normalizeHeader);
-                const catchIndex = headers.findIndex((h) => h === "catchno");
-                const pagesIndex = headers.findIndex((h) => h === "pages");
-                const examDateIndex = headers.findIndex((h) => h === "examdate");
-                const examTimeIndex = headers.findIndex((h) => h === "examtime");
+                const catchIndex = headers.findIndex((h) =>["catchno", "catch"].includes(h));
 
-                if ([catchIndex, pagesIndex, examDateIndex, examTimeIndex].some((idx) => idx === -1)) {
+                if (catchIndex === -1) {
                     showToast(
-                        "Template columns must be Catch No, Pages, ExamDate and ExamTime",
+                        "Template must have Catch No column",
                         "error"
                     );
                     return;
                 }
+
+                // Find all field indices dynamically
+                const fieldIndices = {};
+                displayFields.forEach(field => {
+                    const idx = headers.findIndex(h => h === normalizeHeader(field.name));
+                    if (idx !== -1) {
+                        fieldIndices[field.name] = idx;
+                    }
+                });
 
                 const uniqueRows = new Map();
 
@@ -289,24 +401,62 @@ const MissingData = () => {
                     const catchNo = String(row[catchIndex] ?? "").trim();
                     if (!catchNo) return;
 
-                    uniqueRows.set(catchNo, {
+                    const rowData = {
                         key: catchNo,
                         catchNo,
-                        pages: row[pagesIndex] === "" ? "" : Number(row[pagesIndex]),
-                        examDate: parseExcelDate(row[examDateIndex]),
-                        examTime: normalizeTimeValue(row[examTimeIndex]),
+                    };
+
+                    // Add all dynamic fields
+                    Object.entries(fieldIndices).forEach(([fieldName, idx]) => {
+                        const value = row[idx];
+                        // Handle different field types
+                        if (fieldName === 'Pages') {
+                            rowData[fieldName] = value === "" ? "" : Number(value);
+                        } else if (fieldName === 'ExamDate') {
+                            rowData[fieldName] = parseExcelDate(value);
+                        } else if (fieldName === 'ExamTime') {
+                            rowData[fieldName] = normalizeTimeValue(value);
+                        } else {
+                            rowData[fieldName] = value ?? "";
+                        }
                     });
+
+                    uniqueRows.set(catchNo, rowData);
                 });
 
-                const mergedRows = templateRows.map((templateRow) => {
-                    const uploaded = uniqueRows.get(templateRow.catchNo);
-                    return uploaded
-                        ? {
-                            ...templateRow,
-                            ...uploaded,
-                        }
-                        : { ...templateRow };
-                });
+                const newModifiedRows = new Set();
+
+const mergedRows = templateRows.map((templateRow) => {
+    const uploaded = uniqueRows.get(templateRow.catchNo);
+
+    if (uploaded) {
+        let isChanged = false;
+
+        displayFields.forEach(field => {
+            const key = field.name;
+
+            const oldValue = templateRow[key] ?? "";
+            const newValue = uploaded[key] ?? "";
+
+            if (String(oldValue).trim() !== String(newValue).trim()) {
+                isChanged = true;
+            }
+        });
+
+        if (isChanged) {
+            newModifiedRows.add(templateRow.catchNo);
+        }
+
+        return {
+            ...templateRow,
+            ...uploaded,
+        };
+    }
+
+    return { ...templateRow };
+});
+
+setModifiedRows(newModifiedRows);
 
                 setMissingDataRows(mergedRows);
                 setTablePagination((prev) => ({
@@ -334,13 +484,31 @@ const MissingData = () => {
         setMissingDataRows(templateRows.map((row) => ({ ...row })));
         setSelectedRowKeys([]);
         setSelectedCatchNumbers([]);
+        setModifiedRows(new Set()); // Clear modified rows
         setTablePagination({
             current: 1,
             pageSize: 10,
         });
     };
 
-    const reviewRows = useMemo(() => missingDataRows, [missingDataRows]);
+    const reviewRows = useMemo(() => {
+        // Filter rows to only show selected display fields
+        return missingDataRows.map(row => {
+            const filteredRow = {
+                key: row.key,
+                catchNo: row.catchNo,
+            };
+            
+            // Add only the display fields
+            displayFields.forEach(field => {
+                const fieldName = field.name;
+                filteredRow[fieldName] = row[fieldName] || row[fieldName.toLowerCase()] || 
+                                         row[fieldName.toUpperCase()] || "";
+            });
+            
+            return filteredRow;
+        });
+    }, [missingDataRows, displayFields]);
     const allReviewRowKeys = useMemo(
         () => reviewRows.map((row) => row.catchNo),
         [reviewRows]
@@ -348,13 +516,11 @@ const MissingData = () => {
 
     const completedCount = useMemo(
         () =>
-            missingDataRows.filter(
-                (row) =>
-                    row.pages !== "" &&
-                    row.examDate !== "" &&
-                    row.examTime !== ""
-            ).length,
-        [missingDataRows]
+            missingDataRows.filter((row) => {
+                // A row is complete if it has at least one meaningful value in display fields
+                return displayFields.some(field => isMeaningfulValue(row[field.name]));
+            }).length,
+        [missingDataRows, displayFields]
     );
 
     const parseDateValue = (value) => {
@@ -392,34 +558,41 @@ const MissingData = () => {
 
     const startEditingRow = (record) => {
         setEditingRowKey(record.catchNo);
-        setEditingDraft({
-            pages: record.pages,
-            examDate: record.examDate,
-            examTime: record.examTime,
+        const draft = { catchNo: record.catchNo };
+        
+        // Add all display fields to draft
+        displayFields.forEach(field => {
+            draft[field.name] = record[field.name] ?? "";
         });
+        
+        setEditingDraft(draft);
     };
 
     const cancelEditingRow = () => {
         setEditingRowKey(null);
-        setEditingDraft({
-            pages: "",
-            examDate: "",
-            examTime: "",
-        });
+        setEditingDraft({});
     };
 
     const saveEditingRow = (catchNo) => {
         setMissingDataRows((prev) =>
-            prev.map((row) =>
-                row.catchNo === catchNo
-                    ? {
-                        ...row,
-                        pages: editingDraft.pages === null ? "" : editingDraft.pages,
-                        examDate: editingDraft.examDate || "",
-                        examTime: editingDraft.examTime || "",
-                    }
-                    : row
-            )
+            prev.map((row) => {
+                if (row.catchNo === catchNo) {
+                    // Mark this row as modified
+                    setModifiedRows(prevSet => new Set(prevSet).add(catchNo));
+                    
+                    const updatedRow = { ...row };
+                    
+                    // Update all fields from editingDraft
+                    Object.keys(editingDraft).forEach(key => {
+                        if (key !== 'catchNo') {
+                            updatedRow[key] = editingDraft[key] === null ? "" : editingDraft[key];
+                        }
+                    });
+                    
+                    return updatedRow;
+                }
+                return row;
+            })
         );
         cancelEditingRow();
     };
@@ -437,7 +610,14 @@ const MissingData = () => {
         }
 
         setMissingDataRows((prev) =>
-            prev.map((row) => (matcher(row) ? { ...row, ...effectivePatch } : row))
+            prev.map((row) => {
+                if (matcher(row)) {
+                    // Mark this row as modified
+                    setModifiedRows(prevSet => new Set(prevSet).add(row.catchNo));
+                    return { ...row, ...effectivePatch };
+                }
+                return row;
+            })
         );
     };
 
@@ -463,38 +643,57 @@ const MissingData = () => {
             return;
         }
 
-        const payload = missingDataRows.map((row) => ({
-            catchNo: row.catchNo,
-            pages: isMeaningfulValue(row.pages) ? Number(row.pages) : null,
-            examDate: isMeaningfulValue(row.examDate) ? String(row.examDate).trim() : null,
-            examTime: isMeaningfulValue(row.examTime) ? String(row.examTime).trim() : null,
-        }));
-
-        const rowsToSubmit = payload.filter(
-            (row) =>
-                isMeaningfulValue(row.pages) ||
-                isMeaningfulValue(row.examDate) ||
-                isMeaningfulValue(row.examTime)
-        );
-
-        if (!rowsToSubmit.length) {
-            showToast("At least one Pages, ExamDate, or ExamTime value is required", "warning");
+        // Only submit rows that were actually modified
+        if (modifiedRows.size === 0) {
+            showToast("No changes to submit", "warning");
             return;
         }
+
+        // Build payload with dynamic fields - ONLY for modified rows
+        const payload = missingDataRows
+            .filter(row => modifiedRows.has(row.catchNo))
+            .map((row) => {
+                const additionalFields = {};
+                
+                // Add all display fields that have meaningful values
+                displayFields.forEach(field => {
+                    const fieldName = field.name;
+                    const value = row[fieldName];
+                    if (isMeaningfulValue(value)) {
+                        additionalFields[fieldName] = value;
+                    }
+                });
+
+                return {
+                    catchNo: row.catchNo,
+                    additionalFields: additionalFields
+                };
+            })
+            .filter(row => 
+                row.additionalFields && Object.keys(row.additionalFields).length > 0
+            );
+
+        if (!payload.length) {
+            showToast("No valid data to submit", "warning");
+            return;
+        }
+
+        console.log(`Submitting ${payload.length} modified rows out of ${missingDataRows.length} total rows`);
 
         setSubmitting(true);
         try {
             await API.post("/NRDatas/missing-data", {
                 projectId,
-                data: rowsToSubmit,
+                data: payload,
             });
-            showToast("Missing data saved successfully", "success");
+            showToast(`Successfully saved ${payload.length} row(s)`, "success");
             await loadCatchTemplateData();
             setFileList([]);
             setSelectedRowKeys([]);
             setSelectedCatchNumbers([]);
             setEditingRowKey(null);
             setShowBulkUpdate(false);
+            setModifiedRows(new Set());
             setTablePagination((prev) => ({
                 ...prev,
                 current: 1,
@@ -584,117 +783,123 @@ const MissingData = () => {
         },
     });
 
-    const columns = [
+    const columns = useMemo(() => [
         {
             title: "Catch No",
             dataIndex: "catchNo",
             key: "catchNo",
             width: 160,
+            fixed: 'left',
             ...getColumnSearchProps("catchNo"),
             sorter: (a, b) => compareTableValues(a.catchNo, b.catchNo),
             render: (value) =>
                 isMeaningfulValue(value) ? <Text strong>{value}</Text> : <Text type="secondary">-</Text>,
         },
-        {
-            title: "Pages",
-            dataIndex: "pages",
-            key: "pages",
-            width: 110,
-            ...getColumnSearchProps("pages"),
-            sorter: (a, b) => compareTableValues(a.pages, b.pages),
-            render: (value, record) => (
-                editingRowKey === record.catchNo ? (
-                    <InputNumber
-                        min={0}
-                        value={editingDraft.pages === "" ? null : editingDraft.pages}
-                        placeholder="Pages"
-                        size="small"
-                        style={{ width: "100%" }}
-                        onChange={(nextValue) =>
-                            setEditingDraft((prev) => ({
-                                ...prev,
-                                pages: nextValue === null ? "" : nextValue,
-                            }))
+        // Dynamic fields columns
+        ...displayFields.map(field => {
+            const fieldName = field.name;
+            const isPages = fieldName === 'Pages';
+            const isExamDate = fieldName === 'ExamDate';
+            const isExamTime = fieldName === 'ExamTime';
+
+            return {
+                title: fieldName,
+                dataIndex: fieldName,
+                key: `dynamic-${field.fieldId}`,
+                width: 140,
+                ...getColumnSearchProps(fieldName),
+                sorter: (a, b) => compareTableValues(a[fieldName], b[fieldName]),
+                render: (value, record) => {
+                    if (editingRowKey === record.catchNo) {
+                        if (isPages) {
+                            return (
+                                <InputNumber
+                                    min={0}
+                                    value={editingDraft[fieldName] === "" ? null : editingDraft[fieldName]}
+                                    placeholder="Pages"
+                                    size="small"
+                                    style={{ width: "100%" }}
+                                    onChange={(nextValue) =>
+                                        setEditingDraft((prev) => ({
+                                            ...prev,
+                                            [fieldName]: nextValue === null ? "" : nextValue,
+                                        }))
+                                    }
+                                />
+                            );
+                        } else if (isExamDate) {
+                            return (
+                                <DatePicker
+                                    size="small"
+                                    format="DD-MM-YYYY"
+                                    value={parseDateValue(editingDraft[fieldName])}
+                                    style={{ width: "100%" }}
+                                    onChange={(date) =>
+                                        setEditingDraft((prev) => ({
+                                            ...prev,
+                                            [fieldName]: date ? date.format("DD-MM-YYYY") : "",
+                                        }))
+                                    }
+                                />
+                            );
+                        } else if (isExamTime) {
+                            return (
+                                <TimePicker
+                                    size="small"
+                                    format={TIME_FORMAT}
+                                    use12Hours
+                                    value={parseTimeValue(editingDraft[fieldName])}
+                                    style={{ width: "100%" }}
+                                    changeOnScroll
+                                    needConfirm
+                                    onChange={(time) =>
+                                        setEditingDraft((prev) => ({
+                                            ...prev,
+                                            [fieldName]: time ? time.format(TIME_FORMAT) : "",
+                                        }))
+                                    }
+                                />
+                            );
+                        } else {
+                            return (
+                                <Input
+                                    value={editingDraft[fieldName] || ""}
+                                    placeholder={fieldName}
+                                    size="small"
+                                    style={{ width: "100%" }}
+                                    onChange={(e) =>
+                                        setEditingDraft((prev) => ({
+                                            ...prev,
+                                            [fieldName]: e.target.value,
+                                        }))
+                                    }
+                                />
+                            );
                         }
-                    />
-                ) : (
-                    renderDisplayValue(value)
-                )
-            ),
-        },
-        {
-            title: "Exam Date",
-            dataIndex: "examDate",
-            key: "examDate",
-            width: 140,
-            ...getColumnSearchProps("examDate"),
-            sorter: (a, b) => compareTableValues(a.examDate, b.examDate),
-            render: (value, record) => (
-                editingRowKey === record.catchNo ? (
-                    <DatePicker
-                        size="small"
-                        format="DD-MM-YYYY"
-                        value={parseDateValue(editingDraft.examDate)}
-                        style={{ width: "100%" }}
-                        onChange={(date) =>
-                            setEditingDraft((prev) => ({
-                                ...prev,
-                                examDate: date ? date.format("DD-MM-YYYY") : "",
-                            }))
-                        }
-                    />
-                ) : (
-                    renderDisplayValue(value)
-                )
-            ),
-        },
-        {
-            title: "Exam Time",
-            dataIndex: "examTime",
-            key: "examTime",
-            width: 130,
-            ...getColumnSearchProps("examTime"),
-            sorter: (a, b) => compareTableValues(a.examTime, b.examTime),
-            render: (value, record) => (
-                editingRowKey === record.catchNo ? (
-                    <TimePicker
-                        size="small"
-                        format={TIME_FORMAT}
-                        use12Hours
-                        value={parseTimeValue(editingDraft.examTime)}
-                        style={{ width: "100%" }}
-                        changeOnScroll
-                        needConfirm
-                        onChange={(time) =>
-                            setEditingDraft((prev) => ({
-                                ...prev,
-                                examTime: time ? time.format(TIME_FORMAT) : "",
-                            }))
-                        }
-                    />
-                ) : (
-                    renderDisplayValue(value)
-                )
-            ),
-        },
+                    }
+                    return renderDisplayValue(value);
+                },
+            };
+        }),
         {
             title: "Status",
             dataIndex: "status",
             key: "status",
             width: 110,
             ...getColumnSearchProps("status"),
-            sorter: (a, b) =>
-                compareTableValues(
-                    isMeaningfulValue(a.pages) && isMeaningfulValue(a.examDate) && isMeaningfulValue(a.examTime) ? "Ready" : "Pending",
-                    isMeaningfulValue(b.pages) && isMeaningfulValue(b.examDate) && isMeaningfulValue(b.examTime) ? "Ready" : "Pending"
-                ),
+            sorter: (a, b) => {
+                const hasAnyValue = (row) => {
+                    return displayFields.some(field => isMeaningfulValue(row[field.name]));
+                };
+                return compareTableValues(
+                    hasAnyValue(a) ? "Ready" : "Pending",
+                    hasAnyValue(b) ? "Ready" : "Pending"
+                );
+            },
             render: (_, record) => {
-                const isComplete =
-                    isMeaningfulValue(record.pages) &&
-                    isMeaningfulValue(record.examDate) &&
-                    isMeaningfulValue(record.examTime);
+                const hasAnyValue = displayFields.some(field => isMeaningfulValue(record[field.name]));
 
-                return isComplete ? (
+                return hasAnyValue ? (
                     <Text style={{ color: "#389e0d", fontWeight: 600 }}>
                         <CheckCircleOutlined /> Ready
                     </Text>
@@ -707,6 +912,7 @@ const MissingData = () => {
             title: "Actions",
             key: "actions",
             width: 140,
+            fixed: 'right',
             render: (_, record) => (
                 <Space size={0} wrap>
                     {editingRowKey === record.catchNo ? (
@@ -738,7 +944,7 @@ const MissingData = () => {
                 </Space>
             ),
         },
-    ];
+    ], [displayFields, editingRowKey, editingDraft, searchText, searchedColumn]);
 
     const availableCatchNumberOptions = missingDataRows
         .map((row) => row.catchNo)
@@ -786,18 +992,18 @@ const MissingData = () => {
                                         Fill Missing Data
                                     </Title>
                                     <Text type="secondary" className="block text-xs leading-5 sm:max-w-xl">
-                                        Download the template, fill `Pages`, `ExamDate`, and `ExamTime`, then upload it for review.
+                                        Select fields to display, generate template with desired fields, fill and upload for review.
                                     </Text>
                                 </div>
                                 <Button
                                     type="primary"
                                     icon={<DownloadOutlined />}
-                                    onClick={handleDownloadTemplate}
+                                    onClick={() => setShowTemplateFieldsModal(true)}
                                     loading={loadingTemplateData}
                                     size="small"
                                     className="w-full rounded-lg font-semibold sm:w-auto"
                                 >
-                                    Download Template
+                                    Generate Template
                                 </Button>
                             </div>
 
@@ -862,6 +1068,12 @@ const MissingData = () => {
                             extra={
                                 <Space size={8}>
                                     <Button
+                                        onClick={() => setShowDisplayFieldsModal(true)}
+                                        disabled={!reviewRows.length}
+                                    >
+                                        Display Fields
+                                    </Button>
+                                    <Button
                                         onClick={() => setShowBulkUpdate((prev) => !prev)}
                                         disabled={!reviewRows.length}
                                     >
@@ -882,9 +1094,8 @@ const MissingData = () => {
                                 {showBulkUpdate && (
                                     <div className="pt-2">
                                         <div className="rounded-xl border border-slate-200 bg-white p-3">
-                                            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-[minmax(220px,1.8fr)_minmax(120px,1fr)_minmax(170px,1fr)_minmax(190px,1.15fr)_minmax(150px,0.95fr)_minmax(110px,0.8fr)] xl:items-end">
-                                            <div>
-                                                <Text type="secondary" className="mb-1 block text-[11px] font-medium">
+                                            <div className="mb-3">
+                                                <Text type="secondary" className="mb-2 block text-[11px] font-medium">
                                                     Select Catch Numbers
                                                 </Text>
                                                 <Select
@@ -905,94 +1116,99 @@ const MissingData = () => {
                                                     }))}
                                                 />
                                             </div>
-                                            <div>
-                                                <Text type="secondary" className="mb-1 block text-[11px] font-medium">
-                                                    Set Pages
-                                                </Text>
-                                                <InputNumber
-                                                    size="small"
-                                                    min={0}
-                                                    value={bulkValues.pages}
-                                                    placeholder="Pages"
-                                                    style={{ width: "100%" }}
-                                                    onChange={(value) =>
-                                                        setBulkValues((prev) => ({
-                                                            ...prev,
-                                                            pages: value,
-                                                        }))
-                                                    }
-                                                />
+                                            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                                                {displayFields.map(field => {
+                                                    const fieldName = field.name;
+                                                    const isPages = fieldName === 'Pages';
+                                                    const isExamDate = fieldName === 'ExamDate';
+                                                    const isExamTime = fieldName === 'ExamTime';
+
+                                                    return (
+                                                        <div key={field.fieldId}>
+                                                            <Text type="secondary" className="mb-1 block text-[11px] font-medium">
+                                                                Set {fieldName}
+                                                            </Text>
+                                                            {isPages ? (
+                                                                <InputNumber
+                                                                    size="small"
+                                                                    min={0}
+                                                                    value={bulkValues[fieldName]}
+                                                                    placeholder={fieldName}
+                                                                    style={{ width: "100%" }}
+                                                                    onChange={(value) =>
+                                                                        setBulkValues((prev) => ({
+                                                                            ...prev,
+                                                                            [fieldName]: value,
+                                                                        }))
+                                                                    }
+                                                                />
+                                                            ) : isExamDate ? (
+                                                                <DatePicker
+                                                                    size="small"
+                                                                    format="DD-MM-YYYY"
+                                                                    style={{ width: "100%" }}
+                                                                    value={parseDateValue(bulkValues[fieldName])}
+                                                                    onChange={(date) =>
+                                                                        setBulkValues((prev) => ({
+                                                                            ...prev,
+                                                                            [fieldName]: date ? date.format("DD-MM-YYYY") : "",
+                                                                        }))
+                                                                    }
+                                                                />
+                                                            ) : isExamTime ? (
+                                                                <TimePicker
+                                                                    size="small"
+                                                                    format={TIME_FORMAT}
+                                                                    use12Hours
+                                                                    style={{ width: "100%" }}
+                                                                    value={parseTimeValue(bulkValues[fieldName])}
+                                                                    changeOnScroll
+                                                                    needConfirm
+                                                                    onChange={(time) =>
+                                                                        setBulkValues((prev) => ({
+                                                                            ...prev,
+                                                                            [fieldName]: time ? time.format(TIME_FORMAT) : "",
+                                                                        }))
+                                                                    }
+                                                                />
+                                                            ) : (
+                                                                <Input
+                                                                    size="small"
+                                                                    value={bulkValues[fieldName] || ""}
+                                                                    placeholder={fieldName}
+                                                                    style={{ width: "100%" }}
+                                                                    onChange={(e) =>
+                                                                        setBulkValues((prev) => ({
+                                                                            ...prev,
+                                                                            [fieldName]: e.target.value,
+                                                                        }))
+                                                                    }
+                                                                />
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })}
                                             </div>
-                                            <div>
-                                                <Text type="secondary" className="mb-1 block text-[11px] font-medium">
-                                                    Set Exam Date
-                                                </Text>
-                                                <DatePicker
-                                                    size="small"
-                                                    format="DD-MM-YYYY"
-                                                    style={{ width: "100%" }}
-                                                    value={parseDateValue(bulkValues.examDate)}
-                                                    onChange={(date) =>
-                                                        setBulkValues((prev) => ({
-                                                            ...prev,
-                                                            examDate: date ? date.format("DD-MM-YYYY") : "",
-                                                        }))
-                                                    }
-                                                />
-                                            </div>
-                                            <div>
-                                                <Text type="secondary" className="mb-1 block text-[11px] font-medium">
-                                                    Set Exam Time
-                                                </Text>
-                                                <TimePicker
-                                                    size="small"
-                                                    format={TIME_FORMAT}
-                                                    use12Hours
-                                                    style={{ width: "100%" }}
-                                                    value={parseTimeValue(bulkValues.examTime)}
-                                                    changeOnScroll
-                                                    needConfirm
-                                                    onChange={(time) =>
-                                                        setBulkValues((prev) => ({
-                                                            ...prev,
-                                                            examTime: time ? time.format(TIME_FORMAT) : "",
-                                                        }))
-                                                    }
-                                                />
-                                            </div>
-                                            <div>
-                                                <Text type="secondary" className="mb-1 block text-[11px] font-medium">
-                                                    &nbsp;
-                                                </Text>
+                                            <div className="mt-3 flex gap-2">
                                                 <Button
                                                     size="small"
                                                     type="primary"
                                                     onClick={handleApplyToSelected}
-                                                    className="w-full rounded-md font-medium shadow-sm"
+                                                    className="rounded-md font-medium shadow-sm"
                                                 >
                                                     Apply to Selected
                                                 </Button>
-                                            </div>
-                                            <div>
-                                                <Text type="secondary" className="mb-1 block text-[11px] font-medium">
-                                                    &nbsp;
-                                                </Text>
                                                 <Button
                                                     size="small"
                                                     onClick={() => {
-                                                        setBulkValues({
-                                                            pages: null,
-                                                            examDate: "",
-                                                            examTime: "",
-                                                        });
+                                                        setBulkValues({});
                                                         setSelectedCatchNumbers([]);
                                                     }}
-                                                    className="w-full rounded-md border-slate-300 font-medium text-slate-700"
+                                                    className="rounded-md border-slate-300 font-medium text-slate-700"
                                                 >
                                                     Clear
                                                 </Button>
                                             </div>
-                                        </div>
                                         </div>
                                     </div>
                                 )}
@@ -1042,6 +1258,122 @@ const MissingData = () => {
                         </Card>
                     </Space>
                 </Card>
+
+                {/* Display Fields Modal */}
+                <Modal
+                    title="Select Display Fields"
+                    open={showDisplayFieldsModal}
+                    onCancel={() => setShowDisplayFieldsModal(false)}
+                    footer={[
+                        <Button
+                            key="selectAll"
+                            size="small"
+                            onClick={() => setDisplayFields([...availableFields])}
+                            disabled={availableFields.length === 0}
+                        >
+                            Select All
+                        </Button>,
+                        <Button
+                            key="clearAll"
+                            size="small"
+                            onClick={() => setDisplayFields([])}
+                            disabled={displayFields.length === 0}
+                        >
+                            Clear All
+                        </Button>,
+                        <Button
+                            key="ok"
+                            type="primary"
+                            onClick={() => setShowDisplayFieldsModal(false)}
+                        >
+                            OK
+                        </Button>
+                    ]}
+                    width={500}
+                >
+                    <div style={{ marginBottom: 16 }}>
+                        <Text type="secondary">
+                            Select unique fields from master to display in the table
+                        </Text>
+                    </div>
+                    <Checkbox.Group
+                        style={{ width: "100%", display: "flex", flexDirection: "column", gap: 8 }}
+                        value={displayFields.map(f => f.fieldId)}
+                        onChange={(checkedValues) => {
+    const selected = availableFields.filter(f => checkedValues.includes(f.fieldId));
+    setDisplayFields(selected);
+    localStorage.setItem(
+        "missingData_displayFields",
+        JSON.stringify(checkedValues)
+    );
+}}
+                    >
+                        {availableFields.map(field => (
+                            <Checkbox key={field.fieldId} value={field.fieldId}>
+                                {field.name}
+                            </Checkbox>
+                        ))}
+                    </Checkbox.Group>
+                    {availableFields.length === 0 && (
+                        <Text type="secondary">No unique fields available in master</Text>
+                    )}
+                </Modal>
+
+                {/* Template Fields Modal */}
+                <Modal
+                    title="Select Template Fields"
+                    open={showTemplateFieldsModal}
+                    onCancel={() => setShowTemplateFieldsModal(false)}
+                    footer={[
+                        <Button
+                            key="selectAll"
+                            size="small"
+                            onClick={() => setTemplateFields([...availableFields])}
+                            disabled={availableFields.length === 0}
+                        >
+                            Select All
+                        </Button>,
+                        <Button
+                            key="clearAll"
+                            size="small"
+                            onClick={() => setTemplateFields([])}
+                            disabled={templateFields.length === 0}
+                        >
+                            Clear All
+                        </Button>,
+                        <Button
+                            key="download"
+                            type="primary"
+                            onClick={handleDownloadTemplate}
+                        >
+                            Download Template
+                        </Button>
+                    ]}
+                    width={500}
+                >
+                    <div style={{ marginBottom: 16 }}>
+                        <Text type="secondary">
+                            Select unique fields to include in the download template
+                        </Text>
+                    </div>
+                    <Checkbox.Group
+                        style={{ width: "100%", display: "flex", flexDirection: "column", gap: 8 }}
+                        value={templateFields.map(f => f.fieldId)}
+                        onChange={(checkedValues) => {
+                            const selected = availableFields.filter(f => checkedValues.includes(f.fieldId));
+                            setTemplateFields(selected);
+                        }}
+                    >
+                        {availableFields.map(field => (
+                            <Checkbox key={field.fieldId} value={field.fieldId}>
+                                {field.name}
+                            </Checkbox>
+                        ))}
+                    </Checkbox.Group>
+                    {availableFields.length === 0 && (
+                        <Text type="secondary">No unique fields available in master</Text>
+                    )}
+                </Modal>
             </motion.div>
         </div>
     );
