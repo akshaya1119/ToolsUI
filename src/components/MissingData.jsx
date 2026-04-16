@@ -386,14 +386,41 @@ const MissingData = () => {
                     return;
                 }
 
-                // Find all field indices dynamically
-                const fieldIndices = {};
-                displayFields.forEach(field => {
-                    const idx = headers.findIndex(h => h === normalizeHeader(field.name));
-                    if (idx !== -1) {
-                        fieldIndices[field.name] = idx;
+                // Auto-map headers to availableFields and update displayFields
+                const autoMappedFields = [];
+                headers.forEach((header) => {
+                    if (["catchno", "catch"].includes(header)) return;
+                    const matched = availableFields.find(
+                        (f) => normalizeHeader(f.name) === header
+                    );
+                    if (matched && !autoMappedFields.find(f => f.fieldId === matched.fieldId)) {
+                        autoMappedFields.push(matched);
                     }
                 });
+
+                if (autoMappedFields.length > 0) {
+                    setDisplayFields((prev) => {
+                        // Merge: keep existing, add newly detected ones
+                        const existingIds = new Set(prev.map(f => f.fieldId));
+                        const toAdd = autoMappedFields.filter(f => !existingIds.has(f.fieldId));
+                        const merged = [...prev, ...toAdd];
+                        // Persist to localStorage
+                        localStorage.setItem(
+                            "missingData_displayFields",
+                            JSON.stringify(merged.map(f => f.fieldId))
+                        );
+                        return merged;
+                    });
+                }
+
+                // Find all field indices dynamically
+                const fieldIndices = {};
+
+headers.forEach((header, index) => {
+    if (["catchno", "catch"].includes(header)) return;
+
+    fieldIndices[header] = index;
+});
 
                 const uniqueRows = new Map();
 
@@ -407,19 +434,25 @@ const MissingData = () => {
                     };
 
                     // Add all dynamic fields
-                    Object.entries(fieldIndices).forEach(([fieldName, idx]) => {
-                        const value = row[idx];
-                        // Handle different field types
-                        if (fieldName === 'Pages') {
-                            rowData[fieldName] = value === "" ? "" : Number(value);
-                        } else if (fieldName === 'ExamDate') {
-                            rowData[fieldName] = parseExcelDate(value);
-                        } else if (fieldName === 'ExamTime') {
-                            rowData[fieldName] = normalizeTimeValue(value);
-                        } else {
-                            rowData[fieldName] = value ?? "";
-                        }
-                    });
+                    Object.entries(fieldIndices).forEach(([normalizedHeader, idx]) => {
+    const value = row[idx];
+
+    // Try to map header back to actual field name
+    const matchedField =
+        availableFields.find(f => normalizeHeader(f.name) === normalizedHeader);
+
+    const fieldName = matchedField ? matchedField.name : normalizedHeader;
+
+    if (fieldName === 'Pages') {
+        rowData[fieldName] = value === "" ? "" : Number(value);
+    } else if (fieldName === 'ExamDate') {
+        rowData[fieldName] = parseExcelDate(value);
+    } else if (fieldName === 'ExamTime') {
+        rowData[fieldName] = normalizeTimeValue(value);
+    } else {
+        rowData[fieldName] = value ?? "";
+    }
+});
 
                     uniqueRows.set(catchNo, rowData);
                 });
@@ -432,8 +465,8 @@ const mergedRows = templateRows.map((templateRow) => {
     if (uploaded) {
         let isChanged = false;
 
-        displayFields.forEach(field => {
-            const key = field.name;
+        Object.keys(uploaded).forEach(key => {
+    if (key === "catchNo" || key === "key") return;
 
             const oldValue = templateRow[key] ?? "";
             const newValue = uploaded[key] ?? "";
@@ -578,7 +611,9 @@ setModifiedRows(newModifiedRows);
             prev.map((row) => {
                 if (row.catchNo === catchNo) {
                     // Mark this row as modified
-                    setModifiedRows(prevSet => new Set(prevSet).add(catchNo));
+                    const newModified = new Set(modifiedRows);
+newModified.add(catchNo);
+setModifiedRows(newModified);
                     
                     const updatedRow = { ...row };
                     
@@ -608,17 +643,20 @@ setModifiedRows(newModifiedRows);
             showToast("Enter at least one bulk value first", "warning");
             return;
         }
-
+      const newModified = new Set(modifiedRows);
         setMissingDataRows((prev) =>
             prev.map((row) => {
                 if (matcher(row)) {
                     // Mark this row as modified
-                    setModifiedRows(prevSet => new Set(prevSet).add(row.catchNo));
+                    newModified.add(row.catchNo);
                     return { ...row, ...effectivePatch };
                 }
                 return row;
+                
             })
+            
         );
+        setModifiedRows(newModified);
     };
 
     const handleApplyToSelected = () => {
@@ -650,29 +688,30 @@ setModifiedRows(newModifiedRows);
         }
 
         // Build payload with dynamic fields - ONLY for modified rows
-        const payload = missingDataRows
-            .filter(row => modifiedRows.has(row.catchNo))
-            .map((row) => {
-                const additionalFields = {};
-                
-                // Add all display fields that have meaningful values
-                displayFields.forEach(field => {
-                    const fieldName = field.name;
-                    const value = row[fieldName];
-                    if (isMeaningfulValue(value)) {
-                        additionalFields[fieldName] = value;
-                    }
-                });
+        const payload = [];
 
-                return {
-                    catchNo: row.catchNo,
-                    additionalFields: additionalFields
-                };
-            })
-            .filter(row => 
-                row.additionalFields && Object.keys(row.additionalFields).length > 0
-            );
+for (const row of missingDataRows) {
+    if (!modifiedRows.has(row.catchNo)) continue;
 
+    const additionalFields = {};
+
+    for (const field of displayFields) {
+        const fieldName = field.name;
+        const value = row[fieldName];
+
+        if (value !== "" && value !== null && value !== undefined) {
+            additionalFields[fieldName] = value;
+        }
+    }
+
+    if (Object.keys(additionalFields).length > 0) {
+        payload.push({
+            catchNo: row.catchNo,
+            additionalFields,
+        });
+    }
+}
+            
         if (!payload.length) {
             showToast("No valid data to submit", "warning");
             return;
@@ -682,18 +721,23 @@ setModifiedRows(newModifiedRows);
 
         setSubmitting(true);
         try {
-            await API.post("/NRDatas/missing-data", {
-                projectId,
-                data: payload,
-            });
+            const chunkSize = 100;
+
+            for (let i = 0; i < payload.length; i += chunkSize) {
+                const chunk = payload.slice(i, i + chunkSize);
+                await API.post("/NRDatas/missing-data", {
+                    projectId,
+                    data: chunk,
+                });
+            }
+            
             showToast(`Successfully saved ${payload.length} row(s)`, "success");
-            await loadCatchTemplateData();
+            setModifiedRows(new Set());
             setFileList([]);
             setSelectedRowKeys([]);
             setSelectedCatchNumbers([]);
             setEditingRowKey(null);
             setShowBulkUpdate(false);
-            setModifiedRows(new Set());
             setTablePagination((prev) => ({
                 ...prev,
                 current: 1,
@@ -1378,5 +1422,4 @@ setModifiedRows(newModifiedRows);
         </div>
     );
 };
-
 export default MissingData;
