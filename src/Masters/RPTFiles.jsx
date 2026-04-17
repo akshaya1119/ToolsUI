@@ -42,19 +42,6 @@ import TemplatesCard from "../components/rpt/TemplatesCard";
 import TemplatesSidePanel from "../components/rpt/TemplatesSidePanel";
 import TemplatesMappingPanel from "../components/rpt/TemplatesMappingPanel";
 import TemplatesVersionsModal from "../components/rpt/TemplatesVersionsModal";
-  import { CopyOutlined,
-  CloseOutlined,
-  DownloadOutlined,
-  EditOutlined,
-  SettingOutlined,
-  HistoryOutlined,
-  InboxOutlined,
-  PlusOutlined,
-  ReloadOutlined,
-  UploadOutlined,
-  CheckOutlined,
-} from "@ant-design/icons";
-import { uploadWithDesignCheck } from "../services/reportApi";
 
 const RPTFiles = () => {
   const url = import.meta.env.VITE_API_BASE_URL;
