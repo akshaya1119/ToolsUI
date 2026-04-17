@@ -44,6 +44,16 @@ const ProcessingPipeline = () => {
   const [bulkDownloading, setBulkDownloading] = useState(false);
   const [mappingUpdateMap, setMappingUpdateMap] = useState({});
   const [staleTemplateIds, setStaleTemplateIds] = useState(new Set());
+  const [lotWisePanel, setLotWisePanel] = useState({ open: false, moduleKey: null });
+  const [availableLots, setAvailableLots] = useState([]);
+  const [selectedLotTab, setSelectedLotTab] = useState(null);
+  const [loadingLots, setLoadingLots] = useState(false);
+  const [generatingLotTemplates, setGeneratingLotTemplates] = useState({});
+  const [downloadingLotTemplates, setDownloadingLotTemplates] = useState({});
+  const [lotTemplateStatus, setLotTemplateStatus] = useState({});
+  const [staleLotIds, setStaleLotIds] = useState(new Set());
+  const [bulkGeneratingLots, setBulkGeneratingLots] = useState(false);
+  const [bulkDownloadingLots, setBulkDownloadingLots] = useState(false);
   const projectId = useStore((state) => state.projectId);
   const projectName = useStore((state) => state.projectName);
   const storedGroupId = localStorage.getItem("selectedGroup");
@@ -757,6 +767,388 @@ const ProcessingPipeline = () => {
     }
   };
 
+  const openLotWisePanel = async (moduleKey) => {
+    if (moduleKey !== "box") {
+      message.info("Lot-wise templates are only available for Box Breaking");
+      return;
+    }
+    setLotWisePanel({ open: true, moduleKey });
+    await fetchAvailableLots();
+  };
+
+  const closeLotWisePanel = () => {
+    setLotWisePanel({ open: false, moduleKey: null });
+    setAvailableLots([]);
+    setSelectedLotTab(null);
+  };
+
+  const fetchAvailableLots = async () => {
+    if (!projectId) return;
+    setLoadingLots(true);
+    try {
+      const res = await API.get(`/NRDataLots/GetByProjectId/${projectId}`);
+      const lots = res.data || [];
+      setAvailableLots(lots);
+      // Set first lot as default selected tab
+      if (lots.length > 0) {
+        setSelectedLotTab(lots[0].lotNo);
+      }
+      // Load template status for all lots
+      await loadLotTemplateStatus(lots);
+    } catch (err) {
+      console.error("Failed to fetch lots", err);
+      message.error("Failed to load lots for this project");
+      setAvailableLots([]);
+    } finally {
+      setLoadingLots(false);
+    }
+  };
+
+  const loadLotTemplateStatus = async (lots) => {
+    if (!projectId || !lots || lots.length === 0) return;
+    
+    const boxTemplates = getTemplatesForModuleKey("box");
+    if (boxTemplates.length === 0) return;
+
+    try {
+      const results = await Promise.all(
+        lots.flatMap((lot) =>
+          boxTemplates.map(async (template) => {
+            const templateId = resolveTemplateId(template);
+            if (!templateId) return null;
+            
+            try {
+              const res = await axios.get(`${rptApiUrl}/report/generated-exists`, {
+                params: {
+                  templateId,
+                  projectId: Number(projectId),
+                  lotNumber: lot.lotNo,
+                },
+              });
+              return { 
+                lotNo: lot.lotNo, 
+                templateId,
+                data: res?.data 
+              };
+            } catch (err) {
+              return { 
+                lotNo: lot.lotNo, 
+                templateId,
+                data: null 
+              };
+            }
+          })
+        )
+      );
+
+      setLotTemplateStatus((prev) => {
+        const next = { ...prev };
+        results.forEach((item) => {
+          if (!item?.lotNo || !item?.templateId) return;
+          const statusKey = `${item.lotNo}_${item.templateId}`;
+          next[statusKey] = {
+            exists: Boolean(item?.data?.exists),
+            fileName: item?.data?.fileName || null,
+            generatedAt: item?.data?.generatedAt || null,
+          };
+        });
+        return next;
+      });
+    } catch (err) {
+      console.error("Failed to check lot template status", err);
+    }
+  };
+
+  const handleGenerateLotTemplate = async (lotNo, template) => {
+    if (!projectId) {
+      message.warning("Please select a project");
+      return;
+    }
+
+    const templateId = resolveTemplateId(template);
+    if (!templateId) {
+      message.warning("Template not found.");
+      return;
+    }
+
+    if (!rptApiUrl) {
+      message.error("RPT API URL is not configured.");
+      return;
+    }
+
+    const statusKey = `${lotNo}_${templateId}`;
+    const messageKey = `generate-lot-${statusKey}-${Date.now()}`;
+    setGeneratingLotTemplates(prev => ({ ...prev, [statusKey]: true }));
+    message.loading({
+      content: `Generating ${resolveTemplateName(template)} for Lot ${lotNo}...`,
+      key: messageKey,
+      duration: 0,
+    });
+
+    try {
+      const payload = {
+        projectId: Number(projectId),
+        templateId: Number(templateId),
+        lotNumber: lotNo,
+      };
+
+      const res = await axios.post(
+        `${rptApiUrl}/report/generate-dynamic`,
+        payload,
+        { responseType: "blob" }
+      );
+
+      const fileName = buildReportFileName({
+        templateName: template?.templateName,
+        projectName: projectName || (projectId ? `Project ${projectId}` : undefined),
+        typeId: template?.typeId ?? typeId,
+        lotNumber: lotNo,
+      });
+      
+      const fileBlob = new Blob([res.data], { type: "application/pdf" });
+      const url = window.URL.createObjectURL(fileBlob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+
+      // Update status
+      setLotTemplateStatus((prev) => ({
+        ...prev,
+        [statusKey]: {
+          exists: true,
+          fileName,
+          generatedAt: new Date().toISOString(),
+        },
+      }));
+
+      // Remove from stale list
+      setStaleLotIds((prev) => {
+        const next = new Set(prev);
+        next.delete(statusKey);
+        return next;
+      });
+
+      message.success({
+        content: `Generated ${resolveTemplateName(template)} for Lot ${lotNo}`,
+        key: messageKey,
+      });
+    } catch (err) {
+      console.error("Failed to generate lot template", err);
+      const errorMsg = await getErrorMessageAsync(err, "Failed to generate template");
+      message.error({
+        content: errorMsg,
+        key: messageKey,
+        duration: 6,
+      });
+    } finally {
+      setGeneratingLotTemplates(prev => ({ ...prev, [statusKey]: false }));
+    }
+  };
+
+  const handleDownloadLotTemplate = async (lotNo, template) => {
+    if (!projectId) {
+      message.warning("Please select a project");
+      return;
+    }
+
+    const templateId = resolveTemplateId(template);
+    if (!templateId) {
+      message.warning("Template not found.");
+      return;
+    }
+
+    if (!rptApiUrl) {
+      message.error("RPT API URL is not configured.");
+      return;
+    }
+
+    const statusKey = `${lotNo}_${templateId}`;
+    setDownloadingLotTemplates(prev => ({ ...prev, [statusKey]: true }));
+
+    try {
+      const res = await axios.get(`${rptApiUrl}/report/generated-download`, {
+        params: {
+          templateId,
+          projectId: Number(projectId),
+          lotNumber: lotNo,
+        },
+        responseType: "blob",
+      });
+
+      const fileName = buildReportFileName({
+        templateName: template?.templateName,
+        projectName: projectName || (projectId ? `Project ${projectId}` : undefined),
+        typeId: template?.typeId ?? typeId,
+        lotNumber: lotNo,
+      });
+      
+      const fileBlob = new Blob([res.data], { type: "application/pdf" });
+      const url = window.URL.createObjectURL(fileBlob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+
+      message.success(`Downloaded ${resolveTemplateName(template)} for Lot ${lotNo}`);
+    } catch (err) {
+      console.error("Failed to download lot template", err);
+      const msg = await getErrorMessageAsync(err, "Please generate the template first.");
+      message.error(msg);
+    } finally {
+      setDownloadingLotTemplates(prev => ({ ...prev, [statusKey]: false }));
+    }
+  };
+
+  const handleGenerateAllLots = async () => {
+    if (!projectId || availableLots.length === 0) {
+      message.warning("No lots available");
+      return;
+    }
+
+    if (!selectedLotTab) {
+      message.warning("Please select a lot");
+      return;
+    }
+
+    // Get templates for the current lot
+    const lotTemplates = getTemplatesForModuleKey("box");
+    
+    if (lotTemplates.length === 0) {
+      message.warning("No templates available for this lot");
+      return;
+    }
+
+    // Filter templates that need generation
+    const templatesToGenerate = lotTemplates.filter((template) => {
+      const templateId = resolveTemplateId(template);
+      if (!templateId) return false;
+      const statusKey = `${selectedLotTab}_${templateId}`;
+      const status = lotTemplateStatus[statusKey];
+      const isStale = staleLotIds.has(statusKey);
+      return !status?.exists || isStale;
+    });
+
+    if (templatesToGenerate.length === 0) {
+      message.info("All templates for this lot are already generated.");
+      return;
+    }
+
+    setBulkGeneratingLots(true);
+    const messageKey = `generate-all-lot-${selectedLotTab}-${Date.now()}`;
+    message.loading({
+      content: `Generating ${templatesToGenerate.length} template(s) for Lot ${selectedLotTab}...`,
+      key: messageKey,
+      duration: 0,
+    });
+
+    try {
+      for (const template of templatesToGenerate) {
+        await handleGenerateLotTemplate(selectedLotTab, template);
+      }
+      message.success({
+        content: `Successfully generated ${templatesToGenerate.length} template(s) for Lot ${selectedLotTab}`,
+        key: messageKey,
+      });
+    } catch (err) {
+      message.error({
+        content: "Failed to generate all templates",
+        key: messageKey,
+      });
+    } finally {
+      setBulkGeneratingLots(false);
+    }
+  };
+
+  const handleDownloadAllLots = async () => {
+    if (!projectId || availableLots.length === 0) {
+      message.warning("No lots available");
+      return;
+    }
+
+    if (!selectedLotTab) {
+      message.warning("Please select a lot");
+      return;
+    }
+
+    const lotTemplates = getTemplatesForModuleKey("box");
+    const templateIds = lotTemplates
+      .map((template) => resolveTemplateId(template))
+      .filter(Boolean);
+
+    if (templateIds.length === 0) {
+      message.warning("No templates available for this lot");
+      return;
+    }
+
+    // Check if all templates are generated
+    const allGenerated = templateIds.every((templateId) => {
+      const statusKey = `${selectedLotTab}_${templateId}`;
+      const status = lotTemplateStatus[statusKey];
+      const isStale = staleLotIds.has(statusKey);
+      return status?.exists && !isStale;
+    });
+
+    if (!allGenerated) {
+      message.warning("Please generate all templates before downloading");
+      return;
+    }
+
+    setBulkDownloadingLots(true);
+    const messageKey = `download-all-lot-${selectedLotTab}-${Date.now()}`;
+    message.loading({
+      content: `Downloading templates for Lot ${selectedLotTab}...`,
+      key: messageKey,
+      duration: 0,
+    });
+
+    try {
+      const res = await axios.get(`${rptApiUrl}/report/generated-download-zip`, {
+        params: {
+          projectId: Number(projectId),
+          templateIds: templateIds.join(","),
+          lotNumber: selectedLotTab,
+        },
+        responseType: "blob",
+      });
+
+      const contentDisposition = res.headers["content-disposition"] || "";
+      const fileNameMatch = contentDisposition.match(/filename="?([^\"]+)"?/i);
+      const fileName = fileNameMatch?.[1] || `Lot${selectedLotTab}_Reports_${projectId}_${new Date().toISOString().slice(0, 10)}.zip`;
+      
+      const fileBlob = new Blob([res.data], { type: "application/zip" });
+      const url = window.URL.createObjectURL(fileBlob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+
+      message.success({
+        content: `Downloaded all templates for Lot ${selectedLotTab}`,
+        key: messageKey,
+      });
+    } catch (err) {
+      console.error("Failed to download all lot templates", err);
+      const msg = await getErrorMessageAsync(err, "Failed to download all templates");
+      message.error({
+        content: msg,
+        key: messageKey,
+        duration: 6,
+      });
+    } finally {
+      setBulkDownloadingLots(false);
+    }
+  };
+
   const handleSelectAll = (checked) => {
     if (checked) {
       setSelectedModules(steps.map((s) => s.key));
@@ -993,6 +1385,36 @@ const ProcessingPipeline = () => {
         });
       }
 
+      // Mark lot-wise templates as stale if box breaking was re-run
+      if (freshlyRun.includes("box")) {
+        const boxTemplates = getTemplatesForModuleKey("box");
+        const staleKeys = new Set();
+        
+        availableLots.forEach((lot) => {
+          boxTemplates.forEach((template) => {
+            const templateId = resolveTemplateId(template);
+            if (templateId) {
+              const statusKey = `${lot.lotNo}_${templateId}`;
+              staleKeys.add(statusKey);
+            }
+          });
+        });
+        
+        // Mark all lot-template combinations as stale
+        setStaleLotIds(staleKeys);
+        
+        // Reset lot template status
+        setLotTemplateStatus((prev) => {
+          const next = { ...prev };
+          staleKeys.forEach((statusKey) => {
+            if (next[statusKey]) {
+              next[statusKey] = { ...next[statusKey], exists: false };
+            }
+          });
+          return next;
+        });
+      }
+
       // Clear selections and close alert after successful processing
       setSelectedModules([]);
       setConfigChanged(false);
@@ -1054,6 +1476,7 @@ const ProcessingPipeline = () => {
   });
 
   const showTemplatePanel = templatePanel.open;
+  const showLotWisePanel = lotWisePanel.open;
 
   const columns = [
     {
@@ -1139,14 +1562,29 @@ const ProcessingPipeline = () => {
         const moduleTemplates = getTemplatesForModuleKey(record.key);
         const hasTemplates = moduleTemplates.length > 0;
         const isReady = record.status === "completed";
+        const isBoxBreaking = record.key === "box";
+        
         return (
-          <Button
-            size="small"
-            onClick={() => openTemplatePanel(record.key)}
-            disabled={!isReady || !hasTemplates}
-          >
-            Templates{hasTemplates ? ` (${moduleTemplates.length})` : ""}
-          </Button>
+          <Space size="small">
+            {!isBoxBreaking && (
+              <Button
+                size="small"
+                onClick={() => openTemplatePanel(record.key)}
+                disabled={!isReady || !hasTemplates}
+              >
+                Templates{hasTemplates ? ` (${moduleTemplates.length})` : ""}
+              </Button>
+            )}
+            {isBoxBreaking && isReady && (
+              <Button
+                size="small"
+                type="primary"
+                onClick={() => openLotWisePanel(record.key)}
+              >
+                Templates
+              </Button>
+            )}
+          </Space>
         );
       },
     },
@@ -1537,7 +1975,7 @@ const ProcessingPipeline = () => {
         transition={{ duration: 0.3 }}
       >
         <div
-          className={showTemplatePanel ? "pipeline-main pipeline-main--with-panel" : "pipeline-main pipeline-main--single"}
+          className={showTemplatePanel || showLotWisePanel ? "pipeline-main pipeline-main--with-panel" : "pipeline-main pipeline-main--single"}
         >
           <Card
             size="small"
@@ -1662,6 +2100,181 @@ const ProcessingPipeline = () => {
                       </div>
                     )}
                   </>
+                )}
+              </div>
+            </Card>
+          )}
+
+          {showLotWisePanel && (
+            <Card
+              size="small"
+              className="pipeline-panel"
+              title={
+                <div className="pipeline-panel-title">
+                  <Typography.Text strong>
+                    Lot-wise Templates - Box Breaking
+                  </Typography.Text>
+                  <div className="pipeline-panel-actions">
+                    <Button
+                      size="small"
+                      type="primary"
+                      onClick={handleGenerateAllLots}
+                      loading={bulkGeneratingLots}
+                      disabled={availableLots.length === 0 || !selectedLotTab}
+                    >
+                      Generate All
+                    </Button>
+                    <Button
+                      size="small"
+                      onClick={handleDownloadAllLots}
+                      loading={bulkDownloadingLots}
+                      disabled={availableLots.length === 0 || !selectedLotTab}
+                    >
+                      Download All
+                    </Button>
+                    <Button size="small" onClick={closeLotWisePanel}>
+                      Close
+                    </Button>
+                  </div>
+                </div>
+              }
+              bodyStyle={{ padding: 0 }}
+              style={{
+                border: "1px solid #d9d9d9",
+                boxShadow: "0 4px 8px rgba(0,0,0,0.1)",
+                borderRadius: 8,
+                alignSelf: "start",
+              }}
+            >
+              <div className="pipeline-panel-body">
+                {loadingLots ? (
+                  <div style={{ textAlign: "center", padding: "20px" }}>
+                    <Text type="secondary">Loading lots...</Text>
+                  </div>
+                ) : availableLots.length === 0 ? (
+                  <div style={{ textAlign: "center", padding: "20px" }}>
+                    <Text type="secondary">No lots found for this project</Text>
+                  </div>
+                ) : (
+                  <Tabs
+                    activeKey={selectedLotTab?.toString()}
+                    onChange={(key) => setSelectedLotTab(Number(key))}
+                    type="card"
+                    size="small"
+                    items={availableLots.map((lot) => {
+                      const lotTemplates = getTemplatesForModuleKey("box");
+                      
+                      // Count generated templates for this lot
+                      const generatedCount = lotTemplates.filter((template) => {
+                        const templateId = resolveTemplateId(template);
+                        if (!templateId) return false;
+                        const statusKey = `${lot.lotNo}_${templateId}`;
+                        const status = lotTemplateStatus[statusKey];
+                        const isStale = staleLotIds.has(statusKey);
+                        return status?.exists && !isStale;
+                      }).length;
+
+                      const hasStale = lotTemplates.some((template) => {
+                        const templateId = resolveTemplateId(template);
+                        if (!templateId) return false;
+                        const statusKey = `${lot.lotNo}_${templateId}`;
+                        return staleLotIds.has(statusKey);
+                      });
+                      
+                      return {
+                        key: lot.lotNo.toString(),
+                        label: (
+                          <Space size="small">
+                            <Text>Lot {lot.lotNo}</Text>
+                            {lot.catchCount && (
+                              <Tag color="blue" style={{ margin: 0 }}>
+                                {lot.catchCount}
+                              </Tag>
+                            )}
+                            {generatedCount > 0 && !hasStale && (
+                              <Tag color="green" style={{ margin: 0 }}>
+                                {generatedCount}/{lotTemplates.length}
+                              </Tag>
+                            )}
+                            {hasStale && (
+                              <Tag color="orange" style={{ margin: 0 }}>
+                                ⟳
+                              </Tag>
+                            )}
+                          </Space>
+                        ),
+                        children: (
+                          <div style={{ padding: "12px" }}>
+                            {lotTemplates.length === 0 ? (
+                              <Text type="secondary">No templates linked to Box Breaking module.</Text>
+                            ) : (
+                              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                                {lotTemplates.map((template) => {
+                                  const templateId = resolveTemplateId(template);
+                                  const statusKey = `${lot.lotNo}_${templateId}`;
+                                  const isGenerating = generatingLotTemplates[statusKey];
+                                  const isDownloading = downloadingLotTemplates[statusKey];
+                                  const status = lotTemplateStatus[statusKey];
+                                  const isStale = staleLotIds.has(statusKey);
+                                  const canGenerate = !status?.exists || isStale;
+                                  const hasDownload = status?.exists && !isStale;
+
+                                  return (
+                                    <Card
+                                      size="small"
+                                      key={templateId || resolveTemplateName(template)}
+                                      bodyStyle={{ padding: 12 }}
+                                      style={{ borderRadius: 8 }}
+                                    >
+                                      <div style={{ marginBottom: 8 }}>
+                                        <Text strong style={{ fontSize: "13px" }}>
+                                          {resolveTemplateName(template)}
+                                        </Text>
+                                        {status?.exists && !isStale && (
+                                          <div style={{ marginTop: 4 }}>
+                                            <Tag color="success" style={{ fontSize: "11px" }}>
+                                              Generated {status.generatedAt ? new Date(status.generatedAt).toLocaleString() : ""}
+                                            </Tag>
+                                          </div>
+                                        )}
+                                        {isStale && (
+                                          <div style={{ marginTop: 4 }}>
+                                            <Tag color="warning" style={{ fontSize: "11px" }}>
+                                              Data updated - regeneration required
+                                            </Tag>
+                                          </div>
+                                        )}
+                                      </div>
+                                      <Space>
+                                        <Button
+                                          size="small"
+                                          type="primary"
+                                          onClick={() => handleGenerateLotTemplate(lot.lotNo, template)}
+                                          loading={isGenerating}
+                                          disabled={!canGenerate}
+                                        >
+                                          Generate
+                                        </Button>
+                                        <Button
+                                          size="small"
+                                          onClick={() => handleDownloadLotTemplate(lot.lotNo, template)}
+                                          loading={isDownloading}
+                                          disabled={!hasDownload}
+                                        >
+                                          Download
+                                        </Button>
+                                      </Space>
+                                    </Card>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        ),
+                      };
+                    })}
+                    tabBarStyle={{ margin: 0, paddingLeft: 12, paddingRight: 12 }}
+                  />
                 )}
               </div>
             </Card>
