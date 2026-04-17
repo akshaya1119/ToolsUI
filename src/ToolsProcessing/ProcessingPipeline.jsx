@@ -58,6 +58,13 @@ const ProcessingPipeline = () => {
   const [bulkGeneratingLots, setBulkGeneratingLots] = useState(false);
   const [bulkDownloadingLots, setBulkDownloadingLots] = useState(false);
   const [staticVarModal, setStaticVarModal] = useState({ open: false, template: null, variables: {}, values: {}, resolve: null });
+  const [lotSelectionModal, setLotSelectionModal] = useState({ 
+    visible: false, 
+    availableLots: [], 
+    selectedLots: [], 
+    loading: false,
+    resolve: null 
+  });
   const projectId = useStore((state) => state.projectId);
   const projectName = useStore((state) => state.projectName);
   const storedGroupId = localStorage.getItem("selectedGroup");
@@ -371,8 +378,13 @@ const ProcessingPipeline = () => {
     message.success(res?.data?.message || "Envelope breaking completed");
   };
 
-  const runBoxBreaking = async (projectId) => {
-    const res = await API.post(`/BoxBreakingProcessing/ProcessBoxBreaking?ProjectId=${projectId}`);
+  const runBoxBreaking = async (projectId, lotNumbers = null) => {
+    const params = { ProjectId: projectId };
+    if (lotNumbers && lotNumbers.length > 0) {
+      params.LotNumbers = lotNumbers.join(',');
+    }
+    const query = new URLSearchParams(params).toString();
+    const res = await API.post(`/BoxBreakingProcessing/ProcessBoxBreaking?${query}`);
     message.success(res?.data?.message || "Box breaking completed");
   };
 
@@ -394,6 +406,122 @@ const ProcessingPipeline = () => {
 
   const updateStepStatus = (key, patch) => {
     setSteps((prev) => prev.map((s) => (s.key === key ? { ...s, ...patch } : s)));
+  };
+
+  const fetchLotsForSelection = async () => {
+    try {
+      // Try the new endpoint first
+      try {
+        const res = await API.get(`/NRDataLots/GetByProjectId/${projectId}`);
+        return res.data || [];
+      } catch (err) {
+        // Fallback to by-project endpoint if GetByProjectId doesn't exist
+        console.log("Using fallback endpoint for lots");
+        const res = await API.get(`/NRDataLots/by-project/${projectId}`);
+        const allData = res.data || [];
+        
+        // Group by lot and count catches manually
+        const lotMap = new Map();
+        allData.forEach(item => {
+          if (item.lotNo > 0) {
+            if (!lotMap.has(item.lotNo)) {
+              lotMap.set(item.lotNo, new Set());
+            }
+            if (item.catchNo) {
+              lotMap.get(item.lotNo).add(item.catchNo);
+            }
+          }
+        });
+        
+        // Convert to expected format
+        const lots = Array.from(lotMap.entries()).map(([lotNo, catches]) => ({
+          lotNo,
+          catchCount: catches.size
+        })).sort((a, b) => a.lotNo - b.lotNo);
+        
+        return lots;
+      }
+    } catch (err) {
+      console.error("Failed to fetch lots for selection", err);
+      message.error("Failed to load lots");
+      return [];
+    }
+  };
+
+  const showLotSelectionModal = (lots) => {
+    return new Promise((resolve) => {
+      setLotSelectionModal({
+        visible: true,
+        availableLots: lots,
+        selectedLots: lots.map(lot => lot.lotNo), // Select all by default
+        loading: false,
+        resolve
+      });
+    });
+  };
+
+  const handleLotSelectionConfirm = () => {
+    const { selectedLots, resolve } = lotSelectionModal;
+    
+    if (selectedLots.length === 0) {
+      message.warning("Please select at least one lot to process");
+      return;
+    }
+
+    setLotSelectionModal({ 
+      visible: false, 
+      availableLots: [], 
+      selectedLots: [], 
+      loading: false,
+      resolve: null 
+    });
+    
+    if (resolve) {
+      resolve(selectedLots);
+    }
+  };
+
+  const handleLotSelectionCancel = () => {
+    const { resolve } = lotSelectionModal;
+    
+    setLotSelectionModal({ 
+      visible: false, 
+      availableLots: [], 
+      selectedLots: [], 
+      loading: false,
+      resolve: null 
+    });
+    
+    if (resolve) {
+      resolve(null); // Return null to indicate cancellation
+    }
+  };
+
+  const handleSelectAllLots = (checked) => {
+    if (checked) {
+      setLotSelectionModal(prev => ({
+        ...prev,
+        selectedLots: prev.availableLots.map(lot => lot.lotNo)
+      }));
+    } else {
+      setLotSelectionModal(prev => ({
+        ...prev,
+        selectedLots: []
+      }));
+    }
+  };
+
+  const handleLotToggle = (lotNo, checked) => {
+    setLotSelectionModal(prev => {
+      const newSelectedLots = checked
+        ? [...prev.selectedLots, lotNo]
+        : prev.selectedLots.filter(l => l !== lotNo);
+      
+      return {
+        ...prev,
+        selectedLots: newSelectedLots
+      };
+    });
   };
 
   const handleModuleSelection = (moduleKey, checked) => {
@@ -857,8 +985,37 @@ const ProcessingPipeline = () => {
     if (!projectId) return;
     setLoadingLots(true);
     try {
-      const res = await API.get(`/NRDataLots/GetByProjectId/${projectId}`);
-      const lots = res.data || [];
+      // Try the new endpoint first
+      let lots = [];
+      try {
+        const res = await API.get(`/NRDataLots/GetByProjectId/${projectId}`);
+        lots = res.data || [];
+      } catch (err) {
+        // Fallback to by-project endpoint if GetByProjectId doesn't exist
+        console.log("Using fallback endpoint for lots");
+        const res = await API.get(`/NRDataLots/by-project/${projectId}`);
+        const allData = res.data || [];
+        
+        // Group by lot and count catches manually
+        const lotMap = new Map();
+        allData.forEach(item => {
+          if (item.lotNo > 0) {
+            if (!lotMap.has(item.lotNo)) {
+              lotMap.set(item.lotNo, new Set());
+            }
+            if (item.catchNo) {
+              lotMap.get(item.lotNo).add(item.catchNo);
+            }
+          }
+        });
+        
+        // Convert to expected format
+        lots = Array.from(lotMap.entries()).map(([lotNo, catches]) => ({
+          lotNo,
+          catchCount: catches.size
+        })).sort((a, b) => a.lotNo - b.lotNo);
+      }
+      
       setAvailableLots(lots);
       // Set first lot as default selected tab
       if (lots.length > 0) {
@@ -1421,7 +1578,28 @@ const ProcessingPipeline = () => {
           else if (step.key === "enhancement") await runEnhancement(projectId);
           else if (step.key === "extra") await runExtras(projectId);
           else if (step.key === "envelopebreaking") await runEnvelope(projectId);
-          else if (step.key === "box") await runBoxBreaking(projectId);
+          else if (step.key === "box") {
+            // Fetch available lots before running box breaking
+            const lots = await fetchLotsForSelection();
+            
+            if (lots.length > 1) {
+              // Show lot selection modal if multiple lots exist
+              const selectedLots = await showLotSelectionModal(lots);
+              
+              if (selectedLots === null) {
+                // User cancelled - stop processing
+                message.info("Box breaking cancelled by user");
+                updateStepStatus(step.key, { status: "pending" });
+                break;
+              }
+              
+              // Run box breaking with selected lots
+              await runBoxBreaking(projectId, selectedLots);
+            } else {
+              // Run normally if 0 or 1 lot
+              await runBoxBreaking(projectId);
+            }
+          }
           else if (step.key === "envelopeSummary") await runEnvelopeSummary(projectId);
           else if (step.key === "catchSummary") await runCatchSummary(projectId);
           else if (step.key === "catchOmrSerialing") await runCatchOmrSerialing(projectId);
@@ -1471,32 +1649,44 @@ const ProcessingPipeline = () => {
 
       // Mark lot-wise templates as stale if box breaking was re-run
       if (freshlyRun.includes("box")) {
-        const boxTemplates = getTemplatesForModuleKey("box");
-        const staleKeys = new Set();
+        // Fetch lots to mark templates as stale
+        const lots = await fetchLotsForSelection();
         
-        availableLots.forEach((lot) => {
-          boxTemplates.forEach((template) => {
-            const templateId = resolveTemplateId(template);
-            if (templateId) {
-              const statusKey = `${lot.lotNo}_${templateId}`;
-              staleKeys.add(statusKey);
-            }
+        if (lots.length > 0) {
+          const boxTemplates = getTemplatesForModuleKey("box");
+          const staleKeys = new Set();
+          
+          lots.forEach((lot) => {
+            boxTemplates.forEach((template) => {
+              const templateId = resolveTemplateId(template);
+              if (templateId) {
+                const statusKey = `${lot.lotNo}_${templateId}`;
+                staleKeys.add(statusKey);
+              }
+            });
           });
-        });
-        
-        // Mark all lot-template combinations as stale
-        setStaleLotIds(staleKeys);
-        
-        // Reset lot template status
-        setLotTemplateStatus((prev) => {
-          const next = { ...prev };
-          staleKeys.forEach((statusKey) => {
-            if (next[statusKey]) {
-              next[statusKey] = { ...next[statusKey], exists: false };
-            }
+          
+          console.log("Marking lot templates as stale:", Array.from(staleKeys));
+          
+          // Mark all lot-template combinations as stale
+          setStaleLotIds(staleKeys);
+          
+          // Reset lot template status to force regeneration
+          setLotTemplateStatus((prev) => {
+            const next = { ...prev };
+            staleKeys.forEach((statusKey) => {
+              // Mark as not existing to enable Generate button
+              next[statusKey] = { exists: false, fileName: null, generatedAt: null };
+            });
+            console.log("Updated lot template status:", next);
+            return next;
           });
-          return next;
-        });
+          
+          // Also update availableLots if panel is open
+          if (lotWisePanel.open) {
+            setAvailableLots(lots);
+          }
+        }
       }
 
       // Clear selections and close alert after successful processing
@@ -2488,6 +2678,71 @@ const ProcessingPipeline = () => {
           <li><strong>Process Only Selected:</strong> Run only your selected module (may fail if dependencies are missing)</li>
           <li><strong>Process All Dependencies:</strong> Run all unprocessed dependencies first, then your selected module</li>
         </ul>
+      </Modal>
+
+      <Modal
+        title="Select Lots for Box Breaking"
+        open={lotSelectionModal.visible}
+        onOk={handleLotSelectionConfirm}
+        onCancel={handleLotSelectionCancel}
+        width={600}
+        okText="Process Selected Lots"
+        cancelText="Cancel"
+      >
+        <div style={{ marginBottom: 16 }}>
+          <Alert
+            message="Multiple lots detected"
+            description="Please select which lot(s) you want to process for Box Breaking. You can select all lots or specific ones."
+            type="info"
+            showIcon
+            style={{ marginBottom: 16 }}
+          />
+          
+          <Checkbox
+            checked={lotSelectionModal.selectedLots.length === lotSelectionModal.availableLots.length && lotSelectionModal.availableLots.length > 0}
+            indeterminate={lotSelectionModal.selectedLots.length > 0 && lotSelectionModal.selectedLots.length < lotSelectionModal.availableLots.length}
+            onChange={(e) => handleSelectAllLots(e.target.checked)}
+            style={{ marginBottom: 12, fontWeight: 500 }}
+          >
+            Select All Lots ({lotSelectionModal.availableLots.length})
+          </Checkbox>
+        </div>
+        
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 400, overflowY: "auto" }}>
+          {lotSelectionModal.availableLots.map((lot) => (
+            <Card 
+              key={lot.lotNo} 
+              size="small"
+              style={{ 
+                backgroundColor: lotSelectionModal.selectedLots.includes(lot.lotNo) ? "#f0f5ff" : "#fafafa",
+                border: lotSelectionModal.selectedLots.includes(lot.lotNo) ? "1px solid #91caff" : "1px solid #d9d9d9"
+              }}
+            >
+              <Checkbox
+                checked={lotSelectionModal.selectedLots.includes(lot.lotNo)}
+                onChange={(e) => handleLotToggle(lot.lotNo, e.target.checked)}
+              >
+                <Space>
+                  <Text strong style={{ fontSize: "14px" }}>Lot {lot.lotNo}</Text>
+                  <Badge 
+                    count={lot.catchCount} 
+                    style={{ backgroundColor: "#52c41a" }} 
+                    title="Number of catches in this lot"
+                  />
+                  <Text type="secondary" style={{ fontSize: "12px" }}>catches</Text>
+                </Space>
+              </Checkbox>
+            </Card>
+          ))}
+        </div>
+
+        {lotSelectionModal.selectedLots.length > 0 && (
+          <div style={{ marginTop: 16, padding: "8px 12px", backgroundColor: "#e6f7ff", borderRadius: 4 }}>
+            <Text strong style={{ color: "#1890ff" }}>
+              {lotSelectionModal.selectedLots.length} lot(s) selected
+            </Text>
+          </div>
+        )}
       </Modal>
 
       <style>{`
