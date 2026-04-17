@@ -17,7 +17,6 @@ import {
   rptTemplatesStyles,
 } from "../components/rpt/rptTemplatesShared";
 import {
-  CopyOutlined,
   activateTemplateVersion as activateTemplateVersionService,
   downloadTemplateBlob as downloadTemplateBlobService,
   fetchGroupOptions,
@@ -35,43 +34,6 @@ import {
   restoreTemplate,
   saveTemplateMapping,
   softDeleteTemplate,
-  updateTemplate,
-  uploadTemplate as uploadTemplateService,
-} from "../services/rptTemplatesService";
-import RPTFilesHeader from "./components/RPTFiles/RPTFilesHeader";
-import TemplatesCard from "../components/rpt/TemplatesCard";
-import TemplatesSidePanel from "../components/rpt/TemplatesSidePanel";
-import TemplatesMappingPanel from "../components/rpt/TemplatesMappingPanel";
-import TemplatesVersionsModal from "../components/rpt/TemplatesVersionsModal";
-  import { CopyOutlined,
-  CloseOutlined,
-  DownloadOutlined,
-  EditOutlined,
-  SettingOutlined,
-  HistoryOutlined,
-  InboxOutlined,
-  PlusOutlined,
-  ReloadOutlined,
-  UploadOutlined,
-  CheckOutlined,
-} from "@ant-design/icons";
-import { uploadWithDesignCheck } from "../services/reportApi";
-import {
-  activateTemplateVersion as activateTemplateVersionService,
-  downloadTemplateBlob as downloadTemplateBlobService,
-  fetchGroupOptions,
-  fetchMappingOptions as fetchMappingOptionsService,
-  fetchModuleOptions,
-  fetchProjectOptions,
-  fetchTemplateDetails,
-  fetchTemplateMapping,
-  fetchTemplateVersions as fetchTemplateVersionsService,
-  fetchTemplatesByGroup,
-  fetchTypeOptions,
-  fetchUsers as fetchUsersService,
-  importTemplatesFromGroup,
-  parseTemplateFields,
-  saveTemplateMapping,
   updateTemplate,
   uploadTemplate as uploadTemplateService,
 } from "../services/rptTemplatesService";
