@@ -8,6 +8,10 @@ const RAW_EXPR_LABELS = {
   "CONCAT(MIN(b.BoxNo),' to ',MAX(b.BoxNo))": "Box Range",
   "calc:TOTAL_BOXES": "Total Boxes",
   "COUNT(DISTINCT b.BoxNo)": "Total Boxes",
+  "calc:BOX_NUMBERS": "Box Numbers",
+  "calc:BOX_LABEL": "No of boxes",
+  "calc:SRNO": "Serial No (Sr No)",
+  "calc:PACKING_DENOMINATION": "Packing Denomination",
 };
 
 // Strip table prefix (n., e., eb., b., x., c.) from a saved value for display
