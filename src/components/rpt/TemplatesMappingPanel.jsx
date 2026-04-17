@@ -1,6 +1,6 @@
 import React from "react";
 import { Button, Card, InputNumber, Select, Space, Switch, Table, Typography } from "antd";
-import { CloseOutlined, DeleteOutlined, PlusOutlined } from "@ant-design/icons";
+import { CloseOutlined, DeleteOutlined, PlusOutlined, ReloadOutlined } from "@ant-design/icons";
 
 // Map raw SQL expressions or calc: values to friendly display labels
 const RAW_EXPR_LABELS = {
@@ -39,6 +39,8 @@ const TemplatesMappingPanel = ({
   duplicateLabelsEnabled = true,
   onDuplicateLabelsChange,
   handleSaveMapping,
+  handleRefreshFields,
+  parsedFieldsLoading,
   mappingLoading,
   closeMappingPanel,
 }) => {
@@ -116,6 +118,14 @@ const TemplatesMappingPanel = ({
                 size="small"
               />
               <Button
+                size="small"
+                icon={<ReloadOutlined />}
+                onClick={handleRefreshFields}
+                loading={parsedFieldsLoading}
+              >
+                Refresh Fields
+              </Button>
+              <Button
                 type="primary"
                 onClick={handleSaveMapping}
                 loading={mappingLoading}
@@ -143,7 +153,11 @@ const TemplatesMappingPanel = ({
                   dataIndex: "field",
                   key: "field",
                   width: "45%",
-                  render: (value) => <Typography.Text>{value}</Typography.Text>,
+                  render: (value, record) => (
+                    <Typography.Text>
+                      {value} {record.isRequired ? <Typography.Text type="danger">*</Typography.Text> : ""}
+                    </Typography.Text>
+                  ),
                 },
                 {
                   title: "Map To Column",

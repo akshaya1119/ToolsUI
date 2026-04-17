@@ -594,7 +594,7 @@ const ProjectTemplates = () => {
 
     const data = res.data;
 
-    if (data.requireConfirmation && !forceUpload) {
+    if (!forceUpload && data.designCheck) {
       if (data.designCheck?.changed === true) {
         const confirmed = await MessageService.confirm(
           <div>
@@ -764,6 +764,21 @@ const ProjectTemplates = () => {
     if (confirmed) openMappingModal(template);
   };
 
+  const handleRefreshFields = async () => {
+    if (!mappingTemplate?.templateId) return;
+    setParsedFieldsLoading(true);
+    try {
+      const res = await parseTemplateFields(APIURL, mappingTemplate.templateId);
+      const parsed = res?.parsedFields || [];
+      setParsedFields(parsed);
+      message.success("Fields refreshed from template.");
+    } catch (err) {
+      showError(err, "Failed to refresh fields.");
+    } finally {
+      setParsedFieldsLoading(false);
+    }
+  };
+
   const openMappingModal = async (template) => {
     setAddModalOpen(false);
     setImportModalOpen(false);
@@ -772,30 +787,32 @@ const ProjectTemplates = () => {
     setMappingModalOpen(true);
     setMappingLoading(true);
     setMappingNotFound(false);
-    setParsedFields(extractParsedFields(template));
+
+    const initialFields = extractParsedFields(template);
+    setParsedFields(initialFields);
     fetchMappingOptions(template);
+
     try {
-      const details = await fetchTemplateDetails(
-        APIURL,
-        template.templateId,
-      );
-      const fieldsFromDetails = extractParsedFields(details);
-      setParsedFields(fieldsFromDetails);
-      if (!fieldsFromDetails || fieldsFromDetails.length === 0) {
+      const details = await fetchTemplateDetails(APIURL, template.templateId);
+      let currentFields = extractParsedFields(details);
+      
+      // If we only have strings (old format) or no fields, force a refresh once to get rich metadata
+      const needsRefresh = !currentFields || currentFields.length === 0 || 
+                           currentFields.every(f => typeof f === "string");
+
+      if (needsRefresh) {
         setParsedFieldsLoading(true);
         try {
-          const parsedRes = await parseTemplateFields(
-            APIURL,
-            template.templateId,
-          );
-          const parsed = parsedRes?.parsedFields || [];
-          setParsedFields(parsed);
+          const parsedRes = await parseTemplateFields(APIURL, template.templateId);
+          currentFields = parsedRes?.parsedFields || [];
         } catch (err) {
-          showError(err, "Failed to parse fields for this template.");
+          console.error("Auto-parse failed", err);
         } finally {
           setParsedFieldsLoading(false);
         }
       }
+      
+      setParsedFields(currentFields);
 
       const res = await fetchTemplateMapping(APIURL, template.templateId);
       const mapping = res?.mappingJson ?? res?.MappingJson ?? "";
@@ -848,10 +865,13 @@ const ProjectTemplates = () => {
     setMappingLoading(true);
     try {
       const mappingsPayload = parsedFields
-        .map((field) => ({
-          rptField: field,
-          source: mappingSelections[field],
-        }))
+        .map((f) => {
+          const fieldName = (typeof f === "string" ? f : f?.name ?? f?.Name) || "";
+          return {
+            rptField: fieldName,
+            source: mappingSelections[fieldName],
+          };
+        })
         .filter((item) => item.source);
       const mappingPayload = {
         mappings: mappingsPayload,
@@ -885,13 +905,14 @@ const ProjectTemplates = () => {
     setMappingSelections((prev) => {
       let changed = false;
       const next = { ...prev };
-      parsedFields.forEach((field) => {
-        if (next[field]) return;
+      parsedFields.forEach((f) => {
+        const fieldName = (typeof f === "string" ? f : f?.name ?? f?.Name) || "";
+        if (!fieldName || next[fieldName]) return;
         const match = flatSourceOptions.find(
-          (option) => option.normalized === normalizeKey(field),
+          (option) => option.normalized === normalizeKey(fieldName),
         );
         if (match) {
-          next[field] = match.value;
+          next[fieldName] = match.value;
           changed = true;
         }
       });
@@ -1277,37 +1298,63 @@ const ProjectTemplates = () => {
   }, [mappingOptions]);
 
   const flatSourceOptions = useMemo(() => {
-    return sourceOptionGroups.map((option) => ({
-      value: option.value,
-      label: option.label,
-      normalized: normalizeKey(option.label ?? option.value),
-    }));
+    const flat = [];
+    const processChild = (item) => {
+      // If it has a value, it's a selectable option
+      if (item?.value !== undefined && item?.value !== null) {
+        flat.push({
+          value: item.value,
+          label: item.label,
+          normalized: normalizeKey(item.label ?? item.value),
+        });
+      }
+      // If it has options, it's a group or has sub-options
+      if (Array.isArray(item?.options)) {
+        item.options.forEach(processChild);
+      }
+    };
+
+    sourceOptionGroups.forEach(processChild);
+    return flat;
   }, [sourceOptionGroups]);
 
   const mappingDisplayOrder = useMemo(() => {
     const pinned = new Set(mappingPinnedFields || []);
     const mapped = parsedFields
-      .filter((field) => pinned.has(field))
-      .sort((a, b) => a.localeCompare(b));
+      .filter((f) => pinned.has((typeof f === "string" ? f : f?.name ?? f?.Name) || ""))
+      .sort((a, b) => {
+        const nameA = (typeof a === "string" ? a : a?.name ?? a?.Name) || "";
+        const nameB = (typeof b === "string" ? b : b?.name ?? b?.Name) || "";
+        return nameA.localeCompare(nameB);
+      });
     const unmapped = parsedFields
-      .filter((field) => !pinned.has(field))
-      .sort((a, b) => a.localeCompare(b));
+      .filter((f) => !pinned.has((typeof f === "string" ? f : f?.name ?? f?.Name) || ""))
+      .sort((a, b) => {
+        const nameA = (typeof a === "string" ? a : a?.name ?? a?.Name) || "";
+        const nameB = (typeof b === "string" ? b : b?.name ?? b?.Name) || "";
+        return nameA.localeCompare(nameB);
+      });
     return [...mapped, ...unmapped];
   }, [parsedFields, mappingPinnedFields]);
 
   const mappingRows = useMemo(
     () =>
-      mappingDisplayOrder.map((field, index) => ({
-        key: `${field}-${index}`,
-        field,
-        isMapped: Boolean(mappingSelections?.[field]),
-      })),
+      mappingDisplayOrder.map((f, index) => {
+        const name = (typeof f === "string" ? f : f?.name ?? f?.Name) || "";
+        return {
+          key: `${name}-${index}`,
+          field: name,
+          isRequired: typeof f === "string" ? false : f?.isRequired ?? f?.IsRequired ?? false,
+          isMapped: Boolean(mappingSelections?.[name]),
+        };
+      }),
     [mappingDisplayOrder, mappingSelections],
   );
   const mappedFieldNames = useMemo(
     () =>
       parsedFields
-        .filter((field) => mappingSelections?.[field])
+        .map((f) => (typeof f === "string" ? f : f?.name ?? f?.Name) || "")
+        .filter((name) => name && mappingSelections?.[name])
         .sort((a, b) => a.localeCompare(b)),
     [parsedFields, mappingSelections],
   );
@@ -1319,15 +1366,16 @@ const ProjectTemplates = () => {
     setMappingSelections((prev) => {
       let changed = false;
       const next = { ...prev };
-      parsedFields.forEach((field) => {
-        if (next[field]) return;
+      parsedFields.forEach((f) => {
+        const name = (typeof f === "string" ? f : f?.name ?? f?.Name) || "";
+        if (!name || next[name]) return;
         const match = flatSourceOptions.find(
-          (option) => option.normalized === normalizeKey(field),
+          (option) => option.normalized === normalizeKey(name),
         );
         if (match) {
-          next[field] = match.value;
+          next[name] = match.value;
           changed = true;
-          autoMapped.push(field);
+          autoMapped.push(name);
         }
       });
       return changed ? next : prev;
@@ -1426,49 +1474,6 @@ const ProjectTemplates = () => {
                   <Form.Item label="Type" style={{ marginBottom: 8 }}>
                     <Input value={typeLabel || ""} placeholder="Type" disabled />
                   </Form.Item>
-                  <Form.Item
-                    label="Modules"
-                    name="moduleIds"
-                    rules={[{ required: true, message: "Select at least one module" }]}
-                  >
-                    <Select
-                      mode="multiple"
-                      options={moduleOptions}
-                      placeholder="Select modules"
-                      showSearch
-                      optionFilterProp="label"
-                    />
-                  </Form.Item>
-                  <Form.Item label="RPT File">
-                    <Upload.Dragger
-                      accept=".rpt"
-                      multiple={false}
-                      beforeUpload={() => false}
-                      onChange={(info) => setAddFileList(info.fileList.slice(-1))}
-                      onRemove={() => setAddFileList([])}
-                      fileList={addFileList}
-                    >
-                      <p className="ant-upload-drag-icon">
-                        <InboxOutlined />
-                      </p>
-                      <p className="ant-upload-text">
-                        Click or drag an RPT file to upload
-                      </p>
-                      <p className="ant-upload-hint">
-                        Only .rpt files are supported.
-                      </p>
-                    </Upload.Dragger>
-                  </Form.Item>
-                  <Space style={{ display: "flex", justifyContent: "flex-end" }}>
-                    <Button onClick={() => setAddModalOpen(false)}>Cancel</Button>
-                    <Button
-                      type="primary"
-                      onClick={handleAddSubmit}
-                      loading={addSubmitting}
-                    >
-                      Upload Template
-                    </Button>
-                  </Space>
                 </>
               ),
             }}
@@ -1685,6 +1690,8 @@ const ProjectTemplates = () => {
           labelCopies={labelCopies}
           setLabelCopies={setLabelCopies}
           handleSaveMapping={handleSaveMapping}
+          handleRefreshFields={handleRefreshFields}
+          parsedFieldsLoading={parsedFieldsLoading}
           mappingLoading={mappingLoading}
           closeMappingPanel={closeMappingPanel}
         />
