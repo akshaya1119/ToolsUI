@@ -386,6 +386,33 @@ const MissingData = () => {
                     return;
                 }
 
+                // Auto-map headers to availableFields and update displayFields
+                const autoMappedFields = [];
+                headers.forEach((header) => {
+                    if (["catchno", "catch"].includes(header)) return;
+                    const matched = availableFields.find(
+                        (f) => normalizeHeader(f.name) === header
+                    );
+                    if (matched && !autoMappedFields.find(f => f.fieldId === matched.fieldId)) {
+                        autoMappedFields.push(matched);
+                    }
+                });
+
+                if (autoMappedFields.length > 0) {
+                    setDisplayFields((prev) => {
+                        // Merge: keep existing, add newly detected ones
+                        const existingIds = new Set(prev.map(f => f.fieldId));
+                        const toAdd = autoMappedFields.filter(f => !existingIds.has(f.fieldId));
+                        const merged = [...prev, ...toAdd];
+                        // Persist to localStorage
+                        localStorage.setItem(
+                            "missingData_displayFields",
+                            JSON.stringify(merged.map(f => f.fieldId))
+                        );
+                        return merged;
+                    });
+                }
+
                 // Find all field indices dynamically
                 const fieldIndices = {};
 
@@ -1091,7 +1118,17 @@ for (const row of missingDataRows) {
                                         Display Fields
                                     </Button>
                                     <Button
-                                        onClick={() => setShowBulkUpdate((prev) => !prev)}
+                                        onClick={() => {
+                                            if (displayFields.length === 0) {
+                                                showToast(
+                                                    "Please select display fields first before using Bulk Update",
+                                                    "warning"
+                                                );
+                                                setShowDisplayFieldsModal(true);
+                                                return;
+                                            }
+                                            setShowBulkUpdate((prev) => !prev);
+                                        }}
                                         disabled={!reviewRows.length}
                                     >
                                         {showBulkUpdate ? "Hide Bulk Update" : "Bulk Update"}

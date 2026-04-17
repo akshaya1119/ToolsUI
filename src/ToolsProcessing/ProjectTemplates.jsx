@@ -65,7 +65,9 @@ import {
   fetchUsers as fetchUsersService,
   importTemplatesFromGroup,
   parseTemplateFields,
+  restoreTemplate,
   saveTemplateMapping,
+  softDeleteTemplate,
   updateTemplate,
   uploadTemplate as uploadTemplateService,
 } from "../services/rptTemplatesService";
@@ -114,6 +116,7 @@ const ProjectTemplates = () => {
   const [orderBySelections, setOrderBySelections] = useState([]);
   const [labelCopies, setLabelCopies] = useState(1);
   const [mappingPinnedFields, setMappingPinnedFields] = useState([]);
+  const [staticVariables, setStaticVariables] = useState({});
 
   const [versionsOpen, setVersionsOpen] = useState(false);
   const [versionsLoading, setVersionsLoading] = useState(false);
@@ -428,6 +431,7 @@ const ProjectTemplates = () => {
       setOrderBySelections([]);
       setLabelCopies(1);
       setMappingPinnedFields([]);
+      setStaticVariables({});
     }
   }, [mappingModalOpen]);
 
@@ -821,6 +825,7 @@ const ProjectTemplates = () => {
       setGroupBySelections(Array.isArray(parsed.groupBy) ? parsed.groupBy : []);
       setOrderBySelections(Array.isArray(parsed.orderBy) ? parsed.orderBy : []);
       setLabelCopies(Number.isFinite(parsed.labelCopies) && parsed.labelCopies >= 1 ? parsed.labelCopies : 1);
+      setStaticVariables(parsed.staticVariables || {});
       setMappingPinnedFields(Object.keys(parsed.mappings || {}));
       const emptyMapping =
         Object.keys(parsed.mappings || {}).length === 0 &&
@@ -878,11 +883,15 @@ const ProjectTemplates = () => {
         groupBy: groupBySelections || [],
         orderBy: orderBySelections || [],
         labelCopies: labelCopies ?? 1,
+        staticVariables: staticVariables || {},
       };
-      const mappingJson =
-        mappingsPayload.length > 0 || (groupBySelections || []).length > 0 || (orderBySelections || []).length > 0 || (labelCopies ?? 1) > 1
-          ? JSON.stringify(mappingPayload)
-          : "";
+      const hasContent =
+        mappingsPayload.length > 0 ||
+        (groupBySelections || []).length > 0 ||
+        (orderBySelections || []).length > 0 ||
+        (labelCopies ?? 1) > 1 ||
+        Object.keys(staticVariables || {}).length > 0;
+      const mappingJson = hasContent ? JSON.stringify(mappingPayload) : "";
       await saveTemplateMapping(
         APIURL,
         mappingTemplate.templateId,
@@ -891,6 +900,13 @@ const ProjectTemplates = () => {
       message.success("Mapping saved.");
       setMappingNotFound(false);
       recordMappingUpdate(mappingTemplate.templateId);
+      setAvailableRPTFiles((prev) =>
+        prev.map((t) =>
+          t.templateId === mappingTemplate.templateId
+            ? { ...t, hasMapping: true, mappingWarning: null }
+            : t
+        )
+      );
       closeMappingPanel();
     } catch (err) {
       console.error("Failed to save mapping", err);
@@ -981,6 +997,7 @@ const ProjectTemplates = () => {
     try {
       await activateTemplateVersionService(APIURL, templateId);
       message.success("Template activated.");
+      recordMappingUpdate(templateId);
       if (versionsTemplate) {
         fetchTemplateVersions(versionsTemplate);
       }
@@ -1078,6 +1095,7 @@ const ProjectTemplates = () => {
         await activateTemplateVersionService(APIURL, editingVersionId);
       }
       message.success("Template updated.");
+      recordMappingUpdate(editingTemplateId);
       cancelInlineEdit();
       fetchAvailableRPTFiles();
       if (versionsOpen && versionsTemplate?.templateId === editingTemplateId) {
@@ -1089,6 +1107,56 @@ const ProjectTemplates = () => {
     } finally {
       setInlineEditSaving(false);
     }
+  };
+
+  const handleRemoveTemplate = (record) => {
+    const scope = record?.projectId ? "project" : record?.groupId ? "group" : "standard";
+
+    if (record?.isDeleted) {
+      Modal.confirm({
+        title: "Restore template?",
+        content: `This will restore "${record?.templateName}" and set it as active in the ${scope} scope.`,
+        okText: "Restore",
+        cancelText: "Cancel",
+        onOk: async () => {
+          try {
+            await restoreTemplate(APIURL, record.templateId);
+            message.success("Template restored.");
+            setAvailableRPTFiles((prev) =>
+              prev.map((t) =>
+                t.templateId === record.templateId ? { ...t, isDeleted: false, isActive: true } : t
+              )
+            );
+          } catch (err) {
+            console.error("Failed to restore template", err);
+            showError(err, "Failed to restore template.");
+          }
+        },
+      });
+      return;
+    }
+
+    Modal.confirm({
+      title: "Remove template?",
+      content: `This will mark "${record?.templateName}" as deleted in the ${scope} scope. It stays visible but marked deleted — you can restore it from the Versions panel.`,
+      okText: "Remove",
+      okButtonProps: { danger: true },
+      cancelText: "Cancel",
+      onOk: async () => {
+        try {
+          await softDeleteTemplate(APIURL, record.templateId, scope);
+          message.success("Template marked as deleted.");
+          setAvailableRPTFiles((prev) =>
+            prev.map((t) =>
+              t.templateId === record.templateId ? { ...t, isDeleted: true } : t
+            )
+          );
+        } catch (err) {
+          console.error("Failed to remove template", err);
+          showError(err, "Failed to remove template.");
+        }
+      },
+    });
   };
 
   const runReportGeneration = async (template) => {
@@ -1248,6 +1316,7 @@ const ProjectTemplates = () => {
         saveInlineEdit,
         cancelInlineEdit,
         inlineEditSaving,
+        onRemove: handleRemoveTemplate,
       }),
     [
       userMap,
@@ -1689,6 +1758,8 @@ const ProjectTemplates = () => {
           setOrderBySelections={setOrderBySelections}
           labelCopies={labelCopies}
           setLabelCopies={setLabelCopies}
+          staticVariables={staticVariables}
+          setStaticVariables={setStaticVariables}
           handleSaveMapping={handleSaveMapping}
           handleRefreshFields={handleRefreshFields}
           parsedFieldsLoading={parsedFieldsLoading}

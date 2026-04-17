@@ -12,20 +12,36 @@ import {
   resolveTemplateId,
 } from "../utils/rptTemplateUtils";
 import {
-  CopyOutlined,
-  CloseOutlined,
-  DownloadOutlined,
-  EditOutlined,
-  SettingOutlined,
-  HistoryOutlined,
-  InboxOutlined,
-  PlusOutlined,
-  ReloadOutlined,
-  UploadOutlined,
-  CheckOutlined,
-} from "@ant-design/icons";
-import axios from "axios";
-import { uploadWithDesignCheck } from "../services/reportApi";
+  buildTemplateColumns,
+  buildVersionsColumns,
+  rptTemplatesStyles,
+} from "../components/rpt/rptTemplatesShared";
+import {
+  activateTemplateVersion as activateTemplateVersionService,
+  downloadTemplateBlob as downloadTemplateBlobService,
+  fetchGroupOptions,
+  fetchMappingOptions as fetchMappingOptionsService,
+  fetchModuleOptions,
+  fetchProjectOptions,
+  fetchTemplateDetails,
+  fetchTemplateMapping,
+  fetchTemplateVersions as fetchTemplateVersionsService,
+  fetchTemplatesByGroup,
+  fetchTypeOptions,
+  fetchUsers as fetchUsersService,
+  importTemplatesFromGroup,
+  parseTemplateFields,
+  restoreTemplate,
+  saveTemplateMapping,
+  softDeleteTemplate,
+  updateTemplate,
+  uploadTemplate as uploadTemplateService,
+} from "../services/rptTemplatesService";
+import RPTFilesHeader from "./components/RPTFiles/RPTFilesHeader";
+import TemplatesCard from "../components/rpt/TemplatesCard";
+import TemplatesSidePanel from "../components/rpt/TemplatesSidePanel";
+import TemplatesMappingPanel from "../components/rpt/TemplatesMappingPanel";
+import TemplatesVersionsModal from "../components/rpt/TemplatesVersionsModal";
 
 const RPTFiles = () => {
   const url = import.meta.env.VITE_API_BASE_URL;
@@ -740,6 +756,13 @@ const RPTFiles = () => {
       message.success("Mapping saved.");
       setMappingNotFound(false);
       recordMappingUpdate(mappingTemplate.templateId);
+      setAvailableRPTFiles((prev) =>
+        prev.map((t) =>
+          t.templateId === mappingTemplate.templateId
+            ? { ...t, hasMapping: true, mappingWarning: null }
+            : t
+        )
+      );
       closeMappingPanel();
     } catch (err) {
       console.error("Failed to save mapping", err);
@@ -938,6 +961,56 @@ const RPTFiles = () => {
     }
   };
 
+  const handleRemoveTemplate = (record) => {
+    const scope = record?.projectId ? "project" : record?.groupId ? "group" : "standard";
+
+    if (record?.isDeleted) {
+      Modal.confirm({
+        title: "Restore template?",
+        content: `This will restore "${record?.templateName}" and set it as active in the ${scope} scope.`,
+        okText: "Restore",
+        cancelText: "Cancel",
+        onOk: async () => {
+          try {
+            await restoreTemplate(APIURL, record.templateId);
+            message.success("Template restored.");
+            setAvailableRPTFiles((prev) =>
+              prev.map((t) =>
+                t.templateId === record.templateId ? { ...t, isDeleted: false, isActive: true } : t
+              )
+            );
+          } catch (err) {
+            console.error("Failed to restore template", err);
+            showError(err, "Failed to restore template.");
+          }
+        },
+      });
+      return;
+    }
+
+    Modal.confirm({
+      title: "Remove template?",
+      content: `This will mark "${record?.templateName}" as deleted in the ${scope} scope. It stays visible but marked deleted — you can restore it from the Versions panel.`,
+      okText: "Remove",
+      okButtonProps: { danger: true },
+      cancelText: "Cancel",
+      onOk: async () => {
+        try {
+          await softDeleteTemplate(APIURL, record.templateId, scope);
+          message.success("Template marked as deleted.");
+          setAvailableRPTFiles((prev) =>
+            prev.map((t) =>
+              t.templateId === record.templateId ? { ...t, isDeleted: true } : t
+            )
+          );
+        } catch (err) {
+          console.error("Failed to remove template", err);
+          showError(err, "Failed to remove template.");
+        }
+      },
+    });
+  };
+
   const runReportGeneration = () => {
     message.warning("Report generation is available from Project Templates.");
   };
@@ -1046,6 +1119,7 @@ const RPTFiles = () => {
         saveInlineEdit,
         cancelInlineEdit,
         inlineEditSaving,
+        onRemove: handleRemoveTemplate,
       }),
     [
       userMap,

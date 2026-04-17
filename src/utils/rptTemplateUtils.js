@@ -68,15 +68,25 @@ export const normalizeKey = (value) =>
     .replace(/[^a-z0-9]/g, "");
 
 export const parseMappingJson = (raw) => {
-  if (!raw) return { mappings: {}, groupBy: [], orderBy: [], labelCopies: 1 };
+  if (!raw) return { mappings: {}, groupBy: [], orderBy: [], labelCopies: 1, staticVariables: {} };
+
+  // Normalize orderBy: accepts string[] or [{column, direction}] (legacy) → always returns string[]
+  const normalizeOrderBy = (raw) => {
+    if (!Array.isArray(raw)) return [];
+    return raw.map((item) => (typeof item === "string" ? item : item?.column)).filter(Boolean);
+  };
+
   try {
     const parsed = JSON.parse(raw);
+    const staticVariables = (parsed?.staticVariables && typeof parsed.staticVariables === "object" && !Array.isArray(parsed.staticVariables))
+      ? parsed.staticVariables
+      : {};
     if (Array.isArray(parsed)) {
       const map = {};
       parsed.forEach((item) => {
         if (item?.rptField && item?.source) map[item.rptField] = item.source;
       });
-      return { mappings: map, groupBy: [], orderBy: [], labelCopies: 1 };
+      return { mappings: map, groupBy: [], orderBy: [], labelCopies: 1, staticVariables: {} };
     }
     if (Array.isArray(parsed?.mappings)) {
       const map = {};
@@ -86,29 +96,31 @@ export const parseMappingJson = (raw) => {
       return {
         mappings: map,
         groupBy: parsed?.groupBy || [],
-        orderBy: parsed?.orderBy || [],
+        orderBy: normalizeOrderBy(parsed?.orderBy),
         labelCopies: Number.isFinite(Number(parsed?.labelCopies)) && Number(parsed.labelCopies) >= 1
           ? Math.round(Number(parsed.labelCopies))
           : 1,
+        staticVariables,
       };
     }
     if (parsed?.mappings && typeof parsed.mappings === "object") {
       return {
         mappings: parsed.mappings,
         groupBy: parsed?.groupBy || [],
-        orderBy: parsed?.orderBy || [],
+        orderBy: normalizeOrderBy(parsed?.orderBy),
         labelCopies: Number.isFinite(Number(parsed?.labelCopies)) && Number(parsed.labelCopies) >= 1
           ? Math.round(Number(parsed.labelCopies))
           : 1,
+        staticVariables,
       };
     }
     if (parsed && typeof parsed === "object") {
-      return { mappings: parsed, groupBy: [], orderBy: [], labelCopies: 1 };
+      return { mappings: parsed, groupBy: [], orderBy: [], labelCopies: 1, staticVariables: {} };
     }
   } catch (err) {
-    return { mappings: {}, groupBy: [], orderBy: [], labelCopies: 1 };
+    return { mappings: {}, groupBy: [], orderBy: [], labelCopies: 1, staticVariables: {} };
   }
-  return { mappings: {}, groupBy: [], orderBy: [], labelCopies: 1 };
+  return { mappings: {}, groupBy: [], orderBy: [], labelCopies: 1, staticVariables: {} };
 };
 
 export const normalizeModuleIds = (raw) => {

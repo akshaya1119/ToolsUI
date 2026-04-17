@@ -4,6 +4,8 @@ import {
   Badge,
   Button,
   Card,
+  Form,
+  Input,
   Table,
   Tag,
   Typography,
@@ -18,7 +20,7 @@ import { motion } from "framer-motion";
 import axios from "axios";
 import API from "../hooks/api";
 import useStore from "../stores/ProjectData";
-import { buildReportFileName, getErrorMessageAsync } from "../utils/rptTemplateUtils";
+import { buildReportFileName, getErrorMessageAsync, parseMappingJson } from "../utils/rptTemplateUtils";
 
 const { Text } = Typography;
 
@@ -55,6 +57,7 @@ const ProcessingPipeline = () => {
   const [staleLotIds, setStaleLotIds] = useState(new Set());
   const [bulkGeneratingLots, setBulkGeneratingLots] = useState(false);
   const [bulkDownloadingLots, setBulkDownloadingLots] = useState(false);
+  const [staticVarModal, setStaticVarModal] = useState({ open: false, template: null, variables: {}, values: {}, resolve: null });
   const projectId = useStore((state) => state.projectId);
   const projectName = useStore((state) => state.projectName);
   const storedGroupId = localStorage.getItem("selectedGroup");
@@ -147,7 +150,9 @@ const ProcessingPipeline = () => {
           projectId,
         },
       });
-      setTemplateOptions(res.data || []);
+      setTemplateOptions(
+        (res.data || []).filter((t) => t.hasMapping !== false && !t.isDeleted)
+      );
     } catch (err) {
       console.error("Failed to fetch templates", err);
       message.error("Failed to load templates for this project.");
@@ -559,6 +564,43 @@ const ProcessingPipeline = () => {
     loadTemplateReportStatus(templatePanel.moduleKey);
   }, [templatePanel.open, templatePanel.moduleKey, templateOptions, projectId]);
 
+  // Fetch static variables defined in a template's mapping and prompt user to fill them
+  const promptStaticVariables = (template, savedDefaults) => {
+    return new Promise((resolve) => {
+      const entries = Object.entries(savedDefaults || {});
+      if (entries.length === 0) {
+        resolve({});
+        return;
+      }
+      const initialValues = Object.fromEntries(entries.map(([k, v]) => [k, v]));
+      setStaticVarModal({ open: true, template, variables: savedDefaults, values: initialValues, resolve });
+    });
+  };
+
+  const handleStaticVarConfirm = () => {
+    const { resolve, values } = staticVarModal;
+    setStaticVarModal({ open: false, template: null, variables: {}, values: {}, resolve: null });
+    if (resolve) resolve(values);
+  };
+
+  const handleStaticVarCancel = () => {
+    const { resolve } = staticVarModal;
+    setStaticVarModal({ open: false, template: null, variables: {}, values: {}, resolve: null });
+    if (resolve) resolve(null); // null = cancelled
+  };
+
+  const getTemplateStaticVariables = async (templateId) => {
+    try {
+      const APIURL = import.meta.env.VITE_API_URL;
+      const res = await axios.get(`${APIURL}/RPTTemplates/${templateId}/mapping`);
+      const raw = res?.data?.mappingJson ?? res?.data?.MappingJson ?? "";
+      const parsed = parseMappingJson(raw);
+      return parsed.staticVariables || {};
+    } catch {
+      return {};
+    }
+  };
+
   const handleGenerateTemplate = async (template) => {
     if (!projectId) {
       message.warning("Please select a project");
@@ -574,9 +616,19 @@ const ProcessingPipeline = () => {
       return;
     }
 
+    // Check for static variables and prompt user
+    const savedDefaults = await getTemplateStaticVariables(templateId);
+    let staticVariables = {};
+    if (Object.keys(savedDefaults).length > 0) {
+      const userValues = await promptStaticVariables(template, savedDefaults);
+      if (userValues === null) return; // user cancelled
+      staticVariables = userValues;
+    }
+
     const payload = {
       projectId: Number(projectId),
       templateId: Number(templateId),
+      ...(Object.keys(staticVariables).length > 0 ? { staticVariables } : {}),
     };
     const messageKey = `generate-report-${payload.templateId}-${Date.now()}`;
     setGeneratingTemplates((prev) => ({ ...prev, [templateId]: true }));
@@ -704,9 +756,7 @@ const ProcessingPipeline = () => {
 
     setBulkGenerating(true);
     try {
-      for (const template of pending) {
-        await handleGenerateTemplate(template);
-      }
+      await Promise.all(pending.map((template) => handleGenerateTemplate(template)));
       await loadTemplateReportStatus(templatePanel.moduleKey);
     } finally {
       setBulkGenerating(false);
@@ -735,12 +785,24 @@ const ProcessingPipeline = () => {
       return;
     }
 
+    // Build friendly file names in the same order as ids
+    const fileNames = templates
+      .filter((t) => resolveTemplateId(t))
+      .map((t) =>
+        buildReportFileName({
+          templateName: t?.templateName,
+          projectName: projectName || (projectId ? `Project ${projectId}` : undefined),
+          typeId: t?.typeId ?? typeId,
+        })
+      );
+
     setBulkDownloading(true);
     try {
       const res = await axios.get(`${rptApiUrl}/report/generated-download-zip`, {
         params: {
           projectId: Number(projectId),
           templateIds: ids.join(","),
+          fileNames: fileNames.join(","),
         },
         responseType: "blob",
       });
@@ -1955,6 +2017,37 @@ const ProcessingPipeline = () => {
 
   return (
     <div className="p-4">
+      {/* Static Variables Input Modal */}
+      <Modal
+        title={`Enter values for "${staticVarModal.template?.templateName || "Report"}"`}
+        open={staticVarModal.open}
+        onOk={handleStaticVarConfirm}
+        onCancel={handleStaticVarCancel}
+        okText="Generate Report"
+        width={480}
+      >
+        <Typography.Text type="secondary" style={{ display: "block", marginBottom: 16 }}>
+          This report has fields that require custom text. Fill in the values below (pre-filled with saved defaults).
+        </Typography.Text>
+        {Object.entries(staticVarModal.variables || {}).map(([fieldName]) => (
+          <div key={fieldName} style={{ marginBottom: 12 }}>
+            <Typography.Text strong style={{ display: "block", marginBottom: 4 }}>
+              {fieldName}
+            </Typography.Text>
+            <Input
+              value={staticVarModal.values[fieldName] ?? ""}
+              onChange={(e) =>
+                setStaticVarModal((prev) => ({
+                  ...prev,
+                  values: { ...prev.values, [fieldName]: e.target.value },
+                }))
+              }
+              placeholder={`Enter value for ${fieldName}`}
+            />
+          </div>
+        ))}
+      </Modal>
+
       {configChanged && (
         <Alert
           message="Configuration Updated"
@@ -2086,9 +2179,8 @@ const ProcessingPipeline = () => {
                             ? isMappingNewerThanReport(templateId)
                             : false;
                           const isStale = staleTemplateIds.has(templateId);
-                          const canGenerate = templateId
-                            ? !reportStatus?.exists || hasMappingUpdate || isStale
-                            : true;
+                          const needsRegenerate = hasMappingUpdate || isStale;
+                          const alreadyGenerated = reportStatus?.exists && !needsRegenerate;
                           return (
                             <Card
                               size="small"
@@ -2102,12 +2194,11 @@ const ProcessingPipeline = () => {
                               <Space>
                                 <Button
                                   size="small"
-                                  type="primary"
+                                  type={alreadyGenerated ? "default" : "primary"}
                                   onClick={() => handleGenerateTemplate(template)}
                                   loading={isGenerating}
-                                  disabled={!canGenerate}
                                 >
-                                  Generate
+                                  {alreadyGenerated ? "Regenerate" : "Generate"}
                                 </Button>
                                 <Button
                                   size="small"

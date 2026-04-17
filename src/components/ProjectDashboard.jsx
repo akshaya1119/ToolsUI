@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import {
   Progress,
   Button,
@@ -8,28 +8,19 @@ import {
   Tag,
   Typography,
   message,
-  Badge,
   Tooltip,
-  Select,
 } from "antd";
 import { motion } from "framer-motion";
-import axios from "axios";
 import API from "../hooks/api";
 import useStore from "../stores/ProjectData";
-import { buildReportFileName } from "../utils/rptTemplateUtils";
 
 const { Text, Title } = Typography;
 const url3 = import.meta.env.VITE_API_FILE_URL;
-const rptApiUrl = import.meta.env.VITE_RPT_API_URL;
 
 const ProjectDashboard = () => {
   const navigate = useNavigate();
   const projectId = useStore((state) => state.projectId);
   const projectName = useStore((state) => state.projectName);
-  const storedGroupId = localStorage.getItem("selectedGroup");
-  const storedTypeId = localStorage.getItem("selectedType");
-  const groupId = storedGroupId ? Number(storedGroupId) : null;
-  const typeId = storedTypeId ? Number(storedTypeId) : null;
 
   // State from DataImport.jsx
   const [existingData, setExistingData] = useState([]);
@@ -45,16 +36,7 @@ const ProjectDashboard = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [steps, setSteps] = useState([]);
 
-  // RPT template selection
-  const [templateOptions, setTemplateOptions] = useState([]);
-  const [selectedTemplateId, setSelectedTemplateId] = useState(null);
-  const [templatesLoading, setTemplatesLoading] = useState(false);
-  const selectedTemplate = useMemo(
-    () =>
-      templateOptions.find((t) => t.templateId === selectedTemplateId) || null,
-    [templateOptions, selectedTemplateId],
-  );
-  const [generateLoading, setGenerateLoading] = useState(false);
+  
 
   // Fetch project configuration to determine if the project is configured
   const fetchProjectConfig = async () => {
@@ -184,28 +166,7 @@ const ProjectDashboard = () => {
     }
   };
 
-  const fetchTemplates = async () => {
-    if (!groupId || !typeId) {
-      setTemplateOptions([]);
-      return;
-    }
-    setTemplatesLoading(true);
-    try {
-      const res = await API.get("/RPTTemplates/by-group", {
-        params: {
-          groupId,
-          typeId,
-          projectId,
-        },
-      });
-      setTemplateOptions(res.data || []);
-    } catch (err) {
-      console.error("Failed to fetch templates", err);
-      message.error("Failed to load templates for this project.");
-    } finally {
-      setTemplatesLoading(false);
-    }
-  };
+
 
   useEffect(() => {
     if (projectId) {
@@ -215,11 +176,6 @@ const ProjectDashboard = () => {
     }
   }, [projectId]);
 
-  useEffect(() => {
-    if (projectId) {
-      fetchTemplates();
-    }
-  }, [projectId, groupId, typeId]);
 
   const handleRunPipeline = async () => {
     if (!projectId) return message.warning("Please select a project");
@@ -293,58 +249,7 @@ const ProjectDashboard = () => {
     }
   };
 
-  const handleGenerateReport = async () => {
-    if (!projectId) {
-      message.warning("Please select a project");
-      return;
-    }
-    if (!selectedTemplateId) {
-      message.warning("Please select a template");
-      return;
-    }
-    if (!rptApiUrl) {
-      message.error("RPT API URL is not configured.");
-      return;
-    }
-    const payload = {
-      projectId: Number(projectId),
-      templateId: Number(selectedTemplateId),
-    };
-    setGenerateLoading(true);
-    const hide = message.loading("Generating report...");
-    try {
-      const res = await axios.post(
-        `${rptApiUrl}/report/generate-dynamic`,
-        payload,
-        { responseType: "blob" }
-      );
-      const fileName = buildReportFileName({
-        templateName: selectedTemplate?.templateName,
-        projectName: projectName || (projectId ? `Project ${projectId}` : undefined),
-        typeId: selectedTemplate?.typeId ?? typeId,
-      });
-      const fileBlob = new Blob([res.data], { type: "application/pdf" });
-      const url = window.URL.createObjectURL(fileBlob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = fileName;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
-      message.success("Report generated.");
-    } catch (err) {
-      const msg =
-        err?.response?.data?.message ||
-        err?.response?.data ||
-        "Failed to generate report.";
-      console.error("Generate report failed", err);
-      message.error(msg);
-    } finally {
-      hide();
-      setGenerateLoading(false);
-    }
-  };
+  
 
   const percent = useMemo(
     () =>
@@ -538,45 +443,6 @@ const ProjectDashboard = () => {
               </div>
             </Card>
           </motion.div>
-
-          {/* <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.3 }}
-          >
-            <Card title="Generate Report" bordered={false} className="shadow-lg">
-              <div className="flex flex-col space-y-3">
-                <Select
-                  placeholder="Select template"
-                  value={selectedTemplateId}
-                  onChange={setSelectedTemplateId}
-                  loading={templatesLoading}
-                  allowClear
-                  options={templateOptions.map((t) => ({
-                    label: t.templateName,
-                    value: t.templateId,
-                  }))}
-                />
-                <Button
-                  type="primary"
-                  onClick={handleGenerateReport}
-                  disabled={!templateOptions.length}
-                  loading={generateLoading}
-                >
-                  Generate
-                </Button>
-                {!groupId || !typeId ? (
-                  <Text type="secondary">
-                    Select a project with group and type to load templates.
-                  </Text>
-                ) : templateOptions.length === 0 ? (
-                  <Text type="secondary">
-                    No templates available for this project group/type.
-                  </Text>
-                ) : null}
-              </div>
-            </Card>
-          </motion.div> */}
         </div>
       </div>
     </div>
