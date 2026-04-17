@@ -17,7 +17,7 @@ import { motion } from "framer-motion";
 import axios from "axios";
 import API from "../hooks/api";
 import useStore from "../stores/ProjectData";
-import { buildReportFileName } from "../utils/rptTemplateUtils";
+import { buildReportFileName, getErrorMessageAsync } from "../utils/rptTemplateUtils";
 
 const { Text } = Typography;
 
@@ -616,10 +616,7 @@ const ProcessingPipeline = () => {
       message.success({ content: "Report generated.", key: messageKey });
     } catch (err) {
       console.error("Generate report failed", err);
-      const msg =
-        err?.response?.data?.message ||
-        err?.response?.data ||
-        "Failed to generate report.";
+      const msg = await getErrorMessageAsync(err, "Failed to generate report.");
       message.error({ content: msg, key: messageKey, duration: 6 });
     } finally {
       setGeneratingTemplates((prev) => ({ ...prev, [templateId]: false }));
@@ -674,10 +671,7 @@ const ProcessingPipeline = () => {
       message.success("Download started.");
     } catch (err) {
       console.error("Download failed", err);
-      const msg =
-        err?.response?.data?.message ||
-        err?.response?.data ||
-        "Please generate the report first.";
+      const msg = await getErrorMessageAsync(err, "Please generate the report first.");
       message.error(msg);
     }
   };
@@ -756,10 +750,7 @@ const ProcessingPipeline = () => {
       message.success("Download started.");
     } catch (err) {
       console.error("Download all failed", err);
-      const msg =
-        err?.response?.data?.message ||
-        err?.response?.data ||
-        "Failed to download all reports.";
+      const msg = await getErrorMessageAsync(err, "Failed to download all reports.");
       message.error(msg);
     } finally {
       setBulkDownloading(false);
