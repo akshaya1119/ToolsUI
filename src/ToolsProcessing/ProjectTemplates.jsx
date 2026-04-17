@@ -116,6 +116,7 @@ const ProjectTemplates = () => {
   const [orderBySelections, setOrderBySelections] = useState([]);
   const [labelCopies, setLabelCopies] = useState(1);
   const [mappingPinnedFields, setMappingPinnedFields] = useState([]);
+  const [staticVariables, setStaticVariables] = useState({});
 
   const [versionsOpen, setVersionsOpen] = useState(false);
   const [versionsLoading, setVersionsLoading] = useState(false);
@@ -430,6 +431,7 @@ const ProjectTemplates = () => {
       setOrderBySelections([]);
       setLabelCopies(1);
       setMappingPinnedFields([]);
+      setStaticVariables({});
     }
   }, [mappingModalOpen]);
 
@@ -806,6 +808,7 @@ const ProjectTemplates = () => {
       setGroupBySelections(Array.isArray(parsed.groupBy) ? parsed.groupBy : []);
       setOrderBySelections(Array.isArray(parsed.orderBy) ? parsed.orderBy : []);
       setLabelCopies(Number.isFinite(parsed.labelCopies) && parsed.labelCopies >= 1 ? parsed.labelCopies : 1);
+      setStaticVariables(parsed.staticVariables || {});
       setMappingPinnedFields(Object.keys(parsed.mappings || {}));
       const emptyMapping =
         Object.keys(parsed.mappings || {}).length === 0 &&
@@ -860,11 +863,15 @@ const ProjectTemplates = () => {
         groupBy: groupBySelections || [],
         orderBy: orderBySelections || [],
         labelCopies: labelCopies ?? 1,
+        staticVariables: staticVariables || {},
       };
-      const mappingJson =
-        mappingsPayload.length > 0 || (groupBySelections || []).length > 0 || (orderBySelections || []).length > 0 || (labelCopies ?? 1) > 1
-          ? JSON.stringify(mappingPayload)
-          : "";
+      const hasContent =
+        mappingsPayload.length > 0 ||
+        (groupBySelections || []).length > 0 ||
+        (orderBySelections || []).length > 0 ||
+        (labelCopies ?? 1) > 1 ||
+        Object.keys(staticVariables || {}).length > 0;
+      const mappingJson = hasContent ? JSON.stringify(mappingPayload) : "";
       await saveTemplateMapping(
         APIURL,
         mappingTemplate.templateId,
@@ -1707,6 +1714,8 @@ const ProjectTemplates = () => {
           setOrderBySelections={setOrderBySelections}
           labelCopies={labelCopies}
           setLabelCopies={setLabelCopies}
+          staticVariables={staticVariables}
+          setStaticVariables={setStaticVariables}
           handleSaveMapping={handleSaveMapping}
           mappingLoading={mappingLoading}
           closeMappingPanel={closeMappingPanel}

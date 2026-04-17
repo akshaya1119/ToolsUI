@@ -1,6 +1,6 @@
 import React from "react";
-import { Button, Card, InputNumber, Select, Space, Switch, Table, Typography } from "antd";
-import { CloseOutlined, DeleteOutlined, PlusOutlined } from "@ant-design/icons";
+import { Button, Card, Checkbox, Input, InputNumber, Select, Space, Switch, Table, Typography } from "antd";
+import { CloseOutlined } from "@ant-design/icons";
 
 // Map raw SQL expressions or calc: values to friendly display labels
 const RAW_EXPR_LABELS = {
@@ -8,6 +8,10 @@ const RAW_EXPR_LABELS = {
   "CONCAT(MIN(b.BoxNo),' to ',MAX(b.BoxNo))": "Box Range",
   "calc:TOTAL_BOXES": "Total Boxes",
   "COUNT(DISTINCT b.BoxNo)": "Total Boxes",
+  "calc:BOX_NUMBERS": "Box Numbers",
+  "calc:BOX_LABEL": "No of boxes",
+  "calc:SRNO": "Serial No (Sr No)",
+  "calc:PACKING_DENOMINATION": "Packing Denomination",
 };
 
 // Strip table prefix (n., e., eb., b., x., c.) from a saved value for display
@@ -35,6 +39,8 @@ const TemplatesMappingPanel = ({
   setOrderBySelections,
   labelCopies,
   setLabelCopies,
+  staticVariables = {},
+  setStaticVariables,
   showDuplicateToggle = false,
   duplicateLabelsEnabled = true,
   onDuplicateLabelsChange,
@@ -44,21 +50,12 @@ const TemplatesMappingPanel = ({
 }) => {
   if (!showMappingPanel) return null;
 
-  const safeOrderBy = Array.isArray(orderBySelections) ? orderBySelections : [];
-
-  const addOrderBy = () => {
-    setOrderBySelections((prev) => [...(Array.isArray(prev) ? prev : []), { column: undefined, direction: "ASC" }]);
-  };
-
-  const removeOrderBy = (index) => {
-    setOrderBySelections((prev) => (Array.isArray(prev) ? prev : []).filter((_, i) => i !== index));
-  };
-
-  const updateOrderBy = (index, field, value) => {
-    setOrderBySelections((prev) =>
-      (Array.isArray(prev) ? prev : []).map((item, i) => (i === index ? { ...item, [field]: value } : item))
-    );
-  };
+  // Normalize: orderBySelections can be [{column, direction}] (legacy) or plain string[]
+  const orderByColumns = Array.isArray(orderBySelections)
+    ? orderBySelections.map((item) =>
+        typeof item === "string" ? item : item?.column
+      ).filter(Boolean)
+    : [];
 
   // labelRender: always show clean name without prefix, even for saved values not in current options
   const labelRender = (props) => {
@@ -103,7 +100,7 @@ const TemplatesMappingPanel = ({
         )}
 
         <Card size="small" style={{ marginBottom: 12 }} bodyStyle={{ padding: 12 }}>
-          <Space style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+          <Space style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
             <Typography.Text strong>Field Mapping</Typography.Text>
             <Space size={8}>
               <Typography.Text type="secondary" style={{ fontSize: 12 }}>Label Copies:</Typography.Text>
@@ -125,6 +122,9 @@ const TemplatesMappingPanel = ({
               </Button>
             </Space>
           </Space>
+          <Typography.Text type="secondary" style={{ fontSize: 11, display: "block", marginBottom: 8 }}>
+            ☑ Check the box before a field name to enter a fixed text value instead of mapping to a column.
+          </Typography.Text>
           {mappingOptionsLoading ? (
             <Typography.Text type="secondary">Loading available columns...</Typography.Text>
           ) : parsedFields.length === 0 ? (
@@ -142,30 +142,71 @@ const TemplatesMappingPanel = ({
                   title: "RPT Field",
                   dataIndex: "field",
                   key: "field",
-                  width: "45%",
-                  render: (value) => <Typography.Text>{value}</Typography.Text>,
+                  width: "38%",
+                  render: (value) => {
+                    const isStatic = Object.prototype.hasOwnProperty.call(staticVariables || {}, value);
+                    return (
+                      <Space size={6}>
+                        <Checkbox
+                          checked={isStatic}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setMappingSelections((prev) => {
+                                const next = { ...prev };
+                                delete next[value];
+                                return next;
+                              });
+                              setStaticVariables?.((prev) => ({ ...prev, [value]: "" }));
+                            } else {
+                              setStaticVariables?.((prev) => {
+                                const next = { ...prev };
+                                delete next[value];
+                                return next;
+                              });
+                            }
+                          }}
+                        />
+                        <Typography.Text style={{ fontSize: 12 }}>{value}</Typography.Text>
+                      </Space>
+                    );
+                  },
                 },
                 {
                   title: "Map To Column",
                   dataIndex: "mapTo",
                   key: "mapTo",
-                  render: (_, record) => (
-                    <Select
-                      showSearch
-                      allowClear
-                      placeholder="Select source column"
-                      value={mappingSelections[record.field]}
-                      options={sourceOptionGroups}
-                      labelRender={labelRender}
-                      style={{ width: "100%" }}
-                      filterOption={(input, option) =>
-                        (option?.label ?? "").toString().toLowerCase().includes(input.toLowerCase())
-                      }
-                      onChange={(value) =>
-                        setMappingSelections((prev) => ({ ...prev, [record.field]: value }))
-                      }
-                    />
-                  ),
+                  render: (_, record) => {
+                    const isStatic = Object.prototype.hasOwnProperty.call(staticVariables || {}, record.field);
+                    if (isStatic) {
+                      return (
+                        <Input
+                          size="small"
+                          placeholder="Enter fixed value..."
+                          value={staticVariables[record.field] ?? ""}
+                          onChange={(e) =>
+                            setStaticVariables?.((prev) => ({ ...prev, [record.field]: e.target.value }))
+                          }
+                        />
+                      );
+                    }
+                    return (
+                      <Select
+                        showSearch
+                        allowClear
+                        placeholder="Select source column"
+                        value={mappingSelections[record.field]}
+                        options={sourceOptionGroups}
+                        labelRender={labelRender}
+                        style={{ width: "100%" }}
+                        filterOption={(input, option) =>
+                          (option?.label ?? "").toString().toLowerCase().includes(input.toLowerCase())
+                        }
+                        onChange={(value) =>
+                          setMappingSelections((prev) => ({ ...prev, [record.field]: value }))
+                        }
+                      />
+                    );
+                  },
                 },
               ]}
             />
@@ -195,6 +236,26 @@ const TemplatesMappingPanel = ({
             labelRender={labelRender}
             value={groupBySelections}
             onChange={(values) => setGroupBySelections(values)}
+            style={{ width: "100%", marginTop: 8 }}
+            filterOption={(input, option) =>
+              (option?.label ?? "").toString().toLowerCase().includes(input.toLowerCase())
+            }
+          />
+        </Card>
+
+        <Card size="small" style={{ marginBottom: 12 }} bodyStyle={{ padding: 12 }}>
+          <Typography.Text strong>Order By</Typography.Text>
+          <Typography.Text type="secondary" style={{ display: "block" }}>
+            Select one or more columns to sort the report output (ascending).
+          </Typography.Text>
+          <Select
+            mode="multiple"
+            allowClear
+            placeholder="Choose order by columns"
+            options={sourceOptionGroups}
+            labelRender={labelRender}
+            value={orderByColumns}
+            onChange={(values) => setOrderBySelections(values)}
             style={{ width: "100%", marginTop: 8 }}
             filterOption={(input, option) =>
               (option?.label ?? "").toString().toLowerCase().includes(input.toLowerCase())
