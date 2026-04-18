@@ -152,8 +152,9 @@ const ProjectTemplates = () => {
 
   const selectionReady = Boolean(projectId && projectGroupId && projectTypeId);
 
-  const showError = (err, fallback) => {
-    message.error(getErrorMessage(err, fallback));
+  const showError = async (err, fallback) => {
+    const errorMsg = await getErrorMessageAsync(err, fallback);
+    MessageService.error(errorMsg);
   };
 
   useEffect(() => {
@@ -598,59 +599,50 @@ const ProjectTemplates = () => {
 
     const data = res.data;
 
-    if (!forceUpload && data.designCheck) {
-      if (data.designCheck?.changed === true) {
+    if (!forceUpload && (data.designCheck || data.DesignCheck)) {
+      const check = data.designCheck || data.DesignCheck;
+      if (check.changed === true || check.Changed === true) {
+        setAddSubmitting(false);
+        const changeList =
+          Array.isArray(check.changes) && check.changes.length > 0
+            ? check.changes.map((c) => `- ${c}`).join("\n")
+            : "No specific field changes listed (check design snapshot).";
+
         const confirmed = await MessageService.confirm(
-          <div>
-            <p>
-              <b>
-                {data.designCheck.message ||
-                  "Differences were found between your file and the active template."}
-              </b>
-            </p>
-            {data.designCheck.changes && data.designCheck.changes.length > 0 && (
-              <ul className="mt-2 list-disc pl-4 text-[10px] space-y-1">
-                {data.designCheck.changes.map((change, index) => (
-                  <li key={index}>{change}</li>
-                ))}
-              </ul>
-            )}
-            {!data.designCheck.changes && <p>No detailed changes available</p>}
-          </div>,
+          `Design changes detected since last version:\n\n${changeList}\n\nDo you want to upload this version anyway?`,
           {
             title: "Design Changes Detected",
-            confirmText: "Proceed",
-            cancelText: "Cancel",
-            type: 'warning'
+            confirmText: "Yes, Upload",
+            cancelText: "No, Cancel",
+            type: "warning",
           }
         );
 
-        if (confirmed) {
-          return await uploadTemplate({
-            ...params,
-            forceUpload: true,
-          });
-        }
-        throw new Error("User cancelled upload");
-      } else {
-        const confirmed = await MessageService.confirm(
-          "No changes detected. Do you still want to upload the template?",
-          {
-            title: "No Design Change",
-            confirmText: "Upload Anyway",
-            cancelText: "Cancel",
-            type: 'info'
-          }
-        );
-
-        if (confirmed) {
-          return await uploadTemplate({
-            ...params,
-            forceUpload: true,
-          });
-        }
-        throw new Error("User cancelled upload");
+        if (!confirmed) return;
+        return await uploadTemplate({
+          ...params,
+          forceUpload: true,
+        });
       }
+
+      // Design is the same - ask user if they still want to upload
+      const confirmed = await MessageService.confirm(
+        "No changes detected between this file and the latest version. Do you still want to upload it?",
+        {
+          title: "No Design Changes Detected",
+          confirmText: "Yes, Upload",
+          cancelText: "No, Cancel",
+          type: "info",
+        }
+      );
+
+      if (confirmed) {
+        return await uploadTemplate({
+          ...params,
+          forceUpload: true,
+        });
+      }
+      throw new Error("User cancelled upload");
     }
 
     return data;
@@ -742,18 +734,7 @@ const ProjectTemplates = () => {
     }
   };
 
-  const confirmForceUpload = async (onConfirm) => {
-    const confirmed = await MessageService.confirm(
-      "No changes detected between this file and the latest version.",
-      {
-        title: "No changes detected",
-        confirmText: "Upload Anyway",
-        cancelText: "Cancel",
-        type: 'info'
-      }
-    );
-    if (confirmed) onConfirm();
-  };
+
 
   const confirmMappingUpdate = async (template) => {
     const confirmed = await MessageService.confirm(
@@ -773,7 +754,7 @@ const ProjectTemplates = () => {
     setParsedFieldsLoading(true);
     try {
       const res = await parseTemplateFields(APIURL, mappingTemplate.templateId);
-      const parsed = res?.parsedFields || [];
+      const parsed = extractParsedFields(res?.parsedFields || []);
       setParsedFields(parsed);
       message.success("Fields refreshed from template.");
     } catch (err) {
@@ -798,17 +779,18 @@ const ProjectTemplates = () => {
 
     try {
       const details = await fetchTemplateDetails(APIURL, template.templateId);
-      let currentFields = extractParsedFields(details);
+      let currentFields = details;
       
-      // If we only have strings (old format) or no fields, force a refresh once to get rich metadata
-      const needsRefresh = !currentFields || currentFields.length === 0 || 
-                           currentFields.every(f => typeof f === "string");
+      const needsRefresh = !currentFields.requiredFieldsJson && 
+                           !currentFields.RequiredFieldsJson &&
+                           (!currentFields.parsedFieldsJson || currentFields.parsedFieldsJson === "[]") &&
+                           (!currentFields.ParsedFieldsJson || currentFields.ParsedFieldsJson === "[]");
 
       if (needsRefresh) {
         setParsedFieldsLoading(true);
         try {
           const parsedRes = await parseTemplateFields(APIURL, template.templateId);
-          currentFields = parsedRes?.parsedFields || [];
+          currentFields = parsedRes || [];
         } catch (err) {
           console.error("Auto-parse failed", err);
         } finally {
@@ -816,7 +798,8 @@ const ProjectTemplates = () => {
         }
       }
       
-      setParsedFields(currentFields);
+      const richFields = extractParsedFields(currentFields);
+      setParsedFields(richFields);
 
       const res = await fetchTemplateMapping(APIURL, template.templateId);
       const mapping = res?.mappingJson ?? res?.MappingJson ?? "";
@@ -1388,22 +1371,36 @@ const ProjectTemplates = () => {
   }, [sourceOptionGroups]);
 
   const mappingDisplayOrder = useMemo(() => {
-    const pinned = new Set(mappingPinnedFields || []);
-    const mapped = parsedFields
-      .filter((f) => pinned.has((typeof f === "string" ? f : f?.name ?? f?.Name) || ""))
-      .sort((a, b) => {
-        const nameA = (typeof a === "string" ? a : a?.name ?? a?.Name) || "";
-        const nameB = (typeof b === "string" ? b : b?.name ?? b?.Name) || "";
-        return nameA.localeCompare(nameB);
+    const getSortInfo = (f) => {
+      const name = (typeof f === "string" ? f : f?.name ?? f?.Name) || "";
+      const isReq = typeof f === "string" ? false : !!(f?.isRequired ?? f?.IsRequired ?? f?.required ?? f?.Required);
+      return { name, isReq };
+    };
+
+    const pinnedFields = new Set(mappingPinnedFields || []);
+
+    // Helper to sort a list by: Required (true first) > Pinned (true first) > Name (A-Z)
+    const complexSort = (list) => {
+      return [...list].sort((a, b) => {
+        const infoA = getSortInfo(a);
+        const infoB = getSortInfo(b);
+        const isPinnedA = pinnedFields.has(infoA.name);
+        const isPinnedB = pinnedFields.has(infoB.name);
+
+        // 1. Required Priority
+        if (infoA.isReq && !infoB.isReq) return -1;
+        if (!infoA.isReq && infoB.isReq) return 1;
+
+        // 2. Pinned Priority (Keep existing logic of showing mapped at top if same requirement)
+        if (isPinnedA && !isPinnedB) return -1;
+        if (!isPinnedA && isPinnedB) return 1;
+
+        // 3. Alphabetical
+        return infoA.name.localeCompare(infoB.name);
       });
-    const unmapped = parsedFields
-      .filter((f) => !pinned.has((typeof f === "string" ? f : f?.name ?? f?.Name) || ""))
-      .sort((a, b) => {
-        const nameA = (typeof a === "string" ? a : a?.name ?? a?.Name) || "";
-        const nameB = (typeof b === "string" ? b : b?.name ?? b?.Name) || "";
-        return nameA.localeCompare(nameB);
-      });
-    return [...mapped, ...unmapped];
+    };
+
+    return complexSort(parsedFields);
   }, [parsedFields, mappingPinnedFields]);
 
   const mappingRows = useMemo(
@@ -1413,7 +1410,7 @@ const ProjectTemplates = () => {
         return {
           key: `${name}-${index}`,
           field: name,
-          isRequired: typeof f === "string" ? false : f?.isRequired ?? f?.IsRequired ?? false,
+          isRequired: typeof f === "string" ? false : !!(f?.isRequired ?? f?.IsRequired ?? f?.required ?? f?.Required),
           isMapped: Boolean(mappingSelections?.[name]),
         };
       }),
@@ -1761,7 +1758,6 @@ const ProjectTemplates = () => {
           staticVariables={staticVariables}
           setStaticVariables={setStaticVariables}
           handleSaveMapping={handleSaveMapping}
-          handleRefreshFields={handleRefreshFields}
           parsedFieldsLoading={parsedFieldsLoading}
           mappingLoading={mappingLoading}
           closeMappingPanel={closeMappingPanel}

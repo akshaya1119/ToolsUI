@@ -410,41 +410,47 @@ const ProcessingPipeline = () => {
 
   const fetchLotsForSelection = async () => {
     try {
-      // Try the new endpoint first
+      // Use the endpoint provided by user
+      const res = await API.get(`/NRDataLots/GetByProjectId/${projectId}`);
+      const allData = res.data || [];
+      
+      // Group by lot and count catches manually, ensuring strict uniqueness
+      const lotMap = new Map();
+      allData.forEach(item => {
+        const lotNumber = item.lotNo ?? item.LotNo;
+        const catchNo = item.catchNo ?? item.CatchNo;
+        const lotKey = String(lotNumber).trim();
+
+        if (lotNumber && lotNumber > 0 && lotKey !== "") {
+          if (!lotMap.has(lotKey)) {
+            lotMap.set(lotKey, {
+              lotNo: lotNumber,
+              catches: new Set()
+            });
+          }
+          if (catchNo) {
+            lotMap.get(lotKey).catches.add(catchNo);
+          }
+        }
+      });
+      
+      // Convert to expected format
+      const lots = Array.from(lotMap.values()).map(group => ({
+        lotNo: group.lotNo,
+        catchCount: group.catches.size
+      })).sort((a, b) => a.lotNo - b.lotNo);
+      
+      return lots;
+    } catch (err) {
+      console.error("Failed to fetch lots for selection", err);
+      // Fallback to internal route if NRDatas fails
       try {
         const res = await API.get(`/NRDataLots/GetByProjectId/${projectId}`);
         return res.data || [];
-      } catch (err) {
-        // Fallback to by-project endpoint if GetByProjectId doesn't exist
-        console.log("Using fallback endpoint for lots");
-        const res = await API.get(`/NRDataLots/by-project/${projectId}`);
-        const allData = res.data || [];
-        
-        // Group by lot and count catches manually
-        const lotMap = new Map();
-        allData.forEach(item => {
-          if (item.lotNo > 0) {
-            if (!lotMap.has(item.lotNo)) {
-              lotMap.set(item.lotNo, new Set());
-            }
-            if (item.catchNo) {
-              lotMap.get(item.lotNo).add(item.catchNo);
-            }
-          }
-        });
-        
-        // Convert to expected format
-        const lots = Array.from(lotMap.entries()).map(([lotNo, catches]) => ({
-          lotNo,
-          catchCount: catches.size
-        })).sort((a, b) => a.lotNo - b.lotNo);
-        
-        return lots;
+      } catch (innerErr) {
+        message.error("Failed to load lots");
+        return [];
       }
-    } catch (err) {
-      console.error("Failed to fetch lots for selection", err);
-      message.error("Failed to load lots");
-      return [];
     }
   };
 
@@ -542,7 +548,7 @@ const ProcessingPipeline = () => {
       if (!module) return memo;
 
       const parentIds = module.parentModuleIds || (module.parentModuleId ? [module.parentModuleId] : []);
-      
+
       parentIds.forEach(pid => {
         const parent = allModules.find(m => m.id === pid);
         if (parent) {
@@ -560,7 +566,7 @@ const ProcessingPipeline = () => {
     };
 
     const ancestors = Array.from(getRecursiveAncestors(moduleKey));
-    
+
     setSelectedModules((prev) => {
       // Filter ancestors to only include those NOT completed (except the clicked one)
       const keysToSelect = ancestors.filter(key => {
@@ -680,6 +686,7 @@ const ProcessingPipeline = () => {
   };
 
   const openTemplatePanel = (moduleKey) => {
+    setLotWisePanel({ open: false, moduleKey: null }); // Ensure lot-wise is closed
     setTemplatePanel({ open: true, moduleKey });
   };
 
@@ -963,14 +970,15 @@ const ProcessingPipeline = () => {
       message.info("Lot-wise templates are only available for Box Breaking");
       return;
     }
-    
+
     // First check if there are templates for box breaking
     const boxTemplates = getTemplatesForModuleKey("box");
     if (boxTemplates.length === 0) {
       message.warning("No templates are linked to the Box Breaking module. Please configure templates first.");
       return;
     }
-    
+
+    setTemplatePanel({ open: false, moduleKey: null }); // Ensure standard panel is closed
     setLotWisePanel({ open: true, moduleKey });
     await fetchAvailableLots();
   };
@@ -993,7 +1001,7 @@ const ProcessingPipeline = () => {
       } catch (err) {
         // Fallback to by-project endpoint if GetByProjectId doesn't exist
         console.log("Using fallback endpoint for lots");
-        const res = await API.get(`/NRDataLots/by-project/${projectId}`);
+        const res = await API.get(`/NRDataLots/GetByProjectId/${projectId}`);
         const allData = res.data || [];
         
         // Group by lot and count catches manually
@@ -1034,7 +1042,7 @@ const ProcessingPipeline = () => {
 
   const loadLotTemplateStatus = async (lots) => {
     if (!projectId || !lots || lots.length === 0) return;
-    
+
     const boxTemplates = getTemplatesForModuleKey("box");
     if (boxTemplates.length === 0) return;
 
@@ -1044,7 +1052,7 @@ const ProcessingPipeline = () => {
           boxTemplates.map(async (template) => {
             const templateId = resolveTemplateId(template);
             if (!templateId) return null;
-            
+
             try {
               const res = await axios.get(`${rptApiUrl}/report/generated-exists`, {
                 params: {
@@ -1200,7 +1208,7 @@ const ProcessingPipeline = () => {
         typeId: template?.typeId ?? typeId,
         lotNumber: lotNo,
       });
-      
+
       const fileBlob = new Blob([res.data], { type: "application/pdf" });
       const url = window.URL.createObjectURL(fileBlob);
       const link = document.createElement("a");
@@ -1234,7 +1242,7 @@ const ProcessingPipeline = () => {
 
     // Get templates for the box breaking module
     const lotTemplates = getTemplatesForModuleKey("box");
-    
+
     if (lotTemplates.length === 0) {
       message.warning("No templates available for this lot");
       return;
@@ -1336,7 +1344,7 @@ const ProcessingPipeline = () => {
       const contentDisposition = res.headers["content-disposition"] || "";
       const fileNameMatch = contentDisposition.match(/filename="?([^\"]+)"?/i);
       const fileName = fileNameMatch?.[1] || `Lot${lotNo}_Reports_${projectId}_${new Date().toISOString().slice(0, 10)}.zip`;
-      
+
       const fileBlob = new Blob([res.data], { type: "application/zip" });
       const url = window.URL.createObjectURL(fileBlob);
       const link = document.createElement("a");
@@ -1373,7 +1381,7 @@ const ProcessingPipeline = () => {
     try {
       const fileName = `${reportType}_Lot${lotNo}.xlsx`;
       const fileUrl = `${url3}/${projectId}/${fileName}?DateTime=${new Date().toISOString()}`;
-      
+
       // Create a temporary link and trigger download
       const link = document.createElement("a");
       link.href = fileUrl;
@@ -1382,7 +1390,7 @@ const ProcessingPipeline = () => {
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      
+
       message.success(`Downloading ${reportType} report for Lot ${lotNo}`);
     } catch (err) {
       console.error("Failed to download lot report", err);
@@ -1582,8 +1590,8 @@ const ProcessingPipeline = () => {
             // Fetch available lots before running box breaking
             const lots = await fetchLotsForSelection();
             
-            if (lots.length > 1) {
-              // Show lot selection modal if multiple lots exist
+            if (lots.length > 0) {
+              // Always show lot selection modal if lots exist (as per user request "ask user which lots process he wants to run")
               const selectedLots = await showLotSelectionModal(lots);
               
               if (selectedLots === null) {
@@ -1596,7 +1604,7 @@ const ProcessingPipeline = () => {
               // Run box breaking with selected lots
               await runBoxBreaking(projectId, selectedLots);
             } else {
-              // Run normally if 0 or 1 lot
+              // Run normally if no lots found (will likely fail on backend but consistent)
               await runBoxBreaking(projectId);
             }
           }
@@ -1651,7 +1659,7 @@ const ProcessingPipeline = () => {
       if (freshlyRun.includes("box")) {
         // Fetch lots to mark templates as stale
         const lots = await fetchLotsForSelection();
-        
+
         if (lots.length > 0) {
           const boxTemplates = getTemplatesForModuleKey("box");
           const staleKeys = new Set();
@@ -1837,28 +1845,20 @@ const ProcessingPipeline = () => {
         const hasTemplates = moduleTemplates.length > 0;
         const isReady = record.status === "completed";
         const isBoxBreaking = record.key === "box";
-        
+
         return (
           <Space size="small">
-            {!isBoxBreaking && (
-              <Button
-                size="small"
-                onClick={() => openTemplatePanel(record.key)}
-                disabled={!isReady || !hasTemplates}
-              >
-                Templates{hasTemplates ? ` (${moduleTemplates.length})` : ""}
-              </Button>
-            )}
-            {isBoxBreaking && (
-              <Button
-                size="small"
-                type="primary"
-                onClick={() => openLotWisePanel(record.key)}
-                disabled={!isReady || !hasTemplates}
-              >
-                Templates
-              </Button>
-            )}
+            <Button
+              size="small"
+              onClick={() =>
+                isBoxBreaking
+                  ? openLotWisePanel(record.key)
+                  : openTemplatePanel(record.key)
+              }
+              disabled={!isReady || !hasTemplates}
+            >
+              Templates{hasTemplates ? ` (${moduleTemplates.length})` : ""}
+            </Button>
           </Space>
         );
       },
@@ -1867,14 +1867,16 @@ const ProcessingPipeline = () => {
       title: "Report",
       dataIndex: "report",
       key: "report",
-      render: (url) =>
-        url ? (
+      render: (url, record) => {
+        if (record.key === "box") return <Text type="secondary">—</Text>;
+        return url ? (
           <a href={url} target="_blank" rel="noopener noreferrer" className="text-blue-500">
             Download
           </a>
         ) : (
           <Text type="secondary">—</Text>
-        ),
+        );
+      },
     },
     // {
     //   title: "Actions",
@@ -1895,10 +1897,10 @@ const ProcessingPipeline = () => {
   // Handle opening detail panel
   const handleOpenDetailPanel = (record) => {
     if (!moduleHasData(record)) return;
-    
+
     setSelectedModuleForDetails(record);
     setIsDetailPanelOpen(true);
-    
+
     // Initialize all items as selected by default
     const mockLotData = {
       "LOT-001": [
@@ -1920,7 +1922,7 @@ const ProcessingPipeline = () => {
     };
 
     const dataToUse = detailGrouping === "lot" ? mockLotData : mockCatchData;
-    
+
     // Select all items by default
     const initialSelection = {};
     Object.entries(dataToUse).forEach(([groupName, items]) => {
@@ -1948,7 +1950,7 @@ const ProcessingPipeline = () => {
     setSelectedItems(prev => {
       const groupItems = prev[groupName] || [];
       const isSelected = groupItems.includes(itemId);
-      
+
       return {
         ...prev,
         [groupName]: isSelected
@@ -1963,7 +1965,7 @@ const ProcessingPipeline = () => {
     setSelectedItems(prev => {
       const groupItems = prev[groupName] || [];
       const allSelected = allItemIds.every(id => groupItems.includes(id));
-      
+
       return {
         ...prev,
         [groupName]: allSelected ? [] : allItemIds
@@ -2115,7 +2117,7 @@ const ProcessingPipeline = () => {
               {/* Action Buttons */}
               <div style={{ padding: "12px 16px", borderBottom: "1px solid #f0f0f0" }}>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  
+
                   <Button size="small">Download All</Button>
                   <Button size="small" disabled={totalSelected === 0}>
                     Download Selected ({totalSelected})
@@ -2448,7 +2450,7 @@ const ProcessingPipeline = () => {
                     size="small"
                     items={availableLots.map((lot) => {
                       const lotTemplates = getTemplatesForModuleKey("box");
-                      
+
                       // Count generated templates for this lot
                       const generatedCount = lotTemplates.filter((template) => {
                         const templateId = resolveTemplateId(template);
@@ -2465,7 +2467,7 @@ const ProcessingPipeline = () => {
                         const statusKey = `${lot.lotNo}_${templateId}`;
                         return staleLotIds.has(statusKey);
                       });
-                      
+
                       return {
                         key: lot.lotNo.toString(),
                         label: (
