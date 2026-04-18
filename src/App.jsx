@@ -2,6 +2,7 @@ import React, { useState, useEffect, use } from "react";
 import { HashRouter as Router, Route, Routes, Navigate, useNavigate, useLocation } from "react-router-dom";
 import Login from "./Login";
 import Dashboard from "./Dashboard";
+import Archive from "./Archive";
 import CorrectionTool from "./components/CorrectionTool";
 import ExcelUpload from "./components/ExcelUpload";
 import MainLayout from "./components/MainLayout";
@@ -16,7 +17,6 @@ import Master from "./Masters/Master";
 import EnvelopeBreaking from "./ToolsProcessing/Envelope/EnvelopeBreaking";
 import ProcessingPipeline from "./ToolsProcessing/ProcessingPipeline";
 import RPTReports from "./ToolsProcessing/RPTReports";
-import HorizontalToVertical from "./ToolsProcessing/HToV"
 import Report from "./pages/Report/Report";
 import ReportBuilder from "./pages/Report/ReportBuilder";
 import ProjectDashboard from "./components/ProjectDashboard";
@@ -95,6 +95,16 @@ export default function App() {
                   <ProtectedRoute token={token}>
                     <MainLayout >
                       <Dashboard />
+                    </MainLayout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/archive"
+                element={
+                  <ProtectedRoute token={token}>
+                    <MainLayout >
+                      <Archive />
                     </MainLayout>
                   </ProtectedRoute>
                 }

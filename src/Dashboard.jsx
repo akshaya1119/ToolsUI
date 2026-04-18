@@ -45,21 +45,6 @@ const useDebounce = (value, delay) => {
   return debouncedValue;
 };
 
-/**
- * Dashboard Component
- * 
- * To integrate search with Navbar, pass these props to Navbar in parent component:
- * - searchQuery: The search query state from Dashboard
- * - onSearchChange: Function to update search query
- * - searchPlaceholder: Dynamic placeholder based on view
- * 
- * Example in parent:
- * <Navbar 
- *   searchQuery={dashboardSearchQuery}
- *   onSearchChange={setDashboardSearchQuery}
- *   searchPlaceholder={view === "groups" ? "Search groups..." : "Search projects..."}
- * />
- */
 export default function Dashboard({ externalSearchQuery, onSearchQueryChange }) {
   const [projects, setProjects] = useState([]);
   const [groups, setGroups] = useState([]);
@@ -103,32 +88,37 @@ export default function Dashboard({ externalSearchQuery, onSearchQueryChange }) 
   const getProjects = async () => {
     setLoading(true);
     try {
+      // 1. Get all project details (from cache or API)
+      let allProjects = [];
+      const cachedProjects = localStorage.getItem("cached_all_projects");
+      if (cachedProjects) {
+        allProjects = JSON.parse(cachedProjects);
+      } else {
+        const projRes = await axios.get(`${url}/Project`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        allProjects = projRes.data || [];
+        localStorage.setItem("cached_all_projects", JSON.stringify(allProjects));
+      }
+
+      // 2. Get user's active projects from Tools API
       const response = await API.get('/Projects/UserId');
-      const projectIds = response.data.map((config) => config.projectId);
 
-      const projectNameRequests = projectIds.map((projectId) =>
-        axios.get(`${url}/Project/${projectId}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        })
-      );
-
-      const projectNameResponses = await Promise.all(projectNameRequests);
-      const combinedProjects = response.data.map((project, index) => {
-        const projData = projectNameResponses[index].data;
+      // 3. Combine user projects with their names from allProjects
+      const combinedProjects = response.data.map((project) => {
+        const projData = allProjects.find(p => p.projectId === project.projectId) || {};
         return {
           id: project.projectId,
-          name: projData.name,
+          name: projData.name || 'Unknown Project',
           timeAgo: project.timeAgo,
-          groupId: projData.groupId,
-          typeId: projData.typeId,
-          status: project.status,
+          groupId: projData.groupId || project.groupId, 
+          typeId: projData.typeId || project.typeId,   
+          isActive: project.isActive, // Get isActive from API response
         };
       });
 
       console.log("Combined Projects:", combinedProjects);
-      // Filter out archived projects (where status is true)
-      const activeProjects = combinedProjects.filter(p => !p.status);
-      setProjects(activeProjects);  // Store array of active { id, name }
+      setProjects(combinedProjects);
 
     } catch (err) {
       console.error("Failed to fetch projects", err);
@@ -139,10 +129,23 @@ export default function Dashboard({ externalSearchQuery, onSearchQueryChange }) 
 
   const getGroupsAndTypes = async () => {
     try {
+      // Check if groups are cached in localStorage
+      const cachedGroups = localStorage.getItem("cached_groups");
+
+      // Use cached data if available
+      if (cachedGroups) {
+        setGroups(JSON.parse(cachedGroups));
+        return;
+      }
+
+      // Fetch from API if cache is empty
       const groupsRes = await axios.get(`${url}/Groups`, { 
         headers: { Authorization: `Bearer ${token}` } 
       });
       setGroups(groupsRes.data);
+      
+      // Cache the groups data for the session
+      localStorage.setItem("cached_groups", JSON.stringify(groupsRes.data));
     } catch (err) {
       console.error("Failed to fetch groups:", err);
     }
@@ -153,7 +156,7 @@ export default function Dashboard({ externalSearchQuery, onSearchQueryChange }) 
     const lastAccessed = {};
     
     projects.forEach(p => {
-      // Only count active projects
+      // Only count active projects (treat undefined/null as active for backward compatibility)
       if (p.isActive !== false) {
         counts[p.groupId] = (counts[p.groupId] || 0) + 1;
         

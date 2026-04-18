@@ -1,6 +1,6 @@
 import React from "react";
-import { Button, Card, Checkbox, Input, InputNumber, Select, Space, Switch, Table, Typography } from "antd";
-import { CloseOutlined } from "@ant-design/icons";
+import { Button, Card,Checkbox, Input, InputNumber, Select, Space, Switch, Table, Typography } from "antd";
+import { CloseOutlined, DeleteOutlined, PlusOutlined, ReloadOutlined } from "@ant-design/icons";
 
 // Map raw SQL expressions or calc: values to friendly display labels
 const RAW_EXPR_LABELS = {
@@ -45,6 +45,8 @@ const TemplatesMappingPanel = ({
   duplicateLabelsEnabled = true,
   onDuplicateLabelsChange,
   handleSaveMapping,
+  handleRefreshFields,
+  parsedFieldsLoading,
   mappingLoading,
   closeMappingPanel,
 }) => {
@@ -113,6 +115,14 @@ const TemplatesMappingPanel = ({
                 size="small"
               />
               <Button
+                size="small"
+                icon={<ReloadOutlined />}
+                onClick={handleRefreshFields}
+                loading={parsedFieldsLoading}
+              >
+                Refresh Fields
+              </Button>
+              <Button
                 type="primary"
                 onClick={handleSaveMapping}
                 loading={mappingLoading}
@@ -142,34 +152,12 @@ const TemplatesMappingPanel = ({
                   title: "RPT Field",
                   dataIndex: "field",
                   key: "field",
-                  width: "38%",
-                  render: (value) => {
-                    const isStatic = Object.prototype.hasOwnProperty.call(staticVariables || {}, value);
-                    return (
-                      <Space size={6}>
-                        <Checkbox
-                          checked={isStatic}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setMappingSelections((prev) => {
-                                const next = { ...prev };
-                                delete next[value];
-                                return next;
-                              });
-                              setStaticVariables?.((prev) => ({ ...prev, [value]: "" }));
-                            } else {
-                              setStaticVariables?.((prev) => {
-                                const next = { ...prev };
-                                delete next[value];
-                                return next;
-                              });
-                            }
-                          }}
-                        />
-                        <Typography.Text style={{ fontSize: 12 }}>{value}</Typography.Text>
-                      </Space>
-                    );
-                  },
+                  width: "45%",
+                  render: (value, record) => (
+                    <Typography.Text>
+                      {value} {record.isRequired ? <Typography.Text type="danger">*</Typography.Text> : ""}
+                    </Typography.Text>
+                  ),
                 },
                 {
                   title: "Map To Column",

@@ -45,16 +45,20 @@ export const extractParsedFields = (template) => {
     template.parsedFields ??
     template.ParsedFields ??
     null;
-  if (Array.isArray(raw)) return raw;
-  if (typeof raw === "string" && raw.trim().length > 0) {
+    
+  let list = [];
+  if (Array.isArray(raw)) {
+    list = raw;
+  } else if (typeof raw === "string" && raw.trim().length > 0) {
     try {
       const parsed = JSON.parse(raw);
-      return Array.isArray(parsed) ? parsed : [];
+      list = Array.isArray(parsed) ? parsed : [];
     } catch {
-      return [];
+      list = [];
     }
   }
-  return [];
+
+  return list;
 };
 
 export const normalizeKey = (value) =>
