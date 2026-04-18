@@ -337,6 +337,7 @@ const RPTFiles = () => {
       const options = await fetchMappingOptionsService(APIURL, {
         groupId,
         typeId,
+        templateId: normalizeId(template?.templateId) ?? undefined,
       });
       console.log("[MappingOptions] groupId:", groupId, "typeId:", typeId, "options:", options);
       setMappingOptions(options);
