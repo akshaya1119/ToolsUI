@@ -58,6 +58,7 @@ const ProcessingPipeline = () => {
   const [bulkGeneratingLots, setBulkGeneratingLots] = useState(false);
   const [bulkDownloadingLots, setBulkDownloadingLots] = useState(false);
   const [staticVarModal, setStaticVarModal] = useState({ open: false, template: null, variables: {}, values: {}, resolve: null });
+  const [lotSelectionModal, setLotSelectionModal] = useState({ visible: false, availableLots: [], selectedLots: [], loading: false, resolve: null });
   const projectId = useStore((state) => state.projectId);
   const projectName = useStore((state) => state.projectName);
   const storedGroupId = localStorage.getItem("selectedGroup");
@@ -1647,10 +1648,10 @@ const ProcessingPipeline = () => {
       if (freshlyRun.includes("box")) {
         // Fetch lots to mark templates as stale
         const lots = await fetchLotsForSelection();
+        const staleKeys = new Set();
 
         if (lots.length > 0) {
           const boxTemplates = getTemplatesForModuleKey("box");
-          const staleKeys = new Set();
           
           lots.forEach((lot) => {
             boxTemplates.forEach((template) => {
@@ -1661,7 +1662,7 @@ const ProcessingPipeline = () => {
               }
             });
           });
-        });
+        }
         
         // Mark all lot-template combinations as stale
         setStaleLotIds(staleKeys);
@@ -2662,6 +2663,73 @@ const ProcessingPipeline = () => {
           <li><strong>Process All Dependencies:</strong> Run all unprocessed dependencies first, then your selected module</li>
         </ul>
       </Modal>
+
+      {/* Lot Selection Modal */}
+        <Modal
+        title="Select Lots for Box Breaking"
+        open={lotSelectionModal.visible}
+        onOk={handleLotSelectionConfirm}
+        onCancel={handleLotSelectionCancel}
+        width={600}
+        okText="Process Selected Lots"
+        cancelText="Cancel"
+      >
+        <div style={{ marginBottom: 16 }}>
+          <Alert
+            message="Multiple lots detected"
+            description="Please select which lot(s) you want to process for Box Breaking. You can select all lots or specific ones."
+            type="info"
+            showIcon
+            style={{ marginBottom: 16 }}
+          />
+          
+          <Checkbox
+            checked={lotSelectionModal.selectedLots.length === lotSelectionModal.availableLots.length && lotSelectionModal.availableLots.length > 0}
+            indeterminate={lotSelectionModal.selectedLots.length > 0 && lotSelectionModal.selectedLots.length < lotSelectionModal.availableLots.length}
+            onChange={(e) => handleSelectAllLots(e.target.checked)}
+            style={{ marginBottom: 12, fontWeight: 500 }}
+          >
+            Select All Lots ({lotSelectionModal.availableLots.length})
+          </Checkbox>
+        </div>
+        
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 400, overflowY: "auto" }}>
+          {lotSelectionModal.availableLots.map((lot) => (
+            <Card 
+              key={lot.lotNo} 
+              size="small"
+              style={{ 
+                backgroundColor: lotSelectionModal.selectedLots.includes(lot.lotNo) ? "#f0f5ff" : "#fafafa",
+                border: lotSelectionModal.selectedLots.includes(lot.lotNo) ? "1px solid #91caff" : "1px solid #d9d9d9"
+              }}
+            >
+              <Checkbox
+                checked={lotSelectionModal.selectedLots.includes(lot.lotNo)}
+                onChange={(e) => handleLotToggle(lot.lotNo, e.target.checked)}
+              >
+                <Space>
+                  <Text strong style={{ fontSize: "14px" }}>Lot {lot.lotNo}</Text>
+                  <Badge 
+                    count={lot.catchCount} 
+                    style={{ backgroundColor: "#52c41a" }} 
+                    title="Number of catches in this lot"
+                  />
+                  <Text type="secondary" style={{ fontSize: "12px" }}>catches</Text>
+                </Space>
+              </Checkbox>
+            </Card>
+          ))}
+        </div>
+
+        {lotSelectionModal.selectedLots.length > 0 && (
+          <div style={{ marginTop: 16, padding: "8px 12px", backgroundColor: "#e6f7ff", borderRadius: 4 }}>
+            <Text strong style={{ color: "#1890ff" }}>
+              {lotSelectionModal.selectedLots.length} lot(s) selected
+            </Text>
+          </div>
+        )}
+      </Modal>
+
 
       <style>{`
         .pipeline-main {
