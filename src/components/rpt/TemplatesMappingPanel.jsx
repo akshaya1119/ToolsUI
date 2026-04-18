@@ -1,5 +1,5 @@
 import React from "react";
-import { Button, Card,Checkbox, Input, InputNumber, Select, Space, Switch, Table, Typography } from "antd";
+import { Button, Card, Checkbox, Input, InputNumber, Select, Space, Switch, Table, Typography } from "antd";
 import { CloseOutlined, DeleteOutlined, PlusOutlined, ReloadOutlined } from "@ant-design/icons";
 
 // Map raw SQL expressions or calc: values to friendly display labels
@@ -55,8 +55,8 @@ const TemplatesMappingPanel = ({
   // Normalize: orderBySelections can be [{column, direction}] (legacy) or plain string[]
   const orderByColumns = Array.isArray(orderBySelections)
     ? orderBySelections.map((item) =>
-        typeof item === "string" ? item : item?.column
-      ).filter(Boolean)
+      typeof item === "string" ? item : item?.column
+    ).filter(Boolean)
     : [];
 
   // labelRender: always show clean name without prefix, even for saved values not in current options
@@ -114,14 +114,7 @@ const TemplatesMappingPanel = ({
                 style={{ width: 60 }}
                 size="small"
               />
-              <Button
-                size="small"
-                icon={<ReloadOutlined />}
-                onClick={handleRefreshFields}
-                loading={parsedFieldsLoading}
-              >
-                Refresh Fields
-              </Button>
+              
               <Button
                 type="primary"
                 onClick={handleSaveMapping}
@@ -153,18 +146,60 @@ const TemplatesMappingPanel = ({
                   dataIndex: "field",
                   key: "field",
                   width: "45%",
-                  render: (value, record) => (
-                    <Typography.Text>
-                      {value} {record.isRequired ? <Typography.Text type="danger">*</Typography.Text> : ""}
-                    </Typography.Text>
-                  ),
+                  render: (value, record) => {
+                    const isStatic = Object.prototype.hasOwnProperty.call(
+                      staticVariables || {},
+                      value
+                    );
+
+                    return (
+                      <Space size={6}>
+                        <Checkbox
+                          checked={isStatic}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setMappingSelections((prev) => {
+                                const next = { ...prev };
+                                delete next[value];
+                                return next;
+                              });
+
+                              setStaticVariables?.((prev) => ({
+                                ...prev,
+                                [value]: "",
+                              }));
+                            } else {
+                              setStaticVariables?.((prev) => {
+                                const next = { ...prev };
+                                delete next[value];
+                                return next;
+                              });
+                            }
+                          }}
+                        />
+
+                        <Typography.Text style={{ fontSize: 12 }}>
+                          {value}{" "}
+                          {record.isRequired ? (
+                            <Typography.Text type="danger">*</Typography.Text>
+                          ) : (
+                            ""
+                          )}
+                        </Typography.Text>
+                      </Space>
+                    );
+                  },
                 },
                 {
                   title: "Map To Column",
                   dataIndex: "mapTo",
                   key: "mapTo",
                   render: (_, record) => {
-                    const isStatic = Object.prototype.hasOwnProperty.call(staticVariables || {}, record.field);
+                    const isStatic = Object.prototype.hasOwnProperty.call(
+                      staticVariables || {},
+                      record.field
+                    );
+
                     if (isStatic) {
                       return (
                         <Input
@@ -172,11 +207,15 @@ const TemplatesMappingPanel = ({
                           placeholder="Enter fixed value..."
                           value={staticVariables[record.field] ?? ""}
                           onChange={(e) =>
-                            setStaticVariables?.((prev) => ({ ...prev, [record.field]: e.target.value }))
+                            setStaticVariables?.((prev) => ({
+                              ...prev,
+                              [record.field]: e.target.value,
+                            }))
                           }
                         />
                       );
                     }
+
                     return (
                       <Select
                         showSearch
@@ -187,10 +226,16 @@ const TemplatesMappingPanel = ({
                         labelRender={labelRender}
                         style={{ width: "100%" }}
                         filterOption={(input, option) =>
-                          (option?.label ?? "").toString().toLowerCase().includes(input.toLowerCase())
+                          (option?.label ?? "")
+                            .toString()
+                            .toLowerCase()
+                            .includes(input.toLowerCase())
                         }
                         onChange={(value) =>
-                          setMappingSelections((prev) => ({ ...prev, [record.field]: value }))
+                          setMappingSelections((prev) => ({
+                            ...prev,
+                            [record.field]: value,
+                          }))
                         }
                       />
                     );
