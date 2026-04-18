@@ -57,8 +57,16 @@ const ProcessingPipeline = () => {
   const [staleLotIds, setStaleLotIds] = useState(new Set());
   const [bulkGeneratingLots, setBulkGeneratingLots] = useState(false);
   const [bulkDownloadingLots, setBulkDownloadingLots] = useState(false);
+  const [generatingLotReport, setGeneratingLotReport] = useState({});
   const [staticVarModal, setStaticVarModal] = useState({ open: false, template: null, variables: {}, values: {}, resolve: null });
-  const [lotSelectionModal, setLotSelectionModal] = useState({ visible: false, availableLots: [], selectedLots: [], loading: false, resolve: null });
+  const [lotSelectionModal, setLotSelectionModal] = useState({
+    visible: false,
+    availableLots: [],
+    selectedLots: [],
+    loading: false,
+    resolve: null
+  });
+  const [lotReportStatus, setLotReportStatus] = useState({});
   const projectId = useStore((state) => state.projectId);
   const projectName = useStore((state) => state.projectName);
   const storedGroupId = localStorage.getItem("selectedGroup");
@@ -101,7 +109,7 @@ const ProcessingPipeline = () => {
     const fileNames = {
       duplicate: "DuplicateTool.xlsx",
       extra: "ExtrasCalculation.xlsx",
-      enhancement: "EnhancementReport.xlsx", 
+      enhancement: "EnhancementReport.xlsx",
       envelopebreaking: "EnvelopeBreaking.xlsx",
       box: "BoxBreaking.xlsx",
       envelopeSummary: "EnvelopeSummary.xlsx",
@@ -372,8 +380,9 @@ const ProcessingPipeline = () => {
     message.success(res?.data?.message || "Envelope breaking completed");
   };
 
-  const runBoxBreaking = async (projectId) => {
-    const res = await API.post(`/BoxBreakingProcessing/ProcessBoxBreaking?ProjectId=${projectId}`);
+  const runBoxBreaking = async (projectId, lotNumbers = null) => {
+    const payload = lotNumbers && lotNumbers.length > 0 ? lotNumbers : [];
+    const res = await API.post(`/BoxBreakingProcessing/ProcessBoxBreaking?ProjectId=${projectId}`, payload);
     message.success(res?.data?.message || "Box breaking completed");
   };
 
@@ -436,9 +445,32 @@ const ProcessingPipeline = () => {
       try {
         const res = await API.get(`/NRDataLots/GetByProjectId/${projectId}`);
         return res.data || [];
-      } catch (innerErr) {
-        message.error("Failed to load lots");
-        return [];
+      } catch (err) {
+        // Fallback to by-project endpoint if GetByProjectId doesn't exist
+        console.log("Using fallback endpoint for lots");
+        const res = await API.get(`/NRDataLots/by-project/${projectId}`);
+        const allData = res.data || [];
+
+        // Group by lot and count catches manually
+        const lotMap = new Map();
+        allData.forEach(item => {
+          if (item.lotNo > 0) {
+            if (!lotMap.has(item.lotNo)) {
+              lotMap.set(item.lotNo, new Set());
+            }
+            if (item.catchNo) {
+              lotMap.get(item.lotNo).add(item.catchNo);
+            }
+          }
+        });
+
+        // Convert to expected format
+        const lots = Array.from(lotMap.entries()).map(([lotNo, catches]) => ({
+          lotNo,
+          catchCount: catches.size
+        })).sort((a, b) => a.lotNo - b.lotNo);
+
+        return lots;
       }
     }
   };
@@ -457,20 +489,20 @@ const ProcessingPipeline = () => {
 
   const handleLotSelectionConfirm = () => {
     const { selectedLots, resolve } = lotSelectionModal;
-    
+
     if (selectedLots.length === 0) {
       message.warning("Please select at least one lot to process");
       return;
     }
 
-    setLotSelectionModal({ 
-      visible: false, 
-      availableLots: [], 
-      selectedLots: [], 
+    setLotSelectionModal({
+      visible: false,
+      availableLots: [],
+      selectedLots: [],
       loading: false,
-      resolve: null 
+      resolve: null
     });
-    
+
     if (resolve) {
       resolve(selectedLots);
     }
@@ -478,15 +510,15 @@ const ProcessingPipeline = () => {
 
   const handleLotSelectionCancel = () => {
     const { resolve } = lotSelectionModal;
-    
-    setLotSelectionModal({ 
-      visible: false, 
-      availableLots: [], 
-      selectedLots: [], 
+
+    setLotSelectionModal({
+      visible: false,
+      availableLots: [],
+      selectedLots: [],
       loading: false,
-      resolve: null 
+      resolve: null
     });
-    
+
     if (resolve) {
       resolve(null); // Return null to indicate cancellation
     }
@@ -511,7 +543,7 @@ const ProcessingPipeline = () => {
       const newSelectedLots = checked
         ? [...prev.selectedLots, lotNo]
         : prev.selectedLots.filter(l => l !== lotNo);
-      
+
       return {
         ...prev,
         selectedLots: newSelectedLots
@@ -992,7 +1024,7 @@ const ProcessingPipeline = () => {
         console.log("Using fallback endpoint for lots");
         const res = await API.get(`/NRDataLots/GetByProjectId/${projectId}`);
         const allData = res.data || [];
-        
+
         // Group by lot and count catches manually
         const lotMap = new Map();
         allData.forEach(item => {
@@ -1005,14 +1037,14 @@ const ProcessingPipeline = () => {
             }
           }
         });
-        
+
         // Convert to expected format
         lots = Array.from(lotMap.entries()).map(([lotNo, catches]) => ({
           lotNo,
           catchCount: catches.size
         })).sort((a, b) => a.lotNo - b.lotNo);
       }
-      
+
       setAvailableLots(lots);
       // Set first lot as default selected tab
       if (lots.length > 0) {
@@ -1020,12 +1052,51 @@ const ProcessingPipeline = () => {
       }
       // Load template status for all lots
       await loadLotTemplateStatus(lots);
+      // Check lot report existence
+      await checkLotReportExistence(lots);
     } catch (err) {
       console.error("Failed to fetch lots", err);
       message.error("Failed to load lots for this project");
       setAvailableLots([]);
     } finally {
       setLoadingLots(false);
+    }
+  };
+
+  const checkLotReportExistence = async (lots) => {
+    if (!projectId || !lots || lots.length === 0) return;
+
+    try {
+      const results = await Promise.all(
+        lots.map(async (lot) => {
+          try {
+            const fileName = `BoxBreaking_${lot.lotNo}.xlsx`;
+            const res = await API.get(
+              `/EnvelopeBreakages/Reports/Exists?projectId=${projectId}&fileName=${fileName}`
+            );
+            return {
+              lotNo: lot.lotNo,
+              exists: res.data.exists || false,
+            };
+          } catch (err) {
+            console.error(`Failed to check report for lot ${lot.lotNo}`, err);
+            return {
+              lotNo: lot.lotNo,
+              exists: false,
+            };
+          }
+        })
+      );
+
+      setLotReportStatus((prev) => {
+        const next = { ...prev };
+        results.forEach((item) => {
+          next[item.lotNo] = item.exists;
+        });
+        return next;
+      });
+    } catch (err) {
+      console.error("Failed to check lot report existence", err);
     }
   };
 
@@ -1050,16 +1121,16 @@ const ProcessingPipeline = () => {
                   lotNumber: lot.lotNo,
                 },
               });
-              return { 
-                lotNo: lot.lotNo, 
+              return {
+                lotNo: lot.lotNo,
                 templateId,
-                data: res?.data 
+                data: res?.data
               };
             } catch (err) {
-              return { 
-                lotNo: lot.lotNo, 
+              return {
+                lotNo: lot.lotNo,
                 templateId,
-                data: null 
+                data: null
               };
             }
           })
@@ -1119,7 +1190,8 @@ const ProcessingPipeline = () => {
 
       await axios.post(
         `${rptApiUrl}/report/generate-dynamic`,
-        payload
+        payload,
+        { responseType: "blob" }
       );
 
       // Update status
@@ -1229,6 +1301,49 @@ const ProcessingPipeline = () => {
       return;
     }
 
+    setGeneratingLotReport(prev => ({ ...prev, [lotNo]: true }));
+    const messageKey = `generate-lot-report-${lotNo}-${Date.now()}`;
+    message.loading({
+      content: `Generating Box Breaking report for Lot ${lotNo}...`,
+      key: messageKey,
+      duration: 0,
+    });
+
+    try {
+      // Call runBoxBreaking with the specific lot number
+      await runBoxBreaking(projectId, [lotNo]);
+
+      // After report generation, check lot report existence to update status
+      const lots = await fetchLotsForSelection();
+      await checkLotReportExistence(lots);
+
+      message.success({
+        content: `Successfully generated Box Breaking report for Lot ${lotNo}`,
+        key: messageKey,
+      });
+    } catch (err) {
+      console.error("Failed to generate lot report", err);
+      message.error({
+        content: err?.response?.data?.message || "Failed to generate report",
+        key: messageKey,
+        duration: 6,
+      });
+    } finally {
+      setGeneratingLotReport(prev => ({ ...prev, [lotNo]: false }));
+    }
+  };
+
+  const handleGenerateAllLotTemplates = async (lotNo) => {
+    if (!projectId) {
+      message.warning("No project selected");
+      return;
+    }
+
+    if (!lotNo) {
+      message.warning("Please select a lot");
+      return;
+    }
+
     // Get templates for the box breaking module
     const lotTemplates = getTemplatesForModuleKey("box");
 
@@ -1253,7 +1368,7 @@ const ProcessingPipeline = () => {
     }
 
     setBulkGeneratingLots(true);
-    const messageKey = `generate-all-lot-${lotNo}-${Date.now()}`;
+    const messageKey = `generate-all-lot-templates-${lotNo}-${Date.now()}`;
     message.loading({
       content: `Generating ${templatesToGenerate.length} template(s) for Lot ${lotNo}...`,
       key: messageKey,
@@ -1368,7 +1483,30 @@ const ProcessingPipeline = () => {
     }
 
     try {
-      const fileName = `${reportType}_Lot${lotNo}.xlsx`;
+      // Construct the expected filename pattern: BoxBreaking_lotNo.xlsx
+      const fileName = `${reportType}_${lotNo}.xlsx`;
+
+      // Validate that the lot number is in the filename
+      // Extract lot numbers from filename (format: BoxBreaking_101_102_103.xlsx)
+      const fileNamePattern = `${reportType}_`;
+      if (!fileName.startsWith(fileNamePattern)) {
+        message.error("Invalid file name format");
+        return;
+      }
+
+      // Extract lot numbers from filename (everything between reportType_ and .xlsx)
+      const lotNumbersStr = fileName
+        .replace(`${reportType}_`, "")
+        .replace(".xlsx", "");
+
+      const lotNumbers = lotNumbersStr.split("_").map(num => Number(num));
+
+      // Validate that the selected lot number is in the file
+      if (!lotNumbers.includes(lotNo)) {
+        message.error(`Lot ${lotNo} is not included in this file. File contains lots: ${lotNumbers.join(", ")}`);
+        return;
+      }
+
       const fileUrl = `${url3}/${projectId}/${fileName}?DateTime=${new Date().toISOString()}`;
 
       // Create a temporary link and trigger download
@@ -1578,18 +1716,18 @@ const ProcessingPipeline = () => {
           else if (step.key === "box") {
             // Fetch available lots before running box breaking
             const lots = await fetchLotsForSelection();
-            
-            if (lots.length > 0) {
-              // Always show lot selection modal if lots exist (as per user request "ask user which lots process he wants to run")
+
+            if (lots.length > 1) {
+              // Show lot selection modal if multiple lots exist
               const selectedLots = await showLotSelectionModal(lots);
-              
+
               if (selectedLots === null) {
                 // User cancelled - stop processing
                 message.info("Box breaking cancelled by user");
                 updateStepStatus(step.key, { status: "pending" });
                 break;
               }
-              
+
               // Run box breaking with selected lots
               await runBoxBreaking(projectId, selectedLots);
             } else {
@@ -1662,6 +1800,30 @@ const ProcessingPipeline = () => {
               }
             });
           });
+
+          console.log("Marking lot templates as stale:", Array.from(staleKeys));
+
+          // Mark all lot-template combinations as stale
+          setStaleLotIds(staleKeys);
+
+          // Reset lot template status to force regeneration
+          setLotTemplateStatus((prev) => {
+            const next = { ...prev };
+            staleKeys.forEach((statusKey) => {
+              // Mark as not existing to enable Generate button
+              next[statusKey] = { exists: false, fileName: null, generatedAt: null };
+            });
+            console.log("Updated lot template status:", next);
+            return next;
+          });
+
+          // Check lot report existence after box breaking completes
+          await checkLotReportExistence(lots);
+
+          // Also update availableLots if panel is open
+          if (lotWisePanel.open) {
+            setAvailableLots(lots);
+          }
         }
         
         // Mark all lot-template combinations as stale
@@ -1962,232 +2124,232 @@ const ProcessingPipeline = () => {
 
   // Render detail panel content
   const renderDetailPanel = () => {
-      if (!selectedModuleForDetails) {
-        return (
-          <div style={{ 
-            display: "flex", 
-            alignItems: "center", 
-            justifyContent: "center", 
-            height: "100%",
-            color: "#999",
-            fontSize: "14px"
-          }}>
-            Select a module to view details
-          </div>
-        );
-      }
-
-      const { moduleName, status, key: moduleKey } = selectedModuleForDetails;
-      const config = getConfigForModule(moduleKey);
-
-      // Mock data structure - replace with actual API data when available
-      const mockLotData = {
-        "LOT-001": [
-          { id: "lot1-1", name: "report1.pdf", url: "#" },
-          { id: "lot1-2", name: "report2.pdf", url: "#" },
-        ],
-        "LOT-002": [
-          { id: "lot2-1", name: "report3.pdf", url: "#" },
-        ],
-      };
-
-      const mockCatchData = {
-        "CATCH-A": [
-          { id: "catch-a-1", name: "report1.pdf", url: "#" },
-        ],
-        "CATCH-B": [
-          { id: "catch-b-1", name: "report2.pdf", url: "#" },
-        ],
-      };
-
-      const dataToDisplay = detailGrouping === "lot" ? mockLotData : mockCatchData;
-      const totalSelected = getTotalSelectedCount();
-
-      // Render data list with grouping
-      const renderDataList = () => (
-        <div style={{ 
-          flex: 1, 
-          overflowY: "auto", 
-          padding: "16px"
-        }}>
-          {Object.entries(dataToDisplay).map(([groupName, items]) => {
-            const groupItemIds = items.map(item => item.id);
-            const groupSelectedItems = selectedItems[groupName] || [];
-            const allSelected = groupItemIds.every(id => groupSelectedItems.includes(id));
-            const someSelected = groupSelectedItems.length > 0 && !allSelected;
-
-            return (
-              <div key={groupName} style={{ marginBottom: 16 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                  <Checkbox
-                    checked={allSelected}
-                    indeterminate={someSelected}
-                    onChange={() => handleGroupToggle(groupName, groupItemIds)}
-                  />
-                  <Text strong style={{ fontSize: "13px" }}>
-                    {groupName}
-                  </Text>
-                </div>
-                <div style={{ paddingLeft: 32 }}>
-                  {items.map((item, idx) => {
-                    const isSelected = groupSelectedItems.includes(item.id);
-                    return (
-                      <div key={item.id} style={{ 
-                        display: "flex", 
-                        alignItems: "center", 
-                        justifyContent: "space-between",
-                        padding: "6px 0",
-                        borderBottom: idx < items.length - 1 ? "1px solid #f5f5f5" : "none"
-                      }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                          <Checkbox
-                            checked={isSelected}
-                            onChange={() => handleItemToggle(groupName, item.id)}
-                          />
-                          <Text style={{ fontSize: "12px" }}>{item.name}</Text>
-                        </div>
-                        <Button type="link" size="small" style={{ fontSize: "12px" }}>
-                          Download
-                        </Button>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      );
-
-      // Tab items for Reports and Templates
-      const tabItems = [
-        {
-          key: "reports",
-          label: "Reports",
-          children: (
-            <div style={{ display: "flex",flexDirection: "column", height: "100%" }}>
-              {/* Grouping Toggle */}
-              <div 
-  style={{ 
-    padding: "12px 16px", 
-    borderBottom: "1px solid #f0f0f0",
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center"
-  }}
->
-  <Button.Group size="small">
-    <Button
-      type={detailGrouping === "lot" ? "primary" : "default"}
-      onClick={() => setDetailGrouping("lot")}
-    >
-      Lot-wise
-    </Button>
-    <Button
-      type={detailGrouping === "catch" ? "primary" : "default"}
-      onClick={() => setDetailGrouping("catch")}
-    >
-      Catch-wise
-    </Button>
-  </Button.Group>
-
-  <Button size="small" type="primary">
-    Generate All
-  </Button>
-</div>
-
-              {/* Action Buttons */}
-              <div style={{ padding: "12px 16px", borderBottom: "1px solid #f0f0f0" }}>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-
-                  <Button size="small">Download All</Button>
-                  <Button size="small" disabled={totalSelected === 0}>
-                    Download Selected ({totalSelected})
-                  </Button>
-                </div>
-              </div>
-
-              {/* Data List */}
-              {renderDataList()}
-            </div>
-          ),
-        },
-        {
-          key: "templates",
-          label: "Templates",
-          children: (
-            <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-              {/* Grouping Toggle */}
-              <div style={{ padding: "12px 16px", borderBottom: "1px solid #f0f0f0" }}>
-                <Button.Group size="small">
-                  <Button
-                    type={detailGrouping === "lot" ? "primary" : "default"}
-                    onClick={() => setDetailGrouping("lot")}
-                  >
-                    Lot-wise
-                  </Button>
-                  <Button
-                    type={detailGrouping === "catch" ? "primary" : "default"}
-                    onClick={() => setDetailGrouping("catch")}
-                  >
-                    Catch-wise
-                  </Button>
-                </Button.Group>
-              </div>
-
-              {/* Action Buttons */}
-              <div style={{ padding: "12px 16px", borderBottom: "1px solid #f0f0f0" }}>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  <Button size="small" type="primary">Generate All</Button>
-                  <Button size="small">Download All</Button>
-                  <Button size="small" disabled={totalSelected === 0}>
-                    Download Selected ({totalSelected})
-                  </Button>
-                </div>
-              </div>
-
-              {/* Data List */}
-              {renderDataList()}
-            </div>
-          ),
-        },
-      ];
-
+    if (!selectedModuleForDetails) {
       return (
-        <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-          {/* Header */}
-<div style={{ 
-  padding: "12px 16px", 
-  borderBottom: "1px solid #f0f0f0",
-  backgroundColor: "#fafafa",
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center"
-}}>
-  <Text strong style={{ fontSize: "14px" }}>
-    {moduleName} Details
-  </Text>
-
-  <Button 
-    type="text" 
-    size="small" 
-    onClick={handleCloseDetailPanel}
-  >
-    ✕
-  </Button>
-</div>
-
-          {/* Tabs for Reports/Templates */}
-          <Tabs
-            activeKey={detailViewType}
-            onChange={setDetailViewType}
-            items={tabItems}
-            style={{ flex: 1, display: "flex", flexDirection: "column" }}
-            tabBarStyle={{ margin: 0, paddingLeft: 16, paddingRight: 16 }}
-          />
+        <div style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          height: "100%",
+          color: "#999",
+          fontSize: "14px"
+        }}>
+          Select a module to view details
         </div>
       );
     }
+
+    const { moduleName, status, key: moduleKey } = selectedModuleForDetails;
+    const config = getConfigForModule(moduleKey);
+
+    // Mock data structure - replace with actual API data when available
+    const mockLotData = {
+      "LOT-001": [
+        { id: "lot1-1", name: "report1.pdf", url: "#" },
+        { id: "lot1-2", name: "report2.pdf", url: "#" },
+      ],
+      "LOT-002": [
+        { id: "lot2-1", name: "report3.pdf", url: "#" },
+      ],
+    };
+
+    const mockCatchData = {
+      "CATCH-A": [
+        { id: "catch-a-1", name: "report1.pdf", url: "#" },
+      ],
+      "CATCH-B": [
+        { id: "catch-b-1", name: "report2.pdf", url: "#" },
+      ],
+    };
+
+    const dataToDisplay = detailGrouping === "lot" ? mockLotData : mockCatchData;
+    const totalSelected = getTotalSelectedCount();
+
+    // Render data list with grouping
+    const renderDataList = () => (
+      <div style={{
+        flex: 1,
+        overflowY: "auto",
+        padding: "16px"
+      }}>
+        {Object.entries(dataToDisplay).map(([groupName, items]) => {
+          const groupItemIds = items.map(item => item.id);
+          const groupSelectedItems = selectedItems[groupName] || [];
+          const allSelected = groupItemIds.every(id => groupSelectedItems.includes(id));
+          const someSelected = groupSelectedItems.length > 0 && !allSelected;
+
+          return (
+            <div key={groupName} style={{ marginBottom: 16 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                <Checkbox
+                  checked={allSelected}
+                  indeterminate={someSelected}
+                  onChange={() => handleGroupToggle(groupName, groupItemIds)}
+                />
+                <Text strong style={{ fontSize: "13px" }}>
+                  {groupName}
+                </Text>
+              </div>
+              <div style={{ paddingLeft: 32 }}>
+                {items.map((item, idx) => {
+                  const isSelected = groupSelectedItems.includes(item.id);
+                  return (
+                    <div key={item.id} style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      padding: "6px 0",
+                      borderBottom: idx < items.length - 1 ? "1px solid #f5f5f5" : "none"
+                    }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <Checkbox
+                          checked={isSelected}
+                          onChange={() => handleItemToggle(groupName, item.id)}
+                        />
+                        <Text style={{ fontSize: "12px" }}>{item.name}</Text>
+                      </div>
+                      <Button type="link" size="small" style={{ fontSize: "12px" }}>
+                        Download
+                      </Button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+
+    // Tab items for Reports and Templates
+    const tabItems = [
+      {
+        key: "reports",
+        label: "Reports",
+        children: (
+          <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+            {/* Grouping Toggle */}
+            <div
+              style={{
+                padding: "12px 16px",
+                borderBottom: "1px solid #f0f0f0",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center"
+              }}
+            >
+              <Button.Group size="small">
+                <Button
+                  type={detailGrouping === "lot" ? "primary" : "default"}
+                  onClick={() => setDetailGrouping("lot")}
+                >
+                  Lot-wise
+                </Button>
+                <Button
+                  type={detailGrouping === "catch" ? "primary" : "default"}
+                  onClick={() => setDetailGrouping("catch")}
+                >
+                  Catch-wise
+                </Button>
+              </Button.Group>
+
+              <Button size="small" type="primary">
+                Generate All
+              </Button>
+            </div>
+
+            {/* Action Buttons */}
+            <div style={{ padding: "12px 16px", borderBottom: "1px solid #f0f0f0" }}>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+
+                <Button size="small">Download All</Button>
+                <Button size="small" disabled={totalSelected === 0}>
+                  Download Selected ({totalSelected})
+                </Button>
+              </div>
+            </div>
+
+            {/* Data List */}
+            {renderDataList()}
+          </div>
+        ),
+      },
+      {
+        key: "templates",
+        label: "Templates",
+        children: (
+          <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+            {/* Grouping Toggle */}
+            <div style={{ padding: "12px 16px", borderBottom: "1px solid #f0f0f0" }}>
+              <Button.Group size="small">
+                <Button
+                  type={detailGrouping === "lot" ? "primary" : "default"}
+                  onClick={() => setDetailGrouping("lot")}
+                >
+                  Lot-wise
+                </Button>
+                <Button
+                  type={detailGrouping === "catch" ? "primary" : "default"}
+                  onClick={() => setDetailGrouping("catch")}
+                >
+                  Catch-wise
+                </Button>
+              </Button.Group>
+            </div>
+
+            {/* Action Buttons */}
+            <div style={{ padding: "12px 16px", borderBottom: "1px solid #f0f0f0" }}>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <Button size="small" type="primary">Generate All</Button>
+                <Button size="small">Download All</Button>
+                <Button size="small" disabled={totalSelected === 0}>
+                  Download Selected ({totalSelected})
+                </Button>
+              </div>
+            </div>
+
+            {/* Data List */}
+            {renderDataList()}
+          </div>
+        ),
+      },
+    ];
+
+    return (
+      <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+        {/* Header */}
+        <div style={{
+          padding: "12px 16px",
+          borderBottom: "1px solid #f0f0f0",
+          backgroundColor: "#fafafa",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center"
+        }}>
+          <Text strong style={{ fontSize: "14px" }}>
+            {moduleName} Details
+          </Text>
+
+          <Button
+            type="text"
+            size="small"
+            onClick={handleCloseDetailPanel}
+          >
+            ✕
+          </Button>
+        </div>
+
+        {/* Tabs for Reports/Templates */}
+        <Tabs
+          activeKey={detailViewType}
+          onChange={setDetailViewType}
+          items={tabItems}
+          style={{ flex: 1, display: "flex", flexDirection: "column" }}
+          tabBarStyle={{ margin: 0, paddingLeft: 16, paddingRight: 16 }}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="p-4">
@@ -2338,7 +2500,7 @@ const ProcessingPipeline = () => {
                 ) : (
                   <>
                     {templatePanel.moduleKey &&
-                    getTemplatesForModuleKey(templatePanel.moduleKey).length === 0 ? (
+                      getTemplatesForModuleKey(templatePanel.moduleKey).length === 0 ? (
                       <Text type="secondary">No templates linked to this module.</Text>
                     ) : (
                       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -2466,9 +2628,9 @@ const ProcessingPipeline = () => {
                           <div style={{ padding: "12px" }}>
                             {/* Reports Section - Now First */}
                             <div style={{ marginBottom: 24 }}>
-                              <div style={{ 
-                                display: "flex", 
-                                justifyContent: "space-between", 
+                              <div style={{
+                                display: "flex",
+                                justifyContent: "space-between",
                                 alignItems: "center",
                                 marginBottom: 12,
                                 paddingBottom: 8,
@@ -2495,14 +2657,30 @@ const ProcessingPipeline = () => {
                                         <Text type="secondary" style={{ fontSize: "11px" }}>
                                           Lot {lot.lotNo}
                                         </Text>
+                                        {lotReportStatus[lot.lotNo] && (
+                                          <Tag color="green" style={{ margin: 0 }}>
+                                            Ready
+                                          </Tag>
+                                        )}
                                       </div>
                                     </div>
-                                    <Button
-                                      size="small"
-                                      onClick={() => handleDownloadLotReport(lot.lotNo, "BoxBreaking")}
-                                    >
-                                      Download
-                                    </Button>
+                                    {lotReportStatus[lot.lotNo] ? (
+                                      <Button
+                                        size="small"
+                                        onClick={() => handleDownloadLotReport(lot.lotNo, "BoxBreaking")}
+                                      >
+                                        Download
+                                      </Button>
+                                    ) : (
+                                      <Button
+                                        size="small"
+                                        type="primary"
+                                        onClick={() => handleGenerateAllLots(lot.lotNo)}
+                                        loading={generatingLotReport[lot.lotNo]}
+                                      >
+                                        Generate
+                                      </Button>
+                                    )}
                                   </div>
                                 </Card>
                               </div>
@@ -2510,9 +2688,9 @@ const ProcessingPipeline = () => {
 
                             {/* Templates Section - Now Second */}
                             <div style={{ marginBottom: 24 }}>
-                              <div style={{ 
-                                display: "flex", 
-                                justifyContent: "space-between", 
+                              <div style={{
+                                display: "flex",
+                                justifyContent: "space-between",
                                 alignItems: "center",
                                 marginBottom: 12,
                                 paddingBottom: 8,
@@ -2525,7 +2703,7 @@ const ProcessingPipeline = () => {
                                   <Button
                                     size="small"
                                     type="primary"
-                                    onClick={() => handleGenerateAllLots(lot.lotNo)}
+                                    onClick={() => handleGenerateAllLotTemplates(lot.lotNo)}
                                     loading={bulkGeneratingLots}
                                     disabled={lotTemplates.length === 0 || lotTemplates.every((template) => {
                                       const templateId = resolveTemplateId(template);
@@ -2682,7 +2860,7 @@ const ProcessingPipeline = () => {
             showIcon
             style={{ marginBottom: 16 }}
           />
-          
+
           <Checkbox
             checked={lotSelectionModal.selectedLots.length === lotSelectionModal.availableLots.length && lotSelectionModal.availableLots.length > 0}
             indeterminate={lotSelectionModal.selectedLots.length > 0 && lotSelectionModal.selectedLots.length < lotSelectionModal.availableLots.length}
@@ -2692,13 +2870,13 @@ const ProcessingPipeline = () => {
             Select All Lots ({lotSelectionModal.availableLots.length})
           </Checkbox>
         </div>
-        
+
         <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 400, overflowY: "auto" }}>
           {lotSelectionModal.availableLots.map((lot) => (
-            <Card 
-              key={lot.lotNo} 
+            <Card
+              key={lot.lotNo}
               size="small"
-              style={{ 
+              style={{
                 backgroundColor: lotSelectionModal.selectedLots.includes(lot.lotNo) ? "#f0f5ff" : "#fafafa",
                 border: lotSelectionModal.selectedLots.includes(lot.lotNo) ? "1px solid #91caff" : "1px solid #d9d9d9"
               }}
@@ -2709,9 +2887,9 @@ const ProcessingPipeline = () => {
               >
                 <Space>
                   <Text strong style={{ fontSize: "14px" }}>Lot {lot.lotNo}</Text>
-                  <Badge 
-                    count={lot.catchCount} 
-                    style={{ backgroundColor: "#52c41a" }} 
+                  <Badge
+                    count={lot.catchCount}
+                    style={{ backgroundColor: "#52c41a" }}
                     title="Number of catches in this lot"
                   />
                   <Text type="secondary" style={{ fontSize: "12px" }}>catches</Text>
