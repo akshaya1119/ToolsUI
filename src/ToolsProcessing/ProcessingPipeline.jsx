@@ -57,6 +57,7 @@ const ProcessingPipeline = () => {
   const [staleLotIds, setStaleLotIds] = useState(new Set());
   const [bulkGeneratingLots, setBulkGeneratingLots] = useState(false);
   const [bulkDownloadingLots, setBulkDownloadingLots] = useState(false);
+  const [generatingLotReport, setGeneratingLotReport] = useState({});
   const [staticVarModal, setStaticVarModal] = useState({ open: false, template: null, variables: {}, values: {}, resolve: null });
   const [lotSelectionModal, setLotSelectionModal] = useState({ 
     visible: false, 
@@ -65,6 +66,7 @@ const ProcessingPipeline = () => {
     loading: false,
     resolve: null 
   });
+  const [lotReportStatus, setLotReportStatus] = useState({});
   const projectId = useStore((state) => state.projectId);
   const projectName = useStore((state) => state.projectName);
   const storedGroupId = localStorage.getItem("selectedGroup");
@@ -379,12 +381,8 @@ const ProcessingPipeline = () => {
   };
 
   const runBoxBreaking = async (projectId, lotNumbers = null) => {
-    const params = { ProjectId: projectId };
-    if (lotNumbers && lotNumbers.length > 0) {
-      params.LotNumbers = lotNumbers.join(',');
-    }
-    const query = new URLSearchParams(params).toString();
-    const res = await API.post(`/BoxBreakingProcessing/ProcessBoxBreaking?${query}`);
+    const payload = lotNumbers && lotNumbers.length > 0 ? lotNumbers : [];
+    const res = await API.post(`/BoxBreakingProcessing/ProcessBoxBreaking?ProjectId=${projectId}`, payload);
     message.success(res?.data?.message || "Box breaking completed");
   };
 
@@ -1023,12 +1021,51 @@ const ProcessingPipeline = () => {
       }
       // Load template status for all lots
       await loadLotTemplateStatus(lots);
+      // Check lot report existence
+      await checkLotReportExistence(lots);
     } catch (err) {
       console.error("Failed to fetch lots", err);
       message.error("Failed to load lots for this project");
       setAvailableLots([]);
     } finally {
       setLoadingLots(false);
+    }
+  };
+
+  const checkLotReportExistence = async (lots) => {
+    if (!projectId || !lots || lots.length === 0) return;
+
+    try {
+      const results = await Promise.all(
+        lots.map(async (lot) => {
+          try {
+            const fileName = `BoxBreaking_${lot.lotNo}.xlsx`;
+            const res = await API.get(
+              `/EnvelopeBreakages/Reports/Exists?projectId=${projectId}&fileName=${fileName}`
+            );
+            return {
+              lotNo: lot.lotNo,
+              exists: res.data.exists || false,
+            };
+          } catch (err) {
+            console.error(`Failed to check report for lot ${lot.lotNo}`, err);
+            return {
+              lotNo: lot.lotNo,
+              exists: false,
+            };
+          }
+        })
+      );
+
+      setLotReportStatus((prev) => {
+        const next = { ...prev };
+        results.forEach((item) => {
+          next[item.lotNo] = item.exists;
+        });
+        return next;
+      });
+    } catch (err) {
+      console.error("Failed to check lot report existence", err);
     }
   };
 
@@ -1232,6 +1269,49 @@ const ProcessingPipeline = () => {
       return;
     }
 
+    setGeneratingLotReport(prev => ({ ...prev, [lotNo]: true }));
+    const messageKey = `generate-lot-report-${lotNo}-${Date.now()}`;
+    message.loading({
+      content: `Generating Box Breaking report for Lot ${lotNo}...`,
+      key: messageKey,
+      duration: 0,
+    });
+
+    try {
+      // Call runBoxBreaking with the specific lot number
+      await runBoxBreaking(projectId, [lotNo]);
+      
+      // After report generation, check lot report existence to update status
+      const lots = await fetchLotsForSelection();
+      await checkLotReportExistence(lots);
+      
+      message.success({
+        content: `Successfully generated Box Breaking report for Lot ${lotNo}`,
+        key: messageKey,
+      });
+    } catch (err) {
+      console.error("Failed to generate lot report", err);
+      message.error({
+        content: err?.response?.data?.message || "Failed to generate report",
+        key: messageKey,
+        duration: 6,
+      });
+    } finally {
+      setGeneratingLotReport(prev => ({ ...prev, [lotNo]: false }));
+    }
+  };
+
+  const handleGenerateAllLotTemplates = async (lotNo) => {
+    if (!projectId) {
+      message.warning("No project selected");
+      return;
+    }
+
+    if (!lotNo) {
+      message.warning("Please select a lot");
+      return;
+    }
+
     // Get templates for the box breaking module
     const lotTemplates = getTemplatesForModuleKey("box");
     
@@ -1256,7 +1336,7 @@ const ProcessingPipeline = () => {
     }
 
     setBulkGeneratingLots(true);
-    const messageKey = `generate-all-lot-${lotNo}-${Date.now()}`;
+    const messageKey = `generate-all-lot-templates-${lotNo}-${Date.now()}`;
     message.loading({
       content: `Generating ${templatesToGenerate.length} template(s) for Lot ${lotNo}...`,
       key: messageKey,
@@ -1371,7 +1451,30 @@ const ProcessingPipeline = () => {
     }
 
     try {
-      const fileName = `${reportType}_Lot${lotNo}.xlsx`;
+      // Construct the expected filename pattern: BoxBreaking_lotNo.xlsx
+      const fileName = `${reportType}_${lotNo}.xlsx`;
+      
+      // Validate that the lot number is in the filename
+      // Extract lot numbers from filename (format: BoxBreaking_101_102_103.xlsx)
+      const fileNamePattern = `${reportType}_`;
+      if (!fileName.startsWith(fileNamePattern)) {
+        message.error("Invalid file name format");
+        return;
+      }
+      
+      // Extract lot numbers from filename (everything between reportType_ and .xlsx)
+      const lotNumbersStr = fileName
+        .replace(`${reportType}_`, "")
+        .replace(".xlsx", "");
+      
+      const lotNumbers = lotNumbersStr.split("_").map(num => Number(num));
+      
+      // Validate that the selected lot number is in the file
+      if (!lotNumbers.includes(lotNo)) {
+        message.error(`Lot ${lotNo} is not included in this file. File contains lots: ${lotNumbers.join(", ")}`);
+        return;
+      }
+      
       const fileUrl = `${url3}/${projectId}/${fileName}?DateTime=${new Date().toISOString()}`;
       
       // Create a temporary link and trigger download
@@ -1681,6 +1784,9 @@ const ProcessingPipeline = () => {
             console.log("Updated lot template status:", next);
             return next;
           });
+          
+          // Check lot report existence after box breaking completes
+          await checkLotReportExistence(lots);
           
           // Also update availableLots if panel is open
           if (lotWisePanel.open) {
@@ -2511,14 +2617,30 @@ const ProcessingPipeline = () => {
                                         <Text type="secondary" style={{ fontSize: "11px" }}>
                                           Lot {lot.lotNo}
                                         </Text>
+                                        {lotReportStatus[lot.lotNo] && (
+                                          <Tag color="green" style={{ margin: 0 }}>
+                                            Ready
+                                          </Tag>
+                                        )}
                                       </div>
                                     </div>
-                                    <Button
-                                      size="small"
-                                      onClick={() => handleDownloadLotReport(lot.lotNo, "BoxBreaking")}
-                                    >
-                                      Download
-                                    </Button>
+                                    {lotReportStatus[lot.lotNo] ? (
+                                      <Button
+                                        size="small"
+                                        onClick={() => handleDownloadLotReport(lot.lotNo, "BoxBreaking")}
+                                      >
+                                        Download
+                                      </Button>
+                                    ) : (
+                                      <Button
+                                        size="small"
+                                        type="primary"
+                                        onClick={() => handleGenerateAllLots(lot.lotNo)}
+                                        loading={generatingLotReport[lot.lotNo]}
+                                      >
+                                        Generate
+                                      </Button>
+                                    )}
                                   </div>
                                 </Card>
                               </div>
@@ -2541,7 +2663,7 @@ const ProcessingPipeline = () => {
                                   <Button
                                     size="small"
                                     type="primary"
-                                    onClick={() => handleGenerateAllLots(lot.lotNo)}
+                                    onClick={() => handleGenerateAllLotTemplates(lot.lotNo)}
                                     loading={bulkGeneratingLots}
                                     disabled={lotTemplates.length === 0 || lotTemplates.every((template) => {
                                       const templateId = resolveTemplateId(template);
