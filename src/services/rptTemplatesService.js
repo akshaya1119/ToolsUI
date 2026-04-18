@@ -81,9 +81,10 @@ export const fetchTemplatesByGroup = async (
   return Array.isArray(res.data) ? res.data : [];
 };
 
-export const fetchMappingOptions = async (apiUrl, { groupId, typeId, projectId }) => {
+export const fetchMappingOptions = async (apiUrl, { groupId, typeId, projectId, templateId }) => {
   const params = { groupId, typeId };
   if (projectId) params.projectId = projectId;
+  if (templateId) params.templateId = templateId;
   const res = await axios.get(`${apiUrl}/RPTTemplates/mapping-options`, { params });
   // API returns a flat deduplicated array of { value, label }
   const data = res.data;
