@@ -403,6 +403,7 @@ const ProjectTemplates = () => {
         groupId,
         typeId,
         projectId: normalizeId(template?.projectId) ?? normalizeId(projectId) ?? undefined,
+        templateId: normalizeId(template?.templateId) ?? undefined,
       });
       setMappingOptions(options);
     } catch (err) {
