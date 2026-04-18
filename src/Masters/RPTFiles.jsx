@@ -564,10 +564,49 @@ const RPTFiles = () => {
         const result = await doUpload(false);
         onSuccess(result);
       } catch (err) {
-        const allowForce =
-          err?.response?.status === 409 && err?.response?.data?.allowForceUpload;
+        const data = err?.response?.data;
+        const allowForce = (err?.response?.status === 409 && data?.allowForceUpload) || data?.DesignCheck || data?.designCheck;
+        
         if (allowForce) {
           setAddSubmitting(false);
+          
+          if (data?.DesignCheck || data?.designCheck) {
+            const check = data.DesignCheck || data.designCheck;
+            if (check.changed || check.Changed) {
+              setAddSubmitting(false);
+              const changeList =
+                Array.isArray(check.changes) && check.changes.length > 0
+                  ? check.changes.map((c) => `- ${c}`).join("\n")
+                  : "No specific field changes listed (check design snapshot).";
+
+              const confirmed = await MessageService.confirm(
+                `Design changes detected since last version:\n\n${changeList}\n\nDo you want to upload this version anyway?`,
+                {
+                  title: "Design Changes Detected",
+                  confirmText: "Yes, Upload",
+                  cancelText: "No, Cancel",
+                  type: "warning",
+                }
+              );
+
+              if (!confirmed) return;
+              const forced = await doUpload(true);
+              onSuccess(forced);
+              return;
+            } else {
+              // Design is the same - ask user if they still want to upload
+              const confirmed = await MessageService.confirm(
+                check.message || check.Message || "No changes detected between this file and the latest version. Do you still want to upload it?",
+                { title: "No Design Changes Detected", type: 'info', confirmText: 'Yes, Upload' }
+              );
+              if (confirmed) {
+                const forced = await doUpload(true);
+                onSuccess(forced);
+              }
+              return;
+            }
+          }
+
           confirmForceUpload(async () => {
             const forced = await doUpload(true);
             onSuccess(forced);
@@ -661,27 +700,28 @@ const RPTFiles = () => {
     setParsedFields(extractParsedFields(template));
     fetchMappingOptions(template);
     try {
-      const details = await fetchTemplateDetails(
-        APIURL,
-        template.templateId,
-      );
-      const fieldsFromDetails = extractParsedFields(details);
-      setParsedFields(fieldsFromDetails);
-      if (!fieldsFromDetails || fieldsFromDetails.length === 0) {
+      const details = await fetchTemplateDetails(APIURL, template.templateId);
+      let currentFields = details;
+
+      const needsRefresh = !currentFields.requiredFieldsJson && 
+                           !currentFields.RequiredFieldsJson &&
+                           (!currentFields.parsedFieldsJson || currentFields.parsedFieldsJson === "[]") &&
+                           (!currentFields.ParsedFieldsJson || currentFields.ParsedFieldsJson === "[]");
+
+      if (needsRefresh) {
         setParsedFieldsLoading(true);
         try {
-          const parsedRes = await parseTemplateFields(
-            APIURL,
-            template.templateId,
-          );
-          const parsed = parsedRes?.parsedFields || [];
-          setParsedFields(parsed);
+          const parsedRes = await parseTemplateFields(APIURL, template.templateId);
+          currentFields = parsedRes || [];
         } catch (err) {
-          showError(err, "Failed to parse fields for this template.");
+          console.error("Auto-parse failed", err);
         } finally {
           setParsedFieldsLoading(false);
         }
       }
+
+      const richFields = extractParsedFields(currentFields);
+      setParsedFields(richFields);
 
       const res = await fetchTemplateMapping(APIURL, template.templateId);
       const mapping = res?.mappingJson ?? res?.MappingJson ?? "";
@@ -734,10 +774,13 @@ const RPTFiles = () => {
     setMappingLoading(true);
     try {
       const mappingsPayload = parsedFields
-        .map((field) => ({
-          rptField: field,
-          source: mappingSelections[field],
-        }))
+        .map((f) => {
+          const name = (typeof f === "string" ? f : f?.name ?? f?.Name) || "";
+          return {
+            rptField: name,
+            source: mappingSelections[name],
+          };
+        })
         .filter((item) => item.source);
       const mappingPayload = {
         mappings: mappingsPayload,
@@ -1173,29 +1216,52 @@ const RPTFiles = () => {
   }, [sourceOptionGroups]);
 
   const mappingDisplayOrder = useMemo(() => {
-    const pinned = new Set(mappingPinnedFields || []);
-    const mapped = parsedFields
-      .filter((field) => pinned.has(field))
-      .sort((a, b) => a.localeCompare(b));
-    const unmapped = parsedFields
-      .filter((field) => !pinned.has(field))
-      .sort((a, b) => a.localeCompare(b));
-    return [...mapped, ...unmapped];
+    const getSortInfo = (f) => {
+      const name = (typeof f === "string" ? f : f?.name ?? f?.Name) || "";
+      const isReq = typeof f === "string" ? false : !!(f?.isRequired ?? f?.IsRequired ?? f?.required ?? f?.Required);
+      return { name, isReq };
+    };
+
+    const pinnedFields = new Set(mappingPinnedFields || []);
+
+    const complexSort = (list) => {
+      return [...list].sort((a, b) => {
+        const infoA = getSortInfo(a);
+        const infoB = getSortInfo(b);
+        const isPinnedA = pinnedFields.has(infoA.name);
+        const isPinnedB = pinnedFields.has(infoB.name);
+
+        if (infoA.isReq && !infoB.isReq) return -1;
+        if (!infoA.isReq && infoB.isReq) return 1;
+
+        if (isPinnedA && !isPinnedB) return -1;
+        if (!isPinnedA && isPinnedB) return 1;
+
+        return infoA.name.localeCompare(infoB.name);
+      });
+    };
+
+    return complexSort(parsedFields);
   }, [parsedFields, mappingPinnedFields]);
 
   const mappingRows = useMemo(
     () =>
-      mappingDisplayOrder.map((field, index) => ({
-        key: `${field}-${index}`,
-        field,
-        isMapped: Boolean(mappingSelections?.[field]),
-      })),
+      mappingDisplayOrder.map((f, index) => {
+        const name = (typeof f === "string" ? f : f?.name ?? f?.Name) || "";
+        return {
+          key: `${name}-${index}`,
+          field: name,
+          isRequired: typeof f === "string" ? false : !!(f?.isRequired ?? f?.IsRequired ?? f?.required ?? f?.Required),
+          isMapped: Boolean(mappingSelections?.[name]),
+        };
+      }),
     [mappingDisplayOrder, mappingSelections],
   );
   const mappedFieldNames = useMemo(
     () =>
       parsedFields
-        .filter((field) => mappingSelections?.[field])
+        .map((f) => (typeof f === "string" ? f : f?.name ?? f?.Name) || "")
+        .filter((name) => name && mappingSelections?.[name])
         .sort((a, b) => a.localeCompare(b)),
     [parsedFields, mappingSelections],
   );
@@ -1207,15 +1273,16 @@ const RPTFiles = () => {
     setMappingSelections((prev) => {
       let changed = false;
       const next = { ...prev };
-      parsedFields.forEach((field) => {
-        if (next[field]) return;
+      parsedFields.forEach((f) => {
+        const name = (typeof f === "string" ? f : f?.name ?? f?.Name) || "";
+        if (!name || next[name]) return;
         const match = flatSourceOptions.find(
-          (option) => option.normalized === normalizeKey(field),
+          (option) => option.normalized === normalizeKey(name),
         );
         if (match) {
-          next[field] = match.value;
+          next[name] = match.value;
           changed = true;
-          autoMapped.push(field);
+          autoMapped.push(name);
         }
       });
       return changed ? next : prev;

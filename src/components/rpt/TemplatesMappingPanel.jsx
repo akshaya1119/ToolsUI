@@ -115,14 +115,6 @@ const TemplatesMappingPanel = ({
                 size="small"
               />
               <Button
-                size="small"
-                icon={<ReloadOutlined />}
-                onClick={handleRefreshFields}
-                loading={parsedFieldsLoading}
-              >
-                Refresh Fields
-              </Button>
-              <Button
                 type="primary"
                 onClick={handleSaveMapping}
                 loading={mappingLoading}
@@ -148,55 +140,115 @@ const TemplatesMappingPanel = ({
               size="small"
               scroll={{ y: 260 }}
               columns={[
-                {
-                  title: "RPT Field",
-                  dataIndex: "field",
-                  key: "field",
-                  width: "45%",
-                  render: (value, record) => (
-                    <Typography.Text>
-                      {value} {record.isRequired ? <Typography.Text type="danger">*</Typography.Text> : ""}
-                    </Typography.Text>
-                  ),
-                },
-                {
-                  title: "Map To Column",
-                  dataIndex: "mapTo",
-                  key: "mapTo",
-                  render: (_, record) => {
-                    const isStatic = Object.prototype.hasOwnProperty.call(staticVariables || {}, record.field);
-                    if (isStatic) {
-                      return (
-                        <Input
-                          size="small"
-                          placeholder="Enter fixed value..."
-                          value={staticVariables[record.field] ?? ""}
-                          onChange={(e) =>
-                            setStaticVariables?.((prev) => ({ ...prev, [record.field]: e.target.value }))
-                          }
-                        />
-                      );
-                    }
-                    return (
-                      <Select
-                        showSearch
-                        allowClear
-                        placeholder="Select source column"
-                        value={mappingSelections[record.field]}
-                        options={sourceOptionGroups}
-                        labelRender={labelRender}
-                        style={{ width: "100%" }}
-                        filterOption={(input, option) =>
-                          (option?.label ?? "").toString().toLowerCase().includes(input.toLowerCase())
-                        }
-                        onChange={(value) =>
-                          setMappingSelections((prev) => ({ ...prev, [record.field]: value }))
-                        }
-                      />
-                    );
-                  },
-                },
-              ]}
+  {
+    title: "RPT Field",
+    dataIndex: "field",
+    key: "field",
+    width: "45%",
+    render: (value, record) => {
+      const isStatic = Object.prototype.hasOwnProperty.call(
+        staticVariables || {},
+        value
+      );
+
+      return (
+        <Space size={6}>
+          <Checkbox
+            checked={isStatic}
+            onChange={(e) => {
+              if (e.target.checked) {
+                setMappingSelections((prev) => {
+                  const next = { ...prev };
+                  delete next[value];
+                  return next;
+                });
+
+                setStaticVariables?.((prev) => ({
+                  ...prev,
+                  [value]: "",
+                }));
+              } else {
+                setStaticVariables?.((prev) => {
+                  const next = { ...prev };
+                  delete next[value];
+                  return next;
+                });
+              }
+            }}
+          />
+
+          <Typography.Text style={{ fontSize: 13, fontWeight: 500 }}>
+            {value}
+            {record.isRequired && (
+              <Typography.Text 
+                type="danger" 
+                style={{ 
+                  marginLeft: 4, 
+                  fontWeight: "bold", 
+                  fontSize: 14 
+                }}
+                title="Required field"
+              >
+                *
+              </Typography.Text>
+            )}
+          </Typography.Text>
+        </Space>
+      );
+    },
+  },
+  {
+    title: "Map To Column",
+    dataIndex: "mapTo",
+    key: "mapTo",
+    render: (_, record) => {
+      const isStatic = Object.prototype.hasOwnProperty.call(
+        staticVariables || {},
+        record.field
+      );
+
+      if (isStatic) {
+        return (
+          <Input
+            size="small"
+            placeholder="Enter fixed value..."
+            value={staticVariables[record.field] ?? ""}
+            onChange={(e) =>
+              setStaticVariables?.((prev) => ({
+                ...prev,
+                [record.field]: e.target.value,
+              }))
+            }
+          />
+        );
+      }
+
+      return (
+        <Select
+          showSearch
+          allowClear
+          placeholder="Select source column"
+          value={mappingSelections[record.field]}
+          options={sourceOptionGroups}
+          labelRender={labelRender}
+          style={{ width: "100%" }}
+          filterOption={(input, option) =>
+            (option?.label ?? "")
+              .toString()
+              .toLowerCase()
+              .includes(input.toLowerCase())
+          }
+          onChange={(value) =>
+            setMappingSelections((prev) => ({
+              ...prev,
+              [record.field]: value,
+            }))
+          }
+        />
+      );
+    },
+  },
+]}
             />
           )}
         </Card>
