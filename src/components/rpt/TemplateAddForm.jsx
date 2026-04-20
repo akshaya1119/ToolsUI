@@ -21,11 +21,17 @@ const TemplateAddForm = ({
         label="Template Name"
         name="templateName"
         rules={[{ required: true, message: "Template name is required" }]}
+        required
       >
         <Input placeholder="Enter template name" />
       </Form.Item>
       {children}
-      <Form.Item label={moduleLabel} name="moduleIds" rules={moduleRules}>
+      <Form.Item 
+        label={moduleLabel} 
+        name="moduleIds" 
+        rules={moduleRules}
+        required
+      >
         <Select
           mode="multiple"
           options={moduleOptions}
@@ -34,7 +40,7 @@ const TemplateAddForm = ({
           optionFilterProp="label"
         />
       </Form.Item>
-      <Form.Item label="RPT File">
+      <Form.Item label="RPT File" required>
         <Upload.Dragger
           accept=".rpt"
           multiple={false}

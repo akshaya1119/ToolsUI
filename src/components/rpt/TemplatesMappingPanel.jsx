@@ -114,7 +114,6 @@ const TemplatesMappingPanel = ({
                 style={{ width: 60 }}
                 size="small"
               />
-              
               <Button
                 type="primary"
                 onClick={handleSaveMapping}

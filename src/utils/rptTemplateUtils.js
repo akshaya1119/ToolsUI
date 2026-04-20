@@ -37,28 +37,82 @@ export const getErrorMessageAsync = async (err, fallback) => {
   return getErrorMessage(err, fallback);
 };
 
-export const extractParsedFields = (template) => {
-  if (!template) return [];
-  const raw =
-    template.parsedFieldsJson ??
-    template.ParsedFieldsJson ??
-    template.parsedFields ??
-    template.ParsedFields ??
-    null;
-    
-  let list = [];
-  if (Array.isArray(raw)) {
-    list = raw;
-  } else if (typeof raw === "string" && raw.trim().length > 0) {
-    try {
-      const parsed = JSON.parse(raw);
-      list = Array.isArray(parsed) ? parsed : [];
-    } catch {
-      list = [];
+export const extractParsedFields = (input) => {
+  if (!input) return [];
+
+  // Helper to parse JSON strings safely
+  const parseSafe = (val) => {
+    if (Array.isArray(val)) return val;
+    if (typeof val === "string" && val.trim().length > 0) {
+      try {
+        const p = JSON.parse(val);
+        return Array.isArray(p) ? p : [];
+      } catch {
+        return [];
+      }
     }
+    return [];
+  };
+
+  // Helper to clean name and detect *
+  const cleanField = (f) => {
+    if (typeof f === "string") {
+      const isReq = f.endsWith("*");
+      return { 
+        name: isReq ? f.slice(0, -1).trim() : f.trim(), 
+        isRequired: isReq 
+      };
+    }
+    
+    const rawName = f?.name ?? f?.Name ?? f?.fieldName ?? f?.FieldName ?? "";
+    const isNameReq = typeof rawName === "string" && rawName.endsWith("*");
+    const name = isNameReq ? rawName.slice(0, -1).trim() : rawName.trim();
+    
+    const isRequired = !!(
+      isNameReq ||
+      (f?.isRequired ??
+       f?.IsRequired ??
+       f?.required ??
+       f?.Required ??
+       false)
+    );
+
+    return { name, isRequired };
+  };
+
+  // 1. Determine the "Master List" (usually all fields)
+  let masterRaw = [];
+  if (Array.isArray(input)) {
+    masterRaw = input;
+  } else {
+    // Priority: parsedFields (objects) > parsedFieldsJson (string) > requiredFieldsJson (string)
+    masterRaw = Array.isArray(input.parsedFields ?? input.ParsedFields)
+      ? (input.parsedFields ?? input.ParsedFields)
+      : parseSafe(input.parsedFieldsJson ?? input.ParsedFieldsJson ?? input.requiredFieldsJson ?? input.RequiredFieldsJson);
   }
 
-  return list;
+  // 2. Determine the "Required Set" for marking
+  const requiredSet = new Set();
+  if (input && !Array.isArray(input)) {
+    const reqList = parseSafe(input.requiredFieldsJson ?? input.RequiredFieldsJson ?? input.requiredFields ?? input.RequiredFields);
+    reqList.forEach(r => {
+      const cleaned = cleanField(r);
+      if (cleaned.name) requiredSet.add(cleaned.name.toLowerCase());
+    });
+  }
+
+  // 3. Normalize and Merge
+  return masterRaw.map(f => {
+    const normalized = cleanField(f);
+    if (!normalized.name) return null;
+    
+    // If it was already marked via * or object property, or found in the RequiredSet
+    if (requiredSet.has(normalized.name.toLowerCase())) {
+      normalized.isRequired = true;
+    }
+    
+    return normalized;
+  }).filter(Boolean);
 };
 
 export const normalizeKey = (value) =>
@@ -84,14 +138,20 @@ export const parseMappingJson = (raw) => {
     if (Array.isArray(parsed)) {
       const map = {};
       parsed.forEach((item) => {
-        if (item?.rptField && item?.source) map[item.rptField] = item.source;
+        if (item?.rptField && item?.source) {
+          const clean = item.rptField.replace(/\*$/, "").trim();
+          map[clean] = item.source;
+        }
       });
       return { mappings: map, groupBy: [], orderBy: [], labelCopies: 1, staticVariables: {} };
     }
     if (Array.isArray(parsed?.mappings)) {
       const map = {};
       parsed.mappings.forEach((item) => {
-        if (item?.rptField && item?.source) map[item.rptField] = item.source;
+        if (item?.rptField && item?.source) {
+          const clean = item.rptField.replace(/\*$/, "").trim();
+          map[clean] = item.source;
+        }
       });
       return {
         mappings: map,
@@ -104,15 +164,11 @@ export const parseMappingJson = (raw) => {
       };
     }
     if (parsed?.mappings && typeof parsed.mappings === "object") {
-      return {
-        mappings: parsed.mappings,
-        groupBy: parsed?.groupBy || [],
-        orderBy: normalizeOrderBy(parsed?.orderBy),
-        labelCopies: Number.isFinite(Number(parsed?.labelCopies)) && Number(parsed.labelCopies) >= 1
-          ? Math.round(Number(parsed.labelCopies))
-          : 1,
-        staticVariables,
-      };
+      const map = {};
+      Object.entries(parsed.mappings).forEach(([key, val]) => {
+        map[key.replace(/\*$/, "").trim()] = val;
+      });
+      return { ...parsed, mappings: map };
     }
     if (parsed && typeof parsed === "object") {
       return { mappings: parsed, groupBy: [], orderBy: [], labelCopies: 1, staticVariables: {} };
