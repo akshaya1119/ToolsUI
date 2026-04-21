@@ -2397,7 +2397,7 @@ const ProcessingPipeline = () => {
       )}
 
       <div className="flex justify-between items-center mb-4">
-        <Typography.Title level={3} style={{ marginBottom: 24 }}>
+        <Typography.Title level={3} style={{ marginBottom: 6 }}>
           Processing Pipeline
         </Typography.Title>
         <div className="text-sm flex items-center gap-2">
@@ -2413,7 +2413,7 @@ const ProcessingPipeline = () => {
         </div>
       </div>
 
-      <div className="mb-4">
+      <div className="mb-2">
         <p className="text-sm font-medium mb-1">Overall Progress</p>
         <Progress percent={percent} showInfo={false} />
         <div className="text-right text-sm mt-1">
@@ -2912,42 +2912,47 @@ const ProcessingPipeline = () => {
       <style>{`
         .pipeline-main {
           display: grid;
-          gap: 12px;
+          gap: 16px;
           align-items: start;
+          width: 100%;
         }
         .pipeline-main--with-panel {
-          grid-template-columns: minmax(0, 1fr) minmax(450px, 550px);
+          grid-template-columns: 1fr 450px;
         }
         .pipeline-main--single {
-          grid-template-columns: minmax(0, 1fr);
+          grid-template-columns: 1fr;
         }
         .pipeline-table-card {
           min-width: 0;
+          overflow: hidden;
         }
         .pipeline-panel {
           position: sticky;
           top: 12px;
+          min-width: 0;
         }
         .pipeline-panel-wide {
-          min-width: 500px;
+          /* Removed rigid min-width to allow fluid shrinking */
         }
         .pipeline-panel-body {
           padding: 12px;
-          max-height: calc(100vh - 260px);
+          max-height: calc(100vh - 220px);
           overflow-y: auto;
         }
         .pipeline-panel-title {
           display: flex;
           flex-direction: column;
           gap: 8px;
+          width: 100%;
         }
         .pipeline-panel-actions {
           display: flex;
           flex-wrap: wrap;
-          gap: 8px;
+          gap: 6px;
         }
         .pipeline-panel-actions .ant-btn {
           white-space: nowrap;
+          flex: 1 1 auto;
         }
         .ant-tabs-tab.ant-tabs-tab-active {
           background-color: #f0f5ff !important;
@@ -2957,13 +2962,49 @@ const ProcessingPipeline = () => {
           color: #1677ff !important;
           font-weight: 500 !important;
         }
+
+        /* Large Desktop */
+        @media (min-width: 1600px) {
+          .pipeline-main--with-panel {
+            grid-template-columns: 1fr 550px;
+          }
+        }
+
+        /* Standard Desktop */
+        @media (max-width: 1440px) {
+          .pipeline-main--with-panel {
+            grid-template-columns: 1fr 400px;
+          }
+        }
+
+        /* Small Desktop / Tablet Landscape */
         @media (max-width: 1200px) {
           .pipeline-main--with-panel {
-            grid-template-columns: minmax(0, 1fr);
+            grid-template-columns: 1fr 350px;
+            gap: 12px;
+          }
+          .pipeline-panel-title {
+            font-size: 13px;
+          }
+        }
+
+        /* Tablet Portrait and below */
+        @media (max-width: 992px) {
+          .pipeline-main--with-panel {
+            grid-template-columns: 1fr;
           }
           .pipeline-panel {
             position: static;
+            width: 100%;
           }
+        }
+
+        /* Mobile */
+        @media (max-width: 576px) {
+           .p-4 { padding: 8px !important; }
+           .ant-card-head-title { font-size: 14px; white-space: normal; }
+           .pipeline-panel-actions { flex-direction: column; }
+           .pipeline-panel-actions .ant-btn { width: 100%; }
         }
       `}</style>
     </div>

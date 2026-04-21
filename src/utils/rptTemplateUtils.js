@@ -58,23 +58,23 @@ export const extractParsedFields = (input) => {
   const cleanField = (f) => {
     if (typeof f === "string") {
       const isReq = f.endsWith("*");
-      return { 
-        name: isReq ? f.slice(0, -1).trim() : f.trim(), 
-        isRequired: isReq 
+      return {
+        name: isReq ? f.slice(0, -1).trim() : f.trim(),
+        isRequired: isReq
       };
     }
-    
+
     const rawName = f?.name ?? f?.Name ?? f?.fieldName ?? f?.FieldName ?? "";
     const isNameReq = typeof rawName === "string" && rawName.endsWith("*");
     const name = isNameReq ? rawName.slice(0, -1).trim() : rawName.trim();
-    
+
     const isRequired = !!(
       isNameReq ||
       (f?.isRequired ??
-       f?.IsRequired ??
-       f?.required ??
-       f?.Required ??
-       false)
+        f?.IsRequired ??
+        f?.required ??
+        f?.Required ??
+        false)
     );
 
     return { name, isRequired };
@@ -105,12 +105,12 @@ export const extractParsedFields = (input) => {
   return masterRaw.map(f => {
     const normalized = cleanField(f);
     if (!normalized.name) return null;
-    
+
     // If it was already marked via * or object property, or found in the RequiredSet
     if (requiredSet.has(normalized.name.toLowerCase())) {
       normalized.isRequired = true;
     }
-    
+
     return normalized;
   }).filter(Boolean);
 };
