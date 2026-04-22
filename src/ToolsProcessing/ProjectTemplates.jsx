@@ -803,7 +803,7 @@ const ProjectTemplates = () => {
       setParsedFields(richFields);
 
       const res = await fetchTemplateMapping(APIURL, template.templateId);
-      const mapping = res?.mappingJson ?? res?.MappingJson ?? "";
+      const mapping = res?.mappingJson ?? res?.MappingJson ?? res?.mapping ?? "";
       const parsed = parseMappingJson(mapping);
       setMappingSelections(parsed.mappings || {});
       setGroupBySelections(Array.isArray(parsed.groupBy) ? parsed.groupBy : []);
