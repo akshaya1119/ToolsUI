@@ -122,20 +122,57 @@ const ProcessingPipeline = () => {
     await Promise.all(
       Object.entries(fileNames).map(async ([key, fileName]) => {
         try {
-          const res = await API.get(
-            `/EnvelopeBreakages/Reports/Exists?projectId=${projectId}&fileName=${fileName}`
-          );
-          const exists = res.data.exists;
-          results[fileName] = exists;
+          // For box breaking, check if any lot-specific file exists
+          if (key === "box") {
+            try {
+              const lots = await fetchLotsForSelection();
+              if (lots && lots.length > 0) {
+                // Check if at least one lot has a box breaking report
+                const lotResults = await Promise.all(
+                  lots.map(async (lot) => {
+                    try {
+                      const lotFileName = `BoxBreaking_${lot.lotNo}.xlsx`;
+                      const res = await API.get(
+                        `/EnvelopeBreakages/Reports/Exists?projectId=${projectId}&fileName=${lotFileName}`
+                      );
+                      return res.data.exists;
+                    } catch (err) {
+                      return false;
+                    }
+                  })
+                );
+                const exists = lotResults.some(result => result);
+                results[fileName] = exists;
+                
+                if (exists) {
+                  console.log("Updating step", key, "to completed");
+                  updateStepStatus(key, {
+                    status: "completed",
+                    fileUrl: null,
+                    duration: "--:--",
+                  });
+                }
+              }
+            } catch (err) {
+              console.error(`Failed to check lot files for box breaking`, err);
+              results[fileName] = false;
+            }
+          } else {
+            const res = await API.get(
+              `/EnvelopeBreakages/Reports/Exists?projectId=${projectId}&fileName=${fileName}`
+            );
+            const exists = res.data.exists;
+            results[fileName] = exists;
 
-          if (exists) {
-            const fileUrl = `${url3}/${projectId}/${fileName}?DateTime=${new Date().toISOString()}`;
-            console.log("Updating step", key, "to completed");
-            updateStepStatus(key, {
-              status: "completed",
-              fileUrl,
-              duration: "--:--",
-            });
+            if (exists) {
+              const fileUrl = `${url3}/${projectId}/${fileName}?DateTime=${new Date().toISOString()}`;
+              console.log("Updating step", key, "to completed");
+              updateStepStatus(key, {
+                status: "completed",
+                fileUrl,
+                duration: "--:--",
+              });
+            }
           }
         } catch (err) {
           console.error(`Failed to check file: ${fileName}`, err);
@@ -1717,8 +1754,8 @@ const ProcessingPipeline = () => {
             // Fetch available lots before running box breaking
             const lots = await fetchLotsForSelection();
 
-            if (lots.length > 1) {
-              // Show lot selection modal if multiple lots exist
+            if (lots.length > 0) {
+              // Show lot selection modal for all cases
               const selectedLots = await showLotSelectionModal(lots);
 
               if (selectedLots === null) {
@@ -1731,8 +1768,10 @@ const ProcessingPipeline = () => {
               // Run box breaking with selected lots
               await runBoxBreaking(projectId, selectedLots);
             } else {
-              // Run normally if no lots found (will likely fail on backend but consistent)
-              await runBoxBreaking(projectId);
+              // No lots found
+              message.warning("No lots found for this project");
+              updateStepStatus(step.key, { status: "failed" });
+              break;
             }
           }
           else if (step.key === "envelopeSummary") await runEnvelopeSummary(projectId);
@@ -2774,15 +2813,25 @@ const ProcessingPipeline = () => {
                                             )}
                                           </div>
                                           <Space size="small">
-                                            <Button
-                                              size="small"
-                                              type="primary"
-                                              onClick={() => handleGenerateLotTemplate(lot.lotNo, template)}
-                                              loading={isGenerating}
-                                              disabled={!canGenerate}
-                                            >
-                                              Generate
-                                            </Button>
+                                            {canGenerate ? (
+                                              <Button
+                                                size="small"
+                                                type="primary"
+                                                onClick={() => handleGenerateLotTemplate(lot.lotNo, template)}
+                                                loading={isGenerating}
+                                              >
+                                                Generate
+                                              </Button>
+                                            ) : (
+                                              <Button
+                                                size="small"
+                                                type="primary"
+                                                onClick={() => handleGenerateLotTemplate(lot.lotNo, template)}
+                                                loading={isGenerating}
+                                              >
+                                                Regenerate
+                                              </Button>
+                                            )}
                                             <Button
                                               size="small"
                                               onClick={() => handleDownloadLotTemplate(lot.lotNo, template)}
