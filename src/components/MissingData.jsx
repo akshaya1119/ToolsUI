@@ -429,6 +429,7 @@ headers.forEach((header, index) => {
                     if (!catchNo) return;
 
                     const rowData = {
+                        id: item.Id || item.id,
                         key: catchNo,
                         catchNo,
                     };
@@ -706,6 +707,7 @@ for (const row of missingDataRows) {
 
     if (Object.keys(additionalFields).length > 0) {
         payload.push({
+            id: row.id,
             catchNo: row.catchNo,
             additionalFields,
         });
