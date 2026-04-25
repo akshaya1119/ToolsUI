@@ -115,6 +115,7 @@ const ProjectTemplates = () => {
   const [groupBySelections, setGroupBySelections] = useState([]);
   const [orderBySelections, setOrderBySelections] = useState([]);
   const [labelCopies, setLabelCopies] = useState(1);
+  const [filterMode, setFilterMode] = useState(null);
   const [mappingPinnedFields, setMappingPinnedFields] = useState([]);
   const [staticVariables, setStaticVariables] = useState({});
 
@@ -432,6 +433,7 @@ const ProjectTemplates = () => {
       setGroupBySelections([]);
       setOrderBySelections([]);
       setLabelCopies(1);
+      setFilterMode(null);
       setMappingPinnedFields([]);
       setStaticVariables({});
     }
@@ -810,6 +812,7 @@ const ProjectTemplates = () => {
       setOrderBySelections(Array.isArray(parsed.orderBy) ? parsed.orderBy : []);
       setLabelCopies(Number.isFinite(parsed.labelCopies) && parsed.labelCopies >= 1 ? parsed.labelCopies : 1);
       setStaticVariables(parsed.staticVariables || {});
+      setFilterMode(parsed.filterMode ?? null);
       setMappingPinnedFields(Object.keys(parsed.mappings || {}));
       const emptyMapping =
         Object.keys(parsed.mappings || {}).length === 0 &&
@@ -868,13 +871,15 @@ const ProjectTemplates = () => {
         orderBy: orderBySelections || [],
         labelCopies: labelCopies ?? 1,
         staticVariables: staticVariables || {},
+        ...(filterMode ? { filterMode } : {}),
       };
       const hasContent =
         mappingsPayload.length > 0 ||
         (groupBySelections || []).length > 0 ||
         (orderBySelections || []).length > 0 ||
         (labelCopies ?? 1) > 1 ||
-        Object.keys(staticVariables || {}).length > 0;
+        Object.keys(staticVariables || {}).length > 0 ||
+        !!filterMode;
       const mappingJson = hasContent ? JSON.stringify(mappingPayload) : "";
       await saveTemplateMapping(
         APIURL,
@@ -1758,6 +1763,8 @@ const ProjectTemplates = () => {
           setLabelCopies={setLabelCopies}
           staticVariables={staticVariables}
           setStaticVariables={setStaticVariables}
+          filterMode={filterMode}
+          setFilterMode={setFilterMode}
           handleSaveMapping={handleSaveMapping}
           parsedFieldsLoading={parsedFieldsLoading}
           mappingLoading={mappingLoading}

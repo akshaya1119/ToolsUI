@@ -41,6 +41,8 @@ const TemplatesMappingPanel = ({
   setLabelCopies,
   staticVariables = {},
   setStaticVariables,
+  filterMode,
+  setFilterMode,
   showDuplicateToggle = false,
   duplicateLabelsEnabled = true,
   onDuplicateLabelsChange,
@@ -254,6 +256,18 @@ const TemplatesMappingPanel = ({
             {mappedFieldNames.length > 0 ? mappedFieldNames.join(", ") : "None"}
           </Typography.Text>
         </div>
+
+        <Card size="small" style={{ marginBottom: 12 }} bodyStyle={{ padding: 12 }}>
+          <Checkbox
+            checked={filterMode === "ExtrasOnly"}
+            onChange={(e) => setFilterMode?.(e.target.checked ? "ExtrasOnly" : null)}
+          >
+            <Typography.Text strong>Extra center only</Typography.Text>
+            <Typography.Text type="secondary" style={{ display: "block", fontSize: 11 }}>
+              Print center codes where Extra ID is not null only.
+            </Typography.Text>
+          </Checkbox>
+        </Card>
 
         <Card size="small" style={{ marginBottom: 12 }} bodyStyle={{ padding: 12 }}>
           <Typography.Text strong>Group By</Typography.Text>
