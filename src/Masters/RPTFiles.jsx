@@ -607,7 +607,7 @@ const RPTFiles = () => {
             }
           }
 
-          confirmForceUpload(async () => {
+          await confirmForceUpload(async () => {
             const forced = await doUpload(true);
             onSuccess(forced);
           });
@@ -664,16 +664,21 @@ const RPTFiles = () => {
   };
 
   const confirmForceUpload = async (onConfirm) => {
-    const confirmed = await MessageService.confirm(
-      "No changes detected between this file and the latest version.",
-      {
-        title: "No changes detected",
-        confirmText: "Upload Anyway",
-        cancelText: "Cancel",
-        type: 'info'
-      }
-    );
-    if (confirmed) onConfirm();
+    let confirmed = false;
+    try {
+      confirmed = await MessageService.confirm(
+        "No changes detected between this file and the latest version. Do you still want to upload it?",
+        {
+          title: "No changes detected",
+          confirmText: "Upload Anyway",
+          cancelText: "Cancel",
+          type: 'info'
+        }
+      );
+    } catch {
+      confirmed = window.confirm("No changes detected. Upload anyway?");
+    }
+    if (confirmed) await onConfirm();
   };
 
   const confirmMappingUpdate = async (template) => {
@@ -1124,7 +1129,7 @@ const RPTFiles = () => {
           const allowForce =
             err?.response?.status === 409 && err?.response?.data?.allowForceUpload;
           if (allowForce) {
-            confirmForceUpload(async () => {
+            await confirmForceUpload(async () => {
               const forced = await doUpload(true);
               onUploadSuccess(forced);
             });

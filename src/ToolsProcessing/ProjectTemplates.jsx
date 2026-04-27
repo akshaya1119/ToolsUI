@@ -602,14 +602,24 @@ const ProjectTemplates = () => {
 
     const data = res.data;
 
-    if (!forceUpload && (data.designCheck || data.DesignCheck)) {
-      const check = data.designCheck || data.DesignCheck;
-      if (check.changed === true || check.Changed === true) {
+    if (!forceUpload && (data.changeSummary || data.designCheck || data.DesignCheck)) {
+      const check = data.changeSummary || data.designCheck || data.DesignCheck;
+      const changed = check.changed === true || check.Changed === true || check.fileIdentical === false;
+      const isIdentical = check.fileIdentical === true;
+
+      if (isIdentical) {
+        // File is identical — already handled by 409, but just in case
+        throw new Error("File identical");
+      }
+
+      if (changed || check.likelyLayoutOnly) {
         setAddSubmitting(false);
         const changeList =
           Array.isArray(check.changes) && check.changes.length > 0
             ? check.changes.map((c) => `- ${c}`).join("\n")
-            : "No specific field changes listed (check design snapshot).";
+            : check.likelyLayoutOnly
+            ? "Layout/design changes detected (fields are the same but file has changed)."
+            : "Design changes detected.";
 
         const confirmed = await MessageService.confirm(
           `Design changes detected since last version:\n\n${changeList}\n\nDo you want to upload this version anyway?`,
@@ -621,31 +631,9 @@ const ProjectTemplates = () => {
           }
         );
 
-        if (!confirmed) return;
-        return await uploadTemplate({
-          ...params,
-          forceUpload: true,
-        });
+        if (!confirmed) throw new Error("User cancelled upload");
+        return data; // already saved, just return
       }
-
-      // Design is the same - ask user if they still want to upload
-      const confirmed = await MessageService.confirm(
-        "No changes detected between this file and the latest version. Do you still want to upload it?",
-        {
-          title: "No Design Changes Detected",
-          confirmText: "Yes, Upload",
-          cancelText: "No, Cancel",
-          type: "info",
-        }
-      );
-
-      if (confirmed) {
-        return await uploadTemplate({
-          ...params,
-          forceUpload: true,
-        });
-      }
-      throw new Error("User cancelled upload");
     }
 
     return data;
@@ -1270,9 +1258,22 @@ const ProjectTemplates = () => {
           const result = await doUpload(false);
           onUploadSuccess(result);
         } catch (err) {
-          if (err.message !== "User cancelled upload") {
-            throw err;
+          if (err.message === "User cancelled upload") return;
+
+          // Handle 409 — identical file, prompt user to force upload
+          if (err?.response?.status === 409 && err?.response?.data?.allowForceUpload) {
+            const confirmed = await MessageService.confirm(
+              "No changes detected between this file and the latest version. Do you still want to upload it?",
+              { title: "No Changes Detected", confirmText: "Upload Anyway", cancelText: "Cancel", type: "info" }
+            );
+            if (confirmed) {
+              const forced = await doUpload(true);
+              onUploadSuccess(forced);
+            }
+            return;
           }
+
+          throw err;
         }
       } catch (err) {
         onError?.(err);
