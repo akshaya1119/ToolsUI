@@ -161,6 +161,8 @@ export const parseMappingJson = (raw) => {
           ? Math.round(Number(parsed.labelCopies))
           : 1,
         staticVariables,
+        useBoxLabelSP: parsed?.useBoxLabelSP ?? false,
+        filterMode: parsed?.filterMode ?? null,
       };
     }
     if (parsed?.mappings && typeof parsed.mappings === "object") {

@@ -144,6 +144,7 @@ const ProjectTemplates = () => {
   const [editingVersionOptions, setEditingVersionOptions] = useState([]);
   const [editingVersionsLoading, setEditingVersionsLoading] = useState(false);
 
+  const [useBoxLabelSP, setUseBoxLabelSP] = useState(false);
   const [addForm] = Form.useForm();
   const [importForm] = Form.useForm();
   const importScope = Form.useWatch("sourceScope", importForm);
@@ -793,8 +794,14 @@ const ProjectTemplates = () => {
       setParsedFields(richFields);
 
       const res = await fetchTemplateMapping(APIURL, template.templateId);
-      const mapping = res?.mappingJson ?? res?.MappingJson ?? res?.mapping ?? "";
-      const parsed = parseMappingJson(mapping);
+      const mappingRaw = res?.mappingJson ?? res?.MappingJson ?? res?.mapping ?? "";
+      const parsed = parseMappingJson(mappingRaw);
+      
+      // Explicitly set the state from the loaded mapping
+      const loadedUseBoxLabelSP = parsed.useBoxLabelSP === true;
+      console.log("LOADED useBoxLabelSP:", loadedUseBoxLabelSP);
+      setUseBoxLabelSP(loadedUseBoxLabelSP);
+
       setMappingSelections(parsed.mappings || {});
       setGroupBySelections(Array.isArray(parsed.groupBy) ? parsed.groupBy : []);
       setOrderBySelections(Array.isArray(parsed.orderBy) ? parsed.orderBy : []);
@@ -859,6 +866,7 @@ const ProjectTemplates = () => {
         orderBy: orderBySelections || [],
         labelCopies: labelCopies ?? 1,
         staticVariables: staticVariables || {},
+        useBoxLabelSP: useBoxLabelSP,
         ...(filterMode ? { filterMode } : {}),
       };
       const hasContent =
@@ -1152,7 +1160,10 @@ const ProjectTemplates = () => {
     const payload = {
       projectId: Number(projectId),
       templateId: Number(template.templateId),
+      IsBoxLabel: useBoxLabelSP
     };
+    console.log("SP FLAG SENT:", useBoxLabelSP);
+    console.log("PAYLOAD:", payload);
     const messageKey = `generate-report-${payload.templateId}-${Date.now()}`;
     message.loading({
       content: "Generating report...",
@@ -1770,6 +1781,8 @@ const ProjectTemplates = () => {
           parsedFieldsLoading={parsedFieldsLoading}
           mappingLoading={mappingLoading}
           closeMappingPanel={closeMappingPanel}
+          useBoxLabelSP={useBoxLabelSP}
+          setUseBoxLabelSP={setUseBoxLabelSP}
         />
       </div>
 

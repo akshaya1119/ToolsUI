@@ -48,6 +48,10 @@ const RPTFiles = () => {
   const APIURL = import.meta.env.VITE_API_URL;
   const token = localStorage.getItem("token");
 
+  const [useBoxLabelSP, setUseBoxLabelSP] = useState(false);
+  const [staticVariables, setStaticVariables] = useState({});
+  const [filterMode, setFilterMode] = useState(null);
+
   const [groupOptions, setGroupOptions] = useState([]);
   const [typeOptions, setTypeOptions] = useState([]);
   const [userOptions, setUserOptions] = useState([]);
@@ -703,6 +707,9 @@ const RPTFiles = () => {
     setMappingLoading(true);
     setMappingNotFound(false);
     setParsedFields(extractParsedFields(template));
+    setStaticVariables(parsed.staticVariables || {});
+setFilterMode(parsed.filterMode || null);
+setUseBoxLabelSP(parsed.useBoxLabelSP || false);
     fetchMappingOptions(template);
     try {
       const details = await fetchTemplateDetails(APIURL, template.templateId);
@@ -792,6 +799,9 @@ const RPTFiles = () => {
         groupBy: groupBySelections || [],
         orderBy: orderBySelections || [],
         labelCopies: labelCopies ?? 1,
+        staticVariables: staticVariables || {},
+  filterMode: filterMode || null,
+  useBoxLabelSP: useBoxLabelSP || false,
       };
       const mappingJson =
         mappingsPayload.length > 0 || (groupBySelections || []).length > 0 || (orderBySelections || []).length > 0 || (labelCopies ?? 1) > 1
@@ -1413,27 +1423,33 @@ const RPTFiles = () => {
           />
         )}
 
-        <TemplatesMappingPanel
-          showMappingPanel={showMappingPanel}
-          mappingTemplate={mappingTemplate}
-          mappingNotFound={mappingNotFound}
-          mappingOptionsLoading={mappingOptionsLoading}
-          parsedFields={parsedFields}
-          mappingRows={mappingRows}
-          sourceOptionGroups={sourceOptionGroups}
-          mappingSelections={mappingSelections}
-          setMappingSelections={setMappingSelections}
-          mappedFieldNames={mappedFieldNames}
-          groupBySelections={groupBySelections}
-          setGroupBySelections={setGroupBySelections}
-          orderBySelections={orderBySelections}
-          setOrderBySelections={setOrderBySelections}
-          labelCopies={labelCopies}
-          setLabelCopies={setLabelCopies}
-          handleSaveMapping={handleSaveMapping}
-          mappingLoading={mappingLoading}
-          closeMappingPanel={closeMappingPanel}
-        />
+       <TemplatesMappingPanel
+  showMappingPanel={showMappingPanel}
+  mappingTemplate={mappingTemplate}
+  mappingNotFound={mappingNotFound}
+  mappingOptionsLoading={mappingOptionsLoading}
+  parsedFields={parsedFields}
+  mappingRows={mappingRows}
+  sourceOptionGroups={sourceOptionGroups}
+  mappingSelections={mappingSelections}
+  setMappingSelections={setMappingSelections}
+  mappedFieldNames={mappedFieldNames}
+  groupBySelections={groupBySelections}
+  setGroupBySelections={setGroupBySelections}
+  orderBySelections={orderBySelections}
+  setOrderBySelections={setOrderBySelections}
+  labelCopies={labelCopies}
+  setLabelCopies={setLabelCopies}
+  staticVariables={staticVariables}
+  setStaticVariables={setStaticVariables}
+  filterMode={filterMode}
+  setFilterMode={setFilterMode}
+  useBoxLabelSP={useBoxLabelSP}
+  setUseBoxLabelSP={setUseBoxLabelSP}
+  handleSaveMapping={handleSaveMapping}
+  mappingLoading={mappingLoading}
+  closeMappingPanel={closeMappingPanel}
+/>
       </div>
 
       <TemplatesVersionsModal
