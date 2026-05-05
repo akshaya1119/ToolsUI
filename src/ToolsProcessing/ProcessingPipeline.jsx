@@ -67,6 +67,13 @@ const ProcessingPipeline = () => {
     loading: false,
     resolve: null
   });
+  const [envLotSelectionModal, setEnvLotSelectionModal] = useState({
+    visible: false,
+    availableEnvLots: [],
+    selectedEnvLots: [],
+    loading: false,
+    resolve: null
+  });
   const [lotReportStatus, setLotReportStatus] = useState({});
   const projectId = useStore((state) => state.projectId);
   const projectName = useStore((state) => state.projectName);
@@ -517,6 +524,111 @@ const ProcessingPipeline = () => {
     }
   };
 
+  const fetchEnvelopeLotsForSelection = async (projectIdParam) => {
+    try {
+      // Fetch all envelope lot numbers for the project
+      const res = await API.get(`/NRDataLots/GetByProjectId/${projectIdParam}`);
+      const allData = res.data || [];
+      
+      // Get unique envelope lot numbers across all lots
+      const envLotSet = new Set();
+      allData.forEach(item => {
+        const itemEnvLotNo = item.envLotNo ?? item.EnvLotNo;
+        
+        if (itemEnvLotNo) {
+          envLotSet.add(itemEnvLotNo);
+        }
+      });
+      
+      // Convert to array and sort
+      const envLots = Array.from(envLotSet)
+        .map(envLotNo => ({ envLotNo }))
+        .sort((a, b) => a.envLotNo - b.envLotNo);
+      console.log(envLots)
+      return envLots;
+    } catch (err) {
+      console.error("Failed to fetch envelope lots for selection", err);
+      message.error("Failed to load envelope lots");
+      return [];
+    }
+  };
+
+  const showEnvLotSelectionModal = (envLots) => {
+    return new Promise((resolve) => {
+      setEnvLotSelectionModal({
+        visible: true,
+        availableEnvLots: envLots,
+        selectedEnvLots: envLots.map(lot => lot.envLotNo),
+        loading: false,
+        resolve
+      });
+    });
+  };
+
+  const handleEnvLotSelectionConfirm = () => {
+    const { selectedEnvLots, resolve } = envLotSelectionModal;
+    
+    if (selectedEnvLots.length === 0) {
+      message.warning("Please select at least one envelope lot to process");
+      return;
+    }
+
+    setEnvLotSelectionModal({ 
+      visible: false, 
+      availableEnvLots: [], 
+      selectedEnvLots: [], 
+      loading: false,
+      resolve: null 
+    });
+    
+    if (resolve) {
+      resolve(selectedEnvLots);
+    }
+  };
+
+  const handleEnvLotSelectionCancel = () => {
+    const { resolve } = envLotSelectionModal;
+    
+    setEnvLotSelectionModal({ 
+      visible: false, 
+      availableEnvLots: [], 
+      selectedEnvLots: [], 
+      loading: false,
+      resolve: null 
+    });
+    
+    if (resolve) {
+      resolve(null);
+    }
+  };
+
+  const handleSelectAllEnvLots = (checked) => {
+    if (checked) {
+      setEnvLotSelectionModal(prev => ({
+        ...prev,
+        selectedEnvLots: prev.availableEnvLots.map(lot => lot.envLotNo)
+      }));
+    } else {
+      setEnvLotSelectionModal(prev => ({
+        ...prev,
+        selectedEnvLots: []
+      }));
+    }
+  };
+
+  const handleEnvLotToggle = (envLotNo, checked) => {
+    setEnvLotSelectionModal(prev => {
+      const newSelectedEnvLots = checked
+        ? [...prev.selectedEnvLots, envLotNo]
+        : prev.selectedEnvLots.filter(l => l !== envLotNo);
+      
+      return {
+        ...prev,
+        selectedEnvLots: newSelectedEnvLots
+      };
+    });
+  };
+
   const showLotSelectionModal = (lots) => {
     return new Promise((resolve) => {
       setLotSelectionModal({
@@ -823,10 +935,23 @@ const ProcessingPipeline = () => {
       staticVariables = userValues;
     }
 
+    // Fetch available envelope lots and show selection modal
+    const envLots = await fetchEnvelopeLotsForSelection(projectId);
+    let envLotNumbers = [];
+    
+    if (envLots.length > 0) {
+      const selectedEnvLots = await showEnvLotSelectionModal(envLots);
+      if (selectedEnvLots === null) {
+        return; // user cancelled
+      }
+      envLotNumbers = selectedEnvLots;
+    }
+
     const payload = {
       projectId: Number(projectId),
       templateId: Number(templateId),
       ...(Object.keys(staticVariables).length > 0 ? { staticVariables } : {}),
+      ...(envLotNumbers.length > 0 ? { envLotNumbers } : {}),
     };
     const messageKey = `generate-report-${payload.templateId}-${Date.now()}`;
     setGeneratingTemplates((prev) => ({ ...prev, [templateId]: true }));
@@ -2971,6 +3096,62 @@ const ProcessingPipeline = () => {
         )}
       </Modal>
 
+      <Modal
+        title="Select Envelope Lots for Template Generation"
+        open={envLotSelectionModal.visible}
+        onOk={handleEnvLotSelectionConfirm}
+        onCancel={handleEnvLotSelectionCancel}
+        width={600}
+        okText="Generate for Selected Envelope Lots"
+        cancelText="Cancel"
+      >
+        <div style={{ marginBottom: 16 }}>
+          <Alert
+            message="Multiple envelope lots detected"
+            description="Please select which envelope lot(s) you want to process for template generation. You can select all envelope lots or specific ones."
+            type="info"
+            showIcon
+            style={{ marginBottom: 16 }}
+          />
+
+          <Checkbox
+            checked={envLotSelectionModal.selectedEnvLots.length === envLotSelectionModal.availableEnvLots.length && envLotSelectionModal.availableEnvLots.length > 0}
+            indeterminate={envLotSelectionModal.selectedEnvLots.length > 0 && envLotSelectionModal.selectedEnvLots.length < envLotSelectionModal.availableEnvLots.length}
+            onChange={(e) => handleSelectAllEnvLots(e.target.checked)}
+            style={{ marginBottom: 12, fontWeight: 500 }}
+          >
+            Select All Envelope Lots ({envLotSelectionModal.availableEnvLots.length})
+          </Checkbox>
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 400, overflowY: "auto" }}>
+          {envLotSelectionModal.availableEnvLots.map((envLot) => (
+            <Card
+              key={envLot.envLotNo}
+              size="small"
+              style={{
+                backgroundColor: envLotSelectionModal.selectedEnvLots.includes(envLot.envLotNo) ? "#f0f5ff" : "#fafafa",
+                border: envLotSelectionModal.selectedEnvLots.includes(envLot.envLotNo) ? "1px solid #91caff" : "1px solid #d9d9d9"
+              }}
+            >
+              <Checkbox
+                checked={envLotSelectionModal.selectedEnvLots.includes(envLot.envLotNo)}
+                onChange={(e) => handleEnvLotToggle(envLot.envLotNo, e.target.checked)}
+              >
+                <Text strong style={{ fontSize: "14px" }}>Envelope Lot {envLot.envLotNo}</Text>
+              </Checkbox>
+            </Card>
+          ))}
+        </div>
+
+        {envLotSelectionModal.selectedEnvLots.length > 0 && (
+          <div style={{ marginTop: 16, padding: "8px 12px", backgroundColor: "#e6f7ff", borderRadius: 4 }}>
+            <Text strong style={{ color: "#1890ff" }}>
+              {envLotSelectionModal.selectedEnvLots.length} envelope lot(s) selected
+            </Text>
+          </div>
+        )}
+      </Modal>
 
       <style>{`
         .pipeline-main {
