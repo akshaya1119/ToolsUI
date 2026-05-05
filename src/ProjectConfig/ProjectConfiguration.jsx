@@ -138,6 +138,7 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
     enhancement: 0,
     enhancementEnabled: false,
     enhancementType: "round",
+    roundOffBeforeEnhancement: false,
   });
   const [importedSnapshot, setImportedSnapshot] = useState(null);
   const [showChangeModal, setShowChangeModal] = useState(false);
@@ -226,6 +227,7 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
           : JSON.parse(projectConfig.duplicateCriteria || "[]"),
         enhancement: Number(projectConfig.enhancement) || 0,
         enhancementEnabled: Number(projectConfig.enhancement) > 0,
+        roundOffBeforeEnhancement: projectConfig.roundOffBeforeEnhancement || false,
       };
       setDuplicateConfig(JSON.parse(JSON.stringify(duplicateConfigRes)));
     } catch (err) {
@@ -438,6 +440,26 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
         percentage: item.mode === "Percentage" ? parseFloat(item.value) : 0,
       };
 
+      // Handle nodal configuration if nodalValue exists
+      if (item.nodalValue) {
+        try {
+          const nodalData = JSON.parse(item.nodalValue);
+          config.isPerNodal = true;
+          config.nodalMode = item.mode; // "Fixed" or "Percentage"
+          config.nodalConfigs = nodalData.map(nd => ({
+            nodalCodes: nd.NodalCodes ? nd.NodalCodes.split(',') : [],
+            value: parseFloat(nd.Value || 0)
+          }));
+        } catch (e) {
+          console.error("Error parsing nodalValue:", e);
+          config.isPerNodal = false;
+          config.nodalConfigs = [];
+        }
+      } else {
+        config.isPerNodal = false;
+        config.nodalConfigs = [];
+      }
+
       // Handle Range mode with RangeConfig
       if (item.mode === "Range" && item.rangeConfig) {
         try {
@@ -499,6 +521,7 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
               : JSON.parse(projectConfig.duplicateCriteria || "[]"),
             enhancement: Number(projectConfig.enhancement) || 0,
             enhancementEnabled: Number(projectConfig.enhancement) > 0,
+            roundOffBeforeEnhancement: projectConfig.roundOffBeforeEnhancement || false,
           };
           setDuplicateConfig(JSON.parse(JSON.stringify(duplicateConfigRes)));
         } catch (err) {
@@ -653,6 +676,26 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
             fixedQty: item.mode === "Fixed" ? parseFloat(item.value) : 0,
             percentage: item.mode === "Percentage" ? parseFloat(item.value) : 0,
           };
+
+          // Handle nodal configuration if nodalValue exists
+          if (item.nodalValue) {
+            try {
+              const nodalData = JSON.parse(item.nodalValue);
+              config.isPerNodal = true;
+              config.nodalMode = item.mode; // "Fixed" or "Percentage"
+              config.nodalConfigs = nodalData.map(nd => ({
+                nodalCodes: nd.NodalCodes ? nd.NodalCodes.split(',') : [],
+                value: parseFloat(nd.Value || 0)
+              }));
+            } catch (e) {
+              console.error("Error parsing nodalValue:", e);
+              config.isPerNodal = false;
+              config.nodalConfigs = [];
+            }
+          } else {
+            config.isPerNodal = false;
+            config.nodalConfigs = [];
+          }
 
           // Handle Range mode with RangeConfig
           if (item.mode === "Range" && item.rangeConfig) {
@@ -866,6 +909,7 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
         enhancement: 0,
         enhancementEnabled: false,
         enhancementType: "round",
+        roundOffBeforeEnhancement: false,
       });
     }
   };
@@ -950,6 +994,7 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
         enhancement: 0,
         enhancementEnabled: false,
         enhancementType: "round",
+        roundOffBeforeEnhancement: false,
       });
     }
   };
@@ -996,6 +1041,7 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
       enhancement: 0,
       enhancementEnabled: false,
       enhancementType: "round",
+      roundOffBeforeEnhancement: false,
     });
   };
 
@@ -1241,6 +1287,7 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
           />
 
           <ExtraProcessingCard
+            projectId={projectId}
             isEnabled={isEnabled}
             extraTypes={extraTypes}
             extraTypeSelection={extraTypeSelection}

@@ -108,6 +108,18 @@ const EnvelopeSetupCard = ({
                 max={100}
               />
               
+              <div style={{ marginTop: 8 }}>
+                <Checkbox
+                  checked={duplicateConfig?.roundOffBeforeEnhancement || false}
+                  disabled={enhancementLocked}
+                  onChange={(e) => setDuplicateConfig((prev) => ({
+                    ...prev,
+                    roundOffBeforeEnhancement: e.target.checked
+                  }))}
+                >
+                  Round before processing
+                </Checkbox>
+              </div>
             </div>
           </Col>
 

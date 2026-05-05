@@ -1,3 +1,4 @@
+import React, { useState, useEffect } from "react";
 import {
   Card,
   Select,
@@ -10,7 +11,9 @@ import {
   Col,
   Button,
   Switch,
+  Modal,
 } from "antd";
+import API from "../../hooks/api";
 import { FolderAddFilled, LockFilled, UndoOutlined, PlusOutlined, MinusCircleOutlined, DeleteOutlined } from "@ant-design/icons";
 import AnimatedCard from "./AnimatedCard";
 import {
@@ -33,6 +36,7 @@ const ExtraProcessingCard = ({
   onReset,
   onClear,
   importedSnapshot,
+  projectId,
 }) => {
   const isDirty = (current, snapshotVal) => {
     if (!importedSnapshot || importedSnapshot === "pending") return false;
@@ -43,7 +47,31 @@ const ExtraProcessingCard = ({
     paddingLeft: 6,
     borderRadius: 2,
   };
+
   const extraEnabled = isEnabled(EXTRA_ALIAS_NAME);
+  const [nodalModalOpen, setNodalModalOpen] = useState({});
+  const [nodalCodes, setNodalCodes] = useState([]);
+  const [loadingNodals, setLoadingNodals] = useState(false);
+useEffect(() => {
+  const finalId = projectId || localStorage.getItem("projectId");
+
+  console.log("🔥 Using projectId:", finalId);
+
+  if (!finalId) {
+    console.log("❌ No projectId anywhere");
+    return;
+  }
+
+  API.get(`/ExtrasConfigurations/DistinctNodals/${finalId}`)
+    .then((res) => {
+      const codes = (res.data || []).map((c) => ({
+        value: c,
+        label: c,
+      }));
+      setNodalCodes(codes);
+    })
+    .catch(console.error);
+}, []);
 
   return (
     <AnimatedCard>
@@ -93,6 +121,8 @@ const ExtraProcessingCard = ({
       >
         <Row gutter={[16, 16]}>
           {extraTypes.map((et) => {
+            const selectedNodals =
+  extraProcessingConfig[et.type]?.nodalConfigs?.flatMap(c => c.nodalCodes || []) || [];
             return (
               <Col key={et.extraTypeId} span={12}>
                 <div
@@ -188,6 +218,42 @@ const ExtraProcessingCard = ({
                     </Row>
                   </div>
 
+                  {(() => {
+                    const isNodalExtra = et?.type?.toLowerCase()?.includes('nodal');
+                    const isPerNodal = extraProcessingConfig[et.type]?.isPerNodal;
+
+                    return (
+                      <>
+                        {isNodalExtra && (
+                          <Row align="middle" style={{ marginTop: 12, marginBottom: 8, padding: '8px', background: '#fafafa', borderRadius: '4px', border: '1px solid #f0f0f0' }}>
+                           <Col span={24}>
+                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                               <Text strong>Nodal Configuration:</Text>
+                               <Radio.Group
+                                 value={isPerNodal ? 'different' : 'same'}
+                                 onChange={(e) => {
+                                   const isPer = e.target.value === 'different';
+                                   console.log(` Toggling nodal mode for ${et.type}:`, isPer ? 'Custom per nodal' : 'Apply to all');
+                                   setExtraProcessingConfig(prev => ({
+                                     ...prev,
+                                     [et.type]: {
+                                       ...prev[et.type],
+                                       isPerNodal: isPer,
+                                       nodalMode: isPer ? (prev[et.type]?.nodalMode || "Fixed") : undefined // Initialize nodalMode when toggling to per-nodal
+                                     }
+                                   }));
+                                 }}
+                                 disabled={!extraEnabled}
+                               >
+                                 <Radio value="same">Apply to all</Radio>
+                                 <Radio value="different">Custom per nodal</Radio>
+                               </Radio.Group>
+                             </div>
+                           </Col>
+                         </Row>
+                        )}
+                        {!isPerNodal ? (
+                          <>
                   {/* Radio group for mode */}
                   {/* <Radio.Group
                   value={extraTypeSelection[et.type]}
@@ -476,6 +542,153 @@ const ExtraProcessingCard = ({
                       />
                     </Form.Item>
                   )}
+                          </>
+                        ) : (
+                          <div >
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+  <Tag color="blue">
+    {extraProcessingConfig[et.type]?.nodalConfigs?.length || 0} nodal overrides
+  </Tag>
+
+  <Button
+    type="link"
+    onClick={() => setNodalModalOpen(prev => ({ ...prev, [et.type]: true }))}
+  >
+    Configure
+  </Button>
+</div>
+
+                            <Modal
+                              title={`Configure Nodal Values for ${et.extraTitle || et.type}`}
+                              open={nodalModalOpen[et.type]}
+                              onOk={() => {
+                                console.log(`✅ Modal closed for ${et.type}. Current nodalConfigs:`, extraProcessingConfig[et.type]?.nodalConfigs);
+                                setNodalModalOpen(prev => ({ ...prev, [et.type]: false }));
+                              }}
+                              onCancel={() => setNodalModalOpen(prev => ({ ...prev, [et.type]: false }))}
+                              width={600}
+                              destroyOnClose
+                            >
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                                <Text strong>Nodal Configuration List</Text>
+                                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                  <Text type="secondary" style={{ fontSize: 12 }}>
+                                    {extraProcessingConfig[et.type]?.nodalMode === "Percentage" ? "Percentage" : "Fixed Qty"}
+                                  </Text>
+                                  <Switch
+                                    checked={extraProcessingConfig[et.type]?.nodalMode === "Percentage"}
+                                    checkedChildren="%"
+                                    unCheckedChildren="#"
+                                    disabled={!extraEnabled}
+                                    onChange={(checked) =>
+                                      setExtraProcessingConfig((prev) => ({
+                                        ...prev,
+                                        [et.type]: {
+                                          ...prev[et.type],
+                                          nodalMode: checked ? "Percentage" : "Fixed",
+                                        },
+                                      }))
+                                    }
+                                  />
+                                </div>
+                              </div>
+                              
+                              <Row gutter={8} style={{ marginBottom: 4 }}>
+                                <Col span={10}><Text strong style={{ fontSize: 12 }}>Nodal Code</Text></Col>
+                                <Col span={10}><Text strong style={{ fontSize: 12 }}>{extraProcessingConfig[et.type]?.nodalMode === "Percentage" ? "Percentage (%)" : "Fixed Quantity"}</Text></Col>
+                                <Col span={4}><Text strong style={{ fontSize: 12 }}>Actions</Text></Col>
+                              </Row>
+
+                              <div style={{ maxHeight: '400px', overflowY: 'auto', overflowX: 'hidden', paddingRight: '8px' }}>
+                                {(extraProcessingConfig[et.type]?.nodalConfigs || [{ nodalCodes: [], value: 0 }]).map((config, i, arr) => (
+                                  <Row gutter={8} key={i} align="middle" style={{ marginBottom: 8 }}>
+                                    <Col span={10}>
+                                      <Select
+  mode="multiple"
+  showSearch
+  placeholder="Select Nodal"
+  value={config.nodalCodes || []}
+  disabled={!extraEnabled}
+  style={{ width: "100%" }}
+  onChange={(vals) => {
+    const updated = [...arr];
+    updated[i] = { ...updated[i], nodalCodes: vals };
+
+    setExtraProcessingConfig((prev) => ({
+      ...prev,
+      [et.type]: {
+        ...prev[et.type],
+        nodalConfigs: updated,
+      },
+    }));
+  }}
+  options={nodalCodes.filter(n => !selectedNodals.includes(n.value))}
+/>
+                                      
+                                    </Col>
+                                    <Col span={10}>
+                                      <InputNumber
+                                        min={0}
+                                        max={extraProcessingConfig[et.type]?.nodalMode === "Percentage" ? 100 : undefined}
+                                        disabled={!extraEnabled}
+                                        value={config.value || 0}
+                                        style={{ width: "100%" }}
+                                        onChange={(val) => {
+                                          const updated = [...arr];
+                                          updated[i] = { ...updated[i], value: val || 0 };
+                                          setExtraProcessingConfig((prev) => ({
+                                            ...prev,
+                                            [et.type]: { ...prev[et.type], nodalConfigs: updated },
+                                          }));
+                                        }}
+                                      />
+                                    </Col>
+                                    <Col span={4}>
+                                      <div style={{ display: "flex", gap: 4 }}>
+                                        {i === arr.length - 1 && (
+                                          <Button
+                                            icon={<PlusOutlined />}
+                                            size="small"
+                                            type="primary"
+                                            ghost
+                                            disabled={!extraEnabled}
+                                            onClick={() => {
+                                              const updated = [...arr, { nodalCodes: [], value: 0 }];
+                                              setExtraProcessingConfig((prev) => ({
+                                                ...prev,
+                                                [et.type]: { ...prev[et.type], nodalConfigs: updated },
+                                              }));
+                                            }}
+                                          />
+                                        )}
+                                        {arr.length > 1 && (
+                                          <Button
+                                            icon={<MinusCircleOutlined />}
+                                            danger
+                                            size="small"
+                                            type="primary"
+                                            ghost
+                                            disabled={!extraEnabled}
+                                            onClick={() => {
+                                              const updated = arr.filter((_, idx) => idx !== i);
+                                              setExtraProcessingConfig((prev) => ({
+                                                ...prev,
+                                                [et.type]: { ...prev[et.type], nodalConfigs: updated },
+                                              }));
+                                            }}
+                                          />
+                                        )}
+                                      </div>
+                                    </Col>
+                                  </Row>
+                                ))}
+                              </div>
+                            </Modal>
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
               </Col>
             );
@@ -487,3 +700,4 @@ const ExtraProcessingCard = ({
 };
 
 export default ExtraProcessingCard;
+

@@ -93,7 +93,7 @@ export const useMasterConfigSave = (
             !normalizedEnvelope.Inner &&
             !normalizedEnvelope.Outer;
 
-          // 🚫 Skip if nothing configured
+          //  Skip if nothing configured
           if (allZero) return null;
           const value =
             mode === "Fixed"

@@ -344,6 +344,7 @@ const MasterConfiguration = () => {
               envelopeOptions={envelopeOptions}
               onReset={resetForm}
               importedSnapshot={null}
+              projectId={selectedGroup}
             />
           </Col>
 

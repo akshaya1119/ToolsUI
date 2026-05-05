@@ -265,9 +265,9 @@ const TemplatesMappingPanel = ({
     checked={useBoxLabelSP}
     onChange={(e) => setUseBoxLabelSP?.(e.target.checked)}
   >
-    <Typography.Text strong>Use Box Label Stored Procedure</Typography.Text>
+    <Typography.Text strong>Use Box Label SP</Typography.Text>
     <Typography.Text type="secondary" style={{ display: "block", fontSize: 11 }}>
-      When enabled, data will be fetched using Box Label SP instead of dynamic query.
+      Enable to fetch data via Box Label Stored Procedure.
     </Typography.Text>
   </Checkbox>
 </Card>
