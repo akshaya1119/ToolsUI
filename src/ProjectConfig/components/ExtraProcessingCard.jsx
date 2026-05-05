@@ -50,6 +50,22 @@ const ExtraProcessingCard = ({
   };
 
   const extraEnabled = isEnabled(EXTRA_ALIAS_NAME);
+
+  const getOuterCapacity = (type) => {
+    const config = extraProcessingConfig[type];
+    const names = config?.envelopeType?.outer;
+    const name = Array.isArray(names) && names.length === 1 ? names[0] : null;
+    if (!name) return null;
+    
+    // Try to find in envelopeOptions prop first
+    const env = (envelopeOptions || []).find(e => e.envelopeName === name);
+    if (env && env.capacity > 0) return env.capacity;
+    
+    // Fallback to regex on the name string
+    const match = String(name).match(/(\d+)/);
+    return match ? parseInt(match[1], 10) : null;
+  };
+
   const [nodalModalOpen, setNodalModalOpen] = useState({});
   // Local state for editing nodal configs in modal
   const [nodalModalDraft, setNodalModalDraft] = useState({});
@@ -348,6 +364,18 @@ useEffect(() => {
                         disabled={!extraEnabled}
                         style={{ width: "100%" }}
                       />
+                      {(() => {
+                        const outerValue = getOuterCapacity(et.type);
+                        const qty = extraProcessingConfig[et.type]?.fixedQty || 0;
+                        if (outerValue && outerValue > 0 && qty > 0 && qty % outerValue !== 0) {
+                          return (
+                            <div style={{ color: "#ff4d4f", fontSize: "12px", marginTop: "4px", padding: '4px', background: '#fff2f0', borderRadius: '4px', border: '1px solid #ffccc7' }}>
+                              Quantities must be multiples of outer envelope capacity ({outerValue}).
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
                     </Form.Item>
                   )}
 
@@ -616,6 +644,15 @@ useEffect(() => {
                                   // Check all nodals are assigned
                                   if (uniqueSelected.length !== allNodalValues.length) return true;
                                   if (!allNodalValues.every(n => uniqueSelected.includes(n))) return true;
+
+                                  // Outer envelope multiple validation (only for Fixed mode)
+                                  const isFixedMode = extraProcessingConfig[et.type]?.nodalMode === "Fixed" || !extraProcessingConfig[et.type]?.nodalMode;
+                                  if (isFixedMode) {
+                                    const outerValue = getOuterCapacity(et.type);
+                                    if (outerValue && outerValue > 0) {
+                                      if (!draft.every(cfg => Number(cfg.value) % outerValue === 0)) return true;
+                                    }
+                                  }
                                   return false;
                                 })()
                               }}
@@ -642,6 +679,26 @@ useEffect(() => {
                                 setNodalModalError(prev => ({ ...prev, [et.type]: false }));
                               }}
                             >
+                              {/* Warning for Invalid Multiples */}
+                              {(() => {
+                                const draft = nodalModalDraft[et.type];
+                                if (!draft) return null;
+                                const isFixedMode = extraProcessingConfig[et.type]?.nodalMode === "Fixed" || !extraProcessingConfig[et.type]?.nodalMode;
+                                if (!isFixedMode) return null;
+
+                                const outerValue = getOuterCapacity(et.type);
+                                if (outerValue && outerValue > 0) {
+                                  const hasInvalidMultiple = draft.some(cfg => Number(cfg.value) > 0 && Number(cfg.value) % outerValue !== 0);
+                                  if (hasInvalidMultiple) {
+                                    return (
+                                      <div style={{ padding: '8px', background: '#fff2f0', border: '1px solid #ffccc7', borderRadius: '4px', marginBottom: 16, color: '#ff4d4f' }}>
+                                        Wait! Some quantities are not multiples of the outer envelope capacity ({outerValue}).
+                                      </div>
+                                    );
+                                  }
+                                }
+                                return null;
+                              })()}
                               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
                                 <Text strong>Nodal Configuration List</Text>
                                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
