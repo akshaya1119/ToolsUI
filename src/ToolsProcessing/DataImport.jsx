@@ -172,14 +172,26 @@ const DataImport = () => {
       );
 
       // Combine base columns and dynamic keys
-      const finalColumns = [...baseColumns];
+      const allPossibleColumns = [...baseColumns];
       dynamicKeys.forEach(key => {
-        if (!finalColumns.includes(key)) {
-          finalColumns.push(key);
+        if (!allPossibleColumns.includes(key)) {
+          allPossibleColumns.push(key);
         }
       });
 
-      setColumns(finalColumns);
+      // Filter out columns that are null, empty, or 0 for ALL items on the current page
+      const activeColumns = allPossibleColumns.filter(col => {
+        // Always keep certain critical columns even if empty on this page
+        if (col === "CatchNo" || col === "NRQuantity" || col === "CenterCode") return true;
+
+        return processedItems.some(item => {
+          const val = item[col];
+          // Check for null, undefined, empty string, or zero (as number or string)
+          return val !== null && val !== undefined && val !== "" && val !== 0 && val !== "0";
+        });
+      });
+
+      setColumns(activeColumns);
 
       setPagination(prev => ({
         ...prev,
@@ -1205,6 +1217,7 @@ const DataImport = () => {
       title: col,
       dataIndex: col,
       key: col,
+      fixed: col === 'CatchNo' ? 'left' : undefined,
       ellipsis: true,
       ...getColumnSearchProps(col),
       sorter: true,
