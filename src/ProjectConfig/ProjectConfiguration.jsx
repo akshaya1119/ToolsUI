@@ -1295,6 +1295,7 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
             extraProcessingConfig={extraProcessingConfig}
             setExtraProcessingConfig={setExtraProcessingConfig}
             envelopeOptions={envelopeOptions}
+            allowNodalConfig={!isMasterConfig}
             onReset={resetExtraProcessing}
             onClear={clearExtraProcessing}
             importedSnapshot={importedSnapshot}

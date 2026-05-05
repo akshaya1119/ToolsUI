@@ -37,6 +37,7 @@ const ExtraProcessingCard = ({
   onClear,
   importedSnapshot,
   projectId,
+  allowNodalConfig = true,
 }) => {
   const isDirty = (current, snapshotVal) => {
     if (!importedSnapshot || importedSnapshot === "pending") return false;
@@ -50,15 +51,18 @@ const ExtraProcessingCard = ({
 
   const extraEnabled = isEnabled(EXTRA_ALIAS_NAME);
   const [nodalModalOpen, setNodalModalOpen] = useState({});
+  // Local state for editing nodal configs in modal
+  const [nodalModalDraft, setNodalModalDraft] = useState({});
+  const [nodalModalError, setNodalModalError] = useState({});
   const [nodalCodes, setNodalCodes] = useState([]);
   const [loadingNodals, setLoadingNodals] = useState(false);
 useEffect(() => {
   const finalId = projectId || localStorage.getItem("projectId");
 
-  console.log("🔥 Using projectId:", finalId);
+  console.log(" Using projectId:", finalId);
 
   if (!finalId) {
-    console.log("❌ No projectId anywhere");
+    console.log(" No projectId anywhere");
     return;
   }
 
@@ -72,6 +76,27 @@ useEffect(() => {
     })
     .catch(console.error);
 }, []);
+
+useEffect(() => {
+  if (!allowNodalConfig) {
+    setExtraProcessingConfig((prev) => {
+      const cleaned = { ...prev };
+
+      Object.keys(cleaned).forEach((key) => {
+        if (cleaned[key]?.isPerNodal) {
+          cleaned[key] = {
+            ...cleaned[key],
+            isPerNodal: false,
+            nodalConfigs: [],
+            nodalMode: undefined,
+          };
+        }
+      });
+
+      return cleaned;
+    });
+  }
+}, [allowNodalConfig]);
 
   return (
     <AnimatedCard>
@@ -120,7 +145,11 @@ useEffect(() => {
         }
       >
         <Row gutter={[16, 16]}>
-          {extraTypes.map((et) => {
+          {extraTypes.filter((et) => {
+    const isNodalExtra = et?.type?.toLowerCase()?.includes("nodal");
+    if (!allowNodalConfig && isNodalExtra) return false;
+    return true;
+  }).map((et) => {
             const selectedNodals =
   extraProcessingConfig[et.type]?.nodalConfigs?.flatMap(c => c.nodalCodes || []) || [];
             return (
@@ -220,11 +249,11 @@ useEffect(() => {
 
                   {(() => {
                     const isNodalExtra = et?.type?.toLowerCase()?.includes('nodal');
+                     if (!allowNodalConfig && isNodalExtra) {return null;}
                     const isPerNodal = extraProcessingConfig[et.type]?.isPerNodal;
-
                     return (
                       <>
-                        {isNodalExtra && (
+                        {allowNodalConfig && isNodalExtra && (
                           <Row align="middle" style={{ marginTop: 12, marginBottom: 8, padding: '8px', background: '#fafafa', borderRadius: '4px', border: '1px solid #f0f0f0' }}>
                            <Col span={24}>
                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -543,7 +572,7 @@ useEffect(() => {
                     </Form.Item>
                   )}
                           </>
-                        ) : (
+                        ) : allowNodalConfig ? (
                           <div >
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
   <Tag color="blue">
@@ -552,7 +581,15 @@ useEffect(() => {
 
   <Button
     type="link"
-    onClick={() => setNodalModalOpen(prev => ({ ...prev, [et.type]: true }))}
+    onClick={() => {
+      // Open modal and set draft to current config
+      setNodalModalDraft(prev => ({
+        ...prev,
+        [et.type]: JSON.parse(JSON.stringify(extraProcessingConfig[et.type]?.nodalConfigs || [{ nodalCodes: [], value: 0 }]))
+      }));
+      setNodalModalError(prev => ({ ...prev, [et.type]: false }));
+      setNodalModalOpen(prev => ({ ...prev, [et.type]: true }));
+    }}
   >
     Configure
   </Button>
@@ -561,13 +598,49 @@ useEffect(() => {
                             <Modal
                               title={`Configure Nodal Values for ${et.extraTitle || et.type}`}
                               open={nodalModalOpen[et.type]}
-                              onOk={() => {
-                                console.log(`✅ Modal closed for ${et.type}. Current nodalConfigs:`, extraProcessingConfig[et.type]?.nodalConfigs);
-                                setNodalModalOpen(prev => ({ ...prev, [et.type]: false }));
-                              }}
-                              onCancel={() => setNodalModalOpen(prev => ({ ...prev, [et.type]: false }))}
+                              maskClosable={false}
                               width={600}
                               destroyOnClose
+                              okButtonProps={{
+                                disabled: (() => {
+                                  const draft = nodalModalDraft[et.type];
+                                  if (!Array.isArray(draft) || draft.length === 0) return true;
+                                  // All rows must have at least one nodal and a value
+                                  if (!draft.every(cfg => Array.isArray(cfg.nodalCodes) && cfg.nodalCodes.length > 0 && cfg.value !== null && cfg.value !== undefined && cfg.value !== '')) return true;
+                                  // All nodals must be assigned, no duplicates, no missing
+                                  const allNodalValues = nodalCodes.map(n => n.value);
+                                  const selected = draft.flatMap(cfg => cfg.nodalCodes || []);
+                                  // Check for duplicates
+                                  const uniqueSelected = Array.from(new Set(selected));
+                                  if (uniqueSelected.length !== selected.length) return true;
+                                  // Check all nodals are assigned
+                                  if (uniqueSelected.length !== allNodalValues.length) return true;
+                                  if (!allNodalValues.every(n => uniqueSelected.includes(n))) return true;
+                                  return false;
+                                })()
+                              }}
+                              onOk={() => {
+                                // Validate all nodal codes selected and value present
+                                if (!Array.isArray(nodalModalDraft[et.type]) || nodalModalDraft[et.type].length === 0 ||
+                                  !nodalModalDraft[et.type].every(cfg => Array.isArray(cfg.nodalCodes) && cfg.nodalCodes.length > 0 && cfg.value !== null && cfg.value !== undefined && cfg.value !== '')) {
+                                  setNodalModalError(prev => ({ ...prev, [et.type]: true }));
+                                  return;
+                                }
+                                setExtraProcessingConfig(prev => ({
+                                  ...prev,
+                                  [et.type]: {
+                                    ...prev[et.type],
+                                    nodalConfigs: nodalModalDraft[et.type]
+                                  }
+                                }));
+                                setNodalModalOpen(prev => ({ ...prev, [et.type]: false }));
+                                setNodalModalError(prev => ({ ...prev, [et.type]: false }));
+                              }}
+                              onCancel={() => {
+                                // Discard changes
+                                setNodalModalOpen(prev => ({ ...prev, [et.type]: false }));
+                                setNodalModalError(prev => ({ ...prev, [et.type]: false }));
+                              }}
                             >
                               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
                                 <Text strong>Nodal Configuration List</Text>
@@ -593,6 +666,36 @@ useEffect(() => {
                                 </div>
                               </div>
                               
+                              <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+                                <Button
+                                  size="small"
+                                  onClick={() => {
+                                    // Add all remaining nodals into a single row's multi-select
+                                    const allNodalValues = nodalCodes.map(n => n.value);
+                                    setNodalModalDraft(prev => {
+                                      const current = Array.isArray(prev[et.type]) ? [...prev[et.type]] : [];
+                                      // Find all nodals already selected in any row
+                                      const selected = current.flatMap(cfg => cfg.nodalCodes || []);
+                                      // Find nodals not yet selected
+                                      const remaining = allNodalValues.filter(n => !selected.includes(n));
+                                      if (remaining.length === 0) return prev;
+                                      // Try to find an empty row to use, else add a new row
+                                      let updated = [...current];
+                                      let emptyRowIdx = updated.findIndex(cfg => !cfg.nodalCodes || cfg.nodalCodes.length === 0);
+                                      if (emptyRowIdx !== -1) {
+                                        // Merge remaining into the empty row
+                                        updated[emptyRowIdx] = {
+                                          ...updated[emptyRowIdx],
+                                          nodalCodes: remaining,
+                                        };
+                                      } else {
+                                        updated.push({ nodalCodes: remaining, value: 0 });
+                                      }
+                                      return { ...prev, [et.type]: updated };
+                                    });
+                                  }}
+                                >Select Remaining</Button>
+                              </div>
                               <div style={{ maxHeight: '450px', overflowY: 'auto', overflowX: 'hidden', padding: '0 8px' }}>
                                 <Row gutter={12} style={{ 
                                   marginBottom: 12, 
@@ -609,8 +712,8 @@ useEffect(() => {
                                   <Col span={4} style={{ textAlign: 'center' }}><Text strong style={{ fontSize: 13 }}>Actions</Text></Col>
                                 </Row>
 
-                                {(extraProcessingConfig[et.type]?.nodalConfigs?.length > 0
-                                  ? extraProcessingConfig[et.type].nodalConfigs
+                                {(Array.isArray(nodalModalDraft[et.type]) && nodalModalDraft[et.type].length > 0
+                                  ? nodalModalDraft[et.type]
                                   : [{ nodalCodes: [], value: 0 }]).map((config, i, arr) => (
                                   <Row gutter={12} key={i} align="middle" style={{ 
                                     marginBottom: 10, 
@@ -629,18 +732,18 @@ useEffect(() => {
                                         disabled={!extraEnabled}
                                         style={{ width: "100%" }}
                                         onChange={(vals) => {
-                                          const updated = [...arr];
+                                          const updated = Array.isArray(nodalModalDraft[et.type]) ? [...nodalModalDraft[et.type]] : [];
                                           updated[i] = { ...updated[i], nodalCodes: vals };
-
-                                          setExtraProcessingConfig((prev) => ({
-                                            ...prev,
-                                            [et.type]: {
-                                              ...prev[et.type],
-                                              nodalConfigs: updated,
-                                            },
-                                          }));
+                                          setNodalModalDraft(prev => ({ ...prev, [et.type]: updated }));
                                         }}
-                                        options={nodalCodes.filter(n => !selectedNodals.includes(n.value) || config.nodalCodes?.includes(n.value))}
+                                        // Prevent duplicate nodal selection: only show nodals not selected in other rows, or already selected in this row
+                                        options={nodalCodes.filter(n => {
+                                          // Gather all nodals selected in other rows
+                                          const allSelected = (Array.isArray(nodalModalDraft[et.type]) ? nodalModalDraft[et.type] : [])
+                                            .flatMap((cfg, idx) => idx !== i ? (cfg.nodalCodes || []) : []);
+                                          // Show if not selected elsewhere, or if already in this row
+                                          return !allSelected.includes(n.value) || (config.nodalCodes || []).includes(n.value);
+                                        })}
                                       />
                                     </Col>
                                     <Col span={9}>
@@ -651,12 +754,9 @@ useEffect(() => {
                                         value={config.value || 0}
                                         style={{ width: "100%" }}
                                         onChange={(val) => {
-                                          const updated = [...arr];
+                                          const updated = Array.isArray(nodalModalDraft[et.type]) ? [...nodalModalDraft[et.type]] : [];
                                           updated[i] = { ...updated[i], value: val || 0 };
-                                          setExtraProcessingConfig((prev) => ({
-                                            ...prev,
-                                            [et.type]: { ...prev[et.type], nodalConfigs: updated },
-                                          }));
+                                          setNodalModalDraft(prev => ({ ...prev, [et.type]: updated }));
                                         }}
                                       />
                                     </Col>
@@ -670,11 +770,9 @@ useEffect(() => {
                                             shape="circle"
                                             disabled={!extraEnabled}
                                             onClick={() => {
-                                              const updated = [...arr, { nodalCodes: [], value: 0 }];
-                                              setExtraProcessingConfig((prev) => ({
-                                                ...prev,
-                                                [et.type]: { ...prev[et.type], nodalConfigs: updated },
-                                              }));
+                                              const updated = Array.isArray(nodalModalDraft[et.type]) ? [...nodalModalDraft[et.type]] : [];
+                                              updated.push({ nodalCodes: [], value: 0 });
+                                              setNodalModalDraft(prev => ({ ...prev, [et.type]: updated }));
                                             }}
                                           />
                                         )}
@@ -686,11 +784,8 @@ useEffect(() => {
                                             type="text"
                                             disabled={!extraEnabled}
                                             onClick={() => {
-                                              const updated = arr.filter((_, idx) => idx !== i);
-                                              setExtraProcessingConfig((prev) => ({
-                                                ...prev,
-                                                [et.type]: { ...prev[et.type], nodalConfigs: updated },
-                                              }));
+                                              const updated = Array.isArray(nodalModalDraft[et.type]) ? nodalModalDraft[et.type].filter((_, idx) => idx !== i) : [];
+                                              setNodalModalDraft(prev => ({ ...prev, [et.type]: updated }));
                                             }}
                                           />
                                         )}
@@ -699,9 +794,14 @@ useEffect(() => {
                                   </Row>
                                 ))}
                               </div>
+                              {nodalModalError[et.type] && (
+                                <div style={{ color: 'red', marginTop: 8 }}>
+                                  Each row must have at least one nodal selected and a value.
+                                </div>
+                              )}
                             </Modal>
                           </div>
-                        )}
+                        ): null }
                       </>
                     );
                   })()}
