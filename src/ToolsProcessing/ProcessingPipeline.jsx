@@ -34,6 +34,7 @@ const ProcessingPipeline = () => {
   const [selectedModules, setSelectedModules] = useState([]);
   const [allModules, setAllModules] = useState([]);
   const [projectConfig, setProjectConfig] = useState(null);
+  const [extraConfigData, setExtraConfigData] = useState([]);
   const [configChanged, setConfigChanged] = useState(false);
   const [changedFieldsInfo, setChangedFieldsInfo] = useState([]);
   const [dependencyModal, setDependencyModal] = useState({ visible: false, unprocessedSteps: [], selectedStep: null });
@@ -323,6 +324,10 @@ const ProcessingPipeline = () => {
 
         // Store full config for display
         setProjectConfig(cfg);
+
+        // Fetch Extra Configuration
+        const extrasRes = await API.get(`/ExtrasConfigurations/ByProject/${projectId}`).catch(() => ({ data: [] }));
+        setExtraConfigData(Array.isArray(extrasRes.data) ? extrasRes.data : []);
 
         let moduleEntries = cfg?.modules || [];
 
@@ -1590,7 +1595,16 @@ const ProcessingPipeline = () => {
           : ["Not configured"],
       },
       extra: {
-        value: ["Not configured"],
+        value: extraConfigData && extraConfigData.length > 0
+          ? extraConfigData.map(ec => {
+              const type = ec.extraType ?? ec.ExtraType;
+              const mode = ec.mode ?? ec.Mode;
+              const nodalValue = ec.nodalValue ?? ec.NodalValue;
+              const typeName = type === 1 ? "Nodal" : type === 2 ? "University" : "Office";
+              const isPerNodal = nodalValue ? " (Different per Nodal)" : " (Unified)";
+              return `${typeName}: ${mode}${isPerNodal}`;
+            })
+          : ["Not configured"],
       },
       envelopebreaking: {
         value: [`Sorting: ${getNames(projectConfig.envelopeMakingCriteria)}`],

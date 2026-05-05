@@ -593,40 +593,57 @@ useEffect(() => {
                                 </div>
                               </div>
                               
-                              <Row gutter={8} style={{ marginBottom: 4 }}>
-                                <Col span={10}><Text strong style={{ fontSize: 12 }}>Nodal Code</Text></Col>
-                                <Col span={10}><Text strong style={{ fontSize: 12 }}>{extraProcessingConfig[et.type]?.nodalMode === "Percentage" ? "Percentage (%)" : "Fixed Quantity"}</Text></Col>
-                                <Col span={4}><Text strong style={{ fontSize: 12 }}>Actions</Text></Col>
-                              </Row>
+                              <div style={{ maxHeight: '450px', overflowY: 'auto', overflowX: 'hidden', padding: '0 8px' }}>
+                                <Row gutter={12} style={{ 
+                                  marginBottom: 12, 
+                                  padding: '8px 4px', 
+                                  background: '#f5f5f5', 
+                                  borderRadius: '6px',
+                                  position: 'sticky',
+                                  top: 0,
+                                  zIndex: 1,
+                                  borderBottom: '1px solid #d9d9d9'
+                                }}>
+                                  <Col span={11}><Text strong style={{ fontSize: 13 }}>Nodal Codes</Text></Col>
+                                  <Col span={9}><Text strong style={{ fontSize: 13 }}>{extraProcessingConfig[et.type]?.nodalMode === "Percentage" ? "Value (%)" : "Quantity (#)"}</Text></Col>
+                                  <Col span={4} style={{ textAlign: 'center' }}><Text strong style={{ fontSize: 13 }}>Actions</Text></Col>
+                                </Row>
 
-                              <div style={{ maxHeight: '400px', overflowY: 'auto', overflowX: 'hidden', paddingRight: '8px' }}>
-                                {(extraProcessingConfig[et.type]?.nodalConfigs || [{ nodalCodes: [], value: 0 }]).map((config, i, arr) => (
-                                  <Row gutter={8} key={i} align="middle" style={{ marginBottom: 8 }}>
-                                    <Col span={10}>
+                                {(extraProcessingConfig[et.type]?.nodalConfigs?.length > 0
+                                  ? extraProcessingConfig[et.type].nodalConfigs
+                                  : [{ nodalCodes: [], value: 0 }]).map((config, i, arr) => (
+                                  <Row gutter={12} key={i} align="middle" style={{ 
+                                    marginBottom: 10, 
+                                    padding: '8px', 
+                                    background: '#fff', 
+                                    border: '1px solid #f0f0f0', 
+                                    borderRadius: '6px',
+                                    transition: 'all 0.3s'
+                                  }}>
+                                    <Col span={11}>
                                       <Select
-  mode="multiple"
-  showSearch
-  placeholder="Select Nodal"
-  value={config.nodalCodes || []}
-  disabled={!extraEnabled}
-  style={{ width: "100%" }}
-  onChange={(vals) => {
-    const updated = [...arr];
-    updated[i] = { ...updated[i], nodalCodes: vals };
+                                        mode="multiple"
+                                        showSearch
+                                        placeholder="Select Nodal"
+                                        value={config.nodalCodes || []}
+                                        disabled={!extraEnabled}
+                                        style={{ width: "100%" }}
+                                        onChange={(vals) => {
+                                          const updated = [...arr];
+                                          updated[i] = { ...updated[i], nodalCodes: vals };
 
-    setExtraProcessingConfig((prev) => ({
-      ...prev,
-      [et.type]: {
-        ...prev[et.type],
-        nodalConfigs: updated,
-      },
-    }));
-  }}
-  options={nodalCodes.filter(n => !selectedNodals.includes(n.value))}
-/>
-                                      
+                                          setExtraProcessingConfig((prev) => ({
+                                            ...prev,
+                                            [et.type]: {
+                                              ...prev[et.type],
+                                              nodalConfigs: updated,
+                                            },
+                                          }));
+                                        }}
+                                        options={nodalCodes.filter(n => !selectedNodals.includes(n.value) || config.nodalCodes?.includes(n.value))}
+                                      />
                                     </Col>
-                                    <Col span={10}>
+                                    <Col span={9}>
                                       <InputNumber
                                         min={0}
                                         max={extraProcessingConfig[et.type]?.nodalMode === "Percentage" ? 100 : undefined}
@@ -644,13 +661,13 @@ useEffect(() => {
                                       />
                                     </Col>
                                     <Col span={4}>
-                                      <div style={{ display: "flex", gap: 4 }}>
+                                      <div style={{ display: "flex", gap: 6, justifyContent: 'center' }}>
                                         {i === arr.length - 1 && (
                                           <Button
                                             icon={<PlusOutlined />}
                                             size="small"
                                             type="primary"
-                                            ghost
+                                            shape="circle"
                                             disabled={!extraEnabled}
                                             onClick={() => {
                                               const updated = [...arr, { nodalCodes: [], value: 0 }];
@@ -666,8 +683,7 @@ useEffect(() => {
                                             icon={<MinusCircleOutlined />}
                                             danger
                                             size="small"
-                                            type="primary"
-                                            ghost
+                                            type="text"
                                             disabled={!extraEnabled}
                                             onClick={() => {
                                               const updated = arr.filter((_, idx) => idx !== i);
