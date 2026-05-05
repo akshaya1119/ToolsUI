@@ -138,11 +138,49 @@ const DataImport = () => {
           sortOrder: uploadedTableSorter.order || null,
         },
       });
-      setExistingData((res.data.items || []).map((item) => ({
-        ...item,
-        id: item.id ?? item.Id,
-      })));
-      setColumns((res.data.columns || []).filter((column) => column !== "NRDatas" && column !== "Id"))
+
+      const dynamicKeys = new Set();
+      const processedItems = (res.data.items || []).map((item) => {
+        let parsedNRDatas = {};
+        if (item.NRDatas) {
+          try {
+            parsedNRDatas = JSON.parse(item.NRDatas);
+            if (parsedNRDatas && typeof parsedNRDatas === 'object') {
+              Object.keys(parsedNRDatas).forEach(key => {
+                if (key !== "ImportRowNo") {
+                  dynamicKeys.add(key);
+                }
+              });
+            }
+          } catch (e) {
+            console.error("Error parsing NRDatas JSON", e);
+          }
+        }
+        return {
+          ...item,
+          ...parsedNRDatas,
+          id: item.id ?? item.Id,
+        };
+      });
+
+      setExistingData(processedItems);
+
+      const baseColumns = (res.data.columns || []).filter((column) => 
+        column !== "NRDatas" && 
+        column !== "Id" && 
+        column !== "ImportRowNo"
+      );
+
+      // Combine base columns and dynamic keys
+      const finalColumns = [...baseColumns];
+      dynamicKeys.forEach(key => {
+        if (!finalColumns.includes(key)) {
+          finalColumns.push(key);
+        }
+      });
+
+      setColumns(finalColumns);
+
       setPagination(prev => ({
         ...prev,
         total: res.data.totalCount
