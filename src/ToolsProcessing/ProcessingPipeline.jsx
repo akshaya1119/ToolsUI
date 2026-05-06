@@ -21,6 +21,7 @@ import axios from "axios";
 import API from "../hooks/api";
 import useStore from "../stores/ProjectData";
 import { buildReportFileName, getErrorMessageAsync, parseMappingJson } from "../utils/rptTemplateUtils";
+import EnvLotReportsManager from "./EnvLotReportsManager";
 
 const { Text } = Typography;
 
@@ -74,7 +75,14 @@ const ProcessingPipeline = () => {
     loading: false,
     resolve: null
   });
+  const [existingReportModal, setExistingReportModal] = useState({
+    visible: false,
+    report: null,
+    resolve: null
+  });
   const [lotReportStatus, setLotReportStatus] = useState({});
+  const [envLotReports, setEnvLotReports] = useState([]); // Store generated envelope lot reports
+  const [expandedReportsTemplates, setExpandedReportsTemplates] = useState(new Set()); // Track which templates have expanded reports
   const projectId = useStore((state) => state.projectId);
   const projectName = useStore((state) => state.projectName);
   const storedGroupId = localStorage.getItem("selectedGroup");
@@ -229,7 +237,82 @@ const ProcessingPipeline = () => {
     setGeneratingTemplates({});
     setTemplateReportStatus({});
     setStaleTemplateIds(new Set());
+    // Clear envelope lot reports when project changes but don't clear if projectId is null (initial load)
+    if (projectId) {
+      setEnvLotReports([]);
+    }
   }, [projectId]);
+
+  // Cleanup blob URLs when component unmounts
+  useEffect(() => {
+    return () => {
+      envLotReports.forEach(report => {
+        if (report.url) {
+          window.URL.revokeObjectURL(report.url);
+        }
+      });
+    };
+  }, []);
+
+  // Load envelope lot reports from API on component mount
+  useEffect(() => {
+    const loadEnvLotReports = async () => {
+      if (!projectId) {
+        console.log('No projectId, skipping load');
+        return;
+      }
+      
+      try {
+        console.log('Loading envelope lot reports for project:', projectId);
+        
+        // First test if the API is accessible
+        const testResponse = await API.get('/EnvelopeLotReports/Test');
+        console.log('API test response:', testResponse.data);
+        
+        const response = await API.get(`/EnvelopeLotReports/ByProject/${projectId}`);
+        console.log('Raw API response:', response);
+        console.log('Response data:', response.data);
+        const reports = response.data || [];
+        
+        if (reports.length === 0) {
+          console.log('No reports found in database for project', projectId);
+          setEnvLotReports([]);
+          return;
+        }
+        
+        // Transform API data to match our component format
+        const transformedReports = reports.map((report, index) => {
+          console.log(`Transforming report ${index}:`, report);
+          return {
+            id: `${report.templateId}_${report.envLotNumbers}_${report.id}`,
+            templateId: report.templateId,
+            templateName: report.templateName,
+            envLotNumbers: report.envLotNumbers.split(',').map(num => parseInt(num.trim())),
+            envLotKey: report.envLotNumbers,
+            fileName: report.fileName,
+            generatedAt: report.generatedAt,
+            generatedBy: report.generatedBy,
+            filePath: report.filePath, // Include the server file path
+            url: null, // Will be set when downloading
+            dbId: report.id // Store the database ID for deletion
+          };
+        });
+        
+        console.log('Transformed reports:', transformedReports);
+        setEnvLotReports(transformedReports);
+      } catch (err) {
+        console.error("Failed to load envelope lot reports from API", err);
+        console.error("Error details:", err.response?.data);
+        console.error("Error status:", err.response?.status);
+        console.error("Error config:", err.config);
+        setEnvLotReports([]);
+      }
+    };
+
+    loadEnvLotReports();
+  }, [projectId]);
+
+  // Remove localStorage save effect since we're using API now
 
   const loadMappingUpdates = () => {
     try {
@@ -527,13 +610,13 @@ const ProcessingPipeline = () => {
   const fetchEnvelopeLotsForSelection = async (projectIdParam) => {
     try {
       // Fetch all envelope lot numbers for the project
-      const res = await API.get(`/NRDataLots/GetByProjectId/${projectIdParam}`);
+      const res = await API.get(`/NRDataLots/GetByProject/${projectIdParam}`);
       const allData = res.data || [];
       
       // Get unique envelope lot numbers across all lots
       const envLotSet = new Set();
       allData.forEach(item => {
-        const itemEnvLotNo = item.envLotNo ?? item.EnvLotNo;
+        const itemEnvLotNo = item.envLotNo ?? item.EnvLotNo ?? item.envLotno;
         
         if (itemEnvLotNo) {
           envLotSet.add(itemEnvLotNo);
@@ -626,6 +709,62 @@ const ProcessingPipeline = () => {
         ...prev,
         selectedEnvLots: newSelectedEnvLots
       };
+    });
+  };
+
+  const showExistingReportModal = (report) => {
+    return new Promise((resolve) => {
+      setExistingReportModal({
+        visible: true,
+        report,
+        resolve
+      });
+    });
+  };
+
+  const handleExistingReportDownload = async () => {
+    const { report, resolve } = existingReportModal;
+    setExistingReportModal({ visible: false, report: null, resolve: null });
+    
+    // Automatically expand the reports section for this template when downloading
+    if (report?.templateId) {
+      setExpandedReportsTemplates(prev => {
+        const newSet = new Set(prev);
+        newSet.add(report.templateId);
+        return newSet;
+      });
+    }
+    
+    if (resolve) {
+      resolve('download');
+    }
+  };
+
+  const handleExistingReportGenerate = () => {
+    const { resolve } = existingReportModal;
+    setExistingReportModal({ visible: false, report: null, resolve: null });
+    if (resolve) {
+      resolve('generate');
+    }
+  };
+
+  const handleExistingReportCancel = () => {
+    const { resolve } = existingReportModal;
+    setExistingReportModal({ visible: false, report: null, resolve: null });
+    if (resolve) {
+      resolve('cancel');
+    }
+  };
+
+  const handleReportsExpansion = (templateId, activeKey) => {
+    setExpandedReportsTemplates(prev => {
+      const newSet = new Set(prev);
+      if (activeKey && activeKey.includes('reports')) {
+        newSet.add(templateId);
+      } else {
+        newSet.delete(templateId);
+      }
+      return newSet;
     });
   };
 
@@ -947,11 +1086,32 @@ const ProcessingPipeline = () => {
       envLotNumbers = selectedEnvLots;
     }
 
+    // Check if report already exists for this template and envelope lots combination
+    if (envLotNumbers.length > 0) {
+      const envLotKey = envLotNumbers.sort((a, b) => a - b).join(',');
+      const existingReport = envLotReports.find(report => 
+        report.templateId === templateId && report.envLotKey === envLotKey
+      );
+      
+      if (existingReport) {
+        // Show confirmation modal for existing report
+        const shouldProceed = await showExistingReportModal(existingReport);
+        if (shouldProceed === 'download') {
+          // Download existing report
+          await handleDownloadEnvLotReport(existingReport);
+          return;
+        } else if (shouldProceed === 'cancel') {
+          return; // User cancelled
+        }
+        // If shouldProceed === 'generate', continue with generation
+      }
+    }
+
     const payload = {
       projectId: Number(projectId),
       templateId: Number(templateId),
       ...(Object.keys(staticVariables).length > 0 ? { staticVariables } : {}),
-      ...(envLotNumbers.length > 0 ? { envLotNumbers } : {}),
+      ...(envLotNumbers.length > 0 ? { LotNos: envLotNumbers.join(',') } : {}),
     };
     const messageKey = `generate-report-${payload.templateId}-${Date.now()}`;
     setGeneratingTemplates((prev) => ({ ...prev, [templateId]: true }));
@@ -967,10 +1127,19 @@ const ProcessingPipeline = () => {
         payload,
         { responseType: "blob" }
       );
+      
+      // Extract file path from response headers (try different case variations)
+      const filePath = res.headers['x-generated-file-path'] || 
+                      res.headers['X-Generated-File-Path'] || 
+                      res.headers['X-GENERATED-FILE-PATH'] || null;
+      console.log('Generated file path:', filePath);
+      console.log('All response headers:', res.headers);
+      
       const fileName = buildReportFileName({
         templateName: template?.templateName,
         projectName: projectName || (projectId ? `Project ${projectId}` : undefined),
         typeId: template?.typeId ?? typeId,
+        envLotNumbers: envLotNumbers, // Include envelope lot numbers
       });
       const fileBlob = new Blob([res.data], { type: "application/pdf" });
       const url = window.URL.createObjectURL(fileBlob);
@@ -1000,12 +1169,210 @@ const ProcessingPipeline = () => {
       });
 
       message.success({ content: "Report generated.", key: messageKey });
+      
+      // Save the generated envelope lot report to database
+      try {
+        const reportData = {
+          projectId: Number(projectId),
+          templateId,
+          templateName: template?.templateName || `Template ${templateId}`,
+          envLotNumbers: envLotNumbers.sort((a, b) => a - b).join(','),
+          fileName,
+          generatedBy: 'Current User', // You can replace this with actual user info
+          filePath: filePath // Include the server file path
+        };
+
+        console.log('Saving report to database:', reportData);
+        const saveResponse = await API.post('/EnvelopeLotReports', reportData);
+        console.log('Report saved successfully:', saveResponse.data);
+        const savedReport = saveResponse.data;
+
+        // Update local state with the saved report
+        const newReport = {
+          id: `${templateId}_${reportData.envLotNumbers}_${savedReport.id}`,
+          templateId,
+          templateName: template?.templateName || `Template ${templateId}`,
+          envLotNumbers: [...envLotNumbers].sort((a, b) => a - b),
+          envLotKey: reportData.envLotNumbers,
+          fileName,
+          generatedAt: savedReport.generatedAt,
+          generatedBy: savedReport.generatedBy,
+          filePath: savedReport.filePath, // Include the server file path
+          url,
+          dbId: savedReport.id
+        };
+        
+        setEnvLotReports(prev => {
+          // Remove any existing report with the same template and envLotKey combination
+          const filtered = prev.filter(report => 
+            !(report.templateId === templateId && report.envLotKey === reportData.envLotNumbers)
+          );
+          return [newReport, ...filtered]; // Add new report at the beginning
+        });
+
+        // Automatically expand the reports section for this template
+        setExpandedReportsTemplates(prev => {
+          const newSet = new Set(prev);
+          newSet.add(templateId);
+          return newSet;
+        });
+
+      } catch (saveErr) {
+        console.error("Failed to save report to database", saveErr);
+        console.error("Error details:", saveErr.response?.data);
+        message.warning("Report generated but failed to save to database. It will be lost on refresh.");
+        
+        // Still show the report locally even if database save fails
+        const reportKey = envLotNumbers.sort((a, b) => a - b).join(',');
+        const newReport = {
+          id: `${templateId}_${reportKey}_${Date.now()}`,
+          templateId,
+          templateName: template?.templateName || `Template ${templateId}`,
+          envLotNumbers: [...envLotNumbers].sort((a, b) => a - b),
+          envLotKey: reportKey,
+          fileName,
+          generatedAt: new Date().toISOString(),
+          generatedBy: 'Current User',
+          filePath: filePath, // Include the server file path even if DB save fails
+          url,
+        };
+        
+        setEnvLotReports(prev => {
+          const filtered = prev.filter(report => 
+            !(report.templateId === templateId && report.envLotKey === reportKey)
+          );
+          return [newReport, ...filtered];
+        });
+
+        // Automatically expand the reports section for this template even if DB save fails
+        setExpandedReportsTemplates(prev => {
+          const newSet = new Set(prev);
+          newSet.add(templateId);
+          return newSet;
+        });
+      }
     } catch (err) {
       console.error("Generate report failed", err);
       const msg = await getErrorMessageAsync(err, "Failed to generate report.");
       message.error({ content: msg, key: messageKey, duration: 6 });
     } finally {
       setGeneratingTemplates((prev) => ({ ...prev, [templateId]: false }));
+    }
+  };
+
+  const handleDownloadEnvLotReport = async (report) => {
+    // Build filename with envelope lot numbers
+    const fileName = buildReportFileName({
+      templateName: report.templateName,
+      projectName: projectName || (projectId ? `Project ${projectId}` : undefined),
+      typeId: null, // We don't have typeId in report object
+      envLotNumbers: report.envLotNumbers,
+    });
+
+    if (report.url) {
+      // Use cached blob URL if available
+      const link = document.createElement("a");
+      link.href = report.url;
+      link.download = fileName; // Use the filename with envelope lot numbers
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      message.success("Download started.");
+    } else if (report.filePath) {
+      // Try to download from server file path if available
+      try {
+        message.loading({ content: "Downloading report from server...", key: `download-${report.id}` });
+        
+        // Create a download link to the server file
+        const serverFileUrl = `${import.meta.env.VITE_API_BASE_URL}/files/${encodeURIComponent(report.filePath)}`;
+        const link = document.createElement("a");
+        link.href = serverFileUrl;
+        link.download = fileName; // Use the filename with envelope lot numbers
+        link.target = "_blank";
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        message.success({ content: "Download started.", key: `download-${report.id}` });
+      } catch (err) {
+        console.error("Failed to download from server path", err);
+        // Fallback to API download
+        await downloadFromApi(report, fileName);
+      }
+    } else {
+      // Fallback to API download
+      await downloadFromApi(report, fileName);
+    }
+  };
+
+  const downloadFromApi = async (report, fileName) => {
+    // Try to re-download from server if blob URL is not available (after page refresh)
+    if (!rptApiUrl || !projectId) {
+      message.error("Cannot download report. Please regenerate the report.");
+      return;
+    }
+
+    try {
+      message.loading({ content: "Downloading report...", key: `download-${report.id}` });
+      
+      // Reconstruct the lot numbers for the API call
+      const lotNos = report.envLotNumbers.join(',');
+      
+      const res = await axios.get(`${rptApiUrl}/report/generated-download`, {
+        params: {
+          templateId: report.templateId,
+          projectId: Number(projectId),
+          LotNos: lotNos,
+        },
+        responseType: "blob",
+      });
+
+      const fileBlob = new Blob([res.data], { type: "application/pdf" });
+      const url = window.URL.createObjectURL(fileBlob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = fileName || report.fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      
+      message.success({ content: "Download started.", key: `download-${report.id}` });
+    } catch (err) {
+      console.error("Failed to download report", err);
+      message.error({ 
+        content: "Failed to download report. Please regenerate it.", 
+        key: `download-${report.id}` 
+      });
+    }
+  };
+
+  const handleDeleteEnvLotReport = async (reportId) => {
+    try {
+      const report = envLotReports.find(r => r.id === reportId);
+      if (!report) {
+        message.error("Report not found.");
+        return;
+      }
+
+      // Delete from database if it has a dbId
+      if (report.dbId) {
+        await API.delete(`/EnvelopeLotReports/${report.dbId}`);
+      }
+
+      // Remove from local state
+      setEnvLotReports(prev => {
+        const reportToRemove = prev.find(r => r.id === reportId);
+        if (reportToRemove?.url) {
+          window.URL.revokeObjectURL(reportToRemove.url);
+        }
+        return prev.filter(r => r.id !== reportId);
+      });
+      
+      message.success("Report deleted successfully.");
+    } catch (err) {
+      console.error("Failed to delete report", err);
+      message.error("Failed to delete report from database.");
     }
   };
 
@@ -2702,10 +3069,15 @@ const ProcessingPipeline = () => {
                               bodyStyle={{ padding: 12 }}
                               style={{ borderRadius: 8 }}
                             >
-                              <div style={{ fontWeight: 600, marginBottom: 8 }}>
-                                {resolveTemplateName(template)}
-                              </div>
-                              <Space>
+                              <div style={{ 
+                                display: 'flex', 
+                                justifyContent: 'space-between', 
+                                alignItems: 'center', 
+                                marginBottom: 8 
+                              }}>
+                                <div style={{ fontWeight: 600 }}>
+                                  {resolveTemplateName(template)}
+                                </div>
                                 <Button
                                   size="small"
                                   type={alreadyGenerated ? "default" : "primary"}
@@ -2714,14 +3086,18 @@ const ProcessingPipeline = () => {
                                 >
                                   {alreadyGenerated ? "Regenerate" : "Generate"}
                                 </Button>
-                                <Button
-                                  size="small"
-                                  onClick={() => handleDownloadTemplate(template)}
-                                  disabled={!hasDownload}
-                                >
-                                  Download
-                                </Button>
-                              </Space>
+                              </div>
+                              
+                              {/* Compact Envelope Lot Reports for this template */}
+                              <EnvLotReportsManager
+                                reports={envLotReports}
+                                templateId={templateId}
+                                onDownload={handleDownloadEnvLotReport}
+                                onDelete={handleDeleteEnvLotReport}
+                                compact={true}
+                                activeKey={expandedReportsTemplates.has(templateId) ? ['reports'] : []}
+                                onActiveKeyChange={(activeKey) => handleReportsExpansion(templateId, activeKey)}
+                              />
                             </Card>
                           );
                         })}
@@ -3149,6 +3525,46 @@ const ProcessingPipeline = () => {
             <Text strong style={{ color: "#1890ff" }}>
               {envLotSelectionModal.selectedEnvLots.length} envelope lot(s) selected
             </Text>
+          </div>
+        )}
+      </Modal>
+
+      {/* Existing Report Modal */}
+      <Modal
+        title="Report Already Exists"
+        open={existingReportModal.visible}
+        onCancel={handleExistingReportCancel}
+        width={500}
+        footer={[
+          <Button key="cancel" onClick={handleExistingReportCancel}>
+            Cancel
+          </Button>,
+          <Button key="download" type="default" onClick={handleExistingReportDownload}>
+            Download Existing
+          </Button>,
+          <Button key="generate" type="primary" onClick={handleExistingReportGenerate}>
+            Generate New
+          </Button>
+        ]}
+      >
+        {existingReportModal.report && (
+          <div>
+            <Alert
+              message="A report already exists for this template and envelope lot combination"
+              description={
+                <div style={{ marginTop: 8 }}>
+                  <p><strong>Template:</strong> {existingReportModal.report.templateName}</p>
+                  <p><strong>Envelope Lots:</strong> {existingReportModal.report.envLotNumbers.join(', ')}</p>
+                  <p><strong>Generated:</strong> {new Date(existingReportModal.report.generatedAt).toLocaleString()}</p>
+                  <p><strong>Generated By:</strong> {existingReportModal.report.generatedBy}</p>
+                </div>
+              }
+              type="warning"
+              showIcon
+              style={{ marginBottom: 16 }}
+            />
+            
+            <p>You can download the existing report or generate a new one to replace it.</p>
           </div>
         )}
       </Modal>

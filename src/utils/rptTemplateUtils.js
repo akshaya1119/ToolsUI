@@ -261,6 +261,8 @@ export const buildReportFileName = ({
   templateName,
   projectName,
   typeId,
+  envLotNumbers,
+  lotNumber, // For regular lot numbers (box breaking)
   ext = "pdf",
 }) => {
   const sanitize = (value, fallback) => {
@@ -275,6 +277,21 @@ export const buildReportFileName = ({
   const name = sanitize(templateName, "Template");
   const project = sanitize(projectName, "Project");
   const type = sanitize(typeId ?? "TypeId", "TypeId");
+  
+  // Format envelope lot numbers (for envelope lot reports)
+  let lotPart = "";
+  if (envLotNumbers && Array.isArray(envLotNumbers) && envLotNumbers.length > 0) {
+    const sortedLots = [...envLotNumbers].sort((a, b) => a - b);
+    if (sortedLots.length === 1) {
+      lotPart = `_EnvLot${sortedLots[0]}`;
+    } else {
+      lotPart = `_EnvLots${sortedLots.join('-')}`;
+    }
+  } else if (lotNumber !== undefined && lotNumber !== null) {
+    // Format regular lot number (for box breaking reports)
+    lotPart = `_Lot${lotNumber}`;
+  }
+  
   const extension = ext.startsWith(".") ? ext.slice(1) : ext;
-  return `${name}_${project}_${type}.${extension}`;
+  return `${name}_${project}_${type}${lotPart}.${extension}`;
 };
