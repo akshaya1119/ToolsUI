@@ -706,6 +706,7 @@ for (const row of missingDataRows) {
 
     if (Object.keys(additionalFields).length > 0) {
         payload.push({
+            id: row.id,
             catchNo: row.catchNo,
             additionalFields,
         });

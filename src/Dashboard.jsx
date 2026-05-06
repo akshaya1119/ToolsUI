@@ -111,6 +111,7 @@ export default function Dashboard({ externalSearchQuery, onSearchQueryChange }) 
           id: project.projectId,
           name: projData.name || 'Unknown Project',
           timeAgo: project.timeAgo,
+          loggedAt: project.loggedAt,
           groupId: projData.groupId || project.groupId, 
           typeId: projData.typeId || project.typeId,   
           isActive: project.isActive, // Get isActive from API response
@@ -161,14 +162,25 @@ export default function Dashboard({ externalSearchQuery, onSearchQueryChange }) 
         counts[p.groupId] = (counts[p.groupId] || 0) + 1;
         
         // Track last accessed project in each group
-        if (!lastAccessed[p.groupId] || p.timeAgo < lastAccessed[p.groupId]) {
-          lastAccessed[p.groupId] = p.timeAgo;
-        }
+        if (
+        !lastAccessed[p.groupId] ||
+        new Date(p.loggedAt) > new Date(lastAccessed[p.groupId].loggedAt)
+      ) {
+        lastAccessed[p.groupId] = p;
       }
-    });
-    
-    return { counts, lastAccessed };
-  }, [projects]);
+    }
+  });
+  
+  return {
+    counts,
+    lastAccessed: Object.fromEntries(
+      Object.entries(lastAccessed).map(([groupId, project]) => [
+        groupId,
+        project.timeAgo
+      ])
+    )
+  };
+}, [projects]);
 
   useEffect(() => {
     getProjects();

@@ -138,11 +138,61 @@ const DataImport = () => {
           sortOrder: uploadedTableSorter.order || null,
         },
       });
-      setExistingData((res.data.items || []).map((item) => ({
-        ...item,
-        id: item.id ?? item.Id,
-      })));
-      setColumns((res.data.columns || []).filter((column) => column !== "NRDatas" && column !== "Id"))
+
+      const dynamicKeys = new Set();
+      const processedItems = (res.data.items || []).map((item) => {
+        let parsedNRDatas = {};
+        if (item.NRDatas) {
+          try {
+            parsedNRDatas = JSON.parse(item.NRDatas);
+            if (parsedNRDatas && typeof parsedNRDatas === 'object') {
+              Object.keys(parsedNRDatas).forEach(key => {
+                if (key !== "ImportRowNo") {
+                  dynamicKeys.add(key);
+                }
+              });
+            }
+          } catch (e) {
+            console.error("Error parsing NRDatas JSON", e);
+          }
+        }
+        return {
+          ...item,
+          ...parsedNRDatas,
+          id: item.id ?? item.Id,
+        };
+      });
+
+      setExistingData(processedItems);
+
+      const baseColumns = (res.data.columns || []).filter((column) => 
+        column !== "NRDatas" && 
+        column !== "Id" && 
+        column !== "ImportRowNo"
+      );
+
+      // Combine base columns and dynamic keys
+      const allPossibleColumns = [...baseColumns];
+      dynamicKeys.forEach(key => {
+        if (!allPossibleColumns.includes(key)) {
+          allPossibleColumns.push(key);
+        }
+      });
+
+      // Filter out columns that are null, empty, or 0 for ALL items on the current page
+      const activeColumns = allPossibleColumns.filter(col => {
+        // Always keep certain critical columns even if empty on this page
+        if (col === "CatchNo" || col === "NRQuantity" || col === "CenterCode") return true;
+
+        return processedItems.some(item => {
+          const val = item[col];
+          // Check for null, undefined, empty string, or zero (as number or string)
+          return val !== null && val !== undefined && val !== "" && val !== 0 && val !== "0";
+        });
+      });
+
+      setColumns(activeColumns);
+
       setPagination(prev => ({
         ...prev,
         total: res.data.totalCount
@@ -1167,6 +1217,7 @@ const DataImport = () => {
       title: col,
       dataIndex: col,
       key: col,
+      fixed: col === 'CatchNo' ? 'left' : undefined,
       ellipsis: true,
       ...getColumnSearchProps(col),
       sorter: true,

@@ -1,4 +1,4 @@
-import React from "react";
+import React,{useState} from "react";
 import { Button, Card, Checkbox, Input, InputNumber, Select, Space, Switch, Table, Typography } from "antd";
 import { CloseOutlined, DeleteOutlined, PlusOutlined, ReloadOutlined } from "@ant-design/icons";
 
@@ -21,6 +21,7 @@ const stripPrefix = (value) => {
   if (RAW_EXPR_LABELS[str]) return RAW_EXPR_LABELS[str];
   return str.replace(/^(eb\.|n\.|e\.|b\.|x\.|c\.)/, "");
 };
+
 
 const TemplatesMappingPanel = ({
   showMappingPanel,
@@ -47,6 +48,8 @@ const TemplatesMappingPanel = ({
   duplicateLabelsEnabled = true,
   onDuplicateLabelsChange,
   handleSaveMapping,
+  useBoxLabelSP,
+  setUseBoxLabelSP,
   handleRefreshFields,
   parsedFieldsLoading,
   mappingLoading,
@@ -256,6 +259,18 @@ const TemplatesMappingPanel = ({
             {mappedFieldNames.length > 0 ? mappedFieldNames.join(", ") : "None"}
           </Typography.Text>
         </div>
+
+   <Card size="small" style={{ marginBottom: 12 }} bodyStyle={{ padding: 12 }}>
+  <Checkbox
+    checked={useBoxLabelSP}
+    onChange={(e) => setUseBoxLabelSP?.(e.target.checked)}
+  >
+    <Typography.Text strong>Use Box Label SP</Typography.Text>
+    <Typography.Text type="secondary" style={{ display: "block", fontSize: 11 }}>
+      Enable to fetch data via Box Label Stored Procedure.
+    </Typography.Text>
+  </Checkbox>
+</Card>
 
         <Card size="small" style={{ marginBottom: 12 }} bodyStyle={{ padding: 12 }}>
           <Checkbox

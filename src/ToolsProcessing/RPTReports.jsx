@@ -96,6 +96,7 @@ const handleReset = () => {
     if (!isValid) return message.warning('Select module & template');
 
     await downloadReport({
+      projectId,
       templateId: selectedTemplate
     });
   };

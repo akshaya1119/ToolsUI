@@ -34,6 +34,7 @@ const ProcessingPipeline = () => {
   const [selectedModules, setSelectedModules] = useState([]);
   const [allModules, setAllModules] = useState([]);
   const [projectConfig, setProjectConfig] = useState(null);
+  const [extraConfigData, setExtraConfigData] = useState([]);
   const [configChanged, setConfigChanged] = useState(false);
   const [changedFieldsInfo, setChangedFieldsInfo] = useState([]);
   const [dependencyModal, setDependencyModal] = useState({ visible: false, unprocessedSteps: [], selectedStep: null });
@@ -63,6 +64,13 @@ const ProcessingPipeline = () => {
     visible: false,
     availableLots: [],
     selectedLots: [],
+    loading: false,
+    resolve: null
+  });
+  const [envLotSelectionModal, setEnvLotSelectionModal] = useState({
+    visible: false,
+    availableEnvLots: [],
+    selectedEnvLots: [],
     loading: false,
     resolve: null
   });
@@ -324,6 +332,10 @@ const ProcessingPipeline = () => {
         // Store full config for display
         setProjectConfig(cfg);
 
+        // Fetch Extra Configuration
+        const extrasRes = await API.get(`/ExtrasConfigurations/ByProject/${projectId}`).catch(() => ({ data: [] }));
+        setExtraConfigData(Array.isArray(extrasRes.data) ? extrasRes.data : []);
+
         let moduleEntries = cfg?.modules || [];
 
         // If IDs, map to names
@@ -510,6 +522,111 @@ const ProcessingPipeline = () => {
         return lots;
       }
     }
+  };
+
+  const fetchEnvelopeLotsForSelection = async (projectIdParam) => {
+    try {
+      // Fetch all envelope lot numbers for the project
+      const res = await API.get(`/NRDataLots/GetByProjectId/${projectIdParam}`);
+      const allData = res.data || [];
+      
+      // Get unique envelope lot numbers across all lots
+      const envLotSet = new Set();
+      allData.forEach(item => {
+        const itemEnvLotNo = item.envLotNo ?? item.EnvLotNo;
+        
+        if (itemEnvLotNo) {
+          envLotSet.add(itemEnvLotNo);
+        }
+      });
+      
+      // Convert to array and sort
+      const envLots = Array.from(envLotSet)
+        .map(envLotNo => ({ envLotNo }))
+        .sort((a, b) => a.envLotNo - b.envLotNo);
+      console.log(envLots)
+      return envLots;
+    } catch (err) {
+      console.error("Failed to fetch envelope lots for selection", err);
+      message.error("Failed to load envelope lots");
+      return [];
+    }
+  };
+
+  const showEnvLotSelectionModal = (envLots) => {
+    return new Promise((resolve) => {
+      setEnvLotSelectionModal({
+        visible: true,
+        availableEnvLots: envLots,
+        selectedEnvLots: envLots.map(lot => lot.envLotNo),
+        loading: false,
+        resolve
+      });
+    });
+  };
+
+  const handleEnvLotSelectionConfirm = () => {
+    const { selectedEnvLots, resolve } = envLotSelectionModal;
+    
+    if (selectedEnvLots.length === 0) {
+      message.warning("Please select at least one envelope lot to process");
+      return;
+    }
+
+    setEnvLotSelectionModal({ 
+      visible: false, 
+      availableEnvLots: [], 
+      selectedEnvLots: [], 
+      loading: false,
+      resolve: null 
+    });
+    
+    if (resolve) {
+      resolve(selectedEnvLots);
+    }
+  };
+
+  const handleEnvLotSelectionCancel = () => {
+    const { resolve } = envLotSelectionModal;
+    
+    setEnvLotSelectionModal({ 
+      visible: false, 
+      availableEnvLots: [], 
+      selectedEnvLots: [], 
+      loading: false,
+      resolve: null 
+    });
+    
+    if (resolve) {
+      resolve(null);
+    }
+  };
+
+  const handleSelectAllEnvLots = (checked) => {
+    if (checked) {
+      setEnvLotSelectionModal(prev => ({
+        ...prev,
+        selectedEnvLots: prev.availableEnvLots.map(lot => lot.envLotNo)
+      }));
+    } else {
+      setEnvLotSelectionModal(prev => ({
+        ...prev,
+        selectedEnvLots: []
+      }));
+    }
+  };
+
+  const handleEnvLotToggle = (envLotNo, checked) => {
+    setEnvLotSelectionModal(prev => {
+      const newSelectedEnvLots = checked
+        ? [...prev.selectedEnvLots, envLotNo]
+        : prev.selectedEnvLots.filter(l => l !== envLotNo);
+      
+      return {
+        ...prev,
+        selectedEnvLots: newSelectedEnvLots
+      };
+    });
   };
 
   const showLotSelectionModal = (lots) => {
@@ -818,10 +935,23 @@ const ProcessingPipeline = () => {
       staticVariables = userValues;
     }
 
+    // Fetch available envelope lots and show selection modal
+    const envLots = await fetchEnvelopeLotsForSelection(projectId);
+    let envLotNumbers = [];
+    
+    if (envLots.length > 0) {
+      const selectedEnvLots = await showEnvLotSelectionModal(envLots);
+      if (selectedEnvLots === null) {
+        return; // user cancelled
+      }
+      envLotNumbers = selectedEnvLots;
+    }
+
     const payload = {
       projectId: Number(projectId),
       templateId: Number(templateId),
       ...(Object.keys(staticVariables).length > 0 ? { staticVariables } : {}),
+      ...(envLotNumbers.length > 0 ? { envLotNumbers } : {}),
     };
     const messageKey = `generate-report-${payload.templateId}-${Date.now()}`;
     setGeneratingTemplates((prev) => ({ ...prev, [templateId]: true }));
@@ -1590,7 +1720,16 @@ const ProcessingPipeline = () => {
           : ["Not configured"],
       },
       extra: {
-        value: ["Not configured"],
+        value: extraConfigData && extraConfigData.length > 0
+          ? extraConfigData.map(ec => {
+              const type = ec.extraType ?? ec.ExtraType;
+              const mode = ec.mode ?? ec.Mode;
+              const nodalValue = ec.nodalValue ?? ec.NodalValue;
+              const typeName = type === 1 ? "Nodal" : type === 2 ? "University" : "Office";
+              const isPerNodal = nodalValue ? " (Different per Nodal)" : " (Unified)";
+              return `${typeName}: ${mode}${isPerNodal}`;
+            })
+          : ["Not configured"],
       },
       envelopebreaking: {
         value: [`Sorting: ${getNames(projectConfig.envelopeMakingCriteria)}`],
@@ -2436,7 +2575,7 @@ const ProcessingPipeline = () => {
       )}
 
       <div className="flex justify-between items-center mb-4">
-        <Typography.Title level={3} style={{ marginBottom: 24 }}>
+        <Typography.Title level={3} style={{ marginBottom: 6 }}>
           Processing Pipeline
         </Typography.Title>
         <div className="text-sm flex items-center gap-2">
@@ -2452,7 +2591,7 @@ const ProcessingPipeline = () => {
         </div>
       </div>
 
-      <div className="mb-4">
+      <div className="mb-2">
         <p className="text-sm font-medium mb-1">Overall Progress</p>
         <Progress percent={percent} showInfo={false} />
         <div className="text-right text-sm mt-1">
@@ -2957,46 +3096,107 @@ const ProcessingPipeline = () => {
         )}
       </Modal>
 
+      <Modal
+        title="Select Envelope Lots for Template Generation"
+        open={envLotSelectionModal.visible}
+        onOk={handleEnvLotSelectionConfirm}
+        onCancel={handleEnvLotSelectionCancel}
+        width={600}
+        okText="Generate for Selected Envelope Lots"
+        cancelText="Cancel"
+      >
+        <div style={{ marginBottom: 16 }}>
+          <Alert
+            message="Multiple envelope lots detected"
+            description="Please select which envelope lot(s) you want to process for template generation. You can select all envelope lots or specific ones."
+            type="info"
+            showIcon
+            style={{ marginBottom: 16 }}
+          />
+
+          <Checkbox
+            checked={envLotSelectionModal.selectedEnvLots.length === envLotSelectionModal.availableEnvLots.length && envLotSelectionModal.availableEnvLots.length > 0}
+            indeterminate={envLotSelectionModal.selectedEnvLots.length > 0 && envLotSelectionModal.selectedEnvLots.length < envLotSelectionModal.availableEnvLots.length}
+            onChange={(e) => handleSelectAllEnvLots(e.target.checked)}
+            style={{ marginBottom: 12, fontWeight: 500 }}
+          >
+            Select All Envelope Lots ({envLotSelectionModal.availableEnvLots.length})
+          </Checkbox>
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 400, overflowY: "auto" }}>
+          {envLotSelectionModal.availableEnvLots.map((envLot) => (
+            <Card
+              key={envLot.envLotNo}
+              size="small"
+              style={{
+                backgroundColor: envLotSelectionModal.selectedEnvLots.includes(envLot.envLotNo) ? "#f0f5ff" : "#fafafa",
+                border: envLotSelectionModal.selectedEnvLots.includes(envLot.envLotNo) ? "1px solid #91caff" : "1px solid #d9d9d9"
+              }}
+            >
+              <Checkbox
+                checked={envLotSelectionModal.selectedEnvLots.includes(envLot.envLotNo)}
+                onChange={(e) => handleEnvLotToggle(envLot.envLotNo, e.target.checked)}
+              >
+                <Text strong style={{ fontSize: "14px" }}>Envelope Lot {envLot.envLotNo}</Text>
+              </Checkbox>
+            </Card>
+          ))}
+        </div>
+
+        {envLotSelectionModal.selectedEnvLots.length > 0 && (
+          <div style={{ marginTop: 16, padding: "8px 12px", backgroundColor: "#e6f7ff", borderRadius: 4 }}>
+            <Text strong style={{ color: "#1890ff" }}>
+              {envLotSelectionModal.selectedEnvLots.length} envelope lot(s) selected
+            </Text>
+          </div>
+        )}
+      </Modal>
 
       <style>{`
         .pipeline-main {
           display: grid;
-          gap: 12px;
+          gap: 16px;
           align-items: start;
+          width: 100%;
         }
         .pipeline-main--with-panel {
-          grid-template-columns: minmax(0, 1fr) minmax(450px, 550px);
+          grid-template-columns: 1fr 450px;
         }
         .pipeline-main--single {
-          grid-template-columns: minmax(0, 1fr);
+          grid-template-columns: 1fr;
         }
         .pipeline-table-card {
           min-width: 0;
+          overflow: hidden;
         }
         .pipeline-panel {
           position: sticky;
           top: 12px;
+          min-width: 0;
         }
         .pipeline-panel-wide {
-          min-width: 500px;
+          /* Removed rigid min-width to allow fluid shrinking */
         }
         .pipeline-panel-body {
           padding: 12px;
-          max-height: calc(100vh - 260px);
+          max-height: calc(100vh - 220px);
           overflow-y: auto;
         }
         .pipeline-panel-title {
           display: flex;
           flex-direction: column;
           gap: 8px;
+          width: 100%;
         }
         .pipeline-panel-actions {
           display: flex;
           flex-wrap: wrap;
-          gap: 8px;
+          gap: 6px;
         }
         .pipeline-panel-actions .ant-btn {
           white-space: nowrap;
+          flex: 1 1 auto;
         }
         .ant-tabs-tab.ant-tabs-tab-active {
           background-color: #f0f5ff !important;
@@ -3006,13 +3206,49 @@ const ProcessingPipeline = () => {
           color: #1677ff !important;
           font-weight: 500 !important;
         }
+
+        /* Large Desktop */
+        @media (min-width: 1600px) {
+          .pipeline-main--with-panel {
+            grid-template-columns: 1fr 550px;
+          }
+        }
+
+        /* Standard Desktop */
+        @media (max-width: 1440px) {
+          .pipeline-main--with-panel {
+            grid-template-columns: 1fr 400px;
+          }
+        }
+
+        /* Small Desktop / Tablet Landscape */
         @media (max-width: 1200px) {
           .pipeline-main--with-panel {
-            grid-template-columns: minmax(0, 1fr);
+            grid-template-columns: 1fr 350px;
+            gap: 12px;
+          }
+          .pipeline-panel-title {
+            font-size: 13px;
+          }
+        }
+
+        /* Tablet Portrait and below */
+        @media (max-width: 992px) {
+          .pipeline-main--with-panel {
+            grid-template-columns: 1fr;
           }
           .pipeline-panel {
             position: static;
+            width: 100%;
           }
+        }
+
+        /* Mobile */
+        @media (max-width: 576px) {
+           .p-4 { padding: 8px !important; }
+           .ant-card-head-title { font-size: 14px; white-space: normal; }
+           .pipeline-panel-actions { flex-direction: column; }
+           .pipeline-panel-actions .ant-btn { width: 100%; }
         }
       `}</style>
     </div>

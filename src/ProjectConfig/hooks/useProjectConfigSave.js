@@ -167,10 +167,12 @@ export const useProjectConfigSave = (
         innerBundlingCriteria: innerBundlingCriteria,
         duplicateCriteria: duplicateConfig?.duplicateCriteria || [],
         enhancement: duplicateConfig?.enhancement || 0,
+        roundOffBeforeEnhancement: duplicateConfig?.roundOffBeforeEnhancement || false,
         mssTypes: selectedMss || [],
         mssAttached: mssInsertPosition || "end",
       };
 
+      console.log("SENDING PROJECT CONFIG PAYLOAD:", JSON.stringify(projectConfigPayload, null, 2));
       await API.post(projectConfigEndpoint, projectConfigPayload);
 
       // Prepare extras config for comparison — normalize it to match API structure
@@ -251,7 +253,7 @@ export const useProjectConfigSave = (
       console.log("Configuration Changes:", changes);
       console.log("Affected Reports with Dependencies:", affectedReportsWithDeps);
 
-      // 2️⃣ Delete existing ExtrasConfigurations first (only for non-master mode)
+      // 2️ Delete existing ExtrasConfigurations first (only for non-master mode)
       if (!finalIsMasterConfig) {
         try {
           await API.delete(`/ExtrasConfigurations/${projectId}`);
@@ -261,13 +263,37 @@ export const useProjectConfigSave = (
         }
       }
 
-      // 3️⃣ Save ExtrasConfigurations
-      const extrasPayloads = Object.entries(extraTypeSelection)
-        .map(([typeName, mode]) => {
+      //  Save ExtrasConfigurations
+      console.log(' extraTypeSelection:', extraTypeSelection);
+      console.log(' extraProcessingConfig:', extraProcessingConfig);
+      
+      // Build list of extra types to process
+      // Include types from extraTypeSelection AND types with nodal configuration
+      const extraTypesToProcess = new Set([
+        ...Object.keys(extraTypeSelection),
+        ...Object.keys(extraProcessingConfig).filter(typeName => 
+          extraProcessingConfig[typeName]?.isPerNodal && 
+          extraProcessingConfig[typeName]?.nodalConfigs?.length > 0
+        )
+      ]);
+      
+      console.log(' extraTypesToProcess:', Array.from(extraTypesToProcess));
+      
+      const extrasPayloads = Array.from(extraTypesToProcess)
+        .map((typeName) => {
           const et = extraTypes.find((t) => t.type === typeName);
           if (!et) return null;
 
           const config = extraProcessingConfig[typeName] || {};
+          const mode = extraTypeSelection[typeName]; // May be undefined for nodal-only configs
+          
+          // Debug logging for nodal configuration
+          console.log(` Processing ${typeName}:`, {
+            isPerNodal: config.isPerNodal,
+            nodalConfigs: config.nodalConfigs,
+            nodalMode: config.nodalMode,
+            mode: mode
+          });
 
           const normalizedEnvelope = {
             Inner: Array.isArray(config.envelopeType?.inner)
@@ -282,53 +308,95 @@ export const useProjectConfigSave = (
 
           // Check if anything is configured based on mode
           let hasValue = false;
-          if (mode === "Fixed") {
-            hasValue = fixed > 0;
-          } else if (mode === "Range") {
-            hasValue = Array.isArray(config.range) && config.range.length > 0;
-          } else if (mode === "Percentage") {
-            hasValue = percentage > 0;
+          
+          // For nodal configuration, check if nodalConfigs exist with valid data
+          if (config.isPerNodal && config.nodalConfigs && config.nodalConfigs.length > 0) {
+            // Check if at least one nodal config has nodal codes selected
+            const hasValidNodalConfig = config.nodalConfigs.some(nc => 
+              nc.nodalCodes && nc.nodalCodes.length > 0
+            );
+            hasValue = hasValidNodalConfig;
+            
+            console.log(`🔍 Nodal validation for ${typeName}:`, {
+              hasValidNodalConfig,
+              nodalConfigs: config.nodalConfigs
+            });
+          } else {
+            // For non-nodal configuration, check based on mode
+            if (mode === "Fixed") {
+              hasValue = fixed > 0;
+            } else if (mode === "Range") {
+              hasValue = Array.isArray(config.range) && config.range.length > 0;
+            } else if (mode === "Percentage") {
+              hasValue = percentage > 0;
+            }
           }
 
           const hasEnvelope = normalizedEnvelope.Inner || normalizedEnvelope.Outer;
-          const hasMode = mode && mode !== null && mode !== undefined;
+          const hasMode = mode || config.isPerNodal; // Mode is required unless it's nodal config
 
-          // Skip if nothing configured - must have envelope AND mode AND value
+          // Skip if nothing configured - must have envelope AND (mode OR nodal config) AND value
           if (!hasEnvelope || !hasMode || !hasValue) return null;
 
           const payload = {
             id: 0,
             ...(finalIsMasterConfig ? { typeId: Number(finalTypeId), groupId: Number(finalGroupId) } : { projectId: Number(projectId) }),
             extraType: et.extraTypeId,
-            mode,
+            mode: mode || config.nodalMode || "Fixed", // Use mode from selection, or nodalMode, or default to Fixed
             envelopeType: JSON.stringify(normalizedEnvelope),
           };
 
-          // Add value based on mode
-          if (mode === "Fixed") {
-            payload.value = String(fixed);
-          } else if (mode === "Range") {
-            payload.value = ""; // Empty value for range mode
-            // Calculate from values for each range
-            const rangesWithFrom = (config.range || []).map((r, idx) => {
-              const from = idx === 0 ? 0 : (config.range[idx - 1]?.to ?? 0) + 1;
-              return {
-                from,
-                to: r.to,
-                value: r.value,
-              };
-            });
-            payload.rangeConfig = JSON.stringify({
-              rangeType: config.rangeType || "Fixed",
-              ranges: rangesWithFrom,
-            });
-          } else if (mode === "Percentage") {
-            payload.value = String(percentage);
+          // Handle nodal configuration if isPerNodal is true
+          if (config.isPerNodal && config.nodalConfigs && config.nodalConfigs.length > 0) {
+            // Transform nodalConfigs to the format expected by backend
+            // Filter out configs with no nodal codes selected
+            const validNodalConfigs = config.nodalConfigs.filter(nc => 
+              nc.nodalCodes && nc.nodalCodes.length > 0
+            );
+            
+            if (validNodalConfigs.length > 0) {
+              const nodalValueArray = validNodalConfigs.map(nc => ({
+                NodalCodes: (nc.nodalCodes || []).join(','),
+                Value: String(nc.value || 0)
+              }));
+              payload.nodalValue = JSON.stringify(nodalValueArray);
+              payload.mode = config.nodalMode || "Fixed"; // Use nodalMode for per-nodal configuration
+              payload.value = ""; // Set empty value for nodal configuration
+              
+              console.log(`✅ Nodal payload for ${typeName}:`, {
+                nodalValue: payload.nodalValue,
+                mode: payload.mode
+              });
+            }
+          } else {
+            // Add value based on mode for non-nodal configuration
+            if (mode === "Fixed") {
+              payload.value = String(fixed);
+            } else if (mode === "Range") {
+              payload.value = ""; // Empty value for range mode
+              // Calculate from values for each range
+              const rangesWithFrom = (config.range || []).map((r, idx) => {
+                const from = idx === 0 ? 0 : (config.range[idx - 1]?.to ?? 0) + 1;
+                return {
+                  from,
+                  to: r.to,
+                  value: r.value,
+                };
+              });
+              payload.rangeConfig = JSON.stringify({
+                rangeType: config.rangeType || "Fixed",
+                ranges: rangesWithFrom,
+              });
+            } else if (mode === "Percentage") {
+              payload.value = String(percentage);
+            }
           }
 
           return payload;
         })
         .filter(Boolean);
+
+      console.log('📦 Final extrasPayloads:', extrasPayloads);
 
       if (extrasPayloads.length > 0) {
         await Promise.all(

@@ -343,7 +343,9 @@ const MasterConfiguration = () => {
               setExtraProcessingConfig={setExtraProcessingConfig}
               envelopeOptions={envelopeOptions}
               onReset={resetForm}
+              allowNodalConfig={false}
               importedSnapshot={null}
+              projectId={selectedGroup}
             />
           </Col>
 
