@@ -429,7 +429,6 @@ headers.forEach((header, index) => {
                     if (!catchNo) return;
 
                     const rowData = {
-                        id: item.Id || item.id,
                         key: catchNo,
                         catchNo,
                     };

@@ -67,6 +67,13 @@ const ProcessingPipeline = () => {
     loading: false,
     resolve: null
   });
+  const [envLotSelectionModal, setEnvLotSelectionModal] = useState({
+    visible: false,
+    availableEnvLots: [],
+    selectedEnvLots: [],
+    loading: false,
+    resolve: null
+  });
   const [lotReportStatus, setLotReportStatus] = useState({});
   const projectId = useStore((state) => state.projectId);
   const projectName = useStore((state) => state.projectName);
@@ -517,6 +524,111 @@ const ProcessingPipeline = () => {
     }
   };
 
+  const fetchEnvelopeLotsForSelection = async (projectIdParam) => {
+    try {
+      // Fetch all envelope lot numbers for the project
+      const res = await API.get(`/NRDataLots/GetByProject/${projectIdParam}`);
+      const allData = res.data || [];
+      
+      // Get unique envelope lot numbers across all lots
+      const envLotSet = new Set();
+      allData.forEach(item => {
+        const itemEnvLotNo = item.envLotNo ?? item.EnvLotNo;
+        
+        if (itemEnvLotNo) {
+          envLotSet.add(itemEnvLotNo);
+        }
+      });
+      
+      // Convert to array and sort
+      const envLots = Array.from(envLotSet)
+        .map(envLotNo => ({ envLotNo }))
+        .sort((a, b) => a.envLotNo - b.envLotNo);
+      console.log(envLots)
+      return envLots;
+    } catch (err) {
+      console.error("Failed to fetch envelope lots for selection", err);
+      message.error("Failed to load envelope lots");
+      return [];
+    }
+  };
+
+  const showEnvLotSelectionModal = (envLots) => {
+    return new Promise((resolve) => {
+      setEnvLotSelectionModal({
+        visible: true,
+        availableEnvLots: envLots,
+        selectedEnvLots: envLots.map(lot => lot.envLotNo),
+        loading: false,
+        resolve
+      });
+    });
+  };
+
+  const handleEnvLotSelectionConfirm = () => {
+    const { selectedEnvLots, resolve } = envLotSelectionModal;
+    
+    if (selectedEnvLots.length === 0) {
+      message.warning("Please select at least one envelope lot to process");
+      return;
+    }
+
+    setEnvLotSelectionModal({ 
+      visible: false, 
+      availableEnvLots: [], 
+      selectedEnvLots: [], 
+      loading: false,
+      resolve: null 
+    });
+    
+    if (resolve) {
+      resolve(selectedEnvLots);
+    }
+  };
+
+  const handleEnvLotSelectionCancel = () => {
+    const { resolve } = envLotSelectionModal;
+    
+    setEnvLotSelectionModal({ 
+      visible: false, 
+      availableEnvLots: [], 
+      selectedEnvLots: [], 
+      loading: false,
+      resolve: null 
+    });
+    
+    if (resolve) {
+      resolve(null);
+    }
+  };
+
+  const handleSelectAllEnvLots = (checked) => {
+    if (checked) {
+      setEnvLotSelectionModal(prev => ({
+        ...prev,
+        selectedEnvLots: prev.availableEnvLots.map(lot => lot.envLotNo)
+      }));
+    } else {
+      setEnvLotSelectionModal(prev => ({
+        ...prev,
+        selectedEnvLots: []
+      }));
+    }
+  };
+
+  const handleEnvLotToggle = (envLotNo, checked) => {
+    setEnvLotSelectionModal(prev => {
+      const newSelectedEnvLots = checked
+        ? [...prev.selectedEnvLots, envLotNo]
+        : prev.selectedEnvLots.filter(l => l !== envLotNo);
+      
+      return {
+        ...prev,
+        selectedEnvLots: newSelectedEnvLots
+      };
+    });
+  };
+
   const showLotSelectionModal = (lots) => {
     return new Promise((resolve) => {
       setLotSelectionModal({
@@ -823,10 +935,23 @@ const ProcessingPipeline = () => {
       staticVariables = userValues;
     }
 
+    // Fetch available envelope lots and show selection modal
+    const envLots = await fetchEnvelopeLotsForSelection(projectId);
+    let envLotNumbers = [];
+    
+    if (envLots.length > 0) {
+      const selectedEnvLots = await showEnvLotSelectionModal(envLots);
+      if (selectedEnvLots === null) {
+        return; // user cancelled
+      }
+      envLotNumbers = selectedEnvLots;
+    }
+
     const payload = {
       projectId: Number(projectId),
       templateId: Number(templateId),
       ...(Object.keys(staticVariables).length > 0 ? { staticVariables } : {}),
+      ...(envLotNumbers.length > 0 ? { envLotNumbers } : {}),
     };
     const messageKey = `generate-report-${payload.templateId}-${Date.now()}`;
     setGeneratingTemplates((prev) => ({ ...prev, [templateId]: true }));
@@ -1087,15 +1212,21 @@ const ProcessingPipeline = () => {
         })).sort((a, b) => a.lotNo - b.lotNo);
       }
 
-      setAvailableLots(lots);
+      // Normalise response: accept both camelCase and PascalCase, and include envLot
+      const normalisedLots = lots.map(l => ({
+        lotNo:      l.lotNo      ?? l.LotNo,
+        envLot:     l.envLot     ?? l.EnvLot     ?? null,
+        catchCount: l.catchCount ?? l.CatchCount ?? 0,
+      }));
+      setAvailableLots(normalisedLots);
       // Set first lot as default selected tab
-      if (lots.length > 0) {
-        setSelectedLotTab(lots[0].lotNo);
+      if (normalisedLots.length > 0) {
+        setSelectedLotTab(normalisedLots[0].lotNo);
       }
       // Load template status for all lots
-      await loadLotTemplateStatus(lots);
+      await loadLotTemplateStatus(normalisedLots);
       // Check lot report existence
-      await checkLotReportExistence(lots);
+      await checkLotReportExistence(normalisedLots);
     } catch (err) {
       console.error("Failed to fetch lots", err);
       message.error("Failed to load lots for this project");
@@ -1156,15 +1287,17 @@ const ProcessingPipeline = () => {
             if (!templateId) return null;
 
             try {
-              const res = await axios.get(`${rptApiUrl}/report/generated-exists`, {
-                params: {
-                  templateId,
-                  projectId: Number(projectId),
-                  lotNumber: lot.lotNo,
-                },
-              });
+              const params = {
+                templateId,
+                projectId: Number(projectId),
+                lotNumber: lot.lotNo,
+              };
+              // Pass envLot if present (optional – for outer/envelope-breaking reports)
+              if (lot.envLot != null) params.envLot = lot.envLot;
+              const res = await axios.get(`${rptApiUrl}/report/generated-exists`, { params });
               return {
                 lotNo: lot.lotNo,
+                envLot: lot.envLot ?? null,
                 templateId,
                 data: res?.data
               };
@@ -1183,7 +1316,10 @@ const ProcessingPipeline = () => {
         const next = { ...prev };
         results.forEach((item) => {
           if (!item?.lotNo || !item?.templateId) return;
-          const statusKey = `${item.lotNo}_${item.templateId}`;
+          // Include envLot in cache key so each env-lot variant is tracked independently
+          const statusKey = item.envLot != null
+            ? `${item.lotNo}_${item.envLot}_${item.templateId}`
+            : `${item.lotNo}_${item.templateId}`;
           next[statusKey] = {
             exists: Boolean(item?.data?.exists),
             fileName: item?.data?.fileName || null,
@@ -1214,11 +1350,16 @@ const ProcessingPipeline = () => {
       return;
     }
 
-    const statusKey = `${lotNo}_${templateId}`;
+    // envLot is optional – passed when the lot object carries it (outer/envelope-breaking reports)
+    const envLot = typeof lotNo === "object" ? lotNo.envLot : null;
+    const resolvedLotNo = typeof lotNo === "object" ? lotNo.lotNo : lotNo;
+    const statusKey = envLot != null
+      ? `${resolvedLotNo}_${envLot}_${templateId}`
+      : `${resolvedLotNo}_${templateId}`;
     const messageKey = `generate-lot-${statusKey}-${Date.now()}`;
     setGeneratingLotTemplates(prev => ({ ...prev, [statusKey]: true }));
     message.loading({
-      content: `Generating ${resolveTemplateName(template)} for Lot ${lotNo}...`,
+      content: `Generating ${resolveTemplateName(template)} for Lot ${resolvedLotNo}...`,
       key: messageKey,
       duration: 0,
     });
@@ -1227,7 +1368,9 @@ const ProcessingPipeline = () => {
       const payload = {
         projectId: Number(projectId),
         templateId: Number(templateId),
-        lotNumber: lotNo,
+        lotNumber: resolvedLotNo,
+        // Include envLot only when present (optional field for envelope-breaking outer reports)
+        ...(envLot != null ? { envLot } : {}),
       };
 
       await axios.post(
@@ -1245,7 +1388,7 @@ const ProcessingPipeline = () => {
             templateName: template?.templateName,
             projectName: projectName || (projectId ? `Project ${projectId}` : undefined),
             typeId: template?.typeId ?? typeId,
-            lotNumber: lotNo,
+            lotNumber: resolvedLotNo,
           }),
           generatedAt: new Date().toISOString(),
         },
@@ -1259,7 +1402,7 @@ const ProcessingPipeline = () => {
       });
 
       message.success({
-        content: `Generated ${resolveTemplateName(template)} for Lot ${lotNo}`,
+        content: `Generated ${resolveTemplateName(template)} for Lot ${resolvedLotNo}`,
         key: messageKey,
       });
     } catch (err) {
@@ -1292,16 +1435,24 @@ const ProcessingPipeline = () => {
       return;
     }
 
-    const statusKey = `${lotNo}_${templateId}`;
+    // envLot is optional – passed when the lot object carries it (outer/envelope-breaking reports)
+    const envLot = typeof lotNo === "object" ? lotNo.envLot : null;
+    const resolvedLotNo = typeof lotNo === "object" ? lotNo.lotNo : lotNo;
+    const statusKey = envLot != null
+      ? `${resolvedLotNo}_${envLot}_${templateId}`
+      : `${resolvedLotNo}_${templateId}`;
     setDownloadingLotTemplates(prev => ({ ...prev, [statusKey]: true }));
 
     try {
+      const params = {
+        templateId,
+        projectId: Number(projectId),
+        lotNumber: resolvedLotNo,
+        // Include envLot only when present (optional field for envelope-breaking outer reports)
+        ...(envLot != null ? { envLot } : {}),
+      };
       const res = await axios.get(`${rptApiUrl}/report/generated-download`, {
-        params: {
-          templateId,
-          projectId: Number(projectId),
-          lotNumber: lotNo,
-        },
+        params,
         responseType: "blob",
       });
 
@@ -1309,7 +1460,7 @@ const ProcessingPipeline = () => {
         templateName: template?.templateName,
         projectName: projectName || (projectId ? `Project ${projectId}` : undefined),
         typeId: template?.typeId ?? typeId,
-        lotNumber: lotNo,
+        lotNumber: resolvedLotNo,
       });
 
       const fileBlob = new Blob([res.data], { type: "application/pdf" });
@@ -1322,7 +1473,7 @@ const ProcessingPipeline = () => {
       link.remove();
       window.URL.revokeObjectURL(url);
 
-      message.success(`Downloaded ${resolveTemplateName(template)} for Lot ${lotNo}`);
+      message.success(`Downloaded ${resolveTemplateName(template)} for Lot ${resolvedLotNo}`);
     } catch (err) {
       console.error("Failed to download lot template", err);
       const msg = await getErrorMessageAsync(err, "Please generate the template first.");
@@ -1478,18 +1629,25 @@ const ProcessingPipeline = () => {
     });
 
     try {
+      // Determine envLot in case lot object is passed
+      const envLotForZip = typeof lotNo === "object" ? lotNo.envLot : null;
+      const resolvedLotNoZip = typeof lotNo === "object" ? lotNo.lotNo : lotNo;
+      const zipParams = {
+        projectId: Number(projectId),
+        templateIds: templateIds.join(","),
+        lotNumber: resolvedLotNoZip,
+        // Include envLot only when present (optional field for envelope-breaking outer reports)
+        ...(envLotForZip != null ? { envLot: envLotForZip } : {}),
+      };
       const res = await axios.get(`${rptApiUrl}/report/generated-download-zip`, {
-        params: {
-          projectId: Number(projectId),
-          templateIds: templateIds.join(","),
-          lotNumber: lotNo,
-        },
+        params: zipParams,
         responseType: "blob",
       });
 
       const contentDisposition = res.headers["content-disposition"] || "";
       const fileNameMatch = contentDisposition.match(/filename="?([^\"]+)"?/i);
-      const fileName = fileNameMatch?.[1] || `Lot${lotNo}_Reports_${projectId}_${new Date().toISOString().slice(0, 10)}.zip`;
+      const resolvedLotNoZip2 = typeof lotNo === "object" ? lotNo.lotNo : lotNo;
+      const fileName = fileNameMatch?.[1] || `Lot${resolvedLotNoZip2}_Reports_${projectId}_${new Date().toISOString().slice(0, 10)}.zip`;
 
       const fileBlob = new Blob([res.data], { type: "application/zip" });
       const url = window.URL.createObjectURL(fileBlob);
@@ -1502,7 +1660,7 @@ const ProcessingPipeline = () => {
       window.URL.revokeObjectURL(url);
 
       message.success({
-        content: `Downloaded all templates for Lot ${lotNo}`,
+        content: `Downloaded all templates for Lot ${typeof lotNo === "object" ? lotNo.lotNo : lotNo}`,
         key: messageKey,
       });
     } catch (err) {
@@ -2971,6 +3129,62 @@ const ProcessingPipeline = () => {
         )}
       </Modal>
 
+      <Modal
+        title="Select Envelope Lots for Template Generation"
+        open={envLotSelectionModal.visible}
+        onOk={handleEnvLotSelectionConfirm}
+        onCancel={handleEnvLotSelectionCancel}
+        width={600}
+        okText="Generate for Selected Envelope Lots"
+        cancelText="Cancel"
+      >
+        <div style={{ marginBottom: 16 }}>
+          <Alert
+            message="Multiple envelope lots detected"
+            description="Please select which envelope lot(s) you want to process for template generation. You can select all envelope lots or specific ones."
+            type="info"
+            showIcon
+            style={{ marginBottom: 16 }}
+          />
+
+          <Checkbox
+            checked={envLotSelectionModal.selectedEnvLots.length === envLotSelectionModal.availableEnvLots.length && envLotSelectionModal.availableEnvLots.length > 0}
+            indeterminate={envLotSelectionModal.selectedEnvLots.length > 0 && envLotSelectionModal.selectedEnvLots.length < envLotSelectionModal.availableEnvLots.length}
+            onChange={(e) => handleSelectAllEnvLots(e.target.checked)}
+            style={{ marginBottom: 12, fontWeight: 500 }}
+          >
+            Select All Envelope Lots ({envLotSelectionModal.availableEnvLots.length})
+          </Checkbox>
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 400, overflowY: "auto" }}>
+          {envLotSelectionModal.availableEnvLots.map((envLot) => (
+            <Card
+              key={envLot.envLotNo}
+              size="small"
+              style={{
+                backgroundColor: envLotSelectionModal.selectedEnvLots.includes(envLot.envLotNo) ? "#f0f5ff" : "#fafafa",
+                border: envLotSelectionModal.selectedEnvLots.includes(envLot.envLotNo) ? "1px solid #91caff" : "1px solid #d9d9d9"
+              }}
+            >
+              <Checkbox
+                checked={envLotSelectionModal.selectedEnvLots.includes(envLot.envLotNo)}
+                onChange={(e) => handleEnvLotToggle(envLot.envLotNo, e.target.checked)}
+              >
+                <Text strong style={{ fontSize: "14px" }}>Envelope Lot {envLot.envLotNo}</Text>
+              </Checkbox>
+            </Card>
+          ))}
+        </div>
+
+        {envLotSelectionModal.selectedEnvLots.length > 0 && (
+          <div style={{ marginTop: 16, padding: "8px 12px", backgroundColor: "#e6f7ff", borderRadius: 4 }}>
+            <Text strong style={{ color: "#1890ff" }}>
+              {envLotSelectionModal.selectedEnvLots.length} envelope lot(s) selected
+            </Text>
+          </div>
+        )}
+      </Modal>
 
       <style>{`
         .pipeline-main {
