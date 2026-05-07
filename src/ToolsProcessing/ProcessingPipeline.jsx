@@ -75,6 +75,11 @@ const ProcessingPipeline = () => {
     resolve: null
   });
   const [lotReportStatus, setLotReportStatus] = useState({});
+  const [isDetailPanelOpen, setIsDetailPanelOpen] = useState(false);
+  const [selectedModuleForDetails, setSelectedModuleForDetails] = useState(null);
+  const [selectedItems, setSelectedItems] = useState({});
+  const [detailGrouping, setDetailGrouping] = useState("lot");
+  const [detailViewType, setDetailViewType] = useState("reports");
   const projectId = useStore((state) => state.projectId);
   const projectName = useStore((state) => state.projectName);
   const storedGroupId = localStorage.getItem("selectedGroup");
@@ -457,69 +462,53 @@ const ProcessingPipeline = () => {
 
   const fetchLotsForSelection = async () => {
     try {
-      // Use the endpoint provided by user
-      const res = await API.get(`/NRDataLots/GetByProjectId/${projectId}`);
-      const allData = res.data || [];
+      // Use the new endpoint that includes dispatch info
+      const res = await API.get(`/NRDataLots/GetLotsWithDispatchInfo/${projectId}`);
+      const lots = res.data || [];
       
-      // Group by lot and count catches manually, ensuring strict uniqueness
-      const lotMap = new Map();
-      allData.forEach(item => {
-        const lotNumber = item.lotNo ?? item.LotNo;
-        const catchNo = item.catchNo ?? item.CatchNo;
-        const lotKey = String(lotNumber).trim();
-
-        if (lotNumber && lotNumber > 0 && lotKey !== "") {
-          if (!lotMap.has(lotKey)) {
-            lotMap.set(lotKey, {
-              lotNo: lotNumber,
-              catches: new Set()
-            });
-          }
-          if (catchNo) {
-            lotMap.get(lotKey).catches.add(catchNo);
-          }
-        }
-      });
-      
-      // Convert to expected format
-      const lots = Array.from(lotMap.values()).map(group => ({
-        lotNo: group.lotNo,
-        catchCount: group.catches.size
-      })).sort((a, b) => a.lotNo - b.lotNo);
-      
-      return lots;
+      // Sort by lot number
+      return lots.sort((a, b) => a.lotNo - b.lotNo);
     } catch (err) {
-      console.error("Failed to fetch lots for selection", err);
-      // Fallback to internal route if NRDatas fails
+      console.error("Failed to fetch lots with dispatch info", err);
+      // Fallback to old endpoint without dispatch info
       try {
         const res = await API.get(`/NRDataLots/GetByProjectId/${projectId}`);
-        return res.data || [];
-      } catch (err) {
-        // Fallback to by-project endpoint if GetByProjectId doesn't exist
-        console.log("Using fallback endpoint for lots");
-        const res = await API.get(`/NRDataLots/by-project/${projectId}`);
         const allData = res.data || [];
-
-        // Group by lot and count catches manually
+        
+        // Group by lot and count catches manually, ensuring strict uniqueness
         const lotMap = new Map();
         allData.forEach(item => {
-          if (item.lotNo > 0) {
-            if (!lotMap.has(item.lotNo)) {
-              lotMap.set(item.lotNo, new Set());
+          const lotNumber = item.lotNo ?? item.LotNo;
+          const catchNo = item.catchNo ?? item.CatchNo;
+          const lotKey = String(lotNumber).trim();
+
+          if (lotNumber && lotNumber > 0 && lotKey !== "") {
+            if (!lotMap.has(lotKey)) {
+              lotMap.set(lotKey, {
+                lotNo: lotNumber,
+                catches: new Set(),
+                isDispatched: false,
+                dispatchDate: null
+              });
             }
-            if (item.catchNo) {
-              lotMap.get(item.lotNo).add(item.catchNo);
+            if (catchNo) {
+              lotMap.get(lotKey).catches.add(catchNo);
             }
           }
         });
-
+        
         // Convert to expected format
-        const lots = Array.from(lotMap.entries()).map(([lotNo, catches]) => ({
-          lotNo,
-          catchCount: catches.size
+        const lots = Array.from(lotMap.values()).map(group => ({
+          lotNo: group.lotNo,
+          catchCount: group.catches.size,
+          isDispatched: false,
+          dispatchDate: null
         })).sort((a, b) => a.lotNo - b.lotNo);
-
+        
         return lots;
+      } catch (fallbackErr) {
+        console.error("Fallback also failed", fallbackErr);
+        return [];
       }
     }
   };
@@ -631,10 +620,13 @@ const ProcessingPipeline = () => {
 
   const showLotSelectionModal = (lots) => {
     return new Promise((resolve) => {
+      // Filter out dispatched lots from default selection
+      const selectableLots = lots.filter(lot => !lot.isDispatched);
+      
       setLotSelectionModal({
         visible: true,
         availableLots: lots,
-        selectedLots: lots.map(lot => lot.lotNo), // Select all by default
+        selectedLots: selectableLots.map(lot => lot.lotNo), // Select only non-dispatched by default
         loading: false,
         resolve
       });
@@ -1181,35 +1173,42 @@ const ProcessingPipeline = () => {
     if (!projectId) return;
     setLoadingLots(true);
     try {
-      // Try the new endpoint first
+      // Try the new endpoint first that includes dispatch info
       let lots = [];
       try {
-        const res = await API.get(`/NRDataLots/GetByProjectId/${projectId}`);
+        const res = await API.get(`/NRDataLots/GetLotsWithDispatchInfo/${projectId}`);
         lots = res.data || [];
       } catch (err) {
-        // Fallback to by-project endpoint if GetByProjectId doesn't exist
+        // Fallback to GetByProjectId endpoint if GetLotsWithDispatchInfo doesn't exist
         console.log("Using fallback endpoint for lots");
-        const res = await API.get(`/NRDataLots/GetByProjectId/${projectId}`);
-        const allData = res.data || [];
+        try {
+          const res = await API.get(`/NRDataLots/GetByProjectId/${projectId}`);
+          lots = res.data || [];
+        } catch (err2) {
+          // Final fallback to by-project endpoint
+          console.log("Using final fallback endpoint for lots");
+          const res = await API.get(`/NRDataLots/by-project/${projectId}`);
+          const allData = res.data || [];
 
-        // Group by lot and count catches manually
-        const lotMap = new Map();
-        allData.forEach(item => {
-          if (item.lotNo > 0) {
-            if (!lotMap.has(item.lotNo)) {
-              lotMap.set(item.lotNo, new Set());
+          // Group by lot and count catches manually
+          const lotMap = new Map();
+          allData.forEach(item => {
+            if (item.lotNo > 0) {
+              if (!lotMap.has(item.lotNo)) {
+                lotMap.set(item.lotNo, new Set());
+              }
+              if (item.catchNo) {
+                lotMap.get(item.lotNo).add(item.catchNo);
+              }
             }
-            if (item.catchNo) {
-              lotMap.get(item.lotNo).add(item.catchNo);
-            }
-          }
-        });
+          });
 
-        // Convert to expected format
-        lots = Array.from(lotMap.entries()).map(([lotNo, catches]) => ({
-          lotNo,
-          catchCount: catches.size
-        })).sort((a, b) => a.lotNo - b.lotNo);
+          // Convert to expected format
+          lots = Array.from(lotMap.entries()).map(([lotNo, catches]) => ({
+            lotNo,
+            catchCount: catches.size
+          })).sort((a, b) => a.lotNo - b.lotNo);
+        }
       }
 
       // Normalise response: accept both camelCase and PascalCase, and include envLot
@@ -2334,233 +2333,7 @@ const ProcessingPipeline = () => {
   };
 
   // Render detail panel content
-  const renderDetailPanel = () => {
-    if (!selectedModuleForDetails) {
-      return (
-        <div style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          height: "100%",
-          color: "#999",
-          fontSize: "14px"
-        }}>
-          Select a module to view details
-        </div>
-      );
-    }
-
-    const { moduleName, status, key: moduleKey } = selectedModuleForDetails;
-    const config = getConfigForModule(moduleKey);
-
-    // Mock data structure - replace with actual API data when available
-    const mockLotData = {
-      "LOT-001": [
-        { id: "lot1-1", name: "report1.pdf", url: "#" },
-        { id: "lot1-2", name: "report2.pdf", url: "#" },
-      ],
-      "LOT-002": [
-        { id: "lot2-1", name: "report3.pdf", url: "#" },
-      ],
-    };
-
-    const mockCatchData = {
-      "CATCH-A": [
-        { id: "catch-a-1", name: "report1.pdf", url: "#" },
-      ],
-      "CATCH-B": [
-        { id: "catch-b-1", name: "report2.pdf", url: "#" },
-      ],
-    };
-
-    const dataToDisplay = detailGrouping === "lot" ? mockLotData : mockCatchData;
-    const totalSelected = getTotalSelectedCount();
-
-    // Render data list with grouping
-    const renderDataList = () => (
-      <div style={{
-        flex: 1,
-        overflowY: "auto",
-        padding: "16px"
-      }}>
-        {Object.entries(dataToDisplay).map(([groupName, items]) => {
-          const groupItemIds = items.map(item => item.id);
-          const groupSelectedItems = selectedItems[groupName] || [];
-          const allSelected = groupItemIds.every(id => groupSelectedItems.includes(id));
-          const someSelected = groupSelectedItems.length > 0 && !allSelected;
-
-          return (
-            <div key={groupName} style={{ marginBottom: 16 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                <Checkbox
-                  checked={allSelected}
-                  indeterminate={someSelected}
-                  onChange={() => handleGroupToggle(groupName, groupItemIds)}
-                />
-                <Text strong style={{ fontSize: "13px" }}>
-                  {groupName}
-                </Text>
-              </div>
-              <div style={{ paddingLeft: 32 }}>
-                {items.map((item, idx) => {
-                  const isSelected = groupSelectedItems.includes(item.id);
-                  return (
-                    <div key={item.id} style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      padding: "6px 0",
-                      borderBottom: idx < items.length - 1 ? "1px solid #f5f5f5" : "none"
-                    }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <Checkbox
-                          checked={isSelected}
-                          onChange={() => handleItemToggle(groupName, item.id)}
-                        />
-                        <Text style={{ fontSize: "12px" }}>{item.name}</Text>
-                      </div>
-                      <Button type="link" size="small" style={{ fontSize: "12px" }}>
-                        Download
-                      </Button>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    );
-
-    // Tab items for Reports and Templates
-    const tabItems = [
-      {
-        key: "reports",
-        label: "Reports",
-        children: (
-          <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-            {/* Grouping Toggle */}
-            <div
-              style={{
-                padding: "12px 16px",
-                borderBottom: "1px solid #f0f0f0",
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center"
-              }}
-            >
-              <Button.Group size="small">
-                <Button
-                  type={detailGrouping === "lot" ? "primary" : "default"}
-                  onClick={() => setDetailGrouping("lot")}
-                >
-                  Lot-wise
-                </Button>
-                <Button
-                  type={detailGrouping === "catch" ? "primary" : "default"}
-                  onClick={() => setDetailGrouping("catch")}
-                >
-                  Catch-wise
-                </Button>
-              </Button.Group>
-
-              <Button size="small" type="primary">
-                Generate All
-              </Button>
-            </div>
-
-            {/* Action Buttons */}
-            <div style={{ padding: "12px 16px", borderBottom: "1px solid #f0f0f0" }}>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-
-                <Button size="small">Download All</Button>
-                <Button size="small" disabled={totalSelected === 0}>
-                  Download Selected ({totalSelected})
-                </Button>
-              </div>
-            </div>
-
-            {/* Data List */}
-            {renderDataList()}
-          </div>
-        ),
-      },
-      {
-        key: "templates",
-        label: "Templates",
-        children: (
-          <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-            {/* Grouping Toggle */}
-            <div style={{ padding: "12px 16px", borderBottom: "1px solid #f0f0f0" }}>
-              <Button.Group size="small">
-                <Button
-                  type={detailGrouping === "lot" ? "primary" : "default"}
-                  onClick={() => setDetailGrouping("lot")}
-                >
-                  Lot-wise
-                </Button>
-                <Button
-                  type={detailGrouping === "catch" ? "primary" : "default"}
-                  onClick={() => setDetailGrouping("catch")}
-                >
-                  Catch-wise
-                </Button>
-              </Button.Group>
-            </div>
-
-            {/* Action Buttons */}
-            <div style={{ padding: "12px 16px", borderBottom: "1px solid #f0f0f0" }}>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <Button size="small" type="primary">Generate All</Button>
-                <Button size="small">Download All</Button>
-                <Button size="small" disabled={totalSelected === 0}>
-                  Download Selected ({totalSelected})
-                </Button>
-              </div>
-            </div>
-
-            {/* Data List */}
-            {renderDataList()}
-          </div>
-        ),
-      },
-    ];
-
-    return (
-      <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-        {/* Header */}
-        <div style={{
-          padding: "12px 16px",
-          borderBottom: "1px solid #f0f0f0",
-          backgroundColor: "#fafafa",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center"
-        }}>
-          <Text strong style={{ fontSize: "14px" }}>
-            {moduleName} Details
-          </Text>
-
-          <Button
-            type="text"
-            size="small"
-            onClick={handleCloseDetailPanel}
-          >
-            ✕
-          </Button>
-        </div>
-
-        {/* Tabs for Reports/Templates */}
-        <Tabs
-          activeKey={detailViewType}
-          onChange={setDetailViewType}
-          items={tabItems}
-          style={{ flex: 1, display: "flex", flexDirection: "column" }}
-          tabBarStyle={{ margin: 0, paddingLeft: 16, paddingRight: 16 }}
-        />
-      </div>
-    );
-  }
+  // TODO: Implement detail panel rendering when needed
 
   return (
     <div className="p-4">

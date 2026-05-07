@@ -4,14 +4,18 @@ import { create } from "zustand";
 const useStore = create((set) => ({
   projectName: localStorage.getItem("selectedProjectName") || "",
   projectId: localStorage.getItem("selectedProjectId") || "",
+  groupId: localStorage.getItem("selectedGroup") || "",
+  typeId: localStorage.getItem("selectedType") || "",
+  allProjects: [],
+  allGroups: [],
 
   // Action to set project name and id
   setProject: (name, id, groupId, typeId) => {
     localStorage.setItem("selectedProjectName", name);
     localStorage.setItem("selectedProjectId", id);
-    localStorage.setItem("selectedGroup", groupId);
-    localStorage.setItem("selectedType", typeId);
-    set({ projectName: name, projectId: id, groupId, typeId });
+    localStorage.setItem("selectedGroup", groupId || "");
+    localStorage.setItem("selectedType", typeId || "");
+    set({ projectName: name, projectId: id, groupId: groupId || "", typeId: typeId || "" });
   },
 
   // Action to reset project data
@@ -22,6 +26,9 @@ const useStore = create((set) => ({
     localStorage.removeItem("selectedType");
     set({ projectName: "", projectId: "", groupId: "", typeId: "" });
   },
+
+  setAllProjects: (projects) => set({ allProjects: projects }),
+  setAllGroups: (groups) => set({ allGroups: groups }),
 }));
 
 export default useStore;
