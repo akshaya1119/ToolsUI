@@ -59,20 +59,20 @@ export const getModules = async () => {
 
 
 //  PREVIEW
-export const previewReport = async ({ projectId, templateId }) => {
+export const previewReport = async ({ projectId, templateId, envLot }) => {
   const res = await axios.post(
     `${BASE_URL}/report/generate-dynamic?debug=true`,
-    { projectId, templateId }
+    { projectId, templateId, envLot }
   );
   return res.data;
 };
 
 //  DOWNLOAD
-export const downloadReport = async ({ projectId, templateId }) => {
+export const downloadReport = async ({ projectId, templateId, envLot }) => {
   try {
     const res = await axios.post(
       `${BASE_URL}/report/generate-dynamic`, // ✅ FIXED
-      { projectId, templateId },
+      { projectId, templateId, envLot },
       { responseType: "blob" }
     );
 

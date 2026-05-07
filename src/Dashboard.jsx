@@ -2,9 +2,10 @@ import { useState, useEffect, useMemo } from "react";
 import API from "./hooks/api";
 import useStore from "./stores/ProjectData";
 import axios from "axios";
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { MdGroups } from "react-icons/md";
 import { motion, AnimatePresence } from 'framer-motion';
+import { getRecentProjects, addRecentProject, formatTimeAgo } from './utils/recentProjects';
 import { 
   LayoutGrid, 
   Folder, 
@@ -58,9 +59,22 @@ export default function Dashboard({ externalSearchQuery, onSearchQueryChange }) 
   const [isGroupsExpanded, setIsGroupsExpanded] = useState(false);
   const [isProjectsExpanded, setIsProjectsExpanded] = useState(false);
 
-  const token = localStorage.getItem("token");
   const setProject = useStore((state) => state.setProject);
+  const setAllProjects = useStore((state) => state.setAllProjects);
+  const setAllGroups = useStore((state) => state.setAllGroups);
   const navigate = useNavigate();
+  const location = useLocation();
+  const token = localStorage.getItem("token");
+
+  // Handle direct group navigation from search
+  useEffect(() => {
+    if (location.state?.selectedGroupId) {
+      setSelectedGroupId(location.state.selectedGroupId);
+      setView("projects");
+      // Clear the state so it doesn't re-trigger on fresh dashboard visit
+      window.history.replaceState({}, document.title);
+    }
+  }, [location.state]);
 
   // Sync external search query if provided
   useEffect(() => {
@@ -120,6 +134,7 @@ export default function Dashboard({ externalSearchQuery, onSearchQueryChange }) 
 
       console.log("Combined Projects:", combinedProjects);
       setProjects(combinedProjects);
+      setAllProjects(combinedProjects);
 
     } catch (err) {
       console.error("Failed to fetch projects", err);
@@ -144,6 +159,7 @@ export default function Dashboard({ externalSearchQuery, onSearchQueryChange }) 
         headers: { Authorization: `Bearer ${token}` } 
       });
       setGroups(groupsRes.data);
+      setAllGroups(groupsRes.data);
       
       // Cache the groups data for the session
       localStorage.setItem("cached_groups", JSON.stringify(groupsRes.data));
@@ -196,7 +212,13 @@ export default function Dashboard({ externalSearchQuery, onSearchQueryChange }) 
   // Debounce search query
   const debouncedSearchQuery = useDebounce(searchQuery, 500);
 
-  const recentProjects = projects.slice(0, 4);
+  // Get recent projects from localStorage instead of API
+  const recentProjects = useMemo(() => {
+    return getRecentProjects().map(rp => ({
+      ...rp,
+      timeAgo: formatTimeAgo(rp.lastVisited)
+    }));
+  }, []);
 
   const handleGroupClick = (groupId) => {
     setSelectedGroupId(groupId);
@@ -283,6 +305,10 @@ export default function Dashboard({ externalSearchQuery, onSearchQueryChange }) 
     localStorage.setItem("selectedType", typeId || "");
     localStorage.setItem("selectedProjectName", projectName);
     setProject(projectName, projectId, groupId || "", typeId || "");
+    
+    // Log project entry to localStorage
+    addRecentProject({ id: projectId, name: projectName, groupId, typeId });
+    
     navigate("/projectdashboard");
   };
 
