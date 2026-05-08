@@ -265,10 +265,6 @@ const ProcessingPipeline = () => {
       try {
         console.log('Loading envelope lot reports for project:', projectId);
         
-        // First test if the API is accessible
-        const testResponse = await API.get('/EnvelopeLotReports/Test');
-        console.log('API test response:', testResponse.data);
-        
         const response = await API.get(`/EnvelopeLotReports/ByProject/${projectId}`);
         console.log('Raw API response:', response);
         console.log('Response data:', response.data);
@@ -1279,15 +1275,17 @@ const ProcessingPipeline = () => {
       link.remove();
       message.success("Download started.");
     } else if (report.filePath) {
-      // Try to download from server file path if available
+      // Construct download URL using RPT service URL from .env and relative file path
       try {
         message.loading({ content: "Downloading report from server...", key: `download-${report.id}` });
         
-        // Create a download link to the server file
-        const serverFileUrl = `${import.meta.env.VITE_API_BASE_URL}/files/${encodeURIComponent(report.filePath)}`;
+        // Build full URL: VITE_RPT_API_URL + /files/ + relative path
+        const rptApiUrl = import.meta.env.VITE_RPT_API_URL;
+        const downloadUrl = `${rptApiUrl}/files/${encodeURIComponent(report.filePath)}`;
+        
         const link = document.createElement("a");
-        link.href = serverFileUrl;
-        link.download = fileName; // Use the filename with envelope lot numbers
+        link.href = downloadUrl;
+        link.download = fileName;
         link.target = "_blank";
         document.body.appendChild(link);
         link.click();
