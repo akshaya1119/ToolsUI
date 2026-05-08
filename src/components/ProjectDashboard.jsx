@@ -43,14 +43,13 @@ const ProjectDashboard = () => {
     if (!projectId) return;
     try {
       const res = await API.get(`/ProjectConfigs/ByProject/${projectId}`);
-      if (res.data) {
-        setIsProjectConfigured(true);
-      } else {
-        setIsProjectConfigured(false);
-      }
+      const configured = !!res.data;
+      setIsProjectConfigured(configured);
+      useStore.getState().setIsConfigured(configured);
     } catch (err) {
       console.error("Failed to fetch project config", err);
       setIsProjectConfigured(false);
+      useStore.getState().setIsConfigured(false);
     }
   };
 
@@ -61,6 +60,7 @@ const ProjectDashboard = () => {
     try {
       const res = await API.get(`/NRDatas/Counts?ProjectId=${projectId}`);
       setExistingData(res.data.nrData);
+      useStore.getState().setNrDataCount(res.data.nrData);
       console.log(res.data.nrData)
       setConflicts(res.data.conflict);
       console.log(res.data.conflict)

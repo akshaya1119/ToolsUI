@@ -16,6 +16,7 @@ import {
   Space,
   Tabs,
 } from "antd";
+import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import axios from "axios";
 import API from "../hooks/api";
@@ -27,6 +28,23 @@ const { Text } = Typography;
 const url3 = import.meta.env.VITE_API_FILE_URL;
 
 const ProcessingPipeline = () => {
+  const navigate = useNavigate();
+  const isConfigured = useStore((state) => state.isConfigured);
+  const nrDataCount = useStore((state) => state.nrDataCount);
+  const projectId = useStore((state) => state.projectId);
+
+  useEffect(() => {
+    if (projectId) {
+      if (!isConfigured) {
+        message.warning("Please complete project configuration first");
+        navigate("/projectdashboard");
+      } else if (nrDataCount === 0) {
+        message.warning("Please upload NR data (Data Import) first");
+        navigate("/projectdashboard");
+      }
+    }
+  }, [isConfigured, nrDataCount, projectId, navigate]);
+
   const [enabledModuleNames, setEnabledModuleNames] = useState([]);
   const [loadingModules, setLoadingModules] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -80,7 +98,6 @@ const ProcessingPipeline = () => {
   const [selectedItems, setSelectedItems] = useState({});
   const [detailGrouping, setDetailGrouping] = useState("lot");
   const [detailViewType, setDetailViewType] = useState("reports");
-  const projectId = useStore((state) => state.projectId);
   const projectName = useStore((state) => state.projectName);
   const storedGroupId = localStorage.getItem("selectedGroup");
   const storedTypeId = localStorage.getItem("selectedType");

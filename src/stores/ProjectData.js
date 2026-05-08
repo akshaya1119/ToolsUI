@@ -8,6 +8,8 @@ const useStore = create((set) => ({
   typeId: localStorage.getItem("selectedType") || "",
   allProjects: [],
   allGroups: [],
+  nrDataCount: 0,
+  isConfigured: false,
 
   // Action to set project name and id
   setProject: (name, id, groupId, typeId) => {
@@ -24,11 +26,13 @@ const useStore = create((set) => ({
     localStorage.removeItem("selectedProjectId");
     localStorage.removeItem("selectedGroup");
     localStorage.removeItem("selectedType");
-    set({ projectName: "", projectId: "", groupId: "", typeId: "" });
+    set({ projectName: "", projectId: "", groupId: "", typeId: "", nrDataCount: 0, isConfigured: false });
   },
 
   setAllProjects: (projects) => set({ allProjects: projects }),
   setAllGroups: (groups) => set({ allGroups: groups }),
+  setNrDataCount: (count) => set({ nrDataCount: count }),
+  setIsConfigured: (status) => set({ isConfigured: status }),
 }));
 
 export default useStore;

@@ -1,6 +1,7 @@
 import API from "../../hooks/api";
 import { compareConfigurations, getReportDependencies } from "./useConfigComparison";
 import { EXTRA_ALIAS_NAME, NODAL_MODULE, UNIVERSITY_MODULE } from "../components/constants";
+import useStore from "../../stores/ProjectData";
 
 export const useProjectConfigSave = (
   projectId,
@@ -408,6 +409,7 @@ export const useProjectConfigSave = (
 
       showToast("Configuration saved successfully!", "success");
       resetForm();
+      useStore.getState().setIsConfigured(true);
       fetchProjectConfigData(projectId);
 
       // Trigger callback with change information only if not skipping change detection

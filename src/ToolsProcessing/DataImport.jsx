@@ -8,6 +8,7 @@ import * as XLSX from 'xlsx-js-style';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { motion } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
 import API from '../hooks/api';
 import useStore from '../stores/ProjectData';
 import useDebounce from '../services/useDebounce';
@@ -23,6 +24,17 @@ const PRIMARY_COLOR = "#1677ff";
 
 const DataImport = () => {
   const { showToast } = useToast();
+  const navigate = useNavigate();
+  const isConfigured = useStore((state) => state.isConfigured);
+  const projectId = useStore((state) => state.projectId);
+
+  useEffect(() => {
+    if (projectId && !isConfigured) {
+      showToast("Please complete project configuration first", "warning");
+      navigate("/projectdashboard");
+    }
+  }, [isConfigured, projectId, navigate, showToast]);
+
   const [fileHeaders, setFileHeaders] = useState([]);
   const [expectedFields, setExpectedFields] = useState([]);
   const [fieldMappings, setFieldMappings] = useState({});
@@ -36,7 +48,6 @@ const DataImport = () => {
   const [uploading, setUploading] = useState(false);
   const [activeTab, setActiveTab] = useState("1");
   const token = localStorage.getItem('token');
-  const projectId = useStore((state) => state.projectId);
   const [keepZeroQuantity, setKeepZeroQuantity] = useState(false);
   const [skipItems, setSkipItems] = useState(false);
   const [quantity, setQuantity] = useState(0);
@@ -197,6 +208,7 @@ const DataImport = () => {
         ...prev,
         total: res.data.totalCount
       }));
+      useStore.getState().setNrDataCount(res.data.totalCount || 0);
       setShowData(res.data.items && res.data.items.length > 0);
       setSelectedUploadedCatchNos([]);
     } catch (err) {
@@ -1497,6 +1509,7 @@ const handleFieldChange = (fieldName, value) => {
 
       // Clear local state
       setExistingData([]);
+      useStore.getState().setNrDataCount(0);
       setFileList([]);
       setFieldMappings({});
       setFileHeaders({});
