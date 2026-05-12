@@ -18,11 +18,13 @@ export default function Sidebar({ collapsed }) {
   const setNrDataCount = useStore((state) => state.setNrDataCount);
   const isConfigured = useStore((state) => state.isConfigured);
   const setIsConfigured = useStore((state) => state.setIsConfigured);
+  const setIsLoadingData = useStore((state) => state.setIsLoadingData);
   const resetProject = useStore((state) => state.resetProject);
 
   useEffect(() => {
     const fetchData = async () => {
       if (projectId) {
+        setIsLoadingData(true);
         try {
           // Fetch NR data counts
           const countsRes = await API.get(`/NRDatas/Counts?ProjectId=${projectId}`);
@@ -35,6 +37,8 @@ export default function Sidebar({ collapsed }) {
         } catch (err) {
           console.error("Failed to fetch project data", err);
           // Don't reset everything on error, but maybe log it
+        } finally {
+          setIsLoadingData(false);
         }
       }
     };

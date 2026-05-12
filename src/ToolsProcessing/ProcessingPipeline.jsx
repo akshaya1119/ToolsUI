@@ -29,14 +29,15 @@ const url3 = import.meta.env.VITE_API_FILE_URL;
 
 const ProcessingPipeline = () => {
   const navigate = useNavigate();
-  const isConfigured = useStore((state) => state.isConfigured);
+   const isConfigured = useStore((state) => state.isConfigured);
+  const isLoadingData = useStore((state) => state.isLoadingData);
   const nrDataCount = useStore((state) => state.nrDataCount);
   const projectId = useStore((state) => state.projectId);
   const hasDeactivatedCatches = useStore((state) => state.hasDeactivatedCatches);
   const setHasDeactivatedCatches = useStore((state) => state.setHasDeactivatedCatches);
 
-  useEffect(() => {
-    if (projectId) {
+   useEffect(() => {
+    if (projectId && !isLoadingData) {
       if (!isConfigured) {
         message.warning("Please complete project configuration first");
         navigate("/projectdashboard");
@@ -45,7 +46,7 @@ const ProcessingPipeline = () => {
         navigate("/projectdashboard");
       }
     }
-  }, [isConfigured, nrDataCount, projectId, navigate]);
+  }, [isConfigured, isLoadingData, nrDataCount, projectId, navigate]);
 
   const [enabledModuleNames, setEnabledModuleNames] = useState([]);
   const [loadingModules, setLoadingModules] = useState(false);
@@ -100,6 +101,7 @@ const ProcessingPipeline = () => {
   const [selectedItems, setSelectedItems] = useState({});
   const [detailGrouping, setDetailGrouping] = useState("lot");
   const [detailViewType, setDetailViewType] = useState("reports");
+  const [hasPendingPipelineChanges, setHasPendingPipelineChanges] = useState(false);
   const projectName = useStore((state) => state.projectName);
   const storedGroupId = localStorage.getItem("selectedGroup");
   const storedTypeId = localStorage.getItem("selectedType");
@@ -154,6 +156,30 @@ const ProcessingPipeline = () => {
     await Promise.all(
       Object.entries(fileNames).map(async ([key, fileName]) => {
         try {
+          if (key === "duplicate") {
+            const [fileRes, rerunRes] = await Promise.all([
+              API.get(`/EnvelopeBreakages/Reports/Exists?projectId=${projectId}&fileName=${fileName}`),
+              API.get(`/NRDatas/DuplicateRerunStatus`, { params: { ProjectId: projectId } }),
+            ]);
+
+            const exists = Boolean(fileRes.data?.exists);
+            const requiresDuplicateRerun = Boolean(rerunRes.data?.requiresDuplicateRerun);
+            results[fileName] = exists;
+
+            if (exists || !requiresDuplicateRerun) {
+              const fileUrl = exists
+                ? `${url3}/${projectId}/${fileName}?DateTime=${new Date().toISOString()}`
+                : null;
+
+              updateStepStatus(key, {
+                status: "completed",
+                fileUrl,
+                duration: "--:--",
+              });
+            }
+            return;
+          }
+
           // For box breaking, check if any lot-specific file exists
           if (key === "box") {
             try {
@@ -340,6 +366,22 @@ const ProcessingPipeline = () => {
     console.log("Final order:", order);
     return order;
   };
+
+  const fetchPipelineRerunStatus = async (targetProjectId) => {
+    if (!targetProjectId) {
+      setHasPendingPipelineChanges(false);
+      return;
+    }
+    try {
+      const res = await API.get(`/NRDatas/PipelineRerunStatus`, {
+        params: { ProjectId: targetProjectId },
+      });
+      setHasPendingPipelineChanges(Boolean(res.data?.hasPendingPipelineChanges));
+    } catch (err) {
+      console.error("Failed to fetch pipeline rerun status", err);
+      setHasPendingPipelineChanges(false);
+    }
+  };
   // Load enabled modules when project changes
   useEffect(() => {
     if (!projectId) {
@@ -389,6 +431,7 @@ const ProcessingPipeline = () => {
         setSteps(initialSteps);
         setSelectedModules([]);
         await checkReportExistence(projectId);
+        await fetchPipelineRerunStatus(projectId);
       } catch (err) {
         console.error("Failed to load enabled modules", err);
         setEnabledModuleNames([]);
@@ -1824,6 +1867,11 @@ const ProcessingPipeline = () => {
       return;
     }
 
+    if (!hasPendingPipelineChanges && !configChanged) {
+      message.info("No new data changes found. Re-run is allowed only after changes (add/remove catch, upload, edit, etc.).");
+      return;
+    }
+
     const allOrder = computeRunOrder(enabledModuleNames);
 
     // Check for unprocessed dependencies
@@ -1996,6 +2044,7 @@ const ProcessingPipeline = () => {
         }
       }
       await checkReportExistence(projectId);
+      await fetchPipelineRerunStatus(projectId);
       message.success("Data processing completed");
 
       // Mark modules with templates as stale if their processing step was re-run
@@ -2429,7 +2478,11 @@ const ProcessingPipeline = () => {
           ) : (
             <Badge status="default" text="Idle" color="gray" />
           )}
-          <Button type="primary" onClick={handleAudit} disabled={!projectId || isProcessing || selectedModules.length === 0}>
+          <Button
+            type="primary"
+            onClick={handleAudit}
+            disabled={!projectId || isProcessing || selectedModules.length === 0 || (!hasPendingPipelineChanges && !configChanged)}
+          >
             Start {selectedModules.length > 0 && `(${selectedModules.length} selected)`}
           </Button>
         </div>
