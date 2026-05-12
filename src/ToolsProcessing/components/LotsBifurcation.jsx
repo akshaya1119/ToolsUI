@@ -19,9 +19,10 @@ import {
   Typography,
   Input,
   Tooltip,
+  Popconfirm,
 } from "antd";
 import { motion } from "framer-motion";
-import { SearchOutlined, EditOutlined } from "@ant-design/icons";
+import { SearchOutlined, EditOutlined, DeleteOutlined } from "@ant-design/icons";
 import { MessageService } from "../../services/MessageService";
 import dayjs from "dayjs";
 import customParseFormat from "dayjs/plugin/customParseFormat";
@@ -154,8 +155,9 @@ const mergeRows = (base, patch) => ({
     : patch.lotNumber,
 });
 
-const LotsBifurcation = forwardRef((_, ref) => {
+const LotsBifurcation = forwardRef(({ onCatchDeleted }, ref) => {
   const projectId = useStore((state) => state.projectId);
+  const setHasDeactivatedCatches = useStore((state) => state.setHasDeactivatedCatches);
   const { showToast } = useToast();
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState([]);
@@ -324,6 +326,21 @@ const LotsBifurcation = forwardRef((_, ref) => {
       console.error("Failed to save lot numbers", error);
       showToast("Failed to save lot numbers", "error");
       return false;
+    }
+  };
+
+  const handleDeleteCatchNo = async (catchNo) => {
+    if (!projectId) return;
+    try {
+      const response = await API.delete(`/NRDatas/DeleteCatchNo/${projectId}/${catchNo}`);
+      setRows((prev) => prev.filter((row) => row.catchNo !== catchNo));
+      showToast(`${response.data.message}. ${response.data.note}`, "info");
+      
+      // ✅ Notify store that a catch was deleted
+      setHasDeactivatedCatches(true);
+    } catch (error) {
+      console.error("Failed to delete catch number", error);
+      showToast("Failed to delete catch number", "error");
     }
   };
 
@@ -740,7 +757,7 @@ const LotsBifurcation = forwardRef((_, ref) => {
       title: "Lot Number",
       dataIndex: "lotNumber",
       key: "lotNumber",
-      width: 170,
+      width: 120,
       render: (_, record) => {
         const allowInlineEdit = activeLotTab === "0";
         const isEditing = editingCatchNo === record.catchNo;
@@ -807,6 +824,29 @@ const LotsBifurcation = forwardRef((_, ref) => {
       },
       sorter: (a, b) => Number(a.lotNumber || 0) - Number(b.lotNumber || 0),
       ...getColumnSearchProps("lotNumber"),
+    },
+    {
+      title: "Actions",
+      key: "actions",
+      width: 100,
+      align: "center",
+      render: (_, record) => (
+        <Popconfirm
+          title="Delete Catch Number"
+          description={`Are you sure you want to delete catch number ${record.catchNo}?`}
+          onConfirm={() => handleDeleteCatchNo(record.catchNo)}
+          okText="Yes"
+          cancelText="No"
+          okButtonProps={{ danger: true }}
+        >
+          <Button
+            size="small"
+            danger
+            icon={<DeleteOutlined />}
+            title="Delete this catch number"
+          />
+        </Popconfirm>
+      ),
     },
   ];
 

@@ -16,6 +16,7 @@ import {
   Space,
   Tabs,
 } from "antd";
+import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import axios from "axios";
 import API from "../hooks/api";
@@ -28,6 +29,25 @@ const { Text } = Typography;
 const url3 = import.meta.env.VITE_API_FILE_URL;
 
 const ProcessingPipeline = () => {
+  const navigate = useNavigate();
+  const isConfigured = useStore((state) => state.isConfigured);
+  const nrDataCount = useStore((state) => state.nrDataCount);
+  const projectId = useStore((state) => state.projectId);
+  const hasDeactivatedCatches = useStore((state) => state.hasDeactivatedCatches);
+  const setHasDeactivatedCatches = useStore((state) => state.setHasDeactivatedCatches);
+
+  useEffect(() => {
+    if (projectId) {
+      if (!isConfigured) {
+        message.warning("Please complete project configuration first");
+        navigate("/projectdashboard");
+      } else if (nrDataCount === 0) {
+        message.warning("Please upload NR data (Data Import) first");
+        navigate("/projectdashboard");
+      }
+    }
+  }, [isConfigured, nrDataCount, projectId, navigate]);
+
   const [enabledModuleNames, setEnabledModuleNames] = useState([]);
   const [loadingModules, setLoadingModules] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -81,9 +101,17 @@ const ProcessingPipeline = () => {
     resolve: null
   });
   const [lotReportStatus, setLotReportStatus] = useState({});
+<<<<<<< HEAD
   const [envLotReports, setEnvLotReports] = useState([]); // Store generated envelope lot reports
   const [expandedReportsTemplates, setExpandedReportsTemplates] = useState(new Set()); // Track which templates have expanded reports
   const projectId = useStore((state) => state.projectId);
+=======
+  const [isDetailPanelOpen, setIsDetailPanelOpen] = useState(false);
+  const [selectedModuleForDetails, setSelectedModuleForDetails] = useState(null);
+  const [selectedItems, setSelectedItems] = useState({});
+  const [detailGrouping, setDetailGrouping] = useState("lot");
+  const [detailViewType, setDetailViewType] = useState("reports");
+>>>>>>> shivangi
   const projectName = useStore((state) => state.projectName);
   const storedGroupId = localStorage.getItem("selectedGroup");
   const storedTypeId = localStorage.getItem("selectedType");
@@ -513,8 +541,15 @@ const ProcessingPipeline = () => {
   };
 
   const runBoxBreaking = async (projectId, lotNumbers = null) => {
-    const payload = lotNumbers && lotNumbers.length > 0 ? lotNumbers : [];
-    const res = await API.post(`/BoxBreakingProcessing/ProcessBoxBreaking?ProjectId=${projectId}`, payload);
+    // Build query string with lot numbers
+    const params = new URLSearchParams();
+    params.append('ProjectId', projectId);
+    
+    if (lotNumbers && lotNumbers.length > 0) {
+      lotNumbers.forEach(lot => params.append('LotNo', lot));
+    }
+    
+    const res = await API.post(`/BoxBreakingProcessing/ProcessBoxBreaking?${params.toString()}`);
     message.success(res?.data?.message || "Box breaking completed");
   };
 
@@ -2293,6 +2328,11 @@ const ProcessingPipeline = () => {
             fileUrl: null,
           });
           completedSteps.add(step.key);
+          
+          // ✅ Reset hasDeactivatedCatches flag when envelope breaking or box breaking completes
+          if ((step.key === "envelopebreaking" || step.key === "box") && hasDeactivatedCatches) {
+            setHasDeactivatedCatches(false);
+          }
         } catch (stepErr) {
           console.error(`Step ${step.key} failed`, stepErr);
           updateStepStatus(step.key, { status: "failed" });
@@ -2514,7 +2554,14 @@ const ProcessingPipeline = () => {
       title: "Status",
       dataIndex: "status",
       key: "status",
-      render: (status) => {
+      render: (status, record) => {
+        // ✅ Show pending for envelope/box breaking if catches have been deleted
+        let displayStatus = status;
+        
+        if ((record.key === "envelope" || record.key === "box") && status === "completed" && hasDeactivatedCatches) {
+          displayStatus = "pending";
+        }
+        
         const colorMap = {
           completed: "green",
           "in-progress": "blue",
@@ -2522,7 +2569,7 @@ const ProcessingPipeline = () => {
           pending: "orange",
           skipped: "default",
         };
-        return <Tag color={colorMap[status] || "default"}>{status}</Tag>;
+        return <Tag color={colorMap[displayStatus] || "default"}>{displayStatus}</Tag>;
       },
     },
     {
