@@ -32,7 +32,6 @@ const ProcessingPipeline = () => {
   const navigate = useNavigate();
   const isConfigured = useStore((state) => state.isConfigured);
   const nrDataCount = useStore((state) => state.nrDataCount);
-  const projectId = useStore((state) => state.projectId);
   const hasDeactivatedCatches = useStore((state) => state.hasDeactivatedCatches);
   const setHasDeactivatedCatches = useStore((state) => state.setHasDeactivatedCatches);
 
@@ -101,17 +100,14 @@ const ProcessingPipeline = () => {
     resolve: null
   });
   const [lotReportStatus, setLotReportStatus] = useState({});
-<<<<<<< HEAD
   const [envLotReports, setEnvLotReports] = useState([]); // Store generated envelope lot reports
   const [expandedReportsTemplates, setExpandedReportsTemplates] = useState(new Set()); // Track which templates have expanded reports
   const projectId = useStore((state) => state.projectId);
-=======
   const [isDetailPanelOpen, setIsDetailPanelOpen] = useState(false);
   const [selectedModuleForDetails, setSelectedModuleForDetails] = useState(null);
   const [selectedItems, setSelectedItems] = useState({});
   const [detailGrouping, setDetailGrouping] = useState("lot");
   const [detailViewType, setDetailViewType] = useState("reports");
->>>>>>> shivangi
   const projectName = useStore((state) => state.projectName);
   const storedGroupId = localStorage.getItem("selectedGroup");
   const storedTypeId = localStorage.getItem("selectedType");
