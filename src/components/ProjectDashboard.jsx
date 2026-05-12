@@ -198,10 +198,15 @@ const ProjectDashboard = () => {
           await API.post(
             `/EnvelopeBreakages/EnvelopeConfiguration?ProjectId=${projectId}`
           );
-        else if (step.key === "box")
-          await API.post(
-            `/BoxBreakingProcessing/ProcessBoxBreaking?ProjectId=${projectId}`
-          );
+        else if (step.key === "box") {
+          // Fetch lots and pass them as query parameters
+          const lots = await API.get(`/NRDataLots/GetLotsWithDispatchInfo/${projectId}`).then(res => res.data || []).catch(() => []);
+          const lotNumbers = lots.map(l => l.lotNo);
+          const params = new URLSearchParams();
+          params.append('ProjectId', projectId);
+          lotNumbers.forEach(lot => params.append('LotNo', lot));
+          await API.post(`/BoxBreakingProcessing/ProcessBoxBreaking?${params.toString()}`);
+        }
         else if (step.key === "envelopeSummary")
           await API.get(
             `/EnvelopeBreakages/EnvelopeSummaryReport?ProjectId=${projectId}`

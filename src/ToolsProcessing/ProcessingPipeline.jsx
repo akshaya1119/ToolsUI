@@ -32,6 +32,8 @@ const ProcessingPipeline = () => {
   const isConfigured = useStore((state) => state.isConfigured);
   const nrDataCount = useStore((state) => state.nrDataCount);
   const projectId = useStore((state) => state.projectId);
+  const hasDeactivatedCatches = useStore((state) => state.hasDeactivatedCatches);
+  const setHasDeactivatedCatches = useStore((state) => state.setHasDeactivatedCatches);
 
   useEffect(() => {
     if (projectId) {
@@ -452,8 +454,15 @@ const ProcessingPipeline = () => {
   };
 
   const runBoxBreaking = async (projectId, lotNumbers = null) => {
-    const payload = lotNumbers && lotNumbers.length > 0 ? lotNumbers : [];
-    const res = await API.post(`/BoxBreakingProcessing/ProcessBoxBreaking?ProjectId=${projectId}`, payload);
+    // Build query string with lot numbers
+    const params = new URLSearchParams();
+    params.append('ProjectId', projectId);
+    
+    if (lotNumbers && lotNumbers.length > 0) {
+      lotNumbers.forEach(lot => params.append('LotNo', lot));
+    }
+    
+    const res = await API.post(`/BoxBreakingProcessing/ProcessBoxBreaking?${params.toString()}`);
     message.success(res?.data?.message || "Box breaking completed");
   };
 
@@ -1975,6 +1984,11 @@ const ProcessingPipeline = () => {
             fileUrl: null,
           });
           completedSteps.add(step.key);
+          
+          // ✅ Reset hasDeactivatedCatches flag when envelope breaking or box breaking completes
+          if ((step.key === "envelopebreaking" || step.key === "box") && hasDeactivatedCatches) {
+            setHasDeactivatedCatches(false);
+          }
         } catch (stepErr) {
           console.error(`Step ${step.key} failed`, stepErr);
           updateStepStatus(step.key, { status: "failed" });
@@ -2196,7 +2210,14 @@ const ProcessingPipeline = () => {
       title: "Status",
       dataIndex: "status",
       key: "status",
-      render: (status) => {
+      render: (status, record) => {
+        // ✅ Show pending for envelope/box breaking if catches have been deleted
+        let displayStatus = status;
+        
+        if ((record.key === "envelope" || record.key === "box") && status === "completed" && hasDeactivatedCatches) {
+          displayStatus = "pending";
+        }
+        
         const colorMap = {
           completed: "green",
           "in-progress": "blue",
@@ -2204,7 +2225,7 @@ const ProcessingPipeline = () => {
           pending: "orange",
           skipped: "default",
         };
-        return <Tag color={colorMap[status] || "default"}>{status}</Tag>;
+        return <Tag color={colorMap[displayStatus] || "default"}>{displayStatus}</Tag>;
       },
     },
     {
