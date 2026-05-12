@@ -10,6 +10,7 @@ const useStore = create((set) => ({
   allGroups: [],
   nrDataCount: 0,
   isConfigured: false,
+  isLoadingData: true, // Keep guards from redirecting before initial fetch
   hasDeactivatedCatches: false,  
 
   // Action to set project name and id
@@ -34,6 +35,7 @@ const useStore = create((set) => ({
   setAllGroups: (groups) => set({ allGroups: groups }),
   setNrDataCount: (count) => set({ nrDataCount: count }),
   setIsConfigured: (status) => set({ isConfigured: status }),
+  setIsLoadingData: (status) => set({ isLoadingData: status }), // ✅ Action to set loading status
   setHasDeactivatedCatches: (status) => set({ hasDeactivatedCatches: status }),  // ✅ Set deactivated catches flag
 }));
 

@@ -8,7 +8,7 @@ import * as XLSX from 'xlsx-js-style';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { motion } from 'framer-motion';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import API from '../hooks/api';
 import useStore from '../stores/ProjectData';
 import useDebounce from '../services/useDebounce';
@@ -25,15 +25,17 @@ const PRIMARY_COLOR = "#1677ff";
 const DataImport = () => {
   const { showToast } = useToast();
   const navigate = useNavigate();
+  const location = useLocation();
   const isConfigured = useStore((state) => state.isConfigured);
+  const isLoadingData = useStore((state) => state.isLoadingData);
   const projectId = useStore((state) => state.projectId);
 
   useEffect(() => {
-    if (projectId && !isConfigured) {
+    if (projectId && !isLoadingData && !isConfigured) {
       showToast("Please complete project configuration first", "warning");
       navigate("/projectdashboard");
     }
-  }, [isConfigured, projectId, navigate, showToast]);
+  }, [projectId, isLoadingData, isConfigured, navigate, showToast]);
 
   const [fileHeaders, setFileHeaders] = useState([]);
   const [expectedFields, setExpectedFields] = useState([]);
@@ -73,6 +75,29 @@ const DataImport = () => {
   const lotBifurcationRef = useRef(null);
   const mergeCatchRef = useRef(null);
   const [mergeSelectionCount, setMergeSelectionCount] = useState(0);
+
+  // 👉 Initialize activeTab from localStorage on mount
+  useEffect(() => {
+    const savedTab = localStorage.getItem(`dataImportActiveTab_${projectId}`);
+    if (savedTab) {
+      setActiveTab(savedTab);
+    }
+  }, [projectId]);
+
+  useEffect(() => {
+    const requestedTab = location.state?.activeTab;
+    if (requestedTab) {
+      handleTabChange(String(requestedTab));
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.state?.activeTab, location.pathname]);
+
+  // 👉 Save activeTab to localStorage whenever it changes
+  const handleTabChange = (key) => {
+    setActiveTab(key);
+    localStorage.setItem(`dataImportActiveTab_${projectId}`, key);
+  };
   // Load projects
   useEffect(() => {
     if (!projectId) return;
@@ -1105,6 +1130,7 @@ const DataImport = () => {
 
       resetForm();
       fetchExistingData(projectId);
+      await rerunDuplicateTool();
     } catch (err) {
       console.error("Validation failed", err);
 
@@ -1305,6 +1331,18 @@ const [newRow, setNewRow] = useState({
 const [configuredFields, setConfiguredFields] = useState([]);
 const [editingRowId, setEditingRowId] = useState(null);
 const [editFormData, setEditFormData] = useState({});
+const [originalEditFormData, setOriginalEditFormData] = useState({});
+
+const rerunDuplicateTool = async () => {
+  try {
+    await API.post(`/Duplicate?ProjectId=${projectId}`, null, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  } catch (err) {
+    console.error("Duplicate tool rerun failed:", err);
+    showToast("Data saved, but duplicate tool rerun failed", "warning");
+  }
+};
 
 const fetchMasterFields = async () => {
   try {
@@ -1426,6 +1464,7 @@ const handleInlineSave = async () => {
     });
 
     fetchExistingData(projectId);
+    await rerunDuplicateTool();
 
   } catch (err) {
     console.error("Full error:", err);
@@ -1453,11 +1492,13 @@ const handleInlineSave = async () => {
 const handleEditRow = (record) => {
   setEditingRowId(record.id);
   setEditFormData({ ...record });
+  setOriginalEditFormData({ ...record });
 };
 
 const handleCancelEdit = () => {
   setEditingRowId(null);
   setEditFormData({});
+  setOriginalEditFormData({});
 };
 
 const handleSaveEdit = async () => {
@@ -1466,17 +1507,32 @@ const handleSaveEdit = async () => {
   try {
     setLoading(true);
 
-    // Remove the id from the data to send (it's in the URL)
-    const { id, ...dataToSend } = editFormData;
+    const changedPayload = {};
+    columns.forEach((col) => {
+      const oldValue = originalEditFormData?.[col] ?? null;
+      const newValue = editFormData?.[col] ?? null;
+      if (String(oldValue ?? "") !== String(newValue ?? "")) {
+        changedPayload[col] = newValue;
+      }
+    });
+
+    if (Object.keys(changedPayload).length === 0) {
+      showToast("No changes to save", "info");
+      setEditingRowId(null);
+      setEditFormData({});
+      setOriginalEditFormData({});
+      return;
+    }
 
     // Use the new UpdateSingle endpoint
-    await API.put(`/NRDatas/UpdateSingle/${id}`, dataToSend, {
+    await API.put(`/NRDatas/UpdateSingle/${editingRowId}`, changedPayload, {
       headers: { Authorization: `Bearer ${token}` }
     });
 
     showToast("Data updated successfully", "success");
     setEditingRowId(null);
     setEditFormData({});
+    setOriginalEditFormData({});
     await fetchExistingData(projectId);
   } catch (err) {
     console.error("Error updating data:", err);
@@ -2176,7 +2232,7 @@ const handleFieldChange = (fieldName, value) => {
           >
             <Tabs
               activeKey={activeTab}
-              onChange={(key) => setActiveTab(key)}
+              onChange={handleTabChange}
               style={{ marginTop: 8 }}
               tabBarExtraContent={
                 activeTab === "2" ? (
