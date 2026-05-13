@@ -23,6 +23,7 @@ const Project = () => {
     const [selectedProjectId, setSelectedProjectId] = useState(null);
     const selectedProject = projectNames.find(p => p.projectId === selectedProjectId);
     const [selectedUserIds, setSelectedUserIds] = useState([]); // For multiple user selection
+    const [selectedStatus, setSelectedStatus] = useState(null); // Preserve status when editing
     const token = localStorage.getItem("token");
     const url = import.meta.env.VITE_API_BASE_URL;
     const [pagination, setPagination] = useState({
@@ -124,14 +125,16 @@ const Project = () => {
         setName("");
         setSelectedProjectId(null);
         setSelectedUserIds([]); // Reset selected users
+        setSelectedStatus(false); // New projects default to active
         setModalVisible(true);
     };
 
     const handleEdit = (record) => {
         setEditingItem(record);
         setName(record.name);
-        setSelectedProjectId(record.projectId); // Set project from existing record
-        setSelectedUserIds(record.userAssigned || []); // Set selected users from existing record (assuming `userAssigned` is an array)
+        setSelectedProjectId(record.projectId);
+        setSelectedUserIds(record.userAssigned || []);
+        setSelectedStatus(record.status);
         setModalVisible(true);
     };
 
@@ -166,8 +169,8 @@ const Project = () => {
                 projectId: selectedProjectId,
                 userAssigned: selectedUserIds,
                 groupId: selectedProject?.groupId,
-                typeId: selectedProject?.typeId, // Send the list of user IDs
-                status:selectedProject?.status,
+                typeId: selectedProject?.typeId,
+                status: editingItem ? selectedStatus : false, // Preserve status on edit, default active on add
             };
 
             if (editingItem) {
