@@ -15,6 +15,7 @@ import {
   Modal,
   Space,
   Tabs,
+  Tooltip,
 } from "antd";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
@@ -3045,13 +3046,17 @@ const ProcessingPipeline = () => {
           ) : (
             <Badge status="default" text="Idle" color="gray" />
           )}
-          <Button
-            type="primary"
-            onClick={handleAudit}
-            disabled={!projectId || isProcessing || selectedModules.length === 0 || (!hasPendingPipelineChanges && !configChanged)}
-          >
-            Start {selectedModules.length > 0 && `(${selectedModules.length} selected)`}
-          </Button>
+          <Tooltip title={(!hasPendingPipelineChanges && !configChanged) ? "No new data found for processing. All data is already processed." : (selectedModules.length === 0 ? "Please select at least one module" : "")}>
+            <span style={{ cursor: (!hasPendingPipelineChanges && !configChanged) || selectedModules.length === 0 ? "not-allowed" : "default" }}>
+              <Button
+                type="primary"
+                onClick={handleAudit}
+                disabled={!projectId || isProcessing || selectedModules.length === 0 || (!hasPendingPipelineChanges && !configChanged)}
+              >
+                Start {selectedModules.length > 0 && `(${selectedModules.length} selected)`}
+              </Button>
+            </span>
+          </Tooltip>
         </div>
       </div>
 
