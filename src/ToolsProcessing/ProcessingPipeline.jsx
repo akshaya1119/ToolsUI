@@ -210,13 +210,18 @@ const ProcessingPipeline = () => {
                     }
                   })
                 );
-                const exists = lotResults.some(result => result);
-                results[fileName] = exists;
+                const completedLotsCount = lotResults.filter(result => result).length;
+                const totalLotsCount = lots.length;
+                const exists = completedLotsCount > 0;
+                results[fileName] = exists; // Boolean for overall module status
                 
                 if (exists) {
-                  console.log("Updating step", key, "to completed");
+                  const allCompleted = completedLotsCount === totalLotsCount;
+                  console.log("Updating step", key, allCompleted ? "to completed" : "with partial status");
                   updateStepStatus(key, {
-                    status: "completed",
+                    status: allCompleted ? "completed" : "pending",
+                    completedLots: completedLotsCount,
+                    totalLots: totalLotsCount,
                     fileUrl: null,
                     duration: "--:--",
                   });
@@ -2534,6 +2539,8 @@ const ProcessingPipeline = () => {
       moduleName: moduleName,
       status: step.status || "pending",
       report: step.fileUrl,
+      completedLots: step.completedLots,
+      totalLots: step.totalLots,
     };
   });
 
@@ -2635,6 +2642,14 @@ const ProcessingPipeline = () => {
           pending: "orange",
           skipped: "default",
         };
+        if (record.key === "box" && record.completedLots > 0 && record.completedLots < record.totalLots) {
+          return (
+            <Tooltip title={`${record.completedLots} out of ${record.totalLots} lots have generated reports`}>
+              <Tag color="orange">{record.completedLots}/{record.totalLots} Lots completed</Tag>
+            </Tooltip>
+          );
+        }
+
         return <Tag color={colorMap[displayStatus] || "default"}>{displayStatus}</Tag>;
       },
     },
