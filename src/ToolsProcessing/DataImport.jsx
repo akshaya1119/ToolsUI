@@ -1445,7 +1445,7 @@ const handleInlineSave = async () => {
 
     console.log("Sending payload:", payload);
 
-    const response = await API.post(`/NRDatas`, payload, {
+    const response = await API.post(`/NRDatas/single`, payload, {
       headers: { 
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json'

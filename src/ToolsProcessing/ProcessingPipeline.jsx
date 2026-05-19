@@ -110,6 +110,7 @@ const projectId = useStore((state) => state.projectId);
   const [detailGrouping, setDetailGrouping] = useState("lot");
   const [detailViewType, setDetailViewType] = useState("reports");
   const [hasPendingPipelineChanges, setHasPendingPipelineChanges] = useState(false);
+  const [pipelineStepStatus, setPipelineStepStatus] = useState(null);
   const projectName = useStore((state) => state.projectName);
   const storedGroupId = localStorage.getItem("selectedGroup");
   const storedTypeId = localStorage.getItem("selectedType");
@@ -453,6 +454,7 @@ const projectId = useStore((state) => state.projectId);
   const fetchPipelineRerunStatus = async (targetProjectId) => {
     if (!targetProjectId) {
       setHasPendingPipelineChanges(false);
+      setPipelineStepStatus(null);
       return;
     }
     try {
@@ -460,9 +462,11 @@ const projectId = useStore((state) => state.projectId);
         params: { ProjectId: targetProjectId },
       });
       setHasPendingPipelineChanges(Boolean(res.data?.hasPendingPipelineChanges));
+      setPipelineStepStatus(res.data);
     } catch (err) {
       console.error("Failed to fetch pipeline rerun status", err);
       setHasPendingPipelineChanges(false);
+      setPipelineStepStatus(null);
     }
   };
   // Load enabled modules when project changes
@@ -2600,13 +2604,28 @@ const projectId = useStore((state) => state.projectId);
       dataIndex: "status",
       key: "status",
       render: (status, record) => {
-        // ✅ Show pending for envelope/box breaking if catches have been deleted
         let displayStatus = status;
-        
-        if ((record.key === "envelope" || record.key === "box") && status === "completed" && hasDeactivatedCatches) {
+
+        // Use real-time DB state if available
+        if (pipelineStepStatus) {
+          const keyMap = {
+            duplicate: "duplicatePending",
+            enhancement: "enhancementPending",
+            extra: "extraPending",
+            envelopebreaking: "envelopePending",
+            box: "boxPending"
+          };
+          const pendingFlag = keyMap[record.key];
+          if (pendingFlag && pipelineStepStatus[pendingFlag]) {
+            displayStatus = "pending";
+          }
+        }
+
+        // Keep legacy check for deactivated catches if any
+        if ((record.key === "envelopebreaking" || record.key === "box") && displayStatus === "completed" && hasDeactivatedCatches) {
           displayStatus = "pending";
         }
-        
+
         const colorMap = {
           completed: "green",
           "in-progress": "blue",
@@ -3044,12 +3063,48 @@ const projectId = useStore((state) => state.projectId);
           ) : (
             <Badge status="default" text="Idle" color="gray" />
           )}
-          <Tooltip title={(!hasPendingPipelineChanges && !configChanged) ? "No new data found for processing. All data is already processed." : (selectedModules.length === 0 ? "Please select at least one module" : "")}>
+          <Tooltip 
+            title={
+              (!hasPendingPipelineChanges && !configChanged) 
+                ? "No new data found for processing. All data is already processed." 
+                : (selectedModules.length === 0 
+                    ? "Please select at least one module" 
+                    : (!selectedModules.some(m => {
+                        const keyMap = {
+                          duplicate: "duplicatePending",
+                          enhancement: "enhancementPending",
+                          extra: "extraPending",
+                          envelopebreaking: "envelopePending",
+                          box: "boxPending"
+                        };
+                        const flag = keyMap[m];
+                        return !flag || (pipelineStepStatus && pipelineStepStatus[flag]);
+                      }) && !configChanged)
+                    ? "Selected modules have no pending data to process."
+                    : "")
+            }
+          >
             <span style={{ cursor: (!hasPendingPipelineChanges && !configChanged) || selectedModules.length === 0 ? "not-allowed" : "default" }}>
               <Button
                 type="primary"
                 onClick={handleAudit}
-                disabled={!projectId || isProcessing || selectedModules.length === 0 || (!hasPendingPipelineChanges && !configChanged)}
+                disabled={
+                  !projectId || 
+                  isProcessing || 
+                  selectedModules.length === 0 || 
+                  (!selectedModules.some(m => {
+                    const keyMap = {
+                      duplicate: "duplicatePending",
+                      enhancement: "enhancementPending",
+                      extra: "extraPending",
+                      envelopebreaking: "envelopePending",
+                      box: "boxPending"
+                    };
+                    const flag = keyMap[m];
+                    // If no flag (like summaries), assume it's okay to run if project is not done
+                    return !flag || (pipelineStepStatus && pipelineStepStatus[flag]);
+                  }) && !configChanged)
+                }
               >
                 Start {selectedModules.length > 0 && `(${selectedModules.length} selected)`}
               </Button>
