@@ -10,7 +10,9 @@ import autoTable from 'jspdf-autotable';
 import { motion } from 'framer-motion';
 import { useLocation, useNavigate } from 'react-router-dom';
 import API from '../hooks/api';
+import axios from 'axios';
 import useStore from '../stores/ProjectData';
+import { buildReportFileName, resolveTemplateId } from "../utils/rptTemplateUtils";
 import useDebounce from '../services/useDebounce';
 import MissingData from '../components/MissingData';
 import DataImportConflictReport from '../components/DataImportConflictReport';
@@ -1344,6 +1346,122 @@ const rerunDuplicateTool = async () => {
   }
 };
 
+// Runs envelope breaking + box breaking for a single lot only.
+// skipReset=true ensures global ReportStatus is NOT wiped for other lots.
+const runTargetedPipelineForLot = async (lotNo, catchNo = null) => {
+  if (!lotNo) return;
+
+  try {
+    // Envelope breaking for this lot only (picks up eligible-step rows naturally)
+    // Now passing catchNo to support incremental sequence continuity
+    const queryParams = new URLSearchParams({
+        ProjectId: projectId,
+        skipReset: 'true',
+        lotNo: lotNo
+    });
+    if (catchNo) queryParams.append('catchNo', catchNo);
+
+    await API.post(
+      `/EnvelopeBreakageProcessing/ProcessEnvelopeBreaking?${queryParams.toString()}`,
+      null,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+  } catch (err) {
+    // Envelope breaking may not be configured for every project — log and continue
+    console.warn("Targeted envelope breaking skipped or failed (may be expected):", err?.response?.data || err);
+  }
+
+  try {
+    // Box breaking for this specific lot only (skip global reset)
+    await API.post(
+      `/BoxBreakingProcessing/ProcessBoxBreaking?ProjectId=${projectId}&LotNo=${lotNo}&skipReset=true`,
+      null,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    showToast(`Pipeline updated for lot ${lotNo}`, "success");
+    
+    // Trigger "Outer" template regeneration if a specific catch was added
+    if (catchNo) {
+        await triggerOuterTemplateRegeneration(catchNo);
+    }
+  } catch (err) {
+    console.error("Targeted box breaking failed:", err?.response?.data || err);
+    showToast("Catch added, but pipeline run for this lot failed. Please re-run manually.", "warning");
+  }
+};
+
+const triggerOuterTemplateRegeneration = async (catchNo) => {
+    try {
+        const groupId = localStorage.getItem("selectedGroup");
+        const typeId = localStorage.getItem("selectedType");
+        const rptApiUrl = import.meta.env.VITE_RPT_API_URL;
+        const projectName = useStore.getState().projectName;
+
+        if (!rptApiUrl) {
+            console.warn("RPT API URL not configured, skipping auto-regeneration.");
+            return;
+        }
+
+        // 1. Fetch templates to find "Outer" envelope template
+        const templatesRes = await API.get("/RPTTemplates/by-group", {
+            params: { groupId, typeId, projectId }
+        });
+        
+        const templates = templatesRes.data || [];
+        // Look for template with "Outer" and "Envelope" in name
+        const outerTemplate = templates.find(t => {
+            const name = (t.templateName || "").toLowerCase();
+            return name.includes("outer") && name.includes("envelope");
+        });
+        
+        if (!outerTemplate) {
+            console.warn("Outer envelope template not found for auto-regeneration.");
+            return;
+        }
+
+        const templateId = resolveTemplateId(outerTemplate);
+
+        // 2. Trigger generation via RPT Microservice
+        const payload = {
+            projectId: Number(projectId),
+            templateId: Number(templateId),
+            CatchNos: catchNo // Map single catch to CatchNos filter
+        };
+        
+        const res = await axios.post(`${rptApiUrl}/report/generate-dynamic`, payload, { responseType: 'blob' });
+        
+        // Extract file path from response headers
+        const filePath = res.headers['x-generated-file-path'] || 
+                        res.headers['X-Generated-File-Path'] || 
+                        res.headers['X-GENERATED-FILE-PATH'] || null;
+
+        const fileName = buildReportFileName({
+            templateName: outerTemplate.templateName,
+            projectName: projectName || (projectId ? `Project ${projectId}` : undefined),
+            typeId: outerTemplate.typeId || typeId,
+            envLotNumbers: [parseInt(catchNo)], // Store as single-item array for utility compatibility
+        });
+
+        // 3. Save the generated report info to database (EnvelopeLotReports table)
+        const reportData = {
+            projectId: Number(projectId),
+            templateId,
+            templateName: outerTemplate.templateName,
+            envLotNumbers: catchNo,
+            fileName,
+            generatedBy: 'System (Auto)',
+            filePath: filePath
+        };
+
+        await API.post('/EnvelopeLotReports', reportData);
+        showToast("Outer template regenerated for catch " + catchNo, "success");
+        
+    } catch (err) {
+        console.error("Failed to regenerate outer template:", err);
+        // Don't show error toast to user if auto-generation fails, as the catch was already added successfully.
+    }
+};
+
 const fetchMasterFields = async () => {
   try {
     setLoadingFields(true);
@@ -1465,6 +1583,13 @@ const handleInlineSave = async () => {
 
     fetchExistingData(projectId);
     await rerunDuplicateTool();
+
+    // Targeted pipeline: run envelope + box breaking only for the new catch's lot
+    const newLotNo = response.data?.lotNo;
+    const addedCatchNo = response.data?.catchNo;
+    if (newLotNo) {
+      await runTargetedPipelineForLot(newLotNo, addedCatchNo);
+    }
 
   } catch (err) {
     console.error("Full error:", err);

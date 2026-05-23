@@ -1302,6 +1302,9 @@ const ProcessingPipeline = () => {
           return newSet;
         });
 
+        // Refresh templates to get updated ReportStatus from DB
+        fetchTemplates();
+
       } catch (saveErr) {
         console.error("Failed to save report to database", saveErr);
         console.error("Error details:", saveErr.response?.data);
@@ -2685,7 +2688,19 @@ const ProcessingPipeline = () => {
       dataIndex: "report",
       key: "report",
       render: (url, record) => {
-        if (record.key === "box") return <Text type="secondary">—</Text>;
+        if (record.key === "box") {
+          return (
+            <Button 
+              size="small" 
+              type="link" 
+              // icon={<HistoryOutlined />}
+              onClick={() => openLotWisePanel("box")}
+              style={{ fontSize: "11px", padding: 0 }}
+            >
+              View Lot Reports
+            </Button>
+          );
+        }
         return url ? (
           <a href={url} target="_blank" rel="noopener noreferrer" className="text-blue-500">
             Download
@@ -3233,7 +3248,7 @@ const ProcessingPipeline = () => {
                             : false;
                           const isStale = staleTemplateIds.has(templateId);
                           const needsRegenerate = hasMappingUpdate || isStale;
-                          const alreadyGenerated = reportStatus?.exists && !needsRegenerate;
+                          const alreadyGenerated = (reportStatus?.exists || template.reportStatus) && !needsRegenerate;
                           return (
                             <Card
                               size="small"
@@ -3249,15 +3264,20 @@ const ProcessingPipeline = () => {
                               }}>
                                 <div style={{ fontWeight: 600 }}>
                                   {resolveTemplateName(template)}
+                                  {(template.reportStatus || reportStatus?.exists) && !needsRegenerate && (
+                                    <Tag color="green" style={{ marginLeft: 8 }}>Ready</Tag>
+                                  )}
                                 </div>
-                                <Button
-                                  size="small"
-                                  type={alreadyGenerated ? "default" : "primary"}
-                                  onClick={() => handleGenerateTemplate(template)}
-                                  loading={isGenerating}
-                                >
-                                  {alreadyGenerated ? "Regenerate" : "Generate"}
-                                </Button>
+                                <Space>
+                                  <Button
+                                    size="small"
+                                    type={alreadyGenerated ? "default" : "primary"}
+                                    onClick={() => handleGenerateTemplate(template)}
+                                    loading={isGenerating}
+                                  >
+                                    {alreadyGenerated ? "Regenerate" : "Generate"}
+                                  </Button>
+                                </Space>
                               </div>
                               
                               {/* Compact Envelope Lot Reports for this template */}
@@ -3487,13 +3507,16 @@ const ProcessingPipeline = () => {
                                               <Text strong style={{ fontSize: "13px" }}>
                                                 {resolveTemplateName(template)}
                                               </Text>
+                                              {((status?.exists && !isStale) || (template.reportStatus && !isStale)) && (
+                                                <Tag color="green" style={{ margin: 0 }}>Ready</Tag>
+                                              )}
                                               {status?.exists && !isStale && status.generatedAt && (
                                                 <Text type="secondary" style={{ fontSize: "11px" }}>
                                                   Generated {new Date(status.generatedAt).toLocaleString()}
                                                 </Text>
                                               )}
                                             </div>
-                                            {isStale && (
+                                            {(isStale || !template.reportStatus) && status?.exists && (
                                               <Tag color="warning" style={{ fontSize: "10px", marginTop: 4 }}>
                                                 Data updated - regeneration required
                                               </Tag>
