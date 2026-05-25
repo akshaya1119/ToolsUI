@@ -16,7 +16,9 @@ import {
   Space,
   Tabs,
   Tooltip,
+  Divider,
 } from "antd";
+import { HistoryOutlined } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import axios from "axios";
@@ -103,8 +105,9 @@ const ProcessingPipeline = () => {
     resolve: null
   });
   const [lotReportStatus, setLotReportStatus] = useState({});
-  const [envLotReports, setEnvLotReports] = useState([]); // Store generated envelope lot reports
-  const [expandedReportsTemplates, setExpandedReportsTemplates] = useState(new Set()); // Track which templates have expanded reports
+   const [envLotReports, setEnvLotReports] = useState([]); // Store generated envelope lot reports
+   const [reportsLoading, setReportsLoading] = useState(false);
+   const [expandedReportsTemplates, setExpandedReportsTemplates] = useState(new Set()); // Track which templates have expanded reports
   const [isDetailPanelOpen, setIsDetailPanelOpen] = useState(false);
   const [selectedModuleForDetails, setSelectedModuleForDetails] = useState(null);
   const [selectedItems, setSelectedItems] = useState({});
@@ -312,61 +315,57 @@ const ProcessingPipeline = () => {
     };
   }, []);
 
-  // Load envelope lot reports from API on component mount
-  useEffect(() => {
-    const loadEnvLotReports = async () => {
-      if (!projectId) {
-        console.log('No projectId, skipping load');
+  const loadEnvLotReports = async () => {
+    if (!projectId) {
+      console.log('No projectId, skipping load');
+      return;
+    }
+    
+    setReportsLoading(true);
+    try {
+      console.log('Loading envelope lot reports for project:', projectId);
+      
+      // First test if the API is accessible
+      try {
+        await API.get('/EnvelopeLotReports/Test');
+      } catch (err) {
+        console.warn('EnvelopeLotReports API test failed, but continuing...');
+      }
+      
+      const response = await API.get(`/EnvelopeLotReports/ByProject/${projectId}`);
+      const reports = response.data || [];
+      
+      if (reports.length === 0) {
+        setEnvLotReports([]);
         return;
       }
       
-      try {
-        console.log('Loading envelope lot reports for project:', projectId);
-        
-        // First test if the API is accessible
-        const testResponse = await API.get('/EnvelopeLotReports/Test');
-        console.log('API test response:', testResponse.data);
-        
-        const response = await API.get(`/EnvelopeLotReports/ByProject/${projectId}`);
-        console.log('Raw API response:', response);
-        console.log('Response data:', response.data);
-        const reports = response.data || [];
-        
-        if (reports.length === 0) {
-          console.log('No reports found in database for project', projectId);
-          setEnvLotReports([]);
-          return;
-        }
-        
-        // Transform API data to match our component format
-        const transformedReports = reports.map((report, index) => {
-          console.log(`Transforming report ${index}:`, report);
-          return {
-            id: `${report.templateId}_${report.envLotNumbers}_${report.id}`,
-            templateId: report.templateId,
-            templateName: report.templateName,
-            envLotNumbers: report.envLotNumbers.split(',').map(num => parseInt(num.trim())),
-            envLotKey: report.envLotNumbers,
-            fileName: report.fileName,
-            generatedAt: report.generatedAt,
-            generatedBy: report.generatedBy,
-            filePath: report.filePath, // Include the server file path
-            url: null, // Will be set when downloading
-            dbId: report.id // Store the database ID for deletion
-          };
-        });
-        
-        console.log('Transformed reports:', transformedReports);
-        setEnvLotReports(transformedReports);
-      } catch (err) {
-        console.error("Failed to load envelope lot reports from API", err);
-        console.error("Error details:", err.response?.data);
-        console.error("Error status:", err.response?.status);
-        console.error("Error config:", err.config);
-        setEnvLotReports([]);
-      }
-    };
+      // Transform API data to match our component format
+      const transformedReports = reports.map((report) => ({
+        id: `${report.templateId}_${report.envLotNumbers}_${report.id}`,
+        templateId: report.templateId,
+        templateName: report.templateName,
+        envLotNumbers: report.envLotNumbers ? report.envLotNumbers.split(',').map(num => parseInt(num.trim())).filter(num => !isNaN(num)) : [],
+        envLotKey: report.envLotNumbers,
+        fileName: report.fileName,
+        generatedAt: report.generatedAt,
+        generatedBy: report.generatedBy,
+        filePath: report.filePath, // Include the server file path
+        url: null, // Will be set when downloading
+        dbId: report.id // Store the database ID for deletion
+      }));
+      
+      setEnvLotReports(transformedReports);
+    } catch (err) {
+      console.error("Failed to load envelope lot reports from API", err);
+      setEnvLotReports([]);
+    } finally {
+      setReportsLoading(false);
+    }
+  };
 
+  // Load envelope lot reports from API on component mount
+  useEffect(() => {
     loadEnvLotReports();
   }, [projectId]);
 
@@ -701,7 +700,7 @@ const ProcessingPipeline = () => {
       // Get unique envelope lot numbers across all lots
       const envLotSet = new Set();
       allData.forEach(item => {
-        const itemEnvLotNo = item.envLotNo ?? item.EnvLotNo ?? item.envLotno;
+        const itemEnvLotNo = item.envLotNo ?? item.EnvLotNo ?? item.envLotno ?? item.EnvLotno;
         
         if (itemEnvLotNo) {
           envLotSet.add(itemEnvLotNo);
@@ -1160,10 +1159,13 @@ const ProcessingPipeline = () => {
     }
 
     // Fetch available envelope lots and show selection modal
+    console.log("Checking available envelope lots for project:", projectId);
     const envLots = await fetchEnvelopeLotsForSelection(projectId);
+    console.log("Found envelope lots:", envLots);
     let envLotNumbers = [];
     
     if (envLots.length > 0) {
+      console.log("Opening lot selection modal for", envLots.length, "lots");
       const selectedEnvLots = await showEnvLotSelectionModal(envLots);
       if (selectedEnvLots === null) {
         return; // user cancelled
@@ -1259,12 +1261,12 @@ const ProcessingPipeline = () => {
       try {
         const reportData = {
           projectId: Number(projectId),
-          templateId,
+          templateId: Number(templateId),
           templateName: template?.templateName || `Template ${templateId}`,
           envLotNumbers: envLotNumbers.sort((a, b) => a - b).join(','),
-          fileName,
-          generatedBy: 'Current User', // You can replace this with actual user info
-          filePath: filePath // Include the server file path
+          fileName: fileName,
+          generatedBy: 'Current User',
+          filePath: filePath
         };
 
         console.log('Saving report to database:', reportData);
@@ -1287,13 +1289,7 @@ const ProcessingPipeline = () => {
           dbId: savedReport.id
         };
         
-        setEnvLotReports(prev => {
-          // Remove any existing report with the same template and envLotKey combination
-          const filtered = prev.filter(report => 
-            !(report.templateId === templateId && report.envLotKey === reportData.envLotNumbers)
-          );
-          return [newReport, ...filtered]; // Add new report at the beginning
-        });
+        setEnvLotReports(prev => [newReport, ...prev]); // Add new report to history
 
         // Automatically expand the reports section for this template
         setExpandedReportsTemplates(prev => {
@@ -1325,12 +1321,7 @@ const ProcessingPipeline = () => {
           url,
         };
         
-        setEnvLotReports(prev => {
-          const filtered = prev.filter(report => 
-            !(report.templateId === templateId && report.envLotKey === reportKey)
-          );
-          return [newReport, ...filtered];
-        });
+        setEnvLotReports(prev => [newReport, ...prev]);
 
         // Automatically expand the reports section for this template even if DB save fails
         setExpandedReportsTemplates(prev => {
@@ -2485,6 +2476,9 @@ const ProcessingPipeline = () => {
         });
       }
 
+      // Refresh report history to include any newly generated reports or maintain existing history
+      await loadEnvLotReports();
+
       // Clear selections and close alert after successful processing
       setSelectedModules([]);
       setConfigChanged(false);
@@ -3248,12 +3242,15 @@ const ProcessingPipeline = () => {
                             : false;
                           const isStale = staleTemplateIds.has(templateId);
                           const needsRegenerate = hasMappingUpdate || isStale;
-                          const alreadyGenerated = (reportStatus?.exists || template.reportStatus) && !needsRegenerate;
+                          // Check if report exists in either the microservice status OR our persistent database
+                          const existsInDb = envLotReports.some(r => r.templateId === templateId);
+                          const reportExists = reportStatus?.exists || template.reportStatus || existsInDb;
+                          const alreadyGenerated = reportExists && !needsRegenerate;
                           return (
                             <Card
                               size="small"
                               key={templateId || resolveTemplateName(template)}
-                              bodyStyle={{ padding: 12 }}
+                              styles={{ body: { padding: 12 } }}
                               style={{ borderRadius: 8 }}
                             >
                               <div style={{ 
@@ -3264,8 +3261,11 @@ const ProcessingPipeline = () => {
                               }}>
                                 <div style={{ fontWeight: 600 }}>
                                   {resolveTemplateName(template)}
-                                  {(template.reportStatus || reportStatus?.exists) && !needsRegenerate && (
+                                  {alreadyGenerated && (
                                     <Tag color="green" style={{ marginLeft: 8 }}>Ready</Tag>
+                                  )}
+                                  {reportExists && needsRegenerate && (
+                                    <Tag color="orange" style={{ marginLeft: 8 }}>Outdated</Tag>
                                   )}
                                 </div>
                                 <Space>
