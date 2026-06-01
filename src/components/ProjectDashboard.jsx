@@ -196,7 +196,7 @@ const ProjectDashboard = () => {
           await API.post(`/ExtraEnvelopes?ProjectId=${projectId}`);
         else if (step.key === "envelope")
           await API.post(
-            `/EnvelopeBreakages/EnvelopeConfiguration?ProjectId=${projectId}`
+            `/EnvelopeBreakages/EnvelopeConfiguration?ProjectId=${projectId}&bypassDispatch=true`
           );
         else if (step.key === "box") {
           // Fetch lots and pass them as query parameters
@@ -205,6 +205,7 @@ const ProjectDashboard = () => {
           const params = new URLSearchParams();
           params.append('ProjectId', projectId);
           lotNumbers.forEach(lot => params.append('LotNo', lot));
+          params.append('bypassDispatch', 'true');
           await API.post(`/BoxBreakingProcessing/ProcessBoxBreaking?${params.toString()}`);
         }
         else if (step.key === "envelopeSummary")
