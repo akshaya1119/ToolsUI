@@ -36,10 +36,9 @@ const ProcessingPipeline = () => {
    const isConfigured = useStore((state) => state.isConfigured);
   const isLoadingData = useStore((state) => state.isLoadingData);
   const nrDataCount = useStore((state) => state.nrDataCount);
-  const projectId = useStore((state) => state.projectId);
   const hasDeactivatedCatches = useStore((state) => state.hasDeactivatedCatches);
   const setHasDeactivatedCatches = useStore((state) => state.setHasDeactivatedCatches);
-
+const projectId = useStore((state) => state.projectId);
    useEffect(() => {
     if (projectId && !isLoadingData) {
       if (!isConfigured) {
@@ -113,7 +112,6 @@ const ProcessingPipeline = () => {
   const [selectedItems, setSelectedItems] = useState({});
   const [detailGrouping, setDetailGrouping] = useState("lot");
   const [detailViewType, setDetailViewType] = useState("reports");
-
   const [hasPendingPipelineChanges, setHasPendingPipelineChanges] = useState(false);
   const [pipelineStepStatus, setPipelineStepStatus] = useState(null);
   const projectName = useStore((state) => state.projectName);
