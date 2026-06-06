@@ -18,7 +18,7 @@ import {
   Tooltip,
   Divider,
 } from "antd";
-import { HistoryOutlined } from "@ant-design/icons";
+import { HistoryOutlined, ExclamationCircleOutlined } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import axios from "axios";
@@ -137,6 +137,29 @@ const projectId = useStore((state) => state.projectId);
     [steps]
   );
 
+  const outdatedModules = useMemo(() => {
+    if (!pipelineStepStatus) return [];
+    const keyMap = {
+      duplicate: { flag: "duplicatePending", name: "Duplicate Tool" },
+      enhancement: { flag: "enhancementPending", name: "Envelope Setup and Enhancement" },
+      extra: { flag: "extraPending", name: "Extra Configuration" },
+      envelopebreaking: { flag: "envelopePending", name: "Envelope Breaking" },
+      box: { flag: "boxPending", name: "Box Breaking" }
+    };
+    
+    return Object.entries(keyMap)
+      .filter(([key, config]) => {
+        const hasPending = pipelineStepStatus[config.flag] ||
+          ((key === "envelopebreaking" || key === "box") && hasDeactivatedCatches);
+        if (!hasPending) return false;
+        
+        const step = steps.find(s => s.key === key);
+        const hasExistingReport = step && (step.status === "completed" || step.fileUrl || (key === "box" && step.completedLots > 0));
+        return hasExistingReport;
+      })
+      .map(([_, config]) => config.name);
+  }, [pipelineStepStatus, steps, hasDeactivatedCatches]);
+
   const rptApiUrl = import.meta.env.VITE_RPT_API_URL;
   const mappingUpdateKey = "rptTemplateMappingUpdatedAt";
 
@@ -216,17 +239,15 @@ const projectId = useStore((state) => state.projectId);
                 const exists = completedLotsCount > 0;
                 results[fileName] = exists; // Boolean for overall module status
                 
-                if (exists) {
-                  const allCompleted = completedLotsCount === totalLotsCount;
-                  console.log("Updating step", key, allCompleted ? "to completed" : "with partial status");
-                  updateStepStatus(key, {
-                    status: allCompleted ? "completed" : "pending",
-                    completedLots: completedLotsCount,
-                    totalLots: totalLotsCount,
-                    fileUrl: null,
-                    duration: "--:--",
-                  });
-                }
+                const allCompleted = completedLotsCount === totalLotsCount;
+                console.log("Updating step", key, allCompleted && exists ? "to completed" : "with partial/pending status");
+                updateStepStatus(key, {
+                  status: allCompleted && exists ? "completed" : "pending",
+                  completedLots: completedLotsCount,
+                  totalLots: totalLotsCount,
+                  fileUrl: null,
+                  duration: "--:--",
+                });
               }
             } catch (err) {
               console.error(`Failed to check lot files for box breaking`, err);
@@ -583,7 +604,7 @@ const projectId = useStore((state) => state.projectId);
   };
 
   const runEnvelope = async (projectId) => {
-    const res = await API.post(`/EnvelopeBreakages/EnvelopeConfiguration?ProjectId=${projectId}`);
+    const res = await API.post(`/EnvelopeBreakageProcessing/ProcessEnvelopeBreaking?ProjectId=${projectId}`);
     message.success(res?.data?.message || "Envelope breaking completed");
   };
 
@@ -624,44 +645,11 @@ const projectId = useStore((state) => state.projectId);
     try {
       // Use the endpoint provided by user
       const res = await API.get(`/NRDataLots/GetByProjectId/${projectId}`);
-      const allData = res.data || [];
-      
-      // Group by lot and count catches manually, ensuring strict uniqueness
-      const lotMap = new Map();
-      allData.forEach(item => {
-        const lotNumber = item.lotNo ?? item.LotNo;
-        const catchNo = item.catchNo ?? item.CatchNo;
-        const lotKey = String(lotNumber).trim();
-
-        if (lotNumber && lotNumber > 0 && lotKey !== "") {
-          if (!lotMap.has(lotKey)) {
-            lotMap.set(lotKey, {
-              lotNo: lotNumber,
-              catches: new Set()
-            });
-          }
-          if (catchNo) {
-            lotMap.get(lotKey).catches.add(catchNo);
-          }
-        }
-      });
-      
-      // Convert to expected format
-      const lots = Array.from(lotMap.values()).map(group => ({
-        lotNo: group.lotNo,
-        catchCount: group.catches.size
-      })).sort((a, b) => a.lotNo - b.lotNo);
-      
-      return lots;
+      return res.data || [];
     } catch (err) {
       console.error("Failed to fetch lots for selection", err);
       // Fallback to internal route if NRDatas fails
       try {
-        const res = await API.get(`/NRDataLots/GetByProjectId/${projectId}`);
-        return res.data || [];
-      } catch (err) {
-        // Fallback to by-project endpoint if GetByProjectId doesn't exist
-        console.log("Using fallback endpoint for lots");
         const res = await API.get(`/NRDataLots/by-project/${projectId}`);
         const allData = res.data || [];
 
@@ -670,21 +658,27 @@ const projectId = useStore((state) => state.projectId);
         allData.forEach(item => {
           if (item.lotNo > 0) {
             if (!lotMap.has(item.lotNo)) {
-              lotMap.set(item.lotNo, new Set());
+              lotMap.set(item.lotNo, { catches: new Set(), steps: [] });
             }
             if (item.catchNo) {
-              lotMap.get(item.lotNo).add(item.catchNo);
+              lotMap.get(item.lotNo).catches.add(item.catchNo);
+            }
+            if (item.steps !== undefined) {
+              lotMap.get(item.lotNo).steps.push(item.steps);
             }
           }
         });
 
         // Convert to expected format
-        const lots = Array.from(lotMap.entries()).map(([lotNo, catches]) => ({
+        const lots = Array.from(lotMap.entries()).map(([lotNo, info]) => ({
           lotNo,
-          catchCount: catches.size
+          catchCount: info.catches.size,
+          minStep: info.steps.length > 0 ? Math.min(...info.steps) : 5
         })).sort((a, b) => a.lotNo - b.lotNo);
 
         return lots;
+      } catch (fallbackErr) {
+        return [];
       }
     }
   };
@@ -965,9 +959,19 @@ const projectId = useStore((state) => state.projectId);
 
     setSelectedModules((prev) => {
       // Filter ancestors to only include those NOT completed (except the clicked one)
+      // If a step has pending changes (is outdated), it is treated as not completed.
       const keysToSelect = ancestors.filter(key => {
         const step = steps.find(s => s.key === key);
-        return (step && step.status !== "completed") || key === moduleKey;
+        const keyMap = {
+          duplicate: "duplicatePending",
+          enhancement: "enhancementPending",
+          extra: "extraPending",
+          envelopebreaking: "envelopePending",
+          box: "boxPending"
+        };
+        const flag = keyMap[key];
+        const isPending = flag && pipelineStepStatus && pipelineStepStatus[flag];
+        return (step && (step.status !== "completed" || isPending)) || key === moduleKey;
       });
 
       // Merge with existing selections
@@ -1633,7 +1637,7 @@ const projectId = useStore((state) => state.projectId);
       } catch (err) {
         // Fallback to by-project endpoint if GetByProjectId doesn't exist
         console.log("Using fallback endpoint for lots");
-        const res = await API.get(`/NRDataLots/GetByProjectId/${projectId}`);
+        const res = await API.get(`/NRDataLots/by-project/${projectId}`);
         const allData = res.data || [];
 
         // Group by lot and count catches manually
@@ -1641,18 +1645,22 @@ const projectId = useStore((state) => state.projectId);
         allData.forEach(item => {
           if (item.lotNo > 0) {
             if (!lotMap.has(item.lotNo)) {
-              lotMap.set(item.lotNo, new Set());
+              lotMap.set(item.lotNo, { catches: new Set(), steps: [] });
             }
             if (item.catchNo) {
-              lotMap.get(item.lotNo).add(item.catchNo);
+              lotMap.get(item.lotNo).catches.add(item.catchNo);
+            }
+            if (item.steps !== undefined) {
+              lotMap.get(item.lotNo).steps.push(item.steps);
             }
           }
         });
 
         // Convert to expected format
-        lots = Array.from(lotMap.entries()).map(([lotNo, catches]) => ({
+        lots = Array.from(lotMap.entries()).map(([lotNo, info]) => ({
           lotNo,
-          catchCount: catches.size
+          catchCount: info.catches.size,
+          minStep: info.steps.length > 0 ? Math.min(...info.steps) : 5
         })).sort((a, b) => a.lotNo - b.lotNo);
       }
 
@@ -2609,6 +2617,7 @@ const projectId = useStore((state) => state.projectId);
       key: "status",
       render: (status, record) => {
         let displayStatus = status;
+        let isOutdated = false;
 
         // Use real-time DB state if available
         if (pipelineStepStatus) {
@@ -2622,12 +2631,18 @@ const projectId = useStore((state) => state.projectId);
           const pendingFlag = keyMap[record.key];
           if (pendingFlag && pipelineStepStatus[pendingFlag]) {
             displayStatus = "pending";
+            if (record.status === "completed" || record.report || (record.key === "box" && record.completedLots > 0)) {
+              isOutdated = true;
+            }
           }
         }
 
         // Keep legacy check for deactivated catches if any
         if ((record.key === "envelopebreaking" || record.key === "box") && displayStatus === "completed" && hasDeactivatedCatches) {
           displayStatus = "pending";
+          if (record.status === "completed" || record.report || (record.key === "box" && record.completedLots > 0)) {
+            isOutdated = true;
+          }
         }
 
         const colorMap = {
@@ -2637,6 +2652,15 @@ const projectId = useStore((state) => state.projectId);
           pending: "orange",
           skipped: "default",
         };
+
+        if (isOutdated) {
+          return (
+            <Tooltip title="Recent updates require this step to be run again. The current report might be outdated.">
+              <Tag color="orange" icon={<ExclamationCircleOutlined />}>Outdated</Tag>
+            </Tooltip>
+          );
+        }
+
         if (record.key === "box" && record.completedLots > 0 && record.completedLots < record.totalLots) {
           return (
             <Tooltip title={`${record.completedLots} out of ${record.totalLots} lots have generated reports`}>
@@ -2681,13 +2705,14 @@ const projectId = useStore((state) => state.projectId);
       key: "report",
       render: (url, record) => {
         if (record.key === "box") {
+          if (!record.completedLots || record.completedLots === 0) {
+            return <Text type="secondary">—</Text>;
+          }
           return (
             <Button 
-              size="small" 
               type="link" 
-              // icon={<HistoryOutlined />}
               onClick={() => openLotWisePanel("box")}
-              style={{ fontSize: "11px", padding: 0 }}
+              style={{ padding: 0 }}
             >
               View Lot Reports
             </Button>
@@ -3076,6 +3101,22 @@ const projectId = useStore((state) => state.projectId);
         />
       )}
 
+      {outdatedModules.length > 0 && (
+        <Alert
+          message="Outdated Reports Detected"
+          description={
+            <div>
+              Recent updates have modified the pipeline. The following reports need to be re-run:{" "}
+              <strong>{outdatedModules.join(", ")}</strong>.
+            </div>
+          }
+          type="warning"
+          showIcon
+          icon={<ExclamationCircleOutlined />}
+          style={{ marginBottom: 16 }}
+        />
+      )}
+
       <div className="flex justify-between items-center mb-4">
         <Typography.Title level={3} style={{ marginBottom: 6 }}>
           Processing Pipeline
@@ -3172,6 +3213,26 @@ const projectId = useStore((state) => state.projectId);
                 pagination={false}
                 loading={loadingModules}
                 rowKey="key"
+                onRow={(record) => {
+                  const keyMap = {
+                    duplicate: "duplicatePending",
+                    enhancement: "enhancementPending",
+                    extra: "extraPending",
+                    envelopebreaking: "envelopePending",
+                    box: "boxPending"
+                  };
+                  const pendingFlag = keyMap[record.key];
+                  const isPending = (pendingFlag && pipelineStepStatus && pipelineStepStatus[pendingFlag]) ||
+                    ((record.key === "envelopebreaking" || record.key === "box") && record.status === "completed" && hasDeactivatedCatches);
+                  const isOutdated = isPending && (record.status === "completed" || record.report || (record.key === "box" && record.completedLots > 0));
+                  
+                  if (isOutdated) {
+                    return {
+                      style: { background: "#fffbe6" }
+                    };
+                  }
+                  return {};
+                }}
               />
             )}
           </Card>
@@ -3401,14 +3462,20 @@ const projectId = useStore((state) => state.projectId);
                                         <Text type="secondary" style={{ fontSize: "11px" }}>
                                           Lot {lot.lotNo}
                                         </Text>
-                                        {lotReportStatus[lot.lotNo] && (
-                                          <Tag color="green" style={{ margin: 0 }}>
-                                            Ready
-                                          </Tag>
-                                        )}
+                                        {lotReportStatus[lot.lotNo] ? (
+                                          lot.minStep < 6 ? (
+                                            <Tag color="orange" style={{ margin: 0 }}>
+                                              Outdated
+                                            </Tag>
+                                          ) : (
+                                            <Tag color="green" style={{ margin: 0 }}>
+                                              Ready
+                                            </Tag>
+                                          )
+                                        ) : null}
                                       </div>
                                     </div>
-                                    {lotReportStatus[lot.lotNo] ? (
+                                    {lotReportStatus[lot.lotNo] && lot.minStep >= 6 ? (
                                       <Button
                                         size="small"
                                         onClick={() => handleDownloadLotReport(lot.lotNo, "BoxBreaking")}
@@ -3422,7 +3489,7 @@ const projectId = useStore((state) => state.projectId);
                                         onClick={() => handleGenerateAllLots(lot.lotNo)}
                                         loading={generatingLotReport[lot.lotNo]}
                                       >
-                                        Generate
+                                        {lotReportStatus[lot.lotNo] ? "Regenerate" : "Generate"}
                                       </Button>
                                     )}
                                   </div>
