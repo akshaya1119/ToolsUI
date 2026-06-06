@@ -3463,7 +3463,7 @@ const projectId = useStore((state) => state.projectId);
                                           Lot {lot.lotNo}
                                         </Text>
                                         {lotReportStatus[lot.lotNo] ? (
-                                          lot.minStep < 6 ? (
+                                          lot.minStep < 7 ? (
                                             <Tag color="orange" style={{ margin: 0 }}>
                                               Outdated
                                             </Tag>
@@ -3475,7 +3475,7 @@ const projectId = useStore((state) => state.projectId);
                                         ) : null}
                                       </div>
                                     </div>
-                                    {lotReportStatus[lot.lotNo] && lot.minStep >= 6 ? (
+                                    {lotReportStatus[lot.lotNo] && lot.minStep >= 7 ? (
                                       <Button
                                         size="small"
                                         onClick={() => handleDownloadLotReport(lot.lotNo, "BoxBreaking")}
