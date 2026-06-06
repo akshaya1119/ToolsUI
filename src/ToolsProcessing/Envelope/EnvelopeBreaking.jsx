@@ -53,7 +53,7 @@ const EnvelopeBreaking = () => {
       setLoading(true);
 
       const res = await API.post(
-        `/EnvelopeBreakages/EnvelopeConfiguration?ProjectId=${project}`);
+        `/EnvelopeBreakageProcessing/ProcessEnvelopeBreaking?ProjectId=${project}`);
 
       const msg = res?.data?.message || "Envelope breaking completed";
       message.success(msg);

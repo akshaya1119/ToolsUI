@@ -196,7 +196,7 @@ const ProjectDashboard = () => {
           await API.post(`/ExtraEnvelopes?ProjectId=${projectId}`);
         else if (step.key === "envelope")
           await API.post(
-            `/EnvelopeBreakages/EnvelopeConfiguration?ProjectId=${projectId}&bypassDispatch=true`
+            `/EnvelopeBreakageProcessing/ProcessEnvelopeBreaking?ProjectId=${projectId}&bypassDispatch=true`
           );
         else if (step.key === "box") {
           // Fetch lots and pass them as query parameters
