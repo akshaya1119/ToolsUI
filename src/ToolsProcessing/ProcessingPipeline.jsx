@@ -25,7 +25,7 @@ import { motion } from "framer-motion";
 import axios from "axios";
 import API from "../hooks/api";
 import useStore from "../stores/ProjectData";
-import { buildReportFileName, getErrorMessageAsync, parseMappingJson } from "../utils/rptTemplateUtils";
+import { buildReportFileName, getErrorMessageAsync, parseMappingJson, getErrorDetails,retryAsync } from "../utils/rptTemplateUtils";
 import EnvLotReportsManager from "./EnvLotReportsManager";
 import DependencyModal from "./components/DependencyModal";
 import StaticVariablesModal from "./components/StaticVariablesModal";
@@ -41,13 +41,13 @@ const url3 = import.meta.env.VITE_API_FILE_URL;
 
 const ProcessingPipeline = () => {
   const navigate = useNavigate();
-   const isConfigured = useStore((state) => state.isConfigured);
+  const isConfigured = useStore((state) => state.isConfigured);
   const isLoadingData = useStore((state) => state.isLoadingData);
   const nrDataCount = useStore((state) => state.nrDataCount);
   const hasDeactivatedCatches = useStore((state) => state.hasDeactivatedCatches);
   const setHasDeactivatedCatches = useStore((state) => state.setHasDeactivatedCatches);
-const projectId = useStore((state) => state.projectId);
-   useEffect(() => {
+  const projectId = useStore((state) => state.projectId);
+  useEffect(() => {
     if (projectId && !isLoadingData) {
       if (!isConfigured) {
         message.warning("Please complete project configuration first");
@@ -112,30 +112,30 @@ const projectId = useStore((state) => state.projectId);
     resolve: null
   });
   const [lotReportStatus, setLotReportStatus] = useState({});
-   const [envLotReports, setEnvLotReports] = useState([]); // Store generated envelope lot reports
-   const [reportsLoading, setReportsLoading] = useState(false);
-   const [reportVersions, setReportVersions] = useState({});
+  const [envLotReports, setEnvLotReports] = useState([]); // Store generated envelope lot reports
+  const [reportsLoading, setReportsLoading] = useState(false);
+  const [reportVersions, setReportVersions] = useState({});
 
-   const loadReportVersions = async () => {
-     if (!projectId) return;
-     try {
-       const res = await API.get(`/EnvelopeBreakages/Reports/AllVersions?projectId=${projectId}`);
-       setReportVersions(res.data || {});
-     } catch (err) {
-       console.error("Failed to load report versions", err);
-     }
-   };
+  const loadReportVersions = async () => {
+    if (!projectId) return;
+    try {
+      const res = await API.get(`/EnvelopeBreakages/Reports/AllVersions?projectId=${projectId}`);
+      setReportVersions(res.data || {});
+    } catch (err) {
+      console.error("Failed to load report versions", err);
+    }
+  };
 
-   const getBoxVersionsForLot = (lotNo) => {
-     const allBoxVersions = reportVersions["box"] || [];
-     return allBoxVersions.filter(v => 
-       String(v.lotNo) === String(lotNo) || 
-       v.fileName.includes(`BoxBreaking_${lotNo}_v`) || 
-       v.fileName === `BoxBreaking_${lotNo}.xlsx`
-     );
-   };
+  const getBoxVersionsForLot = (lotNo) => {
+    const allBoxVersions = reportVersions["box"] || [];
+    return allBoxVersions.filter(v =>
+      String(v.lotNo) === String(lotNo) ||
+      v.fileName.includes(`BoxBreaking_${lotNo}_v`) ||
+      v.fileName === `BoxBreaking_${lotNo}.xlsx`
+    );
+  };
 
-   const [expandedReportsTemplates, setExpandedReportsTemplates] = useState(new Set()); // Track which templates have expanded reports
+  const [expandedReportsTemplates, setExpandedReportsTemplates] = useState(new Set()); // Track which templates have expanded reports
   const [isDetailPanelOpen, setIsDetailPanelOpen] = useState(false);
   const [selectedModuleForDetails, setSelectedModuleForDetails] = useState(null);
   const [selectedItems, setSelectedItems] = useState({});
@@ -148,7 +148,8 @@ const projectId = useStore((state) => state.projectId);
   const storedTypeId = localStorage.getItem("selectedType");
   const groupId = storedGroupId ? Number(storedGroupId) : null;
   const typeId = storedTypeId ? Number(storedTypeId) : null;
-
+  const [envLotSearch, setEnvLotSearch] = useState("");
+  const [errorDetailsModal, setErrorDetailsModal] = useState({ visible: false, error: null, retryFn: null, templateId: null });
   const currentStep = useMemo(
     () =>
       steps.findIndex((s) => s.status === "in-progress") + 1 ||
@@ -175,13 +176,13 @@ const projectId = useStore((state) => state.projectId);
       envelopebreaking: { flag: "envelopePending", name: "Envelope Breaking" },
       box: { flag: "boxPending", name: "Box Breaking" }
     };
-    
+
     return Object.entries(keyMap)
       .filter(([key, config]) => {
         const hasPending = pipelineStepStatus[config.flag] ||
           ((key === "envelopebreaking" || key === "box") && hasDeactivatedCatches);
         if (!hasPending) return false;
-        
+
         const step = steps.find(s => s.key === key);
         const hasExistingReport = step && (step.status === "completed" || step.fileUrl || (key === "box" && step.completedLots > 0));
         return hasExistingReport;
@@ -268,7 +269,7 @@ const projectId = useStore((state) => state.projectId);
                 const totalLotsCount = lots.length;
                 const exists = completedLotsCount > 0;
                 results[fileName] = exists; // Boolean for overall module status
-                
+
                 const allCompleted = completedLotsCount === totalLotsCount;
                 console.log("Updating step", key, allCompleted && exists ? "to completed" : "with partial/pending status");
                 updateStepStatus(key, {
@@ -369,26 +370,26 @@ const projectId = useStore((state) => state.projectId);
       console.log('No projectId, skipping load');
       return;
     }
-    
+
     setReportsLoading(true);
     try {
       console.log('Loading envelope lot reports for project:', projectId);
-      
+
       // First test if the API is accessible
       try {
         await API.get('/EnvelopeLotReports/Test');
       } catch (err) {
         console.warn('EnvelopeLotReports API test failed, but continuing...');
       }
-      
+
       const response = await API.get(`/EnvelopeLotReports/ByProject/${projectId}`);
       const reports = response.data || [];
-      
+
       if (reports.length === 0) {
         setEnvLotReports([]);
         return;
       }
-      
+
       // Transform API data to match our component format
       const transformedReports = reports.map((report) => ({
         id: `${report.templateId}_${report.envLotNumbers}_${report.id}`,
@@ -403,7 +404,7 @@ const projectId = useStore((state) => state.projectId);
         url: null, // Will be set when downloading
         dbId: report.id // Store the database ID for deletion
       }));
-      
+
       setEnvLotReports(transformedReports);
     } catch (err) {
       console.error("Failed to load envelope lot reports from API", err);
@@ -642,11 +643,11 @@ const projectId = useStore((state) => state.projectId);
     // Build query string with lot numbers
     const params = new URLSearchParams();
     params.append('ProjectId', projectId);
-    
+
     if (lotNumbers && lotNumbers.length > 0) {
       lotNumbers.forEach(lot => params.append('LotNo', lot));
     }
-    
+
     const res = await API.post(`/BoxBreakingProcessing/ProcessBoxBreaking?${params.toString()}`);
     message.success(res?.data?.message || "Box breaking completed");
   };
@@ -713,41 +714,86 @@ const projectId = useStore((state) => state.projectId);
     }
   };
 
-  const fetchEnvelopeLotsForSelection = async (projectIdParam) => {
+  const fetchMissingEnvLotCatchesForSelection = async (projectIdParam) => {
     try {
-      // Fetch all envelope lot numbers for the project
-      const res = await API.get(`/NRDataLots/GetByProject/${projectIdParam}`);
-      const allData = res.data || [];
-      
-      // Get unique envelope lot numbers across all lots
-      const envLotSet = new Set();
-      allData.forEach(item => {
-        const itemEnvLotNo = item.envLotNo ?? item.EnvLotNo ?? item.envLotno ?? item.EnvLotno;
-        
-        if (itemEnvLotNo) {
-          envLotSet.add(itemEnvLotNo);
-        }
-      });
-      
-      // Convert to array and sort
-      const envLots = Array.from(envLotSet)
-        .map(envLotNo => ({ envLotNo }))
-        .sort((a, b) => a.envLotNo - b.envLotNo);
-      console.log(envLots)
-      return envLots;
+      const res = await API.get(`/NRDataLots/GetMissingEnvLotCatches/${projectIdParam}`);
+      const rawData = res.data || [];
+      return rawData.map(item => ({
+        catchNo: (item.catchNo ?? item.CatchNo ?? "").toString().trim(),
+        count: item.count ?? item.Count ?? 0,
+      })).filter(item => item.catchNo);
     } catch (err) {
-      console.error("Failed to fetch envelope lots for selection", err);
-      message.error("Failed to load envelope lots");
+      console.error("Failed to fetch missing EnvLot catches for selection", err);
+      message.error("Failed to load catches missing envelope lot assignments.");
       return [];
     }
   };
 
+  const assignEnvLotByCatchNos = async (catchNos) => {
+    try {
+      const normalizedCatchNos = Array.from(
+        new Set(
+          (catchNos || [])
+            .map((c) => (c ?? "").toString().trim())
+            .filter((c) => c)
+        )
+      );
+
+      if (normalizedCatchNos.length === 0) {
+        return null;
+      }
+
+      const res = await API.post("/NRDataLots/AssignEnvLotByCatches", {
+        projectId: Number(projectId),
+        catchNos: normalizedCatchNos,
+      });
+      return res.data;
+    } catch (err) {
+      console.error("Failed to assign EnvLot by catches", err);
+      const errorMessage = err?.response?.data?.message || "Failed to assign envelope lot.";
+      message.error(errorMessage);
+      return null;
+    }
+  };
+
+  const revertEnvLotByCatchNos = async (catchNos) => {
+    try {
+      const normalizedCatchNos = Array.from(
+        new Set(
+          (catchNos || [])
+            .map((c) => (c ?? "").toString().trim())
+            .filter((c) => c)
+        )
+      );
+
+      if (normalizedCatchNos.length === 0) {
+        return false;
+      }
+
+      const res = await API.post("/NRDataLots/UnassignEnvLotByCatches", {
+        projectId: Number(projectId),
+        catchNos: normalizedCatchNos,
+      });
+
+      if (res?.status === 200) {
+        message.warning("Report generation failed. Env lot assignment was reverted.");
+        return true;
+      }
+
+      return false;
+    } catch (err) {
+      console.error("Failed to revert EnvLot assignment", err);
+      return false;
+    }
+  };
+
   const showEnvLotSelectionModal = (envLots) => {
+    setEnvLotSearch("");
     return new Promise((resolve) => {
       setEnvLotSelectionModal({
         visible: true,
         availableEnvLots: envLots,
-        selectedEnvLots: envLots.map(lot => lot.envLotNo),
+        selectedEnvLots: [],
         loading: false,
         resolve
       });
@@ -756,36 +802,38 @@ const projectId = useStore((state) => state.projectId);
 
   const handleEnvLotSelectionConfirm = () => {
     const { selectedEnvLots, resolve } = envLotSelectionModal;
-    
+
     if (selectedEnvLots.length === 0) {
-      message.warning("Please select at least one envelope lot to process");
+      message.warning("Please select at least one catch to process");
       return;
     }
 
-    setEnvLotSelectionModal({ 
-      visible: false, 
-      availableEnvLots: [], 
-      selectedEnvLots: [], 
+    setEnvLotSelectionModal({
+      visible: false,
+      availableEnvLots: [],
+      selectedEnvLots: [],
       loading: false,
-      resolve: null 
+      resolve: null
     });
-    
+    setEnvLotSearch("")
     if (resolve) {
       resolve(selectedEnvLots);
     }
+    ;
   };
 
   const handleEnvLotSelectionCancel = () => {
     const { resolve } = envLotSelectionModal;
-    
-    setEnvLotSelectionModal({ 
-      visible: false, 
-      availableEnvLots: [], 
-      selectedEnvLots: [], 
+
+    setEnvLotSelectionModal({
+      visible: false,
+      availableEnvLots: [],
+      selectedEnvLots: [],
       loading: false,
-      resolve: null 
+      resolve: null
     });
-    
+    setEnvLotSearch("")
+
     if (resolve) {
       resolve(null);
     }
@@ -795,7 +843,7 @@ const projectId = useStore((state) => state.projectId);
     if (checked) {
       setEnvLotSelectionModal(prev => ({
         ...prev,
-        selectedEnvLots: prev.availableEnvLots.map(lot => lot.envLotNo)
+        selectedEnvLots: prev.availableEnvLots.map(lot => lot.catchNo)
       }));
     } else {
       setEnvLotSelectionModal(prev => ({
@@ -805,17 +853,23 @@ const projectId = useStore((state) => state.projectId);
     }
   };
 
-  const handleEnvLotToggle = (envLotNo, checked) => {
+  const handleEnvLotToggle = (catchNo, checked) => {
     setEnvLotSelectionModal(prev => {
       const newSelectedEnvLots = checked
-        ? [...prev.selectedEnvLots, envLotNo]
-        : prev.selectedEnvLots.filter(l => l !== envLotNo);
-      
+        ? [...prev.selectedEnvLots, catchNo]
+        : prev.selectedEnvLots.filter(l => l !== catchNo);
+
       return {
         ...prev,
         selectedEnvLots: newSelectedEnvLots
       };
     });
+  };
+
+  const isQuantitySheetTemplate = (templateName) => {
+    if (!templateName) return false;
+    const n = templateName.toLowerCase().replace(/\s/g, "");
+    return n.includes("quantitysheet") || n.includes("qtysheet");
   };
 
   const showExistingReportModal = (report) => {
@@ -831,7 +885,7 @@ const projectId = useStore((state) => state.projectId);
   const handleExistingReportDownload = async () => {
     const { report, resolve } = existingReportModal;
     setExistingReportModal({ visible: false, report: null, resolve: null });
-    
+
     // Automatically expand the reports section for this template when downloading
     if (report?.templateId) {
       setExpandedReportsTemplates(prev => {
@@ -840,7 +894,7 @@ const projectId = useStore((state) => state.projectId);
         return newSet;
       });
     }
-    
+
     if (resolve) {
       resolve('download');
     }
@@ -1058,6 +1112,8 @@ const projectId = useStore((state) => state.projectId);
     return map;
   }, [allModules]);
 
+
+
   const templatesByModuleId = useMemo(() => {
     const map = new Map();
     (templateOptions || []).forEach((template) => {
@@ -1190,28 +1246,44 @@ const projectId = useStore((state) => state.projectId);
       staticVariables = userValues;
     }
 
-    // Fetch available envelope lots and show selection modal
-    console.log("Checking available envelope lots for project:", projectId);
-    const envLots = await fetchEnvelopeLotsForSelection(projectId);
-    console.log("Found envelope lots:", envLots);
     let envLotNumbers = [];
-    
-    if (envLots.length > 0) {
-      console.log("Opening lot selection modal for", envLots.length, "lots");
-      const selectedEnvLots = await showEnvLotSelectionModal(envLots);
-      if (selectedEnvLots === null) {
-        return; // user cancelled
+
+    const isQS = isQuantitySheetTemplate(resolveTemplateName(template));
+
+    // Check if template depends on envelope breaking module
+    const envelopeBreakingModuleId = moduleKeyToIdMap["envelopebreaking"];
+    const templateModuleIds = normalizeModuleIds(template?.moduleIds ?? template?.ModuleIds);
+    const isEnvelopeDependent = envelopeBreakingModuleId && templateModuleIds.includes(envelopeBreakingModuleId);
+
+    // Only show env lot modal for reports dependent on envelope breakages (excluding QS)
+    let assignedCatchNos = [];
+    if (!isQS && isEnvelopeDependent) {
+      const missingCatchItems = await fetchMissingEnvLotCatchesForSelection(projectId);
+      if (missingCatchItems.length > 0) {
+        const selectedCatchNos = await showEnvLotSelectionModal(missingCatchItems);
+        if (selectedCatchNos === null) {
+          return; // user cancelled
+        }
+        if (selectedCatchNos.length > 0) {
+          const assignResult = await assignEnvLotByCatchNos(selectedCatchNos);
+          if (!assignResult || !assignResult.assignedEnvLotNo) {
+            return;
+          }
+
+          envLotNumbers = [assignResult.assignedEnvLotNo];
+          assignedCatchNos = selectedCatchNos;
+        }
       }
-      envLotNumbers = selectedEnvLots;
     }
 
     // Check if report already exists for this template and envelope lots combination
-    if (envLotNumbers.length > 0) {
-      const envLotKey = envLotNumbers.sort((a, b) => a - b).join(',');
-      const existingReport = envLotReports.find(report => 
-        report.templateId === templateId && report.envLotKey === envLotKey
+    const envLotKey = envLotNumbers.length > 0 ? envLotNumbers.sort((a, b) => a - b).join(',') : (isQS ? "" : null);
+
+    if (envLotKey !== null) {
+      const existingReport = envLotReports.find(report =>
+        report.templateId === templateId && (report.envLotKey === envLotKey || (!report.envLotKey && envLotKey === ""))
       );
-      
+
       if (existingReport) {
         // Show confirmation modal for existing report
         const shouldProceed = await showExistingReportModal(existingReport);
@@ -1241,19 +1313,24 @@ const projectId = useStore((state) => state.projectId);
     });
 
     try {
-      const res = await axios.post(
-        `${rptApiUrl}/report/generate-dynamic`,
-        payload,
-        { responseType: "blob" }
+      // Wrap the API call with retry logic
+      const res = await retryAsync(
+        () => axios.post(
+          `${rptApiUrl}/report/generate-dynamic`,
+          payload,
+          { responseType: "blob" }
+        ),
+        3, // max 3 attempts
+        1000 // initial delay 1 second
       );
-      
+
       // Extract file path from response headers (try different case variations)
-      const filePath = res.headers['x-generated-file-path'] || 
-                      res.headers['X-Generated-File-Path'] || 
-                      res.headers['X-GENERATED-FILE-PATH'] || null;
+      const filePath = res.headers['x-generated-file-path'] ||
+        res.headers['X-Generated-File-Path'] ||
+        res.headers['X-GENERATED-FILE-PATH'] || null;
       console.log('Generated file path:', filePath);
       console.log('All response headers:', res.headers);
-      
+
       const fileName = buildReportFileName({
         templateName: template?.templateName,
         projectName: projectName || (projectId ? `Project ${projectId}` : undefined),
@@ -1288,17 +1365,17 @@ const projectId = useStore((state) => state.projectId);
       });
 
       message.success({ content: "Report generated.", key: messageKey });
-      
+
       // Save the generated envelope lot report to database
       try {
         const reportData = {
           projectId: Number(projectId),
-          templateId: Number(templateId),
+          templateId,
           templateName: template?.templateName || `Template ${templateId}`,
           envLotNumbers: envLotNumbers.sort((a, b) => a - b).join(','),
-          fileName: fileName,
-          generatedBy: 'Current User',
-          filePath: filePath
+          fileName,
+          generatedBy: 'Current User', // You can replace this with actual user info
+          filePath: filePath // Include the server file path
         };
 
         console.log('Saving report to database:', reportData);
@@ -1320,8 +1397,14 @@ const projectId = useStore((state) => state.projectId);
           url,
           dbId: savedReport.id
         };
-        
-        setEnvLotReports(prev => [newReport, ...prev]); // Add new report to history
+
+        setEnvLotReports(prev => {
+          // Remove any existing report with the same template and envLotKey combination
+          const filtered = prev.filter(report =>
+            !(report.templateId === templateId && report.envLotKey === reportData.envLotNumbers)
+          );
+          return [newReport, ...filtered]; // Add new report at the beginning
+        });
 
         // Automatically expand the reports section for this template
         setExpandedReportsTemplates(prev => {
@@ -1330,14 +1413,11 @@ const projectId = useStore((state) => state.projectId);
           return newSet;
         });
 
-        // Refresh templates to get updated ReportStatus from DB
-        fetchTemplates();
-
       } catch (saveErr) {
         console.error("Failed to save report to database", saveErr);
         console.error("Error details:", saveErr.response?.data);
         message.warning("Report generated but failed to save to database. It will be lost on refresh.");
-        
+
         // Still show the report locally even if database save fails
         const reportKey = envLotNumbers.sort((a, b) => a - b).join(',');
         const newReport = {
@@ -1352,8 +1432,13 @@ const projectId = useStore((state) => state.projectId);
           filePath: filePath, // Include the server file path even if DB save fails
           url,
         };
-        
-        setEnvLotReports(prev => [newReport, ...prev]);
+
+        setEnvLotReports(prev => {
+          const filtered = prev.filter(report =>
+            !(report.templateId === templateId && report.envLotKey === reportKey)
+          );
+          return [newReport, ...filtered];
+        });
 
         // Automatically expand the reports section for this template even if DB save fails
         setExpandedReportsTemplates(prev => {
@@ -1365,7 +1450,29 @@ const projectId = useStore((state) => state.projectId);
     } catch (err) {
       console.error("Generate report failed", err);
       const msg = await getErrorMessageAsync(err, "Failed to generate report.");
+      const errorDetails = getErrorDetails(err);
+
+      // If we created a temporary envelope lot assignment, revert it on failure
+      if (assignedCatchNos.length > 0) {
+        await revertEnvLotByCatchNos(assignedCatchNos);
+      }
+
+      // Show error with details and retry option
       message.error({ content: msg, key: messageKey, duration: 6 });
+
+      // Show error details modal if available
+      if (errorDetails) {
+        setErrorDetailsModal({
+          visible: true,
+          error: errorDetails,
+          retryFn: () => {
+            setErrorDetailsModal({ visible: false, error: null, retryFn: null, templateId: null });
+            // Retry the report generation
+            handleGenerateTemplate(template);
+          },
+          templateId
+        });
+      }
     } finally {
       setGeneratingTemplates((prev) => ({ ...prev, [templateId]: false }));
     }
@@ -1393,7 +1500,7 @@ const projectId = useStore((state) => state.projectId);
       // Try to download from server file path if available
       try {
         message.loading({ content: "Downloading report from server...", key: `download-${report.id}` });
-        
+
         // Create a download link to the server file
         const serverFileUrl = `${import.meta.env.VITE_API_BASE_URL}/files/${encodeURIComponent(report.filePath)}`;
         const link = document.createElement("a");
@@ -1403,7 +1510,7 @@ const projectId = useStore((state) => state.projectId);
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
-        
+
         message.success({ content: "Download started.", key: `download-${report.id}` });
       } catch (err) {
         console.error("Failed to download from server path", err);
@@ -1425,10 +1532,10 @@ const projectId = useStore((state) => state.projectId);
 
     try {
       message.loading({ content: "Downloading report...", key: `download-${report.id}` });
-      
+
       // Reconstruct the lot numbers for the API call
       const lotNos = report.envLotNumbers.join(',');
-      
+
       const res = await axios.get(`${rptApiUrl}/report/generated-download`, {
         params: {
           templateId: report.templateId,
@@ -1447,13 +1554,13 @@ const projectId = useStore((state) => state.projectId);
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
-      
+
       message.success({ content: "Download started.", key: `download-${report.id}` });
     } catch (err) {
       console.error("Failed to download report", err);
-      message.error({ 
-        content: "Failed to download report. Please regenerate it.", 
-        key: `download-${report.id}` 
+      message.error({
+        content: "Failed to download report. Please regenerate it.",
+        key: `download-${report.id}`
       });
     }
   };
@@ -1479,7 +1586,7 @@ const projectId = useStore((state) => state.projectId);
         }
         return prev.filter(r => r.id !== reportId);
       });
-      
+
       message.success("Report deleted successfully.");
     } catch (err) {
       console.error("Failed to delete report", err);
@@ -1837,10 +1944,14 @@ const projectId = useStore((state) => state.projectId);
         lotNumber: lotNo,
       };
 
-      await axios.post(
-        `${rptApiUrl}/report/generate-dynamic`,
-        payload,
-        { responseType: "blob" }
+      await retryAsync(
+        () => axios.post(
+          `${rptApiUrl}/report/generate-dynamic`,
+          payload,
+          { responseType: "blob" }
+        ),
+        3, // max 3 attempts
+        1000 // initial delay 1 second
       );
 
       // Update status
@@ -1872,11 +1983,23 @@ const projectId = useStore((state) => state.projectId);
     } catch (err) {
       console.error("Failed to generate lot template", err);
       const errorMsg = await getErrorMessageAsync(err, "Failed to generate template");
+      const errorDetails = getErrorDetails(err);
       message.error({
         content: errorMsg,
         key: messageKey,
         duration: 6,
       });
+       if (errorDetails) {
+        setErrorDetailsModal({
+          visible: true,
+          error: errorDetails,
+          retryFn: () => {
+            setErrorDetailsModal({ visible: false, error: null, retryFn: null, templateId: null });
+            handleGenerateLotTemplate(lotNo, template);
+          },
+          templateId
+        });
+      }
     } finally {
       setGeneratingLotTemplates(prev => ({ ...prev, [statusKey]: false }));
     }
@@ -2204,13 +2327,13 @@ const projectId = useStore((state) => state.projectId);
       extra: {
         value: extraConfigData && extraConfigData.length > 0
           ? extraConfigData.map(ec => {
-              const type = ec.extraType ?? ec.ExtraType;
-              const mode = ec.mode ?? ec.Mode;
-              const nodalValue = ec.nodalValue ?? ec.NodalValue;
-              const typeName = type === 1 ? "Nodal" : type === 2 ? "University" : "Office";
-              const isPerNodal = nodalValue ? " (Different per Nodal)" : " (Unified)";
-              return `${typeName}: ${mode}${isPerNodal}`;
-            })
+            const type = ec.extraType ?? ec.ExtraType;
+            const mode = ec.mode ?? ec.Mode;
+            const nodalValue = ec.nodalValue ?? ec.NodalValue;
+            const typeName = type === 1 ? "Nodal" : type === 2 ? "University" : "Office";
+            const isPerNodal = nodalValue ? " (Different per Nodal)" : " (Unified)";
+            return `${typeName}: ${mode}${isPerNodal}`;
+          })
           : ["Not configured"],
       },
       envelopebreaking: {
@@ -2413,7 +2536,7 @@ const projectId = useStore((state) => state.projectId);
             fileUrl: null,
           });
           completedSteps.add(step.key);
-          
+
           // ✅ Reset hasDeactivatedCatches flag when envelope breaking or box breaking completes
           if ((step.key === "envelopebreaking" || step.key === "box") && hasDeactivatedCatches) {
             setHasDeactivatedCatches(false);
@@ -2461,7 +2584,7 @@ const projectId = useStore((state) => state.projectId);
 
         if (lots.length > 0) {
           const boxTemplates = getTemplatesForModuleKey("box");
-          
+
           lots.forEach((lot) => {
             boxTemplates.forEach((template) => {
               const templateId = resolveTemplateId(template);
@@ -2496,10 +2619,10 @@ const projectId = useStore((state) => state.projectId);
             setAvailableLots(lots);
           }
         }
-        
+
         // Mark all lot-template combinations as stale
         setStaleLotIds(staleKeys);
-        
+
         // Reset lot template status
         setLotTemplateStatus((prev) => {
           const next = { ...prev };
@@ -2739,8 +2862,8 @@ const projectId = useStore((state) => state.projectId);
             return <Text type="secondary">—</Text>;
           }
           return (
-            <Button 
-              type="link" 
+            <Button
+              type="link"
               onClick={() => openLotWisePanel("box")}
               style={{ padding: 0 }}
             >
@@ -3168,23 +3291,23 @@ const projectId = useStore((state) => state.projectId);
           ) : (
             <Badge status="default" text="Idle" color="gray" />
           )}
-          <Tooltip 
+          <Tooltip
             title={
-              (!hasPendingPipelineChanges && !configChanged) 
-                ? "No new data found for processing. All data is already processed." 
-                : (selectedModules.length === 0 
-                    ? "Please select at least one module" 
-                    : (!selectedModules.some(m => {
-                        const keyMap = {
-                          duplicate: "duplicatePending",
-                          enhancement: "enhancementPending",
-                          extra: "extraPending",
-                          envelopebreaking: "envelopePending",
-                          box: "boxPending"
-                        };
-                        const flag = keyMap[m];
-                        return !flag || (pipelineStepStatus && pipelineStepStatus[flag]);
-                      }) && !configChanged)
+              (!hasPendingPipelineChanges && !configChanged)
+                ? "No new data found for processing. All data is already processed."
+                : (selectedModules.length === 0
+                  ? "Please select at least one module"
+                  : (!selectedModules.some(m => {
+                    const keyMap = {
+                      duplicate: "duplicatePending",
+                      enhancement: "enhancementPending",
+                      extra: "extraPending",
+                      envelopebreaking: "envelopePending",
+                      box: "boxPending"
+                    };
+                    const flag = keyMap[m];
+                    return !flag || (pipelineStepStatus && pipelineStepStatus[flag]);
+                  }) && !configChanged)
                     ? "Selected modules have no pending data to process."
                     : "")
             }
@@ -3194,9 +3317,9 @@ const projectId = useStore((state) => state.projectId);
                 type="primary"
                 onClick={handleAudit}
                 disabled={
-                  !projectId || 
-                  isProcessing || 
-                  selectedModules.length === 0 || 
+                  !projectId ||
+                  isProcessing ||
+                  selectedModules.length === 0 ||
                   (!selectedModules.some(m => {
                     const keyMap = {
                       duplicate: "duplicatePending",
@@ -3265,7 +3388,7 @@ const projectId = useStore((state) => state.projectId);
                   const isPending = (pendingFlag && pipelineStepStatus && pipelineStepStatus[pendingFlag]) ||
                     ((record.key === "envelopebreaking" || record.key === "box") && record.status === "completed" && hasDeactivatedCatches);
                   const isOutdated = isPending && (record.status === "completed" || record.report || (record.key === "box" && record.completedLots > 0));
-                  
+
                   if (isOutdated) {
                     return {
                       style: { background: "#fffbe6" }
@@ -3302,7 +3425,90 @@ const projectId = useStore((state) => state.projectId);
             handleDownloadAllTemplates={handleDownloadAllTemplates}
             onClose={closeTemplatePanel}
           />
+          <Modal
+            title="Report Generation Error"
+            open={errorDetailsModal.visible}
+            onCancel={() => setErrorDetailsModal({ visible: false, error: null, retryFn: null, templateId: null })}
+            width={700}
+            footer={[
+              <Button key="close" onClick={() => setErrorDetailsModal({ visible: false, error: null, retryFn: null, templateId: null })}>
+                Close
+              </Button>,
+              errorDetailsModal.retryFn && (
+                <Button key="retry" type="primary" onClick={errorDetailsModal.retryFn}>
+                  Retry Report Generation
+                </Button>
+              )
+            ]}
+          >
+            {errorDetailsModal.error && (
+              <div>
+                <Alert
+                  message="An error occurred while generating the report"
+                  description="The error details are shown below. You can retry the generation or contact support if the problem persists."
+                  type="error"
+                  showIcon
+                  style={{ marginBottom: 16 }}
+                />
 
+                <div style={{ marginBottom: 16 }}>
+                  <Text strong style={{ fontSize: "16px" }}>Error Details:</Text>
+                  <div style={{
+                    backgroundColor: "#f5f5f5",
+                    padding: "12px",
+                    borderRadius: "4px",
+                    marginTop: "8px",
+                    fontFamily: "monospace",
+                    fontSize: "12px",
+                    maxHeight: "400px",
+                    overflowY: "auto",
+                    wordBreak: "break-word"
+                  }}>
+                    <p><strong>Type:</strong> {errorDetailsModal.error.type || 'Unknown'}</p>
+                    <p><strong>Message:</strong> {errorDetailsModal.error.message || 'No message'}</p>
+                    {errorDetailsModal.error.innerMessage && (
+                      <p><strong>Inner Message:</strong> {errorDetailsModal.error.innerMessage}</p>
+                    )}
+                    {errorDetailsModal.error.templateId && (
+                      <p><strong>Template ID:</strong> {errorDetailsModal.error.templateId}</p>
+                    )}
+                    {errorDetailsModal.error.projectId && (
+                      <p><strong>Project ID:</strong> {errorDetailsModal.error.projectId}</p>
+                    )}
+                    {errorDetailsModal.error.lotNos && (
+                      <p><strong>Lot Numbers:</strong> {errorDetailsModal.error.lotNos}</p>
+                    )}
+                    {errorDetailsModal.error.timestamp && (
+                      <p><strong>Timestamp:</strong> {errorDetailsModal.error.timestamp}</p>
+                    )}
+                    {errorDetailsModal.error.stackTrace && (
+                      <>
+                        <p><strong>Stack Trace:</strong></p>
+                        <pre style={{ margin: "8px 0", padding: "8px", backgroundColor: "#fff", borderLeft: "2px solid #f5222d" }}>
+                          {errorDetailsModal.error.stackTrace}
+                        </pre>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                <Alert
+                  message="Retry Tips"
+                  description={
+                    <ul style={{ margin: 0, paddingLeft: "20px" }}>
+                      <li>Check if all required templates and data are available</li>
+                      <li>Verify database connectivity</li>
+                      <li>Try generating with fewer lots or simpler parameters</li>
+                      <li>Contact system administrator if problem persists</li>
+                    </ul>
+                  }
+                  type="info"
+                  showIcon
+                  style={{ marginTop: 16 }}
+                />
+              </div>
+            )}
+          </Modal>
           <LotWisePanel
             open={showLotWisePanel}
             projectId={projectId}
@@ -3328,6 +3534,12 @@ const projectId = useStore((state) => state.projectId);
             handleDownloadAllLots={handleDownloadAllLots}
             bulkGeneratingLots={bulkGeneratingLots}
             bulkDownloadingLots={bulkDownloadingLots}
+            staleTemplateIds={staleTemplateIds}
+            generatingTemplates={generatingTemplates}
+            templateReportStatus={templateReportStatus}
+            handleGenerateTemplate={handleGenerateTemplate}
+            handleDownloadTemplate={handleDownloadTemplate}
+            isQuantitySheetTemplate={isQuantitySheetTemplate}
             onClose={closeLotWisePanel}
           />
         </div>
