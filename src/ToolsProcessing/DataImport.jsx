@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import '@ant-design/v5-patch-for-react-19'
-import { Row, Col, Card, Select, Upload, Button, Typography, Space, Table, Tabs, Checkbox, Input, Modal, Radio } from 'antd';
+import { Row, Col, Card, Select, Upload, Button, Typography, Space, Table, Tabs, Checkbox, Input, Modal, Radio, DatePicker } from 'antd';
+import dayjs from 'dayjs';
 import { MessageService } from "../services/MessageService";
 import { useToast } from '../hooks/useToast';
 import { CheckCircleOutlined, UploadOutlined, ToolOutlined, SearchOutlined, PlusOutlined, EditOutlined,CloseCircleOutlined } from '@ant-design/icons';
@@ -1251,6 +1252,12 @@ const DataImport = () => {
       ),
   });
 
+  const parseDateValue = (val) => {
+    if (!val) return null;
+    const d = dayjs(val, "DD-MM-YYYY");
+    return d.isValid() ? d : null;
+  };
+
   // columnsFromBackend = response.columns
   const enhancedColumns = [
     ...columns.map(col => ({
@@ -1264,6 +1271,17 @@ const DataImport = () => {
       sortOrder: uploadedTableSorter.field === col ? uploadedTableSorter.order : null,
       render: (text, record) => {
         if (editingRowId === record.id) {
+          if (col === 'ExamDate') {
+            return (
+              <DatePicker
+                size="small"
+                format="DD-MM-YYYY"
+                value={parseDateValue(editFormData[col] ?? text)}
+                onChange={(date) => handleFieldChange(col, date ? date.format("DD-MM-YYYY") : "")}
+                style={{ width: '100%' }}
+              />
+            );
+          }
           return (
             <Input
               size="small"
@@ -1659,6 +1677,7 @@ const handleSaveEdit = async () => {
     setEditFormData({});
     setOriginalEditFormData({});
     await fetchExistingData(projectId);
+    await rerunDuplicateTool();
   } catch (err) {
     console.error("Error updating data:", err);
     const errorMsg = err?.response?.data?.message || err?.response?.data || err?.message || "Failed to update data";
@@ -1871,7 +1890,7 @@ const handleFieldChange = (fieldName, value) => {
             <Col xs={24} md={12}>
               <div style={{ padding: 12, border: "1px solid #d9d9d9", borderRadius: 10, background: "#fff" }}>
                 <Space direction="vertical" size={10} style={{ width: "100%" }}>
-                  <div>
+                  {/* <div>
                     <Text strong>Changed NR Data</Text>
                     <Text type="secondary" style={{ display: "block", fontSize: 12, lineHeight: 1.3}}>
                     Enable this when the file is a Changed NRData.
@@ -1882,7 +1901,7 @@ const handleFieldChange = (fieldName, value) => {
                     onChange={(e) => setIsCorrectedNrdataReport(e.target.checked)}
                   >
                     Changed NR Data
-                  </Checkbox>
+                  </Checkbox> */}
                   
                 </Space>
 
@@ -2227,20 +2246,39 @@ const handleFieldChange = (fieldName, value) => {
                     {field.name}
                     {isRequired && <span style={{ color: "#ff4d4f", marginLeft: 2 }}>*</span>}
                   </Text>
-                  <Input
-                    size="small"
-                    placeholder={field.name}
-                    value={newRow.fields[field.name] || ""}
-                    onChange={(e) => {
-                      setNewRow((prev) => ({
-                        ...prev,
-                        fields: {
-                          ...prev.fields,
-                          [field.name]: e.target.value,
-                        },
-                      }));
-                    }}
-                  />
+                  {field.name === 'ExamDate' ? (
+                    <DatePicker
+                      size="small"
+                      format="DD-MM-YYYY"
+                      placeholder={field.name}
+                      value={parseDateValue(newRow.fields[field.name])}
+                      style={{ width: '100%' }}
+                      onChange={(date) => {
+                        setNewRow((prev) => ({
+                          ...prev,
+                          fields: {
+                            ...prev.fields,
+                            [field.name]: date ? date.format("DD-MM-YYYY") : "",
+                          },
+                        }));
+                      }}
+                    />
+                  ) : (
+                    <Input
+                      size="small"
+                      placeholder={field.name}
+                      value={newRow.fields[field.name] || ""}
+                      onChange={(e) => {
+                        setNewRow((prev) => ({
+                          ...prev,
+                          fields: {
+                            ...prev.fields,
+                            [field.name]: e.target.value,
+                          },
+                        }));
+                      }}
+                    />
+                  )}
                 </Col>
               );
             })}
@@ -2277,18 +2315,35 @@ const handleFieldChange = (fieldName, value) => {
                   />
                 </Col>
                 <Col span={15}>
-                  <Input
-                    size="small"
-                    placeholder="Value"
-                    value={field.value}
-                    onChange={(e) => {
-                      setNewRow((prev) => {
-                        const updated = [...prev.extraFields];
-                        updated[index].value = e.target.value;
-                        return { ...prev, extraFields: updated };
-                      });
-                    }}
-                  />
+                  {field.key === 'ExamDate' ? (
+                    <DatePicker
+                      size="small"
+                      format="DD-MM-YYYY"
+                      placeholder="Value"
+                      value={parseDateValue(field.value)}
+                      style={{ width: "100%" }}
+                      onChange={(date) => {
+                        setNewRow((prev) => {
+                          const updated = [...prev.extraFields];
+                          updated[index].value = date ? date.format("DD-MM-YYYY") : "";
+                          return { ...prev, extraFields: updated };
+                        });
+                      }}
+                    />
+                  ) : (
+                    <Input
+                      size="small"
+                      placeholder="Value"
+                      value={field.value}
+                      onChange={(e) => {
+                        setNewRow((prev) => {
+                          const updated = [...prev.extraFields];
+                          updated[index].value = e.target.value;
+                          return { ...prev, extraFields: updated };
+                        });
+                      }}
+                    />
+                  )}
                 </Col>
                 <Col span={2}>
                   <Button
