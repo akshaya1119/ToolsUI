@@ -17,6 +17,7 @@ import {
   Tabs,
   Tooltip,
   Divider,
+  Select,
 } from "antd";
 import { HistoryOutlined, ExclamationCircleOutlined } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
@@ -24,8 +25,15 @@ import { motion } from "framer-motion";
 import axios from "axios";
 import API from "../hooks/api";
 import useStore from "../stores/ProjectData";
-import { buildReportFileName, getErrorMessageAsync, parseMappingJson } from "../utils/rptTemplateUtils";
+import { buildReportFileName, getErrorMessageAsync, parseMappingJson, getErrorDetails,retryAsync } from "../utils/rptTemplateUtils";
 import EnvLotReportsManager from "./EnvLotReportsManager";
+import DependencyModal from "./components/DependencyModal";
+import StaticVariablesModal from "./components/StaticVariablesModal";
+import LotSelectionModal from "./components/LotSelectionModal";
+import EnvLotSelectionModal from "./components/EnvLotSelectionModal";
+import ExistingReportModal from "./components/ExistingReportModal";
+import TemplatesPanel from "./components/TemplatesPanel";
+import LotWisePanel from "./components/LotWisePanel";
 
 const { Text } = Typography;
 
@@ -33,13 +41,13 @@ const url3 = import.meta.env.VITE_API_FILE_URL;
 
 const ProcessingPipeline = () => {
   const navigate = useNavigate();
-   const isConfigured = useStore((state) => state.isConfigured);
+  const isConfigured = useStore((state) => state.isConfigured);
   const isLoadingData = useStore((state) => state.isLoadingData);
   const nrDataCount = useStore((state) => state.nrDataCount);
   const hasDeactivatedCatches = useStore((state) => state.hasDeactivatedCatches);
   const setHasDeactivatedCatches = useStore((state) => state.setHasDeactivatedCatches);
-const projectId = useStore((state) => state.projectId);
-   useEffect(() => {
+  const projectId = useStore((state) => state.projectId);
+  useEffect(() => {
     if (projectId && !isLoadingData) {
       if (!isConfigured) {
         message.warning("Please complete project configuration first");
@@ -104,9 +112,30 @@ const projectId = useStore((state) => state.projectId);
     resolve: null
   });
   const [lotReportStatus, setLotReportStatus] = useState({});
-   const [envLotReports, setEnvLotReports] = useState([]); // Store generated envelope lot reports
-   const [reportsLoading, setReportsLoading] = useState(false);
-   const [expandedReportsTemplates, setExpandedReportsTemplates] = useState(new Set()); // Track which templates have expanded reports
+  const [envLotReports, setEnvLotReports] = useState([]); // Store generated envelope lot reports
+  const [reportsLoading, setReportsLoading] = useState(false);
+  const [reportVersions, setReportVersions] = useState({});
+
+  const loadReportVersions = async () => {
+    if (!projectId) return;
+    try {
+      const res = await API.get(`/EnvelopeBreakages/Reports/AllVersions?projectId=${projectId}`);
+      setReportVersions(res.data || {});
+    } catch (err) {
+      console.error("Failed to load report versions", err);
+    }
+  };
+
+  const getBoxVersionsForLot = (lotNo) => {
+    const allBoxVersions = reportVersions["box"] || [];
+    return allBoxVersions.filter(v =>
+      String(v.lotNo) === String(lotNo) ||
+      v.fileName.includes(`BoxBreaking_${lotNo}_v`) ||
+      v.fileName === `BoxBreaking_${lotNo}.xlsx`
+    );
+  };
+
+  const [expandedReportsTemplates, setExpandedReportsTemplates] = useState(new Set()); // Track which templates have expanded reports
   const [isDetailPanelOpen, setIsDetailPanelOpen] = useState(false);
   const [selectedModuleForDetails, setSelectedModuleForDetails] = useState(null);
   const [selectedItems, setSelectedItems] = useState({});
@@ -119,7 +148,8 @@ const projectId = useStore((state) => state.projectId);
   const storedTypeId = localStorage.getItem("selectedType");
   const groupId = storedGroupId ? Number(storedGroupId) : null;
   const typeId = storedTypeId ? Number(storedTypeId) : null;
-
+  const [envLotSearch, setEnvLotSearch] = useState("");
+  const [errorDetailsModal, setErrorDetailsModal] = useState({ visible: false, error: null, retryFn: null, templateId: null });
   const currentStep = useMemo(
     () =>
       steps.findIndex((s) => s.status === "in-progress") + 1 ||
@@ -146,13 +176,13 @@ const projectId = useStore((state) => state.projectId);
       envelopebreaking: { flag: "envelopePending", name: "Envelope Breaking" },
       box: { flag: "boxPending", name: "Box Breaking" }
     };
-    
+
     return Object.entries(keyMap)
       .filter(([key, config]) => {
         const hasPending = pipelineStepStatus[config.flag] ||
           ((key === "envelopebreaking" || key === "box") && hasDeactivatedCatches);
         if (!hasPending) return false;
-        
+
         const step = steps.find(s => s.key === key);
         const hasExistingReport = step && (step.status === "completed" || step.fileUrl || (key === "box" && step.completedLots > 0));
         return hasExistingReport;
@@ -175,6 +205,7 @@ const projectId = useStore((state) => state.projectId);
   };
 
   const checkReportExistence = async (projectId) => {
+    loadReportVersions();
     const fileNames = {
       duplicate: "DuplicateTool.xlsx",
       extra: "ExtrasCalculation.xlsx",
@@ -238,7 +269,7 @@ const projectId = useStore((state) => state.projectId);
                 const totalLotsCount = lots.length;
                 const exists = completedLotsCount > 0;
                 results[fileName] = exists; // Boolean for overall module status
-                
+
                 const allCompleted = completedLotsCount === totalLotsCount;
                 console.log("Updating step", key, allCompleted && exists ? "to completed" : "with partial/pending status");
                 updateStepStatus(key, {
@@ -339,26 +370,26 @@ const projectId = useStore((state) => state.projectId);
       console.log('No projectId, skipping load');
       return;
     }
-    
+
     setReportsLoading(true);
     try {
       console.log('Loading envelope lot reports for project:', projectId);
-      
+
       // First test if the API is accessible
       try {
         await API.get('/EnvelopeLotReports/Test');
       } catch (err) {
         console.warn('EnvelopeLotReports API test failed, but continuing...');
       }
-      
+
       const response = await API.get(`/EnvelopeLotReports/ByProject/${projectId}`);
       const reports = response.data || [];
-      
+
       if (reports.length === 0) {
         setEnvLotReports([]);
         return;
       }
-      
+
       // Transform API data to match our component format
       const transformedReports = reports.map((report) => ({
         id: `${report.templateId}_${report.envLotNumbers}_${report.id}`,
@@ -373,7 +404,7 @@ const projectId = useStore((state) => state.projectId);
         url: null, // Will be set when downloading
         dbId: report.id // Store the database ID for deletion
       }));
-      
+
       setEnvLotReports(transformedReports);
     } catch (err) {
       console.error("Failed to load envelope lot reports from API", err);
@@ -612,11 +643,11 @@ const projectId = useStore((state) => state.projectId);
     // Build query string with lot numbers
     const params = new URLSearchParams();
     params.append('ProjectId', projectId);
-    
+
     if (lotNumbers && lotNumbers.length > 0) {
       lotNumbers.forEach(lot => params.append('LotNo', lot));
     }
-    
+
     const res = await API.post(`/BoxBreakingProcessing/ProcessBoxBreaking?${params.toString()}`);
     message.success(res?.data?.message || "Box breaking completed");
   };
@@ -683,41 +714,86 @@ const projectId = useStore((state) => state.projectId);
     }
   };
 
-  const fetchEnvelopeLotsForSelection = async (projectIdParam) => {
+  const fetchMissingEnvLotCatchesForSelection = async (projectIdParam) => {
     try {
-      // Fetch all envelope lot numbers for the project
-      const res = await API.get(`/NRDataLots/GetByProject/${projectIdParam}`);
-      const allData = res.data || [];
-      
-      // Get unique envelope lot numbers across all lots
-      const envLotSet = new Set();
-      allData.forEach(item => {
-        const itemEnvLotNo = item.envLotNo ?? item.EnvLotNo ?? item.envLotno ?? item.EnvLotno;
-        
-        if (itemEnvLotNo) {
-          envLotSet.add(itemEnvLotNo);
-        }
-      });
-      
-      // Convert to array and sort
-      const envLots = Array.from(envLotSet)
-        .map(envLotNo => ({ envLotNo }))
-        .sort((a, b) => a.envLotNo - b.envLotNo);
-      console.log(envLots)
-      return envLots;
+      const res = await API.get(`/NRDataLots/GetMissingEnvLotCatches/${projectIdParam}`);
+      const rawData = res.data || [];
+      return rawData.map(item => ({
+        catchNo: (item.catchNo ?? item.CatchNo ?? "").toString().trim(),
+        count: item.count ?? item.Count ?? 0,
+      })).filter(item => item.catchNo);
     } catch (err) {
-      console.error("Failed to fetch envelope lots for selection", err);
-      message.error("Failed to load envelope lots");
+      console.error("Failed to fetch missing EnvLot catches for selection", err);
+      message.error("Failed to load catches missing envelope lot assignments.");
       return [];
     }
   };
 
+  const assignEnvLotByCatchNos = async (catchNos) => {
+    try {
+      const normalizedCatchNos = Array.from(
+        new Set(
+          (catchNos || [])
+            .map((c) => (c ?? "").toString().trim())
+            .filter((c) => c)
+        )
+      );
+
+      if (normalizedCatchNos.length === 0) {
+        return null;
+      }
+
+      const res = await API.post("/NRDataLots/AssignEnvLotByCatches", {
+        projectId: Number(projectId),
+        catchNos: normalizedCatchNos,
+      });
+      return res.data;
+    } catch (err) {
+      console.error("Failed to assign EnvLot by catches", err);
+      const errorMessage = err?.response?.data?.message || "Failed to assign envelope lot.";
+      message.error(errorMessage);
+      return null;
+    }
+  };
+
+  const revertEnvLotByCatchNos = async (catchNos) => {
+    try {
+      const normalizedCatchNos = Array.from(
+        new Set(
+          (catchNos || [])
+            .map((c) => (c ?? "").toString().trim())
+            .filter((c) => c)
+        )
+      );
+
+      if (normalizedCatchNos.length === 0) {
+        return false;
+      }
+
+      const res = await API.post("/NRDataLots/UnassignEnvLotByCatches", {
+        projectId: Number(projectId),
+        catchNos: normalizedCatchNos,
+      });
+
+      if (res?.status === 200) {
+        message.warning("Report generation failed. Env lot assignment was reverted.");
+        return true;
+      }
+
+      return false;
+    } catch (err) {
+      console.error("Failed to revert EnvLot assignment", err);
+      return false;
+    }
+  };
+
   const showEnvLotSelectionModal = (envLots) => {
+    setEnvLotSearch("");
     return new Promise((resolve) => {
       setEnvLotSelectionModal({
         visible: true,
         availableEnvLots: envLots,
-        selectedEnvLots: envLots.map(lot => lot.envLotNo),
+        selectedEnvLots: [],
         loading: false,
         resolve
       });
@@ -726,36 +802,38 @@ const projectId = useStore((state) => state.projectId);
 
   const handleEnvLotSelectionConfirm = () => {
     const { selectedEnvLots, resolve } = envLotSelectionModal;
-    
+
     if (selectedEnvLots.length === 0) {
-      message.warning("Please select at least one envelope lot to process");
+      message.warning("Please select at least one catch to process");
       return;
     }
 
-    setEnvLotSelectionModal({ 
-      visible: false, 
-      availableEnvLots: [], 
-      selectedEnvLots: [], 
+    setEnvLotSelectionModal({
+      visible: false,
+      availableEnvLots: [],
+      selectedEnvLots: [],
       loading: false,
-      resolve: null 
+      resolve: null
     });
-    
+    setEnvLotSearch("")
     if (resolve) {
       resolve(selectedEnvLots);
     }
+    ;
   };
 
   const handleEnvLotSelectionCancel = () => {
     const { resolve } = envLotSelectionModal;
-    
-    setEnvLotSelectionModal({ 
-      visible: false, 
-      availableEnvLots: [], 
-      selectedEnvLots: [], 
+
+    setEnvLotSelectionModal({
+      visible: false,
+      availableEnvLots: [],
+      selectedEnvLots: [],
       loading: false,
-      resolve: null 
+      resolve: null
     });
-    
+    setEnvLotSearch("")
+
     if (resolve) {
       resolve(null);
     }
@@ -765,7 +843,7 @@ const projectId = useStore((state) => state.projectId);
     if (checked) {
       setEnvLotSelectionModal(prev => ({
         ...prev,
-        selectedEnvLots: prev.availableEnvLots.map(lot => lot.envLotNo)
+        selectedEnvLots: prev.availableEnvLots.map(lot => lot.catchNo)
       }));
     } else {
       setEnvLotSelectionModal(prev => ({
@@ -775,17 +853,23 @@ const projectId = useStore((state) => state.projectId);
     }
   };
 
-  const handleEnvLotToggle = (envLotNo, checked) => {
+  const handleEnvLotToggle = (catchNo, checked) => {
     setEnvLotSelectionModal(prev => {
       const newSelectedEnvLots = checked
-        ? [...prev.selectedEnvLots, envLotNo]
-        : prev.selectedEnvLots.filter(l => l !== envLotNo);
-      
+        ? [...prev.selectedEnvLots, catchNo]
+        : prev.selectedEnvLots.filter(l => l !== catchNo);
+
       return {
         ...prev,
         selectedEnvLots: newSelectedEnvLots
       };
     });
+  };
+
+  const isQuantitySheetTemplate = (templateName) => {
+    if (!templateName) return false;
+    const n = templateName.toLowerCase().replace(/\s/g, "");
+    return n.includes("quantitysheet") || n.includes("qtysheet");
   };
 
   const showExistingReportModal = (report) => {
@@ -801,7 +885,7 @@ const projectId = useStore((state) => state.projectId);
   const handleExistingReportDownload = async () => {
     const { report, resolve } = existingReportModal;
     setExistingReportModal({ visible: false, report: null, resolve: null });
-    
+
     // Automatically expand the reports section for this template when downloading
     if (report?.templateId) {
       setExpandedReportsTemplates(prev => {
@@ -810,7 +894,7 @@ const projectId = useStore((state) => state.projectId);
         return newSet;
       });
     }
-    
+
     if (resolve) {
       resolve('download');
     }
@@ -1028,6 +1112,8 @@ const projectId = useStore((state) => state.projectId);
     return map;
   }, [allModules]);
 
+
+
   const templatesByModuleId = useMemo(() => {
     const map = new Map();
     (templateOptions || []).forEach((template) => {
@@ -1160,28 +1246,44 @@ const projectId = useStore((state) => state.projectId);
       staticVariables = userValues;
     }
 
-    // Fetch available envelope lots and show selection modal
-    console.log("Checking available envelope lots for project:", projectId);
-    const envLots = await fetchEnvelopeLotsForSelection(projectId);
-    console.log("Found envelope lots:", envLots);
     let envLotNumbers = [];
-    
-    if (envLots.length > 0) {
-      console.log("Opening lot selection modal for", envLots.length, "lots");
-      const selectedEnvLots = await showEnvLotSelectionModal(envLots);
-      if (selectedEnvLots === null) {
-        return; // user cancelled
+
+    const isQS = isQuantitySheetTemplate(resolveTemplateName(template));
+
+    // Check if template depends on envelope breaking module
+    const envelopeBreakingModuleId = moduleKeyToIdMap["envelopebreaking"];
+    const templateModuleIds = normalizeModuleIds(template?.moduleIds ?? template?.ModuleIds);
+    const isEnvelopeDependent = envelopeBreakingModuleId && templateModuleIds.includes(envelopeBreakingModuleId);
+
+    // Only show env lot modal for reports dependent on envelope breakages (excluding QS)
+    let assignedCatchNos = [];
+    if (!isQS && isEnvelopeDependent) {
+      const missingCatchItems = await fetchMissingEnvLotCatchesForSelection(projectId);
+      if (missingCatchItems.length > 0) {
+        const selectedCatchNos = await showEnvLotSelectionModal(missingCatchItems);
+        if (selectedCatchNos === null) {
+          return; // user cancelled
+        }
+        if (selectedCatchNos.length > 0) {
+          const assignResult = await assignEnvLotByCatchNos(selectedCatchNos);
+          if (!assignResult || !assignResult.assignedEnvLotNo) {
+            return;
+          }
+
+          envLotNumbers = [assignResult.assignedEnvLotNo];
+          assignedCatchNos = selectedCatchNos;
+        }
       }
-      envLotNumbers = selectedEnvLots;
     }
 
     // Check if report already exists for this template and envelope lots combination
-    if (envLotNumbers.length > 0) {
-      const envLotKey = envLotNumbers.sort((a, b) => a - b).join(',');
-      const existingReport = envLotReports.find(report => 
-        report.templateId === templateId && report.envLotKey === envLotKey
+    const envLotKey = envLotNumbers.length > 0 ? envLotNumbers.sort((a, b) => a - b).join(',') : (isQS ? "" : null);
+
+    if (envLotKey !== null) {
+      const existingReport = envLotReports.find(report =>
+        report.templateId === templateId && (report.envLotKey === envLotKey || (!report.envLotKey && envLotKey === ""))
       );
-      
+
       if (existingReport) {
         // Show confirmation modal for existing report
         const shouldProceed = await showExistingReportModal(existingReport);
@@ -1211,19 +1313,24 @@ const projectId = useStore((state) => state.projectId);
     });
 
     try {
-      const res = await axios.post(
-        `${rptApiUrl}/report/generate-dynamic`,
-        payload,
-        { responseType: "blob" }
+      // Wrap the API call with retry logic
+      const res = await retryAsync(
+        () => axios.post(
+          `${rptApiUrl}/report/generate-dynamic`,
+          payload,
+          { responseType: "blob" }
+        ),
+        3, // max 3 attempts
+        1000 // initial delay 1 second
       );
-      
+
       // Extract file path from response headers (try different case variations)
-      const filePath = res.headers['x-generated-file-path'] || 
-                      res.headers['X-Generated-File-Path'] || 
-                      res.headers['X-GENERATED-FILE-PATH'] || null;
+      const filePath = res.headers['x-generated-file-path'] ||
+        res.headers['X-Generated-File-Path'] ||
+        res.headers['X-GENERATED-FILE-PATH'] || null;
       console.log('Generated file path:', filePath);
       console.log('All response headers:', res.headers);
-      
+
       const fileName = buildReportFileName({
         templateName: template?.templateName,
         projectName: projectName || (projectId ? `Project ${projectId}` : undefined),
@@ -1258,17 +1365,17 @@ const projectId = useStore((state) => state.projectId);
       });
 
       message.success({ content: "Report generated.", key: messageKey });
-      
+
       // Save the generated envelope lot report to database
       try {
         const reportData = {
           projectId: Number(projectId),
-          templateId: Number(templateId),
+          templateId,
           templateName: template?.templateName || `Template ${templateId}`,
           envLotNumbers: envLotNumbers.sort((a, b) => a - b).join(','),
-          fileName: fileName,
-          generatedBy: 'Current User',
-          filePath: filePath
+          fileName,
+          generatedBy: 'Current User', // You can replace this with actual user info
+          filePath: filePath // Include the server file path
         };
 
         console.log('Saving report to database:', reportData);
@@ -1290,8 +1397,14 @@ const projectId = useStore((state) => state.projectId);
           url,
           dbId: savedReport.id
         };
-        
-        setEnvLotReports(prev => [newReport, ...prev]); // Add new report to history
+
+        setEnvLotReports(prev => {
+          // Remove any existing report with the same template and envLotKey combination
+          const filtered = prev.filter(report =>
+            !(report.templateId === templateId && report.envLotKey === reportData.envLotNumbers)
+          );
+          return [newReport, ...filtered]; // Add new report at the beginning
+        });
 
         // Automatically expand the reports section for this template
         setExpandedReportsTemplates(prev => {
@@ -1300,14 +1413,11 @@ const projectId = useStore((state) => state.projectId);
           return newSet;
         });
 
-        // Refresh templates to get updated ReportStatus from DB
-        fetchTemplates();
-
       } catch (saveErr) {
         console.error("Failed to save report to database", saveErr);
         console.error("Error details:", saveErr.response?.data);
         message.warning("Report generated but failed to save to database. It will be lost on refresh.");
-        
+
         // Still show the report locally even if database save fails
         const reportKey = envLotNumbers.sort((a, b) => a - b).join(',');
         const newReport = {
@@ -1322,8 +1432,13 @@ const projectId = useStore((state) => state.projectId);
           filePath: filePath, // Include the server file path even if DB save fails
           url,
         };
-        
-        setEnvLotReports(prev => [newReport, ...prev]);
+
+        setEnvLotReports(prev => {
+          const filtered = prev.filter(report =>
+            !(report.templateId === templateId && report.envLotKey === reportKey)
+          );
+          return [newReport, ...filtered];
+        });
 
         // Automatically expand the reports section for this template even if DB save fails
         setExpandedReportsTemplates(prev => {
@@ -1335,7 +1450,29 @@ const projectId = useStore((state) => state.projectId);
     } catch (err) {
       console.error("Generate report failed", err);
       const msg = await getErrorMessageAsync(err, "Failed to generate report.");
+      const errorDetails = getErrorDetails(err);
+
+      // If we created a temporary envelope lot assignment, revert it on failure
+      if (assignedCatchNos.length > 0) {
+        await revertEnvLotByCatchNos(assignedCatchNos);
+      }
+
+      // Show error with details and retry option
       message.error({ content: msg, key: messageKey, duration: 6 });
+
+      // Show error details modal if available
+      if (errorDetails) {
+        setErrorDetailsModal({
+          visible: true,
+          error: errorDetails,
+          retryFn: () => {
+            setErrorDetailsModal({ visible: false, error: null, retryFn: null, templateId: null });
+            // Retry the report generation
+            handleGenerateTemplate(template);
+          },
+          templateId
+        });
+      }
     } finally {
       setGeneratingTemplates((prev) => ({ ...prev, [templateId]: false }));
     }
@@ -1363,7 +1500,7 @@ const projectId = useStore((state) => state.projectId);
       // Try to download from server file path if available
       try {
         message.loading({ content: "Downloading report from server...", key: `download-${report.id}` });
-        
+
         // Create a download link to the server file
         const serverFileUrl = `${import.meta.env.VITE_API_BASE_URL}/files/${encodeURIComponent(report.filePath)}`;
         const link = document.createElement("a");
@@ -1373,7 +1510,7 @@ const projectId = useStore((state) => state.projectId);
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
-        
+
         message.success({ content: "Download started.", key: `download-${report.id}` });
       } catch (err) {
         console.error("Failed to download from server path", err);
@@ -1395,10 +1532,10 @@ const projectId = useStore((state) => state.projectId);
 
     try {
       message.loading({ content: "Downloading report...", key: `download-${report.id}` });
-      
+
       // Reconstruct the lot numbers for the API call
       const lotNos = report.envLotNumbers.join(',');
-      
+
       const res = await axios.get(`${rptApiUrl}/report/generated-download`, {
         params: {
           templateId: report.templateId,
@@ -1417,13 +1554,13 @@ const projectId = useStore((state) => state.projectId);
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
-      
+
       message.success({ content: "Download started.", key: `download-${report.id}` });
     } catch (err) {
       console.error("Failed to download report", err);
-      message.error({ 
-        content: "Failed to download report. Please regenerate it.", 
-        key: `download-${report.id}` 
+      message.error({
+        content: "Failed to download report. Please regenerate it.",
+        key: `download-${report.id}`
       });
     }
   };
@@ -1449,7 +1586,7 @@ const projectId = useStore((state) => state.projectId);
         }
         return prev.filter(r => r.id !== reportId);
       });
-      
+
       message.success("Report deleted successfully.");
     } catch (err) {
       console.error("Failed to delete report", err);
@@ -1807,10 +1944,14 @@ const projectId = useStore((state) => state.projectId);
         lotNumber: lotNo,
       };
 
-      await axios.post(
-        `${rptApiUrl}/report/generate-dynamic`,
-        payload,
-        { responseType: "blob" }
+      await retryAsync(
+        () => axios.post(
+          `${rptApiUrl}/report/generate-dynamic`,
+          payload,
+          { responseType: "blob" }
+        ),
+        3, // max 3 attempts
+        1000 // initial delay 1 second
       );
 
       // Update status
@@ -1842,11 +1983,23 @@ const projectId = useStore((state) => state.projectId);
     } catch (err) {
       console.error("Failed to generate lot template", err);
       const errorMsg = await getErrorMessageAsync(err, "Failed to generate template");
+      const errorDetails = getErrorDetails(err);
       message.error({
         content: errorMsg,
         key: messageKey,
         duration: 6,
       });
+       if (errorDetails) {
+        setErrorDetailsModal({
+          visible: true,
+          error: errorDetails,
+          retryFn: () => {
+            setErrorDetailsModal({ visible: false, error: null, retryFn: null, templateId: null });
+            handleGenerateLotTemplate(lotNo, template);
+          },
+          templateId
+        });
+      }
     } finally {
       setGeneratingLotTemplates(prev => ({ ...prev, [statusKey]: false }));
     }
@@ -2174,13 +2327,13 @@ const projectId = useStore((state) => state.projectId);
       extra: {
         value: extraConfigData && extraConfigData.length > 0
           ? extraConfigData.map(ec => {
-              const type = ec.extraType ?? ec.ExtraType;
-              const mode = ec.mode ?? ec.Mode;
-              const nodalValue = ec.nodalValue ?? ec.NodalValue;
-              const typeName = type === 1 ? "Nodal" : type === 2 ? "University" : "Office";
-              const isPerNodal = nodalValue ? " (Different per Nodal)" : " (Unified)";
-              return `${typeName}: ${mode}${isPerNodal}`;
-            })
+            const type = ec.extraType ?? ec.ExtraType;
+            const mode = ec.mode ?? ec.Mode;
+            const nodalValue = ec.nodalValue ?? ec.NodalValue;
+            const typeName = type === 1 ? "Nodal" : type === 2 ? "University" : "Office";
+            const isPerNodal = nodalValue ? " (Different per Nodal)" : " (Unified)";
+            return `${typeName}: ${mode}${isPerNodal}`;
+          })
           : ["Not configured"],
       },
       envelopebreaking: {
@@ -2383,7 +2536,7 @@ const projectId = useStore((state) => state.projectId);
             fileUrl: null,
           });
           completedSteps.add(step.key);
-          
+
           // ✅ Reset hasDeactivatedCatches flag when envelope breaking or box breaking completes
           if ((step.key === "envelopebreaking" || step.key === "box") && hasDeactivatedCatches) {
             setHasDeactivatedCatches(false);
@@ -2431,7 +2584,7 @@ const projectId = useStore((state) => state.projectId);
 
         if (lots.length > 0) {
           const boxTemplates = getTemplatesForModuleKey("box");
-          
+
           lots.forEach((lot) => {
             boxTemplates.forEach((template) => {
               const templateId = resolveTemplateId(template);
@@ -2466,10 +2619,10 @@ const projectId = useStore((state) => state.projectId);
             setAvailableLots(lots);
           }
         }
-        
+
         // Mark all lot-template combinations as stale
         setStaleLotIds(staleKeys);
-        
+
         // Reset lot template status
         setLotTemplateStatus((prev) => {
           const next = { ...prev };
@@ -2709,8 +2862,8 @@ const projectId = useStore((state) => state.projectId);
             return <Text type="secondary">—</Text>;
           }
           return (
-            <Button 
-              type="link" 
+            <Button
+              type="link"
               onClick={() => openLotWisePanel("box")}
               style={{ padding: 0 }}
             >
@@ -2718,12 +2871,38 @@ const projectId = useStore((state) => state.projectId);
             </Button>
           );
         }
-        return url ? (
-          <a href={url} target="_blank" rel="noopener noreferrer" className="text-blue-500">
-            Download
-          </a>
-        ) : (
-          <Text type="secondary">—</Text>
+        const versions = reportVersions[record.key] || [];
+        if (versions.length === 0) {
+          return url ? (
+            <a href={url} target="_blank" rel="noopener noreferrer" className="text-blue-500">
+              Download
+            </a>
+          ) : (
+            <Text type="secondary">—</Text>
+          );
+        }
+
+        return (
+          <Select
+            placeholder="Download"
+            size="small"
+            style={{ width: 140 }}
+            value={undefined}
+            onChange={(fileName) => {
+              const fileUrl = `${url3}/${projectId}/${fileName}`;
+              const link = document.createElement("a");
+              link.href = fileUrl;
+              link.download = fileName;
+              link.target = "_blank";
+              document.body.appendChild(link);
+              link.click();
+              document.body.removeChild(link);
+            }}
+            options={versions.map((v) => ({
+              value: v.fileName,
+              label: v.version > 0 ? `v${v.version} (${v.generatedAt})` : `Latest (${v.generatedAt})`,
+            }))}
+          />
         );
       },
     },
@@ -3058,36 +3237,20 @@ const projectId = useStore((state) => state.projectId);
 
   return (
     <div className="p-4">
-      {/* Static Variables Input Modal */}
-      <Modal
-        title={`Enter values for "${staticVarModal.template?.templateName || "Report"}"`}
+      <StaticVariablesModal
         open={staticVarModal.open}
-        onOk={handleStaticVarConfirm}
+        template={staticVarModal.template}
+        variables={staticVarModal.variables}
+        values={staticVarModal.values}
+        onChange={(fieldName, val) =>
+          setStaticVarModal((prev) => ({
+            ...prev,
+            values: { ...prev.values, [fieldName]: val },
+          }))
+        }
+        onConfirm={handleStaticVarConfirm}
         onCancel={handleStaticVarCancel}
-        okText="Generate Report"
-        width={480}
-      >
-        <Typography.Text type="secondary" style={{ display: "block", marginBottom: 16 }}>
-          This report has fields that require custom text. Fill in the values below (pre-filled with saved defaults).
-        </Typography.Text>
-        {Object.entries(staticVarModal.variables || {}).map(([fieldName]) => (
-          <div key={fieldName} style={{ marginBottom: 12 }}>
-            <Typography.Text strong style={{ display: "block", marginBottom: 4 }}>
-              {fieldName}
-            </Typography.Text>
-            <Input
-              value={staticVarModal.values[fieldName] ?? ""}
-              onChange={(e) =>
-                setStaticVarModal((prev) => ({
-                  ...prev,
-                  values: { ...prev.values, [fieldName]: e.target.value },
-                }))
-              }
-              placeholder={`Enter value for ${fieldName}`}
-            />
-          </div>
-        ))}
-      </Modal>
+      />
 
       {configChanged && (
         <Alert
@@ -3128,23 +3291,23 @@ const projectId = useStore((state) => state.projectId);
           ) : (
             <Badge status="default" text="Idle" color="gray" />
           )}
-          <Tooltip 
+          <Tooltip
             title={
-              (!hasPendingPipelineChanges && !configChanged) 
-                ? "No new data found for processing. All data is already processed." 
-                : (selectedModules.length === 0 
-                    ? "Please select at least one module" 
-                    : (!selectedModules.some(m => {
-                        const keyMap = {
-                          duplicate: "duplicatePending",
-                          enhancement: "enhancementPending",
-                          extra: "extraPending",
-                          envelopebreaking: "envelopePending",
-                          box: "boxPending"
-                        };
-                        const flag = keyMap[m];
-                        return !flag || (pipelineStepStatus && pipelineStepStatus[flag]);
-                      }) && !configChanged)
+              (!hasPendingPipelineChanges && !configChanged)
+                ? "No new data found for processing. All data is already processed."
+                : (selectedModules.length === 0
+                  ? "Please select at least one module"
+                  : (!selectedModules.some(m => {
+                    const keyMap = {
+                      duplicate: "duplicatePending",
+                      enhancement: "enhancementPending",
+                      extra: "extraPending",
+                      envelopebreaking: "envelopePending",
+                      box: "boxPending"
+                    };
+                    const flag = keyMap[m];
+                    return !flag || (pipelineStepStatus && pipelineStepStatus[flag]);
+                  }) && !configChanged)
                     ? "Selected modules have no pending data to process."
                     : "")
             }
@@ -3154,9 +3317,9 @@ const projectId = useStore((state) => state.projectId);
                 type="primary"
                 onClick={handleAudit}
                 disabled={
-                  !projectId || 
-                  isProcessing || 
-                  selectedModules.length === 0 || 
+                  !projectId ||
+                  isProcessing ||
+                  selectedModules.length === 0 ||
                   (!selectedModules.some(m => {
                     const keyMap = {
                       duplicate: "duplicatePending",
@@ -3225,7 +3388,7 @@ const projectId = useStore((state) => state.projectId);
                   const isPending = (pendingFlag && pipelineStepStatus && pipelineStepStatus[pendingFlag]) ||
                     ((record.key === "envelopebreaking" || record.key === "box") && record.status === "completed" && hasDeactivatedCatches);
                   const isOutdated = isPending && (record.status === "completed" || record.report || (record.key === "box" && record.completedLots > 0));
-                  
+
                   if (isOutdated) {
                     return {
                       style: { background: "#fffbe6" }
@@ -3237,597 +3400,185 @@ const projectId = useStore((state) => state.projectId);
             )}
           </Card>
 
-          {showTemplatePanel && (
-            <Card
-              size="small"
-              className="pipeline-panel"
-              title={
-                <div className="pipeline-panel-title">
-                  <Typography.Text strong>
-                    Templates
-                    {templatePanel.moduleKey
-                      ? ` - ${steps.find((s) => s.key === templatePanel.moduleKey)?.title || "Module"}`
-                      : ""}
-                  </Typography.Text>
-                  <div className="pipeline-panel-actions">
-                    <Button
-                      size="small"
-                      type="primary"
-                      onClick={handleGenerateAllTemplates}
-                      loading={bulkGenerating}
-                    >
-                      Generate All
-                    </Button>
-                    <Button
-                      size="small"
-                      onClick={handleDownloadAllTemplates}
-                      loading={bulkDownloading}
-                    >
-                      Download All
-                    </Button>
-                    <Button size="small" onClick={closeTemplatePanel}>
-                      Close
-                    </Button>
-                  </div>
-                </div>
-              }
-              bodyStyle={{ padding: 0 }}
-              style={{
-                border: "1px solid #d9d9d9",
-                boxShadow: "0 4px 8px rgba(0,0,0,0.1)",
-                borderRadius: 8,
-                alignSelf: "start",
-              }}
-            >
-              <div className="pipeline-panel-body">
-                {templatesLoading ? (
-                  <Text type="secondary">Loading templates...</Text>
-                ) : (
-                  <>
-                    {templatePanel.moduleKey &&
-                      getTemplatesForModuleKey(templatePanel.moduleKey).length === 0 ? (
-                      <Text type="secondary">No templates linked to this module.</Text>
-                    ) : (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                        {getTemplatesForModuleKey(templatePanel.moduleKey || "").map((template) => {
-                          const templateId = resolveTemplateId(template);
-                          const isGenerating = templateId ? generatingTemplates[templateId] : false;
-                          const reportStatus = templateId ? templateReportStatus[templateId] : null;
-                          const hasDownload = templateId
-                            ? Boolean(templateDownloads[templateId]?.url || reportStatus?.exists)
-                            : false;
-                          const hasMappingUpdate = templateId
-                            ? isMappingNewerThanReport(templateId)
-                            : false;
-                          const isStale = staleTemplateIds.has(templateId);
-                          const needsRegenerate = hasMappingUpdate || isStale;
-                          // Check if report exists in either the microservice status OR our persistent database
-                          const existsInDb = envLotReports.some(r => r.templateId === templateId);
-                          const reportExists = reportStatus?.exists || template.reportStatus || existsInDb;
-                          const alreadyGenerated = reportExists && !needsRegenerate;
-                          return (
-                            <Card
-                              size="small"
-                              key={templateId || resolveTemplateName(template)}
-                              styles={{ body: { padding: 12 } }}
-                              style={{ borderRadius: 8 }}
-                            >
-                              <div style={{ 
-                                display: 'flex', 
-                                justifyContent: 'space-between', 
-                                alignItems: 'center', 
-                                marginBottom: 8 
-                              }}>
-                                <div style={{ fontWeight: 600 }}>
-                                  {resolveTemplateName(template)}
-                                  {alreadyGenerated && (
-                                    <Tag color="green" style={{ marginLeft: 8 }}>Ready</Tag>
-                                  )}
-                                  {reportExists && needsRegenerate && (
-                                    <Tag color="orange" style={{ marginLeft: 8 }}>Outdated</Tag>
-                                  )}
-                                </div>
-                                <Space>
-                                  <Button
-                                    size="small"
-                                    type={alreadyGenerated ? "default" : "primary"}
-                                    onClick={() => handleGenerateTemplate(template)}
-                                    loading={isGenerating}
-                                  >
-                                    {alreadyGenerated ? "Regenerate" : "Generate"}
-                                  </Button>
-                                </Space>
-                              </div>
-                              
-                              {/* Compact Envelope Lot Reports for this template */}
-                              <EnvLotReportsManager
-                                reports={envLotReports}
-                                templateId={templateId}
-                                onDownload={handleDownloadEnvLotReport}
-                                onDelete={handleDeleteEnvLotReport}
-                                compact={true}
-                                activeKey={expandedReportsTemplates.has(templateId) ? ['reports'] : []}
-                                onActiveKeyChange={(activeKey) => handleReportsExpansion(templateId, activeKey)}
-                              />
-                            </Card>
-                          );
-                        })}
-                      </div>
+          <TemplatesPanel
+            open={showTemplatePanel}
+            moduleKey={templatePanel.moduleKey}
+            moduleTitle={templatePanel.moduleKey ? (steps.find((s) => s.key === templatePanel.moduleKey)?.title || "Module") : ""}
+            templates={getTemplatesForModuleKey(templatePanel.moduleKey || "")}
+            templatesLoading={templatesLoading}
+            generatingTemplates={generatingTemplates}
+            templateReportStatus={templateReportStatus}
+            templateDownloads={templateDownloads}
+            staleTemplateIds={staleTemplateIds}
+            envLotReports={envLotReports}
+            expandedReportsTemplates={expandedReportsTemplates}
+            bulkGenerating={bulkGenerating}
+            bulkDownloading={bulkDownloading}
+            isMappingNewerThanReport={isMappingNewerThanReport}
+            resolveTemplateId={resolveTemplateId}
+            resolveTemplateName={resolveTemplateName}
+            handleGenerateTemplate={handleGenerateTemplate}
+            handleDownloadEnvLotReport={handleDownloadEnvLotReport}
+            handleDeleteEnvLotReport={handleDeleteEnvLotReport}
+            handleReportsExpansion={handleReportsExpansion}
+            handleGenerateAllTemplates={handleGenerateAllTemplates}
+            handleDownloadAllTemplates={handleDownloadAllTemplates}
+            onClose={closeTemplatePanel}
+          />
+          <Modal
+            title="Report Generation Error"
+            open={errorDetailsModal.visible}
+            onCancel={() => setErrorDetailsModal({ visible: false, error: null, retryFn: null, templateId: null })}
+            width={700}
+            footer={[
+              <Button key="close" onClick={() => setErrorDetailsModal({ visible: false, error: null, retryFn: null, templateId: null })}>
+                Close
+              </Button>,
+              errorDetailsModal.retryFn && (
+                <Button key="retry" type="primary" onClick={errorDetailsModal.retryFn}>
+                  Retry Report Generation
+                </Button>
+              )
+            ]}
+          >
+            {errorDetailsModal.error && (
+              <div>
+                <Alert
+                  message="An error occurred while generating the report"
+                  description="The error details are shown below. You can retry the generation or contact support if the problem persists."
+                  type="error"
+                  showIcon
+                  style={{ marginBottom: 16 }}
+                />
+
+                <div style={{ marginBottom: 16 }}>
+                  <Text strong style={{ fontSize: "16px" }}>Error Details:</Text>
+                  <div style={{
+                    backgroundColor: "#f5f5f5",
+                    padding: "12px",
+                    borderRadius: "4px",
+                    marginTop: "8px",
+                    fontFamily: "monospace",
+                    fontSize: "12px",
+                    maxHeight: "400px",
+                    overflowY: "auto",
+                    wordBreak: "break-word"
+                  }}>
+                    <p><strong>Type:</strong> {errorDetailsModal.error.type || 'Unknown'}</p>
+                    <p><strong>Message:</strong> {errorDetailsModal.error.message || 'No message'}</p>
+                    {errorDetailsModal.error.innerMessage && (
+                      <p><strong>Inner Message:</strong> {errorDetailsModal.error.innerMessage}</p>
                     )}
-                  </>
-                )}
-              </div>
-            </Card>
-          )}
-
-          {showLotWisePanel && (
-            <Card
-              size="small"
-              className="pipeline-panel pipeline-panel-wide"
-              title={
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <Typography.Text strong>
-                    Lot-wise Templates and Reports - Box Breaking
-                  </Typography.Text>
-                  <Button size="small" onClick={closeLotWisePanel}>
-                    Close
-                  </Button>
+                    {errorDetailsModal.error.templateId && (
+                      <p><strong>Template ID:</strong> {errorDetailsModal.error.templateId}</p>
+                    )}
+                    {errorDetailsModal.error.projectId && (
+                      <p><strong>Project ID:</strong> {errorDetailsModal.error.projectId}</p>
+                    )}
+                    {errorDetailsModal.error.lotNos && (
+                      <p><strong>Lot Numbers:</strong> {errorDetailsModal.error.lotNos}</p>
+                    )}
+                    {errorDetailsModal.error.timestamp && (
+                      <p><strong>Timestamp:</strong> {errorDetailsModal.error.timestamp}</p>
+                    )}
+                    {errorDetailsModal.error.stackTrace && (
+                      <>
+                        <p><strong>Stack Trace:</strong></p>
+                        <pre style={{ margin: "8px 0", padding: "8px", backgroundColor: "#fff", borderLeft: "2px solid #f5222d" }}>
+                          {errorDetailsModal.error.stackTrace}
+                        </pre>
+                      </>
+                    )}
+                  </div>
                 </div>
-              }
-              bodyStyle={{ padding: 0 }}
-              style={{
-                border: "1px solid #d9d9d9",
-                boxShadow: "0 4px 8px rgba(0,0,0,0.1)",
-                borderRadius: 8,
-                alignSelf: "start",
-              }}
-            >
-              <div className="pipeline-panel-body">
-                {loadingLots ? (
-                  <div style={{ textAlign: "center", padding: "20px" }}>
-                    <Text type="secondary">Loading lots...</Text>
-                  </div>
-                ) : availableLots.length === 0 ? (
-                  <div style={{ textAlign: "center", padding: "20px" }}>
-                    <Text type="secondary">No lots found for this project</Text>
-                  </div>
-                ) : (
-                  <Tabs
-                    activeKey={selectedLotTab?.toString()}
-                    onChange={(key) => setSelectedLotTab(Number(key))}
-                    type="card"
-                    size="small"
-                    items={availableLots.map((lot) => {
-                      const lotTemplates = getTemplatesForModuleKey("box");
 
-                      // Count generated templates for this lot
-                      const generatedCount = lotTemplates.filter((template) => {
-                        const templateId = resolveTemplateId(template);
-                        if (!templateId) return false;
-                        const statusKey = `${lot.lotNo}_${templateId}`;
-                        const status = lotTemplateStatus[statusKey];
-                        const isStale = staleLotIds.has(statusKey);
-                        return status?.exists && !isStale;
-                      }).length;
-
-                      const hasStale = lotTemplates.some((template) => {
-                        const templateId = resolveTemplateId(template);
-                        if (!templateId) return false;
-                        const statusKey = `${lot.lotNo}_${templateId}`;
-                        return staleLotIds.has(statusKey);
-                      });
-
-                      return {
-                        key: lot.lotNo.toString(),
-                        label: (
-                          <Space size="small">
-                            <Text>Lot {lot.lotNo}</Text>
-                            {hasStale && (
-                              <Tag color="orange" style={{ margin: 0 }}>
-                                ⟳
-                              </Tag>
-                            )}
-                          </Space>
-                        ),
-                        children: (
-                          <div style={{ padding: "12px" }}>
-                            {/* Reports Section - Now First */}
-                            <div style={{ marginBottom: 24 }}>
-                              <div style={{
-                                display: "flex",
-                                justifyContent: "space-between",
-                                alignItems: "center",
-                                marginBottom: 12,
-                                paddingBottom: 8,
-                                borderBottom: "2px solid #f0f0f0"
-                              }}>
-                                <Text strong style={{ fontSize: "14px", color: "#52c41a" }}>
-                                  Reports
-                                </Text>
-                              </div>
-
-                              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                                {/* Box Breaking Report */}
-                                <Card
-                                  size="small"
-                                  bodyStyle={{ padding: "8px 12px" }}
-                                  style={{ borderRadius: 4, backgroundColor: "#fafafa" }}
-                                >
-                                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                                    <div style={{ flex: 1 }}>
-                                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                                        <Text strong style={{ fontSize: "13px" }}>
-                                          Box Breaking Report
-                                        </Text>
-                                        <Text type="secondary" style={{ fontSize: "11px" }}>
-                                          Lot {lot.lotNo}
-                                        </Text>
-                                        {lotReportStatus[lot.lotNo] ? (
-                                          lot.minStep < 6 ? (
-                                            <Tag color="orange" style={{ margin: 0 }}>
-                                              Outdated
-                                            </Tag>
-                                          ) : (
-                                            <Tag color="green" style={{ margin: 0 }}>
-                                              Ready
-                                            </Tag>
-                                          )
-                                        ) : null}
-                                      </div>
-                                    </div>
-                                    {lotReportStatus[lot.lotNo] && lot.minStep >= 6 ? (
-                                      <Button
-                                        size="small"
-                                        onClick={() => handleDownloadLotReport(lot.lotNo, "BoxBreaking")}
-                                      >
-                                        Download
-                                      </Button>
-                                    ) : (
-                                      <Button
-                                        size="small"
-                                        type="primary"
-                                        onClick={() => handleGenerateAllLots(lot.lotNo)}
-                                        loading={generatingLotReport[lot.lotNo]}
-                                      >
-                                        {lotReportStatus[lot.lotNo] ? "Regenerate" : "Generate"}
-                                      </Button>
-                                    )}
-                                  </div>
-                                </Card>
-                              </div>
-                            </div>
-
-                            {/* Templates Section - Now Second */}
-                            <div style={{ marginBottom: 24 }}>
-                              <div style={{
-                                display: "flex",
-                                justifyContent: "space-between",
-                                alignItems: "center",
-                                marginBottom: 12,
-                                paddingBottom: 8,
-                                borderBottom: "2px solid #f0f0f0"
-                              }}>
-                                <Text strong style={{ fontSize: "14px", color: "#1890ff" }}>
-                                  Templates
-                                </Text>
-                                <Space size="small">
-                                  <Button
-                                    size="small"
-                                    type="primary"
-                                    onClick={() => handleGenerateAllLotTemplates(lot.lotNo)}
-                                    loading={bulkGeneratingLots}
-                                    disabled={lotTemplates.length === 0 || lotTemplates.every((template) => {
-                                      const templateId = resolveTemplateId(template);
-                                      if (!templateId) return true;
-                                      const statusKey = `${lot.lotNo}_${templateId}`;
-                                      const status = lotTemplateStatus[statusKey];
-                                      const isStale = staleLotIds.has(statusKey);
-                                      return status?.exists && !isStale;
-                                    })}
-                                  >
-                                    Generate All
-                                  </Button>
-                                  <Button
-                                    size="small"
-                                    onClick={() => handleDownloadAllLots(lot.lotNo)}
-                                    loading={bulkDownloadingLots}
-                                    disabled={lotTemplates.length === 0 || !lotTemplates.every((template) => {
-                                      const templateId = resolveTemplateId(template);
-                                      if (!templateId) return false;
-                                      const statusKey = `${lot.lotNo}_${templateId}`;
-                                      const status = lotTemplateStatus[statusKey];
-                                      const isStale = staleLotIds.has(statusKey);
-                                      return status?.exists && !isStale;
-                                    })}
-                                  >
-                                    Download All
-                                  </Button>
-                                </Space>
-                              </div>
-
-                              {lotTemplates.length === 0 ? (
-                                <Text type="secondary">No templates linked to Box Breaking module.</Text>
-                              ) : (
-                                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                                  {lotTemplates.map((template) => {
-                                    const templateId = resolveTemplateId(template);
-                                    const statusKey = `${lot.lotNo}_${templateId}`;
-                                    const isGenerating = generatingLotTemplates[statusKey];
-                                    const isDownloading = downloadingLotTemplates[statusKey];
-                                    const status = lotTemplateStatus[statusKey];
-                                    const isStale = staleLotIds.has(statusKey);
-                                    const canGenerate = !status?.exists || isStale;
-                                    const hasDownload = status?.exists && !isStale;
-
-                                    return (
-                                      <Card
-                                        size="small"
-                                        key={templateId || resolveTemplateName(template)}
-                                        bodyStyle={{ padding: "8px 12px" }}
-                                        style={{ borderRadius: 4, backgroundColor: "#fafafa" }}
-                                      >
-                                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                                          <div style={{ flex: 1 }}>
-                                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                                              <Text strong style={{ fontSize: "13px" }}>
-                                                {resolveTemplateName(template)}
-                                              </Text>
-                                              {((status?.exists && !isStale) || (template.reportStatus && !isStale)) && (
-                                                <Tag color="green" style={{ margin: 0 }}>Ready</Tag>
-                                              )}
-                                              {status?.exists && !isStale && status.generatedAt && (
-                                                <Text type="secondary" style={{ fontSize: "11px" }}>
-                                                  Generated {new Date(status.generatedAt).toLocaleString()}
-                                                </Text>
-                                              )}
-                                            </div>
-                                            {(isStale || !template.reportStatus) && status?.exists && (
-                                              <Tag color="warning" style={{ fontSize: "10px", marginTop: 4 }}>
-                                                Data updated - regeneration required
-                                              </Tag>
-                                            )}
-                                          </div>
-                                          <Space size="small">
-                                            {canGenerate ? (
-                                              <Button
-                                                size="small"
-                                                type="primary"
-                                                onClick={() => handleGenerateLotTemplate(lot.lotNo, template)}
-                                                loading={isGenerating}
-                                              >
-                                                Generate
-                                              </Button>
-                                            ) : (
-                                              <Button
-                                                size="small"
-                                                type="primary"
-                                                onClick={() => handleGenerateLotTemplate(lot.lotNo, template)}
-                                                loading={isGenerating}
-                                              >
-                                                Regenerate
-                                              </Button>
-                                            )}
-                                            <Button
-                                              size="small"
-                                              onClick={() => handleDownloadLotTemplate(lot.lotNo, template)}
-                                              loading={isDownloading}
-                                              disabled={!hasDownload}
-                                            >
-                                              Download
-                                            </Button>
-                                          </Space>
-                                        </div>
-                                      </Card>
-                                    );
-                                  })}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        ),
-                      };
-                    })}
-                    tabBarStyle={{ margin: 0, paddingLeft: 12, paddingRight: 12 }}
-                  />
-                )}
+                <Alert
+                  message="Retry Tips"
+                  description={
+                    <ul style={{ margin: 0, paddingLeft: "20px" }}>
+                      <li>Check if all required templates and data are available</li>
+                      <li>Verify database connectivity</li>
+                      <li>Try generating with fewer lots or simpler parameters</li>
+                      <li>Contact system administrator if problem persists</li>
+                    </ul>
+                  }
+                  type="info"
+                  showIcon
+                  style={{ marginTop: 16 }}
+                />
               </div>
-            </Card>
-          )}
+            )}
+          </Modal>
+          <LotWisePanel
+            open={showLotWisePanel}
+            projectId={projectId}
+            url3={url3}
+            loadingLots={loadingLots}
+            availableLots={availableLots}
+            selectedLotTab={selectedLotTab}
+            setSelectedLotTab={setSelectedLotTab}
+            getTemplatesForModuleKey={getTemplatesForModuleKey}
+            resolveTemplateId={resolveTemplateId}
+            resolveTemplateName={resolveTemplateName}
+            lotTemplateStatus={lotTemplateStatus}
+            staleLotIds={staleLotIds}
+            generatingLotReport={generatingLotReport}
+            lotReportStatus={lotReportStatus}
+            getBoxVersionsForLot={getBoxVersionsForLot}
+            handleGenerateAllLots={handleGenerateAllLots}
+            generatingLotTemplates={generatingLotTemplates}
+            downloadingLotTemplates={downloadingLotTemplates}
+            handleGenerateLotTemplate={handleGenerateLotTemplate}
+            handleDownloadLotTemplate={handleDownloadLotTemplate}
+            handleGenerateAllLotTemplates={handleGenerateAllLotTemplates}
+            handleDownloadAllLots={handleDownloadAllLots}
+            bulkGeneratingLots={bulkGeneratingLots}
+            bulkDownloadingLots={bulkDownloadingLots}
+            staleTemplateIds={staleTemplateIds}
+            generatingTemplates={generatingTemplates}
+            templateReportStatus={templateReportStatus}
+            handleGenerateTemplate={handleGenerateTemplate}
+            handleDownloadTemplate={handleDownloadTemplate}
+            isQuantitySheetTemplate={isQuantitySheetTemplate}
+            onClose={closeLotWisePanel}
+          />
         </div>
       </motion.div>
 
-      <Modal
-        title="Unprocessed Dependencies Detected"
-        open={dependencyModal.visible}
+      <DependencyModal
+        visible={dependencyModal.visible}
+        unprocessedSteps={dependencyModal.unprocessedSteps}
         onCancel={() => setDependencyModal({ visible: false, unprocessedSteps: [], selectedStep: null })}
-        footer={[
-          // <Button key="skip" onClick={() => handleDependencyModalOk(false)}>
-          //   Process Only Selected
-          // </Button>,
-          <Button key="include" type="primary" onClick={() => handleDependencyModalOk(true)}>
-            Process All Dependencies
-          </Button>,
-        ]}
-      >
-        <p style={{ marginBottom: 16 }}>
-          The following reports have not been processed yet and are required before running your selected module:
-        </p>
-        <ul style={{ marginBottom: 16 }}>
-          {dependencyModal.unprocessedSteps.map((step) => (
-            <li key={step.key}>{step.title}</li>
-          ))}
-        </ul>
-        <p>
-          <strong>What would you like to do?</strong>
-        </p>
-        <ul style={{ marginLeft: 20 }}>
-          <li><strong>Process Only Selected:</strong> Run only your selected module (may fail if dependencies are missing)</li>
-          <li><strong>Process All Dependencies:</strong> Run all unprocessed dependencies first, then your selected module</li>
-        </ul>
-      </Modal>
+        onConfirm={() => handleDependencyModalOk(true)}
+      />
 
-      {/* Lot Selection Modal */}
-        <Modal
-        title="Select Lots for Box Breaking"
-        open={lotSelectionModal.visible}
-        onOk={handleLotSelectionConfirm}
+      <LotSelectionModal
+        visible={lotSelectionModal.visible}
+        availableLots={lotSelectionModal.availableLots}
+        selectedLots={lotSelectionModal.selectedLots}
+        onToggle={handleLotToggle}
+        onSelectAll={handleSelectAllLots}
+        onConfirm={handleLotSelectionConfirm}
         onCancel={handleLotSelectionCancel}
-        width={600}
-        okText="Process Selected Lots"
-        cancelText="Cancel"
-      >
-        <div style={{ marginBottom: 16 }}>
-          <Alert
-            message="Multiple lots detected"
-            description="Please select which lot(s) you want to process for Box Breaking. You can select all lots or specific ones."
-            type="info"
-            showIcon
-            style={{ marginBottom: 16 }}
-          />
+      />
 
-          <Checkbox
-            checked={lotSelectionModal.selectedLots.length === lotSelectionModal.availableLots.length && lotSelectionModal.availableLots.length > 0}
-            indeterminate={lotSelectionModal.selectedLots.length > 0 && lotSelectionModal.selectedLots.length < lotSelectionModal.availableLots.length}
-            onChange={(e) => handleSelectAllLots(e.target.checked)}
-            style={{ marginBottom: 12, fontWeight: 500 }}
-          >
-            Select All Lots ({lotSelectionModal.availableLots.length})
-          </Checkbox>
-        </div>
-
-        <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 400, overflowY: "auto" }}>
-          {lotSelectionModal.availableLots.map((lot) => (
-            <Card
-              key={lot.lotNo}
-              size="small"
-              style={{
-                backgroundColor: lotSelectionModal.selectedLots.includes(lot.lotNo) ? "#f0f5ff" : "#fafafa",
-                border: lotSelectionModal.selectedLots.includes(lot.lotNo) ? "1px solid #91caff" : "1px solid #d9d9d9"
-              }}
-            >
-              <Checkbox
-                checked={lotSelectionModal.selectedLots.includes(lot.lotNo)}
-                onChange={(e) => handleLotToggle(lot.lotNo, e.target.checked)}
-              >
-                <Space>
-                  <Text strong style={{ fontSize: "14px" }}>Lot {lot.lotNo}</Text>
-                  <Badge
-                    count={lot.catchCount}
-                    style={{ backgroundColor: "#52c41a" }}
-                    title="Number of catches in this lot"
-                  />
-                  <Text type="secondary" style={{ fontSize: "12px" }}>catches</Text>
-                </Space>
-              </Checkbox>
-            </Card>
-          ))}
-        </div>
-
-        {lotSelectionModal.selectedLots.length > 0 && (
-          <div style={{ marginTop: 16, padding: "8px 12px", backgroundColor: "#e6f7ff", borderRadius: 4 }}>
-            <Text strong style={{ color: "#1890ff" }}>
-              {lotSelectionModal.selectedLots.length} lot(s) selected
-            </Text>
-          </div>
-        )}
-      </Modal>
-
-      <Modal
-        title="Select Envelope Lots for Template Generation"
-        open={envLotSelectionModal.visible}
-        onOk={handleEnvLotSelectionConfirm}
+      <EnvLotSelectionModal
+        visible={envLotSelectionModal.visible}
+        availableEnvLots={envLotSelectionModal.availableEnvLots}
+        selectedEnvLots={envLotSelectionModal.selectedEnvLots}
+        onToggle={handleEnvLotToggle}
+        onSelectAll={handleSelectAllEnvLots}
+        onConfirm={handleEnvLotSelectionConfirm}
         onCancel={handleEnvLotSelectionCancel}
-        width={600}
-        okText="Generate for Selected Envelope Lots"
-        cancelText="Cancel"
-      >
-        <div style={{ marginBottom: 16 }}>
-          <Alert
-            message="Multiple envelope lots detected"
-            description="Please select which envelope lot(s) you want to process for template generation. You can select all envelope lots or specific ones."
-            type="info"
-            showIcon
-            style={{ marginBottom: 16 }}
-          />
+      />
 
-          <Checkbox
-            checked={envLotSelectionModal.selectedEnvLots.length === envLotSelectionModal.availableEnvLots.length && envLotSelectionModal.availableEnvLots.length > 0}
-            indeterminate={envLotSelectionModal.selectedEnvLots.length > 0 && envLotSelectionModal.selectedEnvLots.length < envLotSelectionModal.availableEnvLots.length}
-            onChange={(e) => handleSelectAllEnvLots(e.target.checked)}
-            style={{ marginBottom: 12, fontWeight: 500 }}
-          >
-            Select All Envelope Lots ({envLotSelectionModal.availableEnvLots.length})
-          </Checkbox>
-        </div>
-
-        <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 400, overflowY: "auto" }}>
-          {envLotSelectionModal.availableEnvLots.map((envLot) => (
-            <Card
-              key={envLot.envLotNo}
-              size="small"
-              style={{
-                backgroundColor: envLotSelectionModal.selectedEnvLots.includes(envLot.envLotNo) ? "#f0f5ff" : "#fafafa",
-                border: envLotSelectionModal.selectedEnvLots.includes(envLot.envLotNo) ? "1px solid #91caff" : "1px solid #d9d9d9"
-              }}
-            >
-              <Checkbox
-                checked={envLotSelectionModal.selectedEnvLots.includes(envLot.envLotNo)}
-                onChange={(e) => handleEnvLotToggle(envLot.envLotNo, e.target.checked)}
-              >
-                <Text strong style={{ fontSize: "14px" }}>Envelope Lot {envLot.envLotNo}</Text>
-              </Checkbox>
-            </Card>
-          ))}
-        </div>
-
-        {envLotSelectionModal.selectedEnvLots.length > 0 && (
-          <div style={{ marginTop: 16, padding: "8px 12px", backgroundColor: "#e6f7ff", borderRadius: 4 }}>
-            <Text strong style={{ color: "#1890ff" }}>
-              {envLotSelectionModal.selectedEnvLots.length} envelope lot(s) selected
-            </Text>
-          </div>
-        )}
-      </Modal>
-
-      {/* Existing Report Modal */}
-      <Modal
-        title="Report Already Exists"
-        open={existingReportModal.visible}
+      <ExistingReportModal
+        visible={existingReportModal.visible}
+        report={existingReportModal.report}
+        onDownload={handleExistingReportDownload}
+        onGenerate={handleExistingReportGenerate}
         onCancel={handleExistingReportCancel}
-        width={500}
-        footer={[
-          <Button key="cancel" onClick={handleExistingReportCancel}>
-            Cancel
-          </Button>,
-          <Button key="download" type="default" onClick={handleExistingReportDownload}>
-            Download Existing
-          </Button>,
-          <Button key="generate" type="primary" onClick={handleExistingReportGenerate}>
-            Generate New
-          </Button>
-        ]}
-      >
-        {existingReportModal.report && (
-          <div>
-            <Alert
-              message="A report already exists for this template and envelope lot combination"
-              description={
-                <div style={{ marginTop: 8 }}>
-                  <p><strong>Template:</strong> {existingReportModal.report.templateName}</p>
-                  <p><strong>Envelope Lots:</strong> {existingReportModal.report.envLotNumbers.join(', ')}</p>
-                  <p><strong>Generated:</strong> {new Date(existingReportModal.report.generatedAt).toLocaleString()}</p>
-                  <p><strong>Generated By:</strong> {existingReportModal.report.generatedBy}</p>
-                </div>
-              }
-              type="warning"
-              showIcon
-              style={{ marginBottom: 16 }}
-            />
-            
-            <p>You can download the existing report or generate a new one to replace it.</p>
-          </div>
-        )}
-      </Modal>
+      />
 
       <style>{`
         .pipeline-main {
