@@ -47,11 +47,10 @@ const RPTFiles = () => {
   const url = import.meta.env.VITE_API_BASE_URL;
   const APIURL = import.meta.env.VITE_API_URL;
   const token = localStorage.getItem("token");
-
   const [useBoxLabelSP, setUseBoxLabelSP] = useState(false);
   const [staticVariables, setStaticVariables] = useState({});
   const [filterMode, setFilterMode] = useState(null);
-
+  const [savingMapping, setSavingMapping] = useState(false);
   const [groupOptions, setGroupOptions] = useState([]);
   const [typeOptions, setTypeOptions] = useState([]);
   const [userOptions, setUserOptions] = useState([]);
@@ -783,7 +782,7 @@ setUseBoxLabelSP(parsed.useBoxLabelSP || false);
 
   const handleSaveMapping = async () => {
     if (!mappingTemplate?.templateId) return;
-    setMappingLoading(true);
+    setSavingMapping(true);
     try {
       const mappingsPayload = parsedFields
         .map((f) => {
@@ -827,7 +826,7 @@ setUseBoxLabelSP(parsed.useBoxLabelSP || false);
       console.error("Failed to save mapping", err);
       showError(err, "Failed to save mapping.");
     } finally {
-      setMappingLoading(false);
+    setSavingMapping(false);
     }
   };
 
@@ -1445,6 +1444,7 @@ setUseBoxLabelSP(parsed.useBoxLabelSP || false);
   filterMode={filterMode}
   setFilterMode={setFilterMode}
   useBoxLabelSP={useBoxLabelSP}
+    savingMapping={savingMapping}
   setUseBoxLabelSP={setUseBoxLabelSP}
   handleSaveMapping={handleSaveMapping}
   mappingLoading={mappingLoading}
