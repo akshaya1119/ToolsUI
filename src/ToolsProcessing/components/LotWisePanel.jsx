@@ -1,5 +1,5 @@
 import React from "react";
-import { Card, Button, Typography, Space, Tag, Tabs, Select } from "antd";
+import { Card, Button, Typography, Space, Tag, Tabs, Select, Skeleton, Spin } from "antd";
 
 const { Text } = Typography;
 
@@ -29,12 +29,22 @@ const LotWisePanel = ({
   bulkGeneratingLots,
   bulkDownloadingLots,
   onClose,
+  // Project-level template helpers (quantity sheet handling)
+  generatingTemplates,
+  templateReportStatus,
+  handleGenerateTemplate,
+  handleDownloadTemplate,
+  isQuantitySheetTemplate,
+  staleTemplateIds,
 }) => {
   if (!open) return null;
 
   const lotTemplates = getTemplatesForModuleKey("box");
 
-  return (
+  console.log("[LotWisePanel] Rendering - open:", open, "availableLots:", availableLots.length, "loadingLots:", loadingLots);
+
+  try {
+    return (
     <Card
       size="small"
       className="pipeline-panel pipeline-panel-wide"
@@ -48,18 +58,25 @@ const LotWisePanel = ({
           </Button>
         </div>
       }
-      bodyStyle={{ padding: 0 }}
       style={{
         border: "1px solid #d9d9d9",
         boxShadow: "0 4px 8px rgba(0,0,0,0.1)",
         borderRadius: 8,
         alignSelf: "start",
+        minHeight: "400px",
+        width: "100%",
+        maxWidth: "100%",
       }}
+      bodyStyle={{ padding: "12px" }}
     >
-      <div className="pipeline-panel-body">
+      <div className="pipeline-panel-body" style={{ minHeight: "350px" }}>
         {loadingLots ? (
-          <div style={{ textAlign: "center", padding: "20px" }}>
-            <Text type="secondary">Loading lots...</Text>
+          <div style={{ padding: "24px" }}>
+            <Spin spinning={true} tip="Loading lots..." style={{ display: "flex", justifyContent: "center" }}>
+              <div style={{ height: "200px" }}>
+                <Skeleton paragraph={{ rows: 4 }} />
+              </div>
+            </Spin>
           </div>
         ) : availableLots.length === 0 ? (
           <div style={{ textAlign: "center", padding: "20px" }}>
@@ -67,7 +84,7 @@ const LotWisePanel = ({
           </div>
         ) : (
           <Tabs
-            activeKey={selectedLotTab?.toString()}
+            activeKey={selectedLotTab != null ? selectedLotTab.toString() : "project-wide"}
             onChange={(key) => setSelectedLotTab(key === "project-wide" ? "project-wide" : Number(key))}
             type="card"
             size="small"
@@ -101,9 +118,9 @@ const LotWisePanel = ({
                         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                           {getTemplatesForModuleKey("box").map((template) => {
                             const templateId = resolveTemplateId(template);
-                            const status = templateReportStatus[templateId];
-                            const isStale = staleTemplateIds.has(templateId);
-                            const isGenerating = generatingTemplates[templateId];
+                            const status = lotTemplateStatus[templateId];
+                            const isStale = staleLotIds.has(templateId);
+                            const isGenerating = generatingLotTemplates[templateId];
 
                             return (
                               <Card
@@ -169,7 +186,7 @@ const LotWisePanel = ({
                 });
 
                 return {
-                  key: lot.lotNo.toString(),
+                  key: String(lot.lotNo),
                   label: (
                     <Space size="small">
                       <Text>Lot {lot.lotNo}</Text>
@@ -288,7 +305,7 @@ const LotWisePanel = ({
                                 const isQtySheet = isQuantitySheetTemplate(resolveTemplateName(template));
                                 if (isQtySheet) {
                                   const status = templateReportStatus[templateId];
-                                  const isStale = staleTemplateIds.has(templateId);
+                                  const isStale = staleLotIds.has(templateId);
                                   return status?.exists && !isStale;
                                 } else {
                                   const statusKey = `${lot.lotNo}_${templateId}`;
@@ -310,7 +327,7 @@ const LotWisePanel = ({
                                 const isQtySheet = isQuantitySheetTemplate(resolveTemplateName(template));
                                 if (isQtySheet) {
                                   const status = templateReportStatus[templateId];
-                                  const isStale = staleTemplateIds.has(templateId);
+                                  const isStale = staleLotIds.has(templateId);
                                   return status?.exists && !isStale;
                                 } else {
                                   const statusKey = `${lot.lotNo}_${templateId}`;
@@ -334,7 +351,7 @@ const LotWisePanel = ({
                               const isQtySheet = isQuantitySheetTemplate(resolveTemplateName(template));
                               
                               const isGenerating = isQtySheet 
-                                ? generatingTemplates[templateId] 
+                                ? generatingTemplates[templateId]           // QS uses project-level generating
                                 : generatingLotTemplates[`${lot.lotNo}_${templateId}`];
                                 
                               const isDownloading = isQtySheet 
@@ -342,11 +359,11 @@ const LotWisePanel = ({
                                 : downloadingLotTemplates[`${lot.lotNo}_${templateId}`];
                                 
                               const status = isQtySheet 
-                                ? templateReportStatus[templateId] 
+                                ? templateReportStatus[templateId]          // QS uses project-level status
                                 : lotTemplateStatus[`${lot.lotNo}_${templateId}`];
                                 
                               const isStale = isQtySheet 
-                                ? staleTemplateIds.has(templateId) 
+                                ? staleTemplateIds.has(templateId)          // QS uses project-level stale
                                 : staleLotIds.has(`${lot.lotNo}_${templateId}`);
                                 
                               const canGenerate = !status?.exists || isStale;
@@ -443,7 +460,17 @@ const LotWisePanel = ({
         )}
       </div>
     </Card>
-  );
+    );
+  } catch (error) {
+    console.error("[LotWisePanel] Render error:", error);
+    return (
+      <Card style={{ minHeight: "400px" }}>
+        <div style={{ padding: "24px", textAlign: "center" }}>
+          <Text type="danger">Error rendering panel: {error.message}</Text>
+        </div>
+      </Card>
+    );
+  }
 };
 
 export default LotWisePanel;

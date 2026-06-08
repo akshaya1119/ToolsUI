@@ -1801,8 +1801,12 @@ const ProcessingPipeline = () => {
     }
 
     setTemplatePanel({ open: false, moduleKey: null }); // Ensure standard panel is closed
-    setLotWisePanel({ open: true, moduleKey });
+    
+    // Fetch data BEFORE opening the panel to avoid white screen
     await fetchAvailableLots();
+    
+    // Open panel after data is loaded
+    setLotWisePanel({ open: true, moduleKey });
   };
 
   const closeLotWisePanel = () => {
