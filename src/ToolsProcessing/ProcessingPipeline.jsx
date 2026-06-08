@@ -104,7 +104,8 @@ const ProcessingPipeline = () => {
     availableEnvLots: [],
     selectedEnvLots: [],
     loading: false,
-    resolve: null
+    resolve: null,
+    isRegenerate: false
   });
   const [existingReportModal, setExistingReportModal] = useState({
     visible: false,
@@ -729,6 +730,33 @@ const ProcessingPipeline = () => {
     }
   };
 
+  const fetchAssignedEnvLotCatchesForSelection = async (projectIdParam) => {
+    try {
+      const res = await API.get(`/NRDataLots/GetAssignedEnvLotCatches/${projectIdParam}`);
+      const rawData = res.data || [];
+      const grouped = rawData.reduce((acc, item) => {
+        const envLotNo = item.envLotNo ?? item.EnvLotNo;
+        const catchNo = (item.catchNo ?? item.CatchNo ?? "").toString().trim();
+        if (envLotNo && catchNo) {
+          if (!acc[envLotNo]) {
+            acc[envLotNo] = [];
+          }
+          acc[envLotNo].push(catchNo);
+        }
+        return acc;
+      }, {});
+      
+      return Object.entries(grouped).map(([envLotNo, catches]) => ({
+        envLotNo: Number(envLotNo),
+        catches
+      })).sort((a, b) => a.envLotNo - b.envLotNo);
+    } catch (err) {
+      console.error("Failed to fetch assigned EnvLot catches for selection", err);
+      message.error("Failed to load assigned envelope lots.");
+      return [];
+    }
+  };
+
   const assignEnvLotByCatchNos = async (catchNos) => {
     try {
       const normalizedCatchNos = Array.from(
@@ -787,7 +815,7 @@ const ProcessingPipeline = () => {
     }
   };
 
-  const showEnvLotSelectionModal = (envLots) => {
+  const showEnvLotSelectionModal = (envLots, isRegenerate = false) => {
     setEnvLotSearch("");
     return new Promise((resolve) => {
       setEnvLotSelectionModal({
@@ -795,31 +823,30 @@ const ProcessingPipeline = () => {
         availableEnvLots: envLots,
         selectedEnvLots: [],
         loading: false,
-        resolve
+        resolve,
+        isRegenerate
       });
     });
   };
 
   const handleEnvLotSelectionConfirm = () => {
-    const { selectedEnvLots, resolve } = envLotSelectionModal;
+    const { selectedEnvLots, resolve, isRegenerate } = envLotSelectionModal;
 
     if (selectedEnvLots.length === 0) {
-      message.warning("Please select at least one catch to process");
+      message.warning(`Please select at least one ${isRegenerate ? 'lot' : 'catch'} to process`);
       return;
     }
 
-    setEnvLotSelectionModal({
+    setEnvLotSelectionModal(prev => ({
+      ...prev,
       visible: false,
-      availableEnvLots: [],
-      selectedEnvLots: [],
-      loading: false,
       resolve: null
-    });
-    setEnvLotSearch("")
+    }));
+    
+    setEnvLotSearch("");
     if (resolve) {
       resolve(selectedEnvLots);
     }
-    ;
   };
 
   const handleEnvLotSelectionCancel = () => {
@@ -841,10 +868,15 @@ const ProcessingPipeline = () => {
 
   const handleSelectAllEnvLots = (checked) => {
     if (checked) {
-      setEnvLotSelectionModal(prev => ({
-        ...prev,
-        selectedEnvLots: prev.availableEnvLots.map(lot => lot.catchNo)
-      }));
+      setEnvLotSelectionModal(prev => {
+        const ids = prev.availableEnvLots.map(lot => 
+          prev.isRegenerate ? lot.envLotNo : lot.catchNo
+        );
+        return {
+          ...prev,
+          selectedEnvLots: ids
+        };
+      });
     } else {
       setEnvLotSelectionModal(prev => ({
         ...prev,
@@ -853,11 +885,11 @@ const ProcessingPipeline = () => {
     }
   };
 
-  const handleEnvLotToggle = (catchNo, checked) => {
+  const handleEnvLotToggle = (itemId, checked) => {
     setEnvLotSelectionModal(prev => {
       const newSelectedEnvLots = checked
-        ? [...prev.selectedEnvLots, catchNo]
-        : prev.selectedEnvLots.filter(l => l !== catchNo);
+        ? [...prev.selectedEnvLots, itemId]
+        : prev.selectedEnvLots.filter(l => l !== itemId);
 
       return {
         ...prev,
@@ -1222,7 +1254,7 @@ const ProcessingPipeline = () => {
     }
   };
 
-  const handleGenerateTemplate = async (template) => {
+  const handleGenerateTemplate = async (template, action = null) => {
     if (!projectId) {
       message.warning("Please select a project");
       return;
@@ -1258,20 +1290,37 @@ const ProcessingPipeline = () => {
     // Only show env lot modal for reports dependent on envelope breakages (excluding QS)
     let assignedCatchNos = [];
     if (!isQS && isEnvelopeDependent) {
-      const missingCatchItems = await fetchMissingEnvLotCatchesForSelection(projectId);
-      if (missingCatchItems.length > 0) {
-        const selectedCatchNos = await showEnvLotSelectionModal(missingCatchItems);
-        if (selectedCatchNos === null) {
-          return; // user cancelled
-        }
-        if (selectedCatchNos.length > 0) {
-          const assignResult = await assignEnvLotByCatchNos(selectedCatchNos);
-          if (!assignResult || !assignResult.assignedEnvLotNo) {
-            return;
+      if (action === "regenerate") {
+        const assignedCatchItems = await fetchAssignedEnvLotCatchesForSelection(projectId);
+        if (assignedCatchItems.length > 0) {
+          const selectedEnvLots = await showEnvLotSelectionModal(assignedCatchItems, true);
+          if (selectedEnvLots === null) return;
+          if (selectedEnvLots.length > 0) {
+            envLotNumbers = selectedEnvLots;
           }
+        } else {
+          message.info("No generated envelope lots available for regeneration.");
+          return;
+        }
+      } else {
+        const missingCatchItems = await fetchMissingEnvLotCatchesForSelection(projectId);
+        if (missingCatchItems.length > 0) {
+          const selectedCatchNos = await showEnvLotSelectionModal(missingCatchItems, false);
+          if (selectedCatchNos === null) {
+            return; // user cancelled
+          }
+          if (selectedCatchNos.length > 0) {
+            const assignResult = await assignEnvLotByCatchNos(selectedCatchNos);
+            if (!assignResult || !assignResult.assignedEnvLotNo) {
+              return;
+            }
 
-          envLotNumbers = [assignResult.assignedEnvLotNo];
-          assignedCatchNos = selectedCatchNos;
+            envLotNumbers = [assignResult.assignedEnvLotNo];
+            assignedCatchNos = selectedCatchNos;
+          }
+        } else if (action === "generate") {
+          message.info("All catches already have an envelope lot assigned.");
+          return;
         }
       }
     }
@@ -3424,6 +3473,12 @@ const ProcessingPipeline = () => {
             handleGenerateAllTemplates={handleGenerateAllTemplates}
             handleDownloadAllTemplates={handleDownloadAllTemplates}
             onClose={closeTemplatePanel}
+            checkIsEnvelopeDependent={(template) => {
+              const envelopeBreakingModuleId = moduleKeyToIdMap["envelopebreaking"];
+              const templateModuleIds = normalizeModuleIds(template?.moduleIds ?? template?.ModuleIds);
+              return envelopeBreakingModuleId && templateModuleIds.includes(envelopeBreakingModuleId);
+            }}
+            isQuantitySheetTemplate={isQuantitySheetTemplate}
           />
           <Modal
             title="Report Generation Error"
@@ -3570,6 +3625,7 @@ const ProcessingPipeline = () => {
         onSelectAll={handleSelectAllEnvLots}
         onConfirm={handleEnvLotSelectionConfirm}
         onCancel={handleEnvLotSelectionCancel}
+        isRegenerate={envLotSelectionModal.isRegenerate}
       />
 
       <ExistingReportModal

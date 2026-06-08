@@ -11,29 +11,40 @@ const EnvLotSelectionModal = ({
   onSelectAll,
   onConfirm,
   onCancel,
+  isRegenerate = false,
 }) => {
   const [envLotSearch, setEnvLotSearch] = useState("");
 
+  const filteredItems = availableEnvLots.filter((item) => {
+    const search = envLotSearch.trim().toLowerCase();
+    if (!search) return true;
+    if (isRegenerate) {
+        return String(item.envLotNo).toLowerCase().includes(search) || 
+               item.catches.some(c => String(c).toLowerCase().includes(search));
+    }
+    return String(item.catchNo).toLowerCase().includes(search);
+  });
+
   return (
     <Modal
-      title="Select Catches For processing"
+      title={isRegenerate ? "Select Envelope Lots to Regenerate" : "Select Catches For Processing"}
       open={visible}
       onOk={onConfirm}
       onCancel={onCancel}
       width={600}
-      okText="Generate"
+      okText={isRegenerate ? "Regenerate" : "Generate"}
       cancelText="Cancel"
     >
       <div style={{ marginBottom: 16 }}>
         <Alert
-          message="Catches with missing Envelope Lot"
-          description="Select the catch numbers you want to process."
+          message={isRegenerate ? "Existing Envelope Lot Assignments" : "Catches with missing Envelope Lot"}
+          description={isRegenerate ? "Select the envelope lots you want to regenerate." : "Select the catch numbers you want to process."}
           type="info"
           showIcon
           style={{ marginBottom: 16 }}
         />
         <Input.Search
-          placeholder="Search Catch No"
+          placeholder={isRegenerate ? "Search Env Lot or Catch No" : "Search Catch No"}
           value={envLotSearch}
           allowClear
           onChange={(e) => setEnvLotSearch(e.target.value)}
@@ -45,38 +56,48 @@ const EnvLotSelectionModal = ({
           onChange={(e) => onSelectAll(e.target.checked)}
           style={{ marginBottom: 12, fontWeight: 500 }}
         >
-          Select All Catches ({availableEnvLots.length})
+          Select All {isRegenerate ? "Lots" : "Catches"} ({availableEnvLots.length})
         </Checkbox>
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 400, overflowY: "auto" }}>
-         {availableEnvLots
-            .filter(item => String(item.catchNo).toLowerCase().includes(envLotSearch.trim().toLowerCase()))
-            .map((catchItem) => (
-            <Card
-              key={catchItem.catchNo}
-              size="small"
-              style={{
-                backgroundColor: selectedEnvLots.includes(catchItem.catchNo) ? "#f0f5ff" : "#fafafa",
-                border: selectedEnvLots.includes(catchItem.catchNo) ? "1px solid #91caff" : "1px solid #d9d9d9"
-              }}
-            >
-              <Checkbox
-                checked={selectedEnvLots.includes(catchItem.catchNo)}
-                onChange={(e) => onToggle(catchItem.catchNo, e.target.checked)}
+         {filteredItems.map((item) => {
+            const itemId = isRegenerate ? item.envLotNo : item.catchNo;
+            const isSelected = selectedEnvLots.includes(itemId);
+            
+            return (
+              <Card
+                key={itemId}
+                size="small"
+                style={{
+                  backgroundColor: isSelected ? "#f0f5ff" : "#fafafa",
+                  border: isSelected ? "1px solid #91caff" : "1px solid #d9d9d9"
+                }}
               >
-                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                  <Text strong style={{ fontSize: "14px" }}>Catch No {catchItem.catchNo}</Text>
-                </div>
-              </Checkbox>
-            </Card>
-          ))}
+                <Checkbox
+                  checked={isSelected}
+                  onChange={(e) => onToggle(itemId, e.target.checked)}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    {isRegenerate ? (
+                        <div style={{ display: 'flex', flexDirection: 'column' }}>
+                            <Text strong style={{ fontSize: "14px" }}>Env Lot {item.envLotNo}</Text>
+                            <Text type="secondary" style={{ fontSize: "12px" }}>Catches: {item.catches.join(', ')}</Text>
+                        </div>
+                    ) : (
+                        <Text strong style={{ fontSize: "14px" }}>Catch No {item.catchNo}</Text>
+                    )}
+                  </div>
+                </Checkbox>
+              </Card>
+            );
+          })}
       </div>
 
       {selectedEnvLots.length > 0 && (
         <div style={{ marginTop: 16, padding: "8px 12px", backgroundColor: "#e6f7ff", borderRadius: 4 }}>
           <Text strong style={{ color: "#1890ff" }}>
-            {selectedEnvLots.length} catche(s) selected
+            {selectedEnvLots.length} {isRegenerate ? "lot(s)" : "catche(s)"} selected
           </Text>
         </div>
       )}
