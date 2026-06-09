@@ -97,7 +97,7 @@ const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
   const [loadingModules, setLoadingModules] = useState(false);
   const [searchText, setSearchText] = useState("");
   const [searchedColumn, setSearchedColumn] = useState("");
-  const [suggestionFields, setSuggestionFields] = useState(["C"]);
+  const [suggestionFields, setSuggestionFields] = useState(["D"]);
   const [mergeExamDate, setMergeExamDate] = useState("");
   const [mergeExamTime, setMergeExamTime] = useState("");
   const [abcdMode, setAbcdMode] = useState("single");
@@ -605,8 +605,8 @@ const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
     () => [
       { value: "A", label: "A - Exam" },
       { value: "B", label: "B - Subject" },
-      { value: "C", label: "C - Paper Title" },
-      { value: "D", label: "D - Paper Code" },
+      { value: "C", label: "C - Paper Code" },
+      { value: "D", label: "D - Paper Title" },
       { value: "ExamDate", label: "Exam Date" },
       { value: "ExamTime", label: "Exam Time" },
     ],
@@ -615,7 +615,7 @@ const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
 
   const suggestedGroups = useMemo(() => {
     const groups = new Map();
-    const activeFields = suggestionFields.length ? suggestionFields : ["C"];
+    const activeFields = suggestionFields.length ? suggestionFields : ["D"];
 
     rows.forEach((row) => {
       const aValue = normalizeText(row.aValue);
@@ -1116,7 +1116,7 @@ const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
                 <div>
                   <div className="merge-suggest-title">Merge Suggestions</div>
                   <div className="merge-suggest-sub">
-                    Choose fields to group catch numbers. Default is C (Paper Title).
+                    Choose fields to group catch numbers. Default is D (Paper Title).
                   </div>
                 </div>
                 <Select
@@ -1124,7 +1124,7 @@ const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
                   mode="multiple"
                   value={suggestionFields}
                   onChange={(value) =>
-                    setSuggestionFields(value?.length ? value : ["C"])
+                    setSuggestionFields(value?.length ? value : ["D"])
                   }
                   options={suggestionOptions}
                   placeholder="Pick fields"
@@ -1390,7 +1390,7 @@ const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
                       {[
                         { key: "A", label: "Exam" },
                         { key: "B", label: "Subject" },
-                        { key: "C", label: "Paper Name" },
+                        { key: "C", label: "Paper Title" },
                         { key: "D", label: "Paper Code" },
                       ].map((field) => {
                         const options = abcdFieldOptions?.[field.key] || [];
@@ -1476,8 +1476,8 @@ const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
                         {[
                           { key: "A", label: "Exam" },
                           { key: "B", label: "Subject" },
-                          { key: "C", label: "Paper Name" },
-                          { key: "D", label: "Paper Code" },
+                          { key: "C", label: "Paper Code" },
+                          { key: "D", label: "Paper Title" },
                         ].map((field) => {
                           const options = abcdFieldOptions?.[field.key] || [];
                           if (options.length <= 1) return null;
