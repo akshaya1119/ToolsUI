@@ -64,13 +64,48 @@ export const useProjectConfigSave = (
         return;
       }
 
+        // Prepare final enabled modules early so validation can reference it
+        let finalEnabledModules = [...enabledModules];
+        // VALIDATION: Prevent saving when critical module fields are missing
+        const moduleNames = finalEnabledModules || enabledModules || [];
+
+        // Envelope validation: require envelope fields when envelope module enabled
+        const envelopeNames = ["Envelope Setup and Enhancement", "Envelope Breaking"];
+        const envelopeEnabled = moduleNames.some(m => envelopeNames.includes(m));
+        if (envelopeEnabled) {
+          if (!Array.isArray(selectedEnvelopeFields) || selectedEnvelopeFields.length === 0) {
+            showToast("Envelope Making Criteria must have at least one field selected before saving.", "error");
+            return;
+          }
+        }
+
+        // Box validation: require capacity, duplicate fields, sorting fields and box fields when box module enabled
+        const boxEnabled = moduleNames.includes("Box Breaking");
+        if (boxEnabled) {
+          if (selectedCapacity === null || selectedCapacity === undefined) {
+            showToast("Please select a Box Capacity before saving Box Breaking configuration.", "error");
+            return;
+          }
+          if (!Array.isArray(selectedDuplicatefields) || selectedDuplicatefields.length === 0) {
+            showToast("Please select at least one field for Duplicate Removal before saving.", "error");
+            return;
+          }
+          if (!Array.isArray(selectedSortingField) || selectedSortingField.length === 0) {
+            showToast("Please select at least one Sorting Report Field before saving.", "error");
+            return;
+          }
+          if (!Array.isArray(selectedBoxFields) || selectedBoxFields.length === 0) {
+            showToast("Please select at least one Box Breaking Field before saving.", "error");
+            return;
+          }
+        }
+
       console.log(finalGroupId)
       // Determine which endpoint to use
       const projectConfigEndpoint = finalIsMasterConfig ? '/MProjectConfigs' : '/ProjectConfigs';
       const extraConfigEndpoint = finalIsMasterConfig ? '/MExtraConfigs' : '/ExtrasConfigurations';
 
       // 0️⃣ Validation & Auto-check/uncheck for Extra Configuration
-      let finalEnabledModules = [...enabledModules];
       
       console.log("=== EXTRA CONFIG VALIDATION START ===");
       console.log("Current enabledModules:", enabledModules);
@@ -447,7 +482,8 @@ export const useProjectConfigSave = (
       console.log("Saved:", { projectConfigPayload, extrasPayloads });
     } catch (err) {
       console.error("Failed to save configuration", err);
-      showToast("Failed to save configuration", err);
+      const serverMsg = err?.response?.data?.message || err?.message || "Unknown error";
+      showToast(`Failed to save configuration: ${serverMsg}`, "error");
       resetForm();
     }
   };
