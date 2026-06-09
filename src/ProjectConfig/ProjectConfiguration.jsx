@@ -259,14 +259,14 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
     }
 
     // Fetch box capacities
-    let resolvedCapacity = null;
+      let resolvedCapacity = null;
     try {
       const boxRes = await API.get(`/BoxCapacities`);
       const boxConfig = boxRes.data;
       setBoxCapacities(boxConfig);
-      resolvedCapacity =
-        projectConfig?.boxCapacity ||
-        (boxConfig.length > 0 ? boxConfig[0].id : null);
+        // Prefer BoxCapacityId if present, fall back to id for older payloads
+        const firstCapacityId = boxConfig.length > 0 ? (boxConfig[0].boxCapacityId ?? boxConfig[0].id ?? boxConfig[0].BoxCapacityId ?? null) : null;
+        resolvedCapacity = projectConfig?.boxCapacity ?? firstCapacityId;
       setSelectedCapacity(resolvedCapacity);
     } catch (err) {
       console.error(
@@ -1047,8 +1047,12 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
 
   // Configuration status
   const envelopeConfigured =
-    isEnabled("Envelope Setup and Enhancement");
-  const boxConfigured = isEnabled("Box Breaking");
+    isEnabled("Envelope Setup and Enhancement") && Array.isArray(selectedEnvelopeFields) && selectedEnvelopeFields.length > 0;
+
+  const boxConfigured = isEnabled("Box Breaking") && (selectedCapacity !== null && selectedCapacity !== undefined) &&
+    Array.isArray(selectedDuplicatefields) && selectedDuplicatefields.length > 0 &&
+    Array.isArray(selectedSortingField) && selectedSortingField.length > 0 &&
+    Array.isArray(selectedBoxFields) && selectedBoxFields.length > 0;
   const extraConfigured = isEnabled(EXTRA_ALIAS_NAME);
   const duplicateConfigured = isEnabled("Duplicate Tool");
 

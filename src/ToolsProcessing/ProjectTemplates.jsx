@@ -776,8 +776,7 @@ const ProjectTemplates = () => {
       const details = await fetchTemplateDetails(APIURL, template.templateId);
       let currentFields = details;
 
-      const needsRefresh = !currentFields.requiredFieldsJson &&
-        !currentFields.RequiredFieldsJson &&
+      const needsRefresh =
         (!currentFields.parsedFieldsJson || currentFields.parsedFieldsJson === "[]") &&
         (!currentFields.ParsedFieldsJson || currentFields.ParsedFieldsJson === "[]");
 

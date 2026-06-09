@@ -28,6 +28,8 @@ const TemplatesPanel = ({
   handleGenerateAllTemplates,
   handleDownloadAllTemplates,
   onClose,
+  checkIsEnvelopeDependent,
+  isQuantitySheetTemplate,
 }) => {
   if (!open) return null;
 
@@ -91,6 +93,10 @@ const TemplatesPanel = ({
                   const existsInDb = envLotReports.some((r) => r.templateId === templateId);
                   const reportExists = reportStatus?.exists || template.reportStatus || existsInDb;
                   const alreadyGenerated = reportExists && !needsRegenerate;
+                  
+                  const isEnvelopeDependent = checkIsEnvelopeDependent ? checkIsEnvelopeDependent(template) : false;
+                  const isQS = isQuantitySheetTemplate ? isQuantitySheetTemplate(resolveTemplateName(template)) : false;
+                  const showBothButtons = isEnvelopeDependent && !isQS;
 
                   return (
                     <Card
@@ -115,14 +121,35 @@ const TemplatesPanel = ({
                           )}
                         </div>
                         <Space>
-                          <Button
-                            size="small"
-                            type={alreadyGenerated ? "default" : "primary"}
-                            onClick={() => handleGenerateTemplate(template)}
-                            loading={isGenerating}
-                          >
-                            {alreadyGenerated ? "Regenerate" : "Generate"}
-                          </Button>
+                          {showBothButtons ? (
+                            <>
+                              <Button
+                                size="small"
+                                type="primary"
+                                onClick={() => handleGenerateTemplate(template, "generate")}
+                                loading={isGenerating}
+                              >
+                                Generate
+                              </Button>
+                              <Button
+                                size="small"
+                                type="default"
+                                onClick={() => handleGenerateTemplate(template, "regenerate")}
+                                loading={isGenerating}
+                              >
+                                Regenerate
+                              </Button>
+                            </>
+                          ) : (
+                            <Button
+                              size="small"
+                              type={alreadyGenerated ? "default" : "primary"}
+                              onClick={() => handleGenerateTemplate(template, alreadyGenerated ? "regenerate" : "generate")}
+                              loading={isGenerating}
+                            >
+                              {alreadyGenerated ? "Regenerate" : "Generate"}
+                            </Button>
+                          )}
                         </Space>
                       </div>
 
