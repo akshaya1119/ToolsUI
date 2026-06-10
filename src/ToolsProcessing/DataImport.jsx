@@ -1,10 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import '@ant-design/v5-patch-for-react-19'
-import { Row, Col, Card, Select, Upload, Button, Typography, Space, Table, Tabs, Checkbox, Input, Modal, Radio, DatePicker } from 'antd';
+import { Row, Col, Card, Select, Upload, Button, Typography, Space, Table, Tabs, Checkbox, Input, Modal, Radio, DatePicker, Popconfirm } from 'antd';
 import dayjs from 'dayjs';
 import { MessageService } from "../services/MessageService";
 import { useToast } from '../hooks/useToast';
-import { CheckCircleOutlined, UploadOutlined, ToolOutlined, SearchOutlined, PlusOutlined, EditOutlined,CloseCircleOutlined } from '@ant-design/icons';
+import { CheckCircleOutlined, UploadOutlined, ToolOutlined, SearchOutlined, PlusOutlined, EditOutlined,CloseCircleOutlined, DeleteOutlined } from '@ant-design/icons';
 import * as XLSX from 'xlsx-js-style';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -1326,19 +1326,61 @@ const DataImport = () => {
           );
         }
         return (
-          <Button
-            type="link"
-            size="small"
-            onClick={() => handleEditRow(record)}
-            style={{ padding: 0, fontSize: '16px' }}
-            title="Edit"
-          >
-            <EditOutlined />
-          </Button>
+          <Space size="small">
+            <Button
+              type="link"
+              size="small"
+              onClick={() => handleEditRow(record)}
+              style={{ padding: 0, fontSize: '16px' }}
+              title="Edit"
+            >
+              <EditOutlined />
+            </Button>
+            <Popconfirm
+              title="Delete row"
+              description={`Are you sure you want to delete this row?`}
+              onConfirm={async () => {
+                await handleDeleteRow(record);
+              }}
+              okText="Yes"
+              cancelText="No"
+              okButtonProps={{ danger: true }}
+            >
+              <Button
+                type="link"
+                size="small"
+                style={{ padding: 0, color: '#ff4d4f', fontSize: '16px' }}
+                title="Delete"
+              >
+                <DeleteOutlined />
+              </Button>
+            </Popconfirm>
+          </Space>
         );
       }
     }
   ];
+
+  const handleDeleteRow = async (record) => {
+    if (!record?.id) return;
+    try {
+      setLoading(true);
+      const token = localStorage.getItem("token");
+      // Soft-delete this specific NRData row by setting Status = false
+      await API.put(`/NRDatas/UpdateSingle/${record.id}`, { Status: false }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      showToast("Row deleted successfully", "success");
+      // Refresh table
+      await fetchExistingData(projectId);
+    } catch (err) {
+      console.error("Error deleting row:", err);
+      const errorMsg = err?.response?.data || err?.message || "Failed to delete row";
+      showToast(errorMsg, "error");
+    } finally {
+      setLoading(false);
+    }
+  };
 
 const [masterFields, setMasterFields] = useState([]);
 const [loadingFields, setLoadingFields] = useState(false);
