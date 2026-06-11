@@ -761,6 +761,7 @@ const ProcessingPipeline = () => {
   };
 
   const fetchMissingEnvLotCatchesForSelection = async (projectIdParam) => {
+    console.log(projectIdParam)
     try {
       const res = await API.get(`/NRDataLots/GetMissingEnvLotCatches/${projectIdParam}`);
       const rawData = res.data || [];
@@ -870,6 +871,9 @@ const ProcessingPipeline = () => {
         loading: false,
         resolve,
         isRegenerate,
+        showAssigned: extraProps.showAssigned,
+        assignedEnvLots: extraProps.assignedEnvLots,
+        unassignedCatches: extraProps.unassignedCatches,
         ...extraProps
       });
     });
@@ -915,9 +919,15 @@ const ProcessingPipeline = () => {
   const handleSelectAllEnvLots = (checked) => {
     if (checked) {
       setEnvLotSelectionModal(prev => {
-        const ids = prev.availableEnvLots.map(lot => 
-          prev.isRegenerate ? lot.envLotNo : lot.catchNo
-        );
+        let ids = [];
+        if (prev.isRegenerate) {
+          ids = prev.availableEnvLots.map(lot => lot.envLotNo);
+        } else if (prev.showAssigned && Array.isArray(prev.assignedEnvLots) && prev.assignedEnvLots.length > 0) {
+          ids = prev.assignedEnvLots.map(lot => lot.envLotNo);
+        } else {
+          ids = prev.availableEnvLots.map(lot => lot.catchNo);
+        }
+
         return {
           ...prev,
           selectedEnvLots: ids
@@ -1335,6 +1345,8 @@ const ProcessingPipeline = () => {
 
     // Only show env lot modal for reports dependent on envelope breakages (excluding QS)
     let assignedCatchNos = [];
+    // Debug: log why the missing-catches branch may not run
+    console.debug('handleGenerateTemplate: isQS=', isQS, 'isEnvelopeDependent=', isEnvelopeDependent, 'action=', action, 'projectId=', projectId, 'envelopeBreakingModuleId=', envelopeBreakingModuleId, 'templateModuleIds=', templateModuleIds);
     if (!isQS && isEnvelopeDependent) {
       if (action === "regenerate") {
         const assignedCatchItems = await fetchAssignedEnvLotCatchesForSelection(projectId);
@@ -1352,10 +1364,12 @@ const ProcessingPipeline = () => {
           const isStale = templateId ? staleTemplateIds.has(templateId) : false;
           const templateIsOutdated = hasMappingUpdate || isStale;
           
-          const selectedEnvLots = await showEnvLotSelectionModal(assignedCatchItems, true, {
+          const selectedEnvLots = await showEnvLotSelectionModal([], true, {
+             assignedEnvLots: assignedCatchItems,
              generatedEnvLots,
              templateIsOutdated,
-             staleEnvLotIds
+             staleEnvLotIds,
+             showAssigned: true
           });
           if (selectedEnvLots === null) return;
           if (selectedEnvLots.length > 0) {
@@ -1368,18 +1382,35 @@ const ProcessingPipeline = () => {
       } else {
         const missingCatchItems = await fetchMissingEnvLotCatchesForSelection(projectId);
         if (missingCatchItems.length > 0) {
-          const selectedCatchNos = await showEnvLotSelectionModal(missingCatchItems, false);
+          // Also fetch assigned env-lot items so user can optionally show them
+          const assignedCatchItems = await fetchAssignedEnvLotCatchesForSelection(projectId);
+          const selectedCatchNos = await showEnvLotSelectionModal([], false, { unassignedCatches: missingCatchItems, assignedEnvLots: assignedCatchItems, showAssigned: false });
           if (selectedCatchNos === null) {
             return; // user cancelled
           }
           if (selectedCatchNos.length > 0) {
-            const assignResult = await assignEnvLotByCatchNos(selectedCatchNos);
-            if (!assignResult || !assignResult.assignedEnvLotNo) {
-              return;
+            // Separate any selected envLotNos (when user toggled to show assigned) from pure catchNos
+            const allAssignedEnvLotNos = (assignedCatchItems || []).map(a => Number(a.envLotNo));
+            const selectedEnvLotNos = selectedCatchNos
+              .map(s => (typeof s === 'number' ? Number(s) : (String(s).match(/^\d+$/) ? Number(s) : NaN)))
+              .filter(n => !isNaN(n) && allAssignedEnvLotNos.includes(n));
+
+            const selectedCatchOnly = selectedCatchNos.filter(s => !selectedEnvLotNos.includes(Number(s)));
+
+            // If catch numbers selected, assign them to an EnvLot
+            if (selectedCatchOnly.length > 0) {
+              const assignResult = await assignEnvLotByCatchNos(selectedCatchOnly);
+              if (!assignResult || !assignResult.assignedEnvLotNo) {
+                return;
+              }
+              envLotNumbers.push(assignResult.assignedEnvLotNo);
+              assignedCatchNos = selectedCatchOnly;
             }
 
-            envLotNumbers = [assignResult.assignedEnvLotNo];
-            assignedCatchNos = selectedCatchNos;
+            // Include any explicitly selected existing envLot numbers for regeneration
+            if (selectedEnvLotNos.length > 0) {
+              envLotNumbers = envLotNumbers.concat(selectedEnvLotNos);
+            }
           }
         } else if (action === "generate") {
           message.info("All catches already have an envelope lot assigned.");
@@ -3829,6 +3860,10 @@ const ProcessingPipeline = () => {
         generatedEnvLots={envLotSelectionModal.generatedEnvLots}
         templateIsOutdated={envLotSelectionModal.templateIsOutdated}
         staleEnvLotIds={envLotSelectionModal.staleEnvLotIds}
+        assignedEnvLots={envLotSelectionModal.assignedEnvLots}
+        unassignedCatches={envLotSelectionModal.unassignedCatches}
+        showAssigned={envLotSelectionModal.showAssigned}
+        onToggleShowAssigned={(val) => setEnvLotSelectionModal(prev => ({ ...prev, showAssigned: val }))}
       />
 
       <ExistingReportModal
