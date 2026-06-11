@@ -14,6 +14,13 @@ const useUserTokenStore = create((set) => ({
     localStorage.removeItem(USER_TOKEN_KEY);
     localStorage.removeItem("cached_groups");
     localStorage.removeItem("cached_all_projects");
+    // Remove selected project info on logout
+    localStorage.removeItem("selectedProjectId");
+    localStorage.removeItem("selectedProjectName");
+    localStorage.removeItem("selectedGroup");
+    localStorage.removeItem("selectedType");
+    // Also clear stale env lot markers (optional)
+    localStorage.removeItem("staleEnvLotIds");
     set({ token: "" });
   },
 

@@ -266,14 +266,7 @@ const LotWisePanel = ({
                                     }))}
                                   />
                                 )}
-                                <Button
-                                  size="small"
-                                  type={getBoxVersionsForLot(lot.lotNo).length > 0 ? "default" : "primary"}
-                                  onClick={() => handleGenerateAllLots(lot.lotNo)}
-                                  loading={generatingLotReport[lot.lotNo]}
-                                >
-                                  {lotReportStatus[lot.lotNo] ? "Regenerate" : "Generate"}
-                                </Button>
+                               
                               </Space>
                             </div>
                           </Card>

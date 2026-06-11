@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { Modal, Alert, Checkbox, Card, Typography, Input } from "antd";
+import { Modal, Alert, Checkbox, Card, Typography, Input, Tag } from "antd";
+import useStore from "../../stores/ProjectData";
 
 const { Text } = Typography;
 
@@ -12,7 +13,11 @@ const EnvLotSelectionModal = ({
   onConfirm,
   onCancel,
   isRegenerate = false,
+  generatedEnvLots = [],
+  templateIsOutdated = false,
+  staleEnvLotIds = []
 }) => {
+  const storeStaleEnvLotIds = useStore((state) => state.staleEnvLotIds || []);
   const [envLotSearch, setEnvLotSearch] = useState("");
 
   const filteredItems = availableEnvLots.filter((item) => {
@@ -81,7 +86,13 @@ const EnvLotSelectionModal = ({
                   <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                     {isRegenerate ? (
                         <div style={{ display: 'flex', flexDirection: 'column' }}>
-                            <Text strong style={{ fontSize: "14px" }}>Env Lot {item.envLotNo}</Text>
+                            <div style={{ display: 'flex', alignItems: 'center' }}>
+                                <Text strong style={{ fontSize: "14px" }}>Env Lot {item.envLotNo}</Text>
+                                {((Array.isArray(storeStaleEnvLotIds) && storeStaleEnvLotIds.map(n => Number(n)).includes(Number(item.envLotNo))) ||
+                                  (Array.isArray(staleEnvLotIds) && staleEnvLotIds.map(n => Number(n)).includes(Number(item.envLotNo)))) && (
+                                  <Tag color="orange" style={{ marginLeft: 8 }}>Outdated</Tag>
+                                )}
+                            </div>
                             <Text type="secondary" style={{ fontSize: "12px" }}>Catches: {item.catches.join(', ')}</Text>
                         </div>
                     ) : (

@@ -158,6 +158,7 @@ const mergeRows = (base, patch) => ({
 const LotsBifurcation = forwardRef(({ onCatchDeleted }, ref) => {
   const projectId = useStore((state) => state.projectId);
   const setHasDeactivatedCatches = useStore((state) => state.setHasDeactivatedCatches);
+  const addStaleEnvLotIds = useStore((state) => state.addStaleEnvLotIds);
   const { showToast } = useToast();
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState([]);
@@ -332,12 +333,31 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted }, ref) => {
   const handleDeleteCatchNo = async (catchNo) => {
     if (!projectId) return;
     try {
+      // Find out which EnvLot this catch belongs to *before* deleting
+      let staleEnvLotNo = null;
+      try {
+        const envLotsRes = await API.get(`/NRDataLots/GetAssignedEnvLotCatches/${projectId}`);
+        if (envLotsRes?.data) {
+          const assignedLot = envLotsRes.data.find(lot => lot.catches?.includes(catchNo));
+          if (assignedLot) {
+            staleEnvLotNo = assignedLot.envLotNo;
+          }
+        }
+      } catch (err) {
+        console.error("Failed to check EnvLot assignments before deletion", err);
+      }
+
       const response = await API.delete(`/NRDatas/DeleteCatchNo/${projectId}/${catchNo}`);
       setRows((prev) => prev.filter((row) => row.catchNo !== catchNo));
       showToast(`${response.data.message}. ${response.data.note}`, "info");
       
       // ✅ Notify store that a catch was deleted
       setHasDeactivatedCatches(true);
+
+      // ✅ Flag the specific EnvLot as stale
+      if (staleEnvLotNo) {
+        addStaleEnvLotIds([staleEnvLotNo]);
+      }
     } catch (error) {
       console.error("Failed to delete catch number", error);
       showToast("Failed to delete catch number", "error");

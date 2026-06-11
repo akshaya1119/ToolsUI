@@ -32,6 +32,8 @@ const DataImport = () => {
   const isConfigured = useStore((state) => state.isConfigured);
   const isLoadingData = useStore((state) => state.isLoadingData);
   const projectId = useStore((state) => state.projectId);
+  const addStaleEnvLotIds = useStore((state) => state.addStaleEnvLotIds);
+  const setHasDeactivatedCatches = useStore((state) => state.setHasDeactivatedCatches);
 
   useEffect(() => {
     if (projectId && !isLoadingData && !isConfigured) {
@@ -1367,9 +1369,27 @@ const DataImport = () => {
       setLoading(true);
       const token = localStorage.getItem("token");
       // Soft-delete this specific NRData row by setting Status = false
+      // Before deleting, determine which EnvLot (if any) this catch belongs to so we can mark it stale
+      const catchNo = record?.CatchNo ?? record?.catchNo ?? null;
+      try {
+        if (catchNo && projectId) {
+          const envLotsRes = await API.get(`/NRDataLots/GetAssignedEnvLotCatches/${projectId}`);
+          const assignedLot = (envLotsRes?.data || []).find(l => Array.isArray(l.catches) && l.catches.includes(String(catchNo)));
+          if (assignedLot && assignedLot.envLotNo) {
+            addStaleEnvLotIds([Number(assignedLot.envLotNo)]);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to determine EnvLot before deletion", err);
+      }
+
       await API.put(`/NRDatas/UpdateSingle/${record.id}`, { Status: false }, {
         headers: { Authorization: `Bearer ${token}` }
       });
+
+      // Notify other parts of app that catches changed
+      setHasDeactivatedCatches(true);
+
       showToast("Row deleted successfully", "success");
       // Refresh table
       await fetchExistingData(projectId);
@@ -1395,60 +1415,60 @@ const [editingRowId, setEditingRowId] = useState(null);
 const [editFormData, setEditFormData] = useState({});
 const [originalEditFormData, setOriginalEditFormData] = useState({});
 
-const rerunDuplicateTool = async () => {
-  try {
-    await API.post(`/Duplicate?ProjectId=${projectId}`, null, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-  } catch (err) {
-    console.error("Duplicate tool rerun failed:", err);
-    showToast("Data saved, but duplicate tool rerun failed", "warning");
-  }
-};
+// const rerunDuplicateTool = async () => {
+//   try {
+//     await API.post(`/Duplicate?ProjectId=${projectId}`, null, {
+//       headers: { Authorization: `Bearer ${token}` },
+//     });
+//   } catch (err) {
+//     console.error("Duplicate tool rerun failed:", err);
+//     showToast("Data saved, but duplicate tool rerun failed", "warning");
+//   }
+// };
 
 // Runs envelope breaking + box breaking for a single lot only.
 // skipReset=true ensures global ReportStatus is NOT wiped for other lots.
-const runTargetedPipelineForLot = async (lotNo, catchNo = null) => {
-  if (!lotNo) return;
+// const runTargetedPipelineForLot = async (lotNo, catchNo = null) => {
+//   if (!lotNo) return;
 
-  try {
-    // Envelope breaking for this lot only (picks up eligible-step rows naturally)
-    // Now passing catchNo to support incremental sequence continuity
-    const queryParams = new URLSearchParams({
-        ProjectId: projectId,
-        skipReset: 'true',
-        lotNo: lotNo
-    });
-    if (catchNo) queryParams.append('catchNo', catchNo);
+//   try {
+//     // Envelope breaking for this lot only (picks up eligible-step rows naturally)
+//     // Now passing catchNo to support incremental sequence continuity
+//     const queryParams = new URLSearchParams({
+//         ProjectId: projectId,
+//         skipReset: 'true',
+//         lotNo: lotNo
+//     });
+//     if (catchNo) queryParams.append('catchNo', catchNo);
 
-    await API.post(
-      `/EnvelopeBreakageProcessing/ProcessEnvelopeBreaking?${queryParams.toString()}`,
-      null,
-      { headers: { Authorization: `Bearer ${token}` } }
-    );
-  } catch (err) {
-    // Envelope breaking may not be configured for every project — log and continue
-    console.warn("Targeted envelope breaking skipped or failed (may be expected):", err?.response?.data || err);
-  }
+//     await API.post(
+//       `/EnvelopeBreakageProcessing/ProcessEnvelopeBreaking?${queryParams.toString()}`,
+//       null,
+//       { headers: { Authorization: `Bearer ${token}` } }
+//     );
+//   } catch (err) {
+//     // Envelope breaking may not be configured for every project — log and continue
+//     console.warn("Targeted envelope breaking skipped or failed (may be expected):", err?.response?.data || err);
+//   }
 
-  try {
-    // Box breaking for this specific lot only (skip global reset)
-    await API.post(
-      `/BoxBreakingProcessing/ProcessBoxBreaking?ProjectId=${projectId}&LotNo=${lotNo}&skipReset=true`,
-      null,
-      { headers: { Authorization: `Bearer ${token}` } }
-    );
-    showToast(`Pipeline updated for lot ${lotNo}`, "success");
+//   try {
+//     // Box breaking for this specific lot only (skip global reset)
+//     await API.post(
+//       `/BoxBreakingProcessing/ProcessBoxBreaking?ProjectId=${projectId}&LotNo=${lotNo}&skipReset=true`,
+//       null,
+//       { headers: { Authorization: `Bearer ${token}` } }
+//     );
+//     showToast(`Pipeline updated for lot ${lotNo}`, "success");
     
-    // Trigger "Outer" template regeneration if a specific catch was added
-    if (catchNo) {
-        await triggerOuterTemplateRegeneration(catchNo);
-    }
-  } catch (err) {
-    console.error("Targeted box breaking failed:", err?.response?.data || err);
-    showToast("Catch added, but pipeline run for this lot failed. Please re-run manually.", "warning");
-  }
-};
+//     // Trigger "Outer" template regeneration if a specific catch was added
+//     if (catchNo) {
+//         await triggerOuterTemplateRegeneration(catchNo);
+//     }
+//   } catch (err) {
+//     console.error("Targeted box breaking failed:", err?.response?.data || err);
+//     showToast("Catch added, but pipeline run for this lot failed. Please re-run manually.", "warning");
+//   }
+// };
 
 const triggerOuterTemplateRegeneration = async (catchNo) => {
     try {
@@ -1642,14 +1662,14 @@ const handleInlineSave = async () => {
     });
 
     fetchExistingData(projectId);
-    await rerunDuplicateTool();
+    // await rerunDuplicateTool();
 
     // Targeted pipeline: run envelope + box breaking only for the new catch's lot
     const newLotNo = response.data?.lotNo;
     const addedCatchNo = response.data?.catchNo;
-    if (newLotNo) {
-      await runTargetedPipelineForLot(newLotNo, addedCatchNo);
-    }
+    // if (newLotNo) {
+    //   await runTargetedPipelineForLot(newLotNo, addedCatchNo);
+    // }
 
   } catch (err) {
     console.error("Full error:", err);
@@ -1720,6 +1740,20 @@ const handleSaveEdit = async () => {
     setOriginalEditFormData({});
     await fetchExistingData(projectId);
     await rerunDuplicateTool();
+    // Determine affected catch number(s) and mark their EnvLot(s) stale so users know to regenerate
+    try {
+      const catchNo = originalEditFormData?.CatchNo ?? originalEditFormData?.catchNo ?? editFormData?.CatchNo ?? editFormData?.catchNo ?? null;
+      if (catchNo && projectId) {
+        const envLotsRes = await API.get(`/NRDataLots/GetAssignedEnvLotCatches/${projectId}`);
+        const assignedLot = (envLotsRes?.data || []).find(l => Array.isArray(l.catches) && l.catches.includes(String(catchNo)));
+        if (assignedLot && assignedLot.envLotNo) {
+          addStaleEnvLotIds([Number(assignedLot.envLotNo)]);
+          setHasDeactivatedCatches(true);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to mark EnvLot stale after edit", err);
+    }
   } catch (err) {
     console.error("Error updating data:", err);
     const errorMsg = err?.response?.data?.message || err?.response?.data || err?.message || "Failed to update data";

@@ -79,6 +79,8 @@ const ProcessingPipeline = () => {
   const nrDataCount = useStore((state) => state.nrDataCount);
   const hasDeactivatedCatches = useStore((state) => state.hasDeactivatedCatches);
   const setHasDeactivatedCatches = useStore((state) => state.setHasDeactivatedCatches);
+  const staleEnvLotIds = useStore((state) => state.staleEnvLotIds);
+  const removeStaleEnvLotIds = useStore((state) => state.removeStaleEnvLotIds);
   const projectId = useStore((state) => state.projectId);
   useEffect(() => {
     if (projectId && !isLoadingData) {
@@ -213,8 +215,7 @@ const ProcessingPipeline = () => {
 
     return Object.entries(keyMap)
       .filter(([key, config]) => {
-        const hasPending = pipelineStepStatus[config.flag] ||
-          ((key === "envelopebreaking" || key === "box") && hasDeactivatedCatches);
+        const hasPending = pipelineStepStatus[config.flag];
         if (!hasPending) return false;
 
         const step = steps.find(s => s.key === key);
@@ -859,7 +860,7 @@ const ProcessingPipeline = () => {
     }
   };
 
-  const showEnvLotSelectionModal = (envLots, isRegenerate = false) => {
+  const showEnvLotSelectionModal = (envLots, isRegenerate = false, extraProps = {}) => {
     setEnvLotSearch("");
     return new Promise((resolve) => {
       setEnvLotSelectionModal({
@@ -868,7 +869,8 @@ const ProcessingPipeline = () => {
         selectedEnvLots: [],
         loading: false,
         resolve,
-        isRegenerate
+        isRegenerate,
+        ...extraProps
       });
     });
   };
@@ -1337,7 +1339,24 @@ const ProcessingPipeline = () => {
       if (action === "regenerate") {
         const assignedCatchItems = await fetchAssignedEnvLotCatchesForSelection(projectId);
         if (assignedCatchItems.length > 0) {
-          const selectedEnvLots = await showEnvLotSelectionModal(assignedCatchItems, true);
+          const templateId = resolveTemplateId(template);
+          
+          let generatedEnvLots = [];
+          if (templateId) {
+             generatedEnvLots = envLotReports
+               .filter(r => r.templateId === templateId)
+               .flatMap(r => r.envLotNumbers);
+          }
+          
+          const hasMappingUpdate = templateId ? isMappingNewerThanReport(templateId) : false;
+          const isStale = templateId ? staleTemplateIds.has(templateId) : false;
+          const templateIsOutdated = hasMappingUpdate || isStale;
+          
+          const selectedEnvLots = await showEnvLotSelectionModal(assignedCatchItems, true, {
+             generatedEnvLots,
+             templateIsOutdated,
+             staleEnvLotIds
+          });
           if (selectedEnvLots === null) return;
           if (selectedEnvLots.length > 0) {
             envLotNumbers = selectedEnvLots;
@@ -2471,7 +2490,8 @@ const ProcessingPipeline = () => {
       return;
     }
 
-    if (!hasPendingPipelineChanges && !configChanged) {
+    const hasAnyPendingStep = pipelineStepStatus && Object.values(pipelineStepStatus).some(v => v === true);
+    if (!hasPendingPipelineChanges && !hasAnyPendingStep && !configChanged) {
       message.info("No new data changes found. Re-run is allowed only after changes (add/remove catch, upload, edit, etc.).");
       return;
     }
@@ -2849,10 +2869,6 @@ const ProcessingPipeline = () => {
       }
     }
 
-    if ((step.key === "envelopebreaking" || step.key === "box") && hasDeactivatedCatches && step.status === "completed") {
-      isOutdated = true;
-    }
-
     return isOutdated;
   };
 
@@ -2913,11 +2929,6 @@ const ProcessingPipeline = () => {
                 // boxPending = data changed → always outdated/selectable for re-run
                 isOutdated = true;
             }
-          }
-
-          // Deactivated catches legacy case also forces outdated
-          if ((record.key === "envelopebreaking" || record.key === "box") && hasDeactivatedCatches && record.status === "completed") {
-            isOutdated = true;
           }
 
           // If step is completed and NOT outdated, hide selection checkbox
@@ -3025,14 +3036,6 @@ const ProcessingPipeline = () => {
                 isOutdated = true;
               }
             }
-          }
-        }
-
-        // Keep legacy check for deactivated catches if any
-        if ((record.key === "envelopebreaking" || record.key === "box") && displayStatus === "completed" && hasDeactivatedCatches) {
-          displayStatus = "pending";
-          if (record.status === "completed" || record.report || (record.key === "box" && record.completedLots > 0)) {
-            isOutdated = true;
           }
         }
 
@@ -3530,9 +3533,14 @@ const ProcessingPipeline = () => {
           ) : (
             <Badge status="default" text="Idle" color="gray" />
           )}
+          {(() => {
+            const hasAnyPendingStep = pipelineStepStatus && Object.values(pipelineStepStatus).some(v => v === true);
+            const canStartByData = hasPendingPipelineChanges || hasAnyPendingStep || configChanged;
+            
+            return (
           <Tooltip
             title={
-              (!hasPendingPipelineChanges && !configChanged)
+              (!canStartByData)
                 ? "No new data found for processing. All data is already processed."
                 : (selectedModules.length === 0
                   ? "Please select at least one module"
@@ -3551,7 +3559,7 @@ const ProcessingPipeline = () => {
                     : "")
             }
           >
-            <span style={{ cursor: (!hasPendingPipelineChanges && !configChanged) || selectedModules.length === 0 ? "not-allowed" : "default" }}>
+            <span style={{ cursor: (!canStartByData) || selectedModules.length === 0 ? "not-allowed" : "default" }}>
               <Button
                 type="primary"
                 onClick={handleAudit}
@@ -3577,6 +3585,8 @@ const ProcessingPipeline = () => {
               </Button>
             </span>
           </Tooltip>
+          );
+          })()}
         </div>
       </div>
 
@@ -3624,8 +3634,7 @@ const ProcessingPipeline = () => {
                     box: "boxPending"
                   };
                   const pendingFlag = keyMap[record.key];
-                  const isPending = (pendingFlag && pipelineStepStatus && pipelineStepStatus[pendingFlag]) ||
-                    ((record.key === "envelopebreaking" || record.key === "box") && record.status === "completed" && hasDeactivatedCatches);
+                  const isPending = (pendingFlag && pipelineStepStatus && pipelineStepStatus[pendingFlag]);
                   const isOutdated = isPending && (record.status === "completed" || record.report || (record.key === "box" && record.completedLots > 0));
 
                   if (isOutdated) {
@@ -3649,6 +3658,7 @@ const ProcessingPipeline = () => {
             templateReportStatus={templateReportStatus}
             templateDownloads={templateDownloads}
             staleTemplateIds={staleTemplateIds}
+            staleEnvLotIds={staleEnvLotIds}
             envLotReports={envLotReports}
             expandedReportsTemplates={expandedReportsTemplates}
             bulkGenerating={bulkGenerating}
@@ -3816,6 +3826,9 @@ const ProcessingPipeline = () => {
         onConfirm={handleEnvLotSelectionConfirm}
         onCancel={handleEnvLotSelectionCancel}
         isRegenerate={envLotSelectionModal.isRegenerate}
+        generatedEnvLots={envLotSelectionModal.generatedEnvLots}
+        templateIsOutdated={envLotSelectionModal.templateIsOutdated}
+        staleEnvLotIds={envLotSelectionModal.staleEnvLotIds}
       />
 
       <ExistingReportModal
