@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Progress,
   Badge,
@@ -37,6 +37,39 @@ import LotWisePanel from "./components/LotWisePanel";
 
 const { Text } = Typography;
 
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, info) {
+    console.error("ErrorBoundary caught error:", error, info);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: 24 }}>
+          <Alert
+            message="An unexpected error occurred"
+            description={this.state.error?.toString() || "Unknown error"}
+            type="error"
+            showIcon
+          />
+          <pre style={{ marginTop: 12, maxHeight: 300, overflow: "auto" }}>{this.state.error?.stack}</pre>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
 const url3 = import.meta.env.VITE_API_FILE_URL;
 
 const ProcessingPipeline = () => {
@@ -46,6 +79,8 @@ const ProcessingPipeline = () => {
   const nrDataCount = useStore((state) => state.nrDataCount);
   const hasDeactivatedCatches = useStore((state) => state.hasDeactivatedCatches);
   const setHasDeactivatedCatches = useStore((state) => state.setHasDeactivatedCatches);
+  const staleEnvLotIds = useStore((state) => state.staleEnvLotIds);
+  const removeStaleEnvLotIds = useStore((state) => state.removeStaleEnvLotIds);
   const projectId = useStore((state) => state.projectId);
   useEffect(() => {
     if (projectId && !isLoadingData) {
@@ -180,8 +215,7 @@ const ProcessingPipeline = () => {
 
     return Object.entries(keyMap)
       .filter(([key, config]) => {
-        const hasPending = pipelineStepStatus[config.flag] ||
-          ((key === "envelopebreaking" || key === "box") && hasDeactivatedCatches);
+        const hasPending = pipelineStepStatus[config.flag];
         if (!hasPending) return false;
 
         const step = steps.find(s => s.key === key);
@@ -260,13 +294,13 @@ const ProcessingPipeline = () => {
                       const res = await API.get(
                         `/EnvelopeBreakages/Reports/Exists?projectId=${projectId}&fileName=${lotFileName}`
                       );
-                      return res.data.exists;
+                      return { lotNo: lot.lotNo, exists: Boolean(res.data?.exists) };
                     } catch (err) {
-                      return false;
+                      return { lotNo: lot.lotNo, exists: false };
                     }
                   })
                 );
-                const completedLotsCount = lotResults.filter(result => result).length;
+                const completedLotsCount = lotResults.filter(r => r.exists).length;
                 const totalLotsCount = lots.length;
                 const exists = completedLotsCount > 0;
                 results[fileName] = exists; // Boolean for overall module status
@@ -279,6 +313,17 @@ const ProcessingPipeline = () => {
                   totalLots: totalLotsCount,
                   fileUrl: null,
                   duration: "--:--",
+                });
+
+                // Also populate availableLots and lotReportStatus so the badge is
+                // accurate without requiring the LotWisePanel to be opened first.
+                setAvailableLots(lots);
+                setLotReportStatus((prev) => {
+                  const next = { ...prev };
+                  lotResults.forEach(({ lotNo, exists: lotExists }) => {
+                    next[lotNo] = lotExists;
+                  });
+                  return next;
                 });
               }
             } catch (err) {
@@ -716,6 +761,7 @@ const ProcessingPipeline = () => {
   };
 
   const fetchMissingEnvLotCatchesForSelection = async (projectIdParam) => {
+    console.log(projectIdParam)
     try {
       const res = await API.get(`/NRDataLots/GetMissingEnvLotCatches/${projectIdParam}`);
       const rawData = res.data || [];
@@ -815,7 +861,7 @@ const ProcessingPipeline = () => {
     }
   };
 
-  const showEnvLotSelectionModal = (envLots, isRegenerate = false) => {
+  const showEnvLotSelectionModal = (envLots, isRegenerate = false, extraProps = {}) => {
     setEnvLotSearch("");
     return new Promise((resolve) => {
       setEnvLotSelectionModal({
@@ -824,7 +870,11 @@ const ProcessingPipeline = () => {
         selectedEnvLots: [],
         loading: false,
         resolve,
-        isRegenerate
+        isRegenerate,
+        showAssigned: extraProps.showAssigned,
+        assignedEnvLots: extraProps.assignedEnvLots,
+        unassignedCatches: extraProps.unassignedCatches,
+        ...extraProps
       });
     });
   };
@@ -869,9 +919,15 @@ const ProcessingPipeline = () => {
   const handleSelectAllEnvLots = (checked) => {
     if (checked) {
       setEnvLotSelectionModal(prev => {
-        const ids = prev.availableEnvLots.map(lot => 
-          prev.isRegenerate ? lot.envLotNo : lot.catchNo
-        );
+        let ids = [];
+        if (prev.isRegenerate) {
+          ids = prev.availableEnvLots.map(lot => lot.envLotNo);
+        } else if (prev.showAssigned && Array.isArray(prev.assignedEnvLots) && prev.assignedEnvLots.length > 0) {
+          ids = prev.assignedEnvLots.map(lot => lot.envLotNo);
+        } else {
+          ids = prev.availableEnvLots.map(lot => lot.catchNo);
+        }
+
         return {
           ...prev,
           selectedEnvLots: ids
@@ -1289,11 +1345,32 @@ const ProcessingPipeline = () => {
 
     // Only show env lot modal for reports dependent on envelope breakages (excluding QS)
     let assignedCatchNos = [];
+    // Debug: log why the missing-catches branch may not run
+    console.debug('handleGenerateTemplate: isQS=', isQS, 'isEnvelopeDependent=', isEnvelopeDependent, 'action=', action, 'projectId=', projectId, 'envelopeBreakingModuleId=', envelopeBreakingModuleId, 'templateModuleIds=', templateModuleIds);
     if (!isQS && isEnvelopeDependent) {
       if (action === "regenerate") {
         const assignedCatchItems = await fetchAssignedEnvLotCatchesForSelection(projectId);
         if (assignedCatchItems.length > 0) {
-          const selectedEnvLots = await showEnvLotSelectionModal(assignedCatchItems, true);
+          const templateId = resolveTemplateId(template);
+          
+          let generatedEnvLots = [];
+          if (templateId) {
+             generatedEnvLots = envLotReports
+               .filter(r => r.templateId === templateId)
+               .flatMap(r => r.envLotNumbers);
+          }
+          
+          const hasMappingUpdate = templateId ? isMappingNewerThanReport(templateId) : false;
+          const isStale = templateId ? staleTemplateIds.has(templateId) : false;
+          const templateIsOutdated = hasMappingUpdate || isStale;
+          
+          const selectedEnvLots = await showEnvLotSelectionModal([], true, {
+             assignedEnvLots: assignedCatchItems,
+             generatedEnvLots,
+             templateIsOutdated,
+             staleEnvLotIds,
+             showAssigned: true
+          });
           if (selectedEnvLots === null) return;
           if (selectedEnvLots.length > 0) {
             envLotNumbers = selectedEnvLots;
@@ -1305,18 +1382,35 @@ const ProcessingPipeline = () => {
       } else {
         const missingCatchItems = await fetchMissingEnvLotCatchesForSelection(projectId);
         if (missingCatchItems.length > 0) {
-          const selectedCatchNos = await showEnvLotSelectionModal(missingCatchItems, false);
+          // Also fetch assigned env-lot items so user can optionally show them
+          const assignedCatchItems = await fetchAssignedEnvLotCatchesForSelection(projectId);
+          const selectedCatchNos = await showEnvLotSelectionModal([], false, { unassignedCatches: missingCatchItems, assignedEnvLots: assignedCatchItems, showAssigned: false });
           if (selectedCatchNos === null) {
             return; // user cancelled
           }
           if (selectedCatchNos.length > 0) {
-            const assignResult = await assignEnvLotByCatchNos(selectedCatchNos);
-            if (!assignResult || !assignResult.assignedEnvLotNo) {
-              return;
+            // Separate any selected envLotNos (when user toggled to show assigned) from pure catchNos
+            const allAssignedEnvLotNos = (assignedCatchItems || []).map(a => Number(a.envLotNo));
+            const selectedEnvLotNos = selectedCatchNos
+              .map(s => (typeof s === 'number' ? Number(s) : (String(s).match(/^\d+$/) ? Number(s) : NaN)))
+              .filter(n => !isNaN(n) && allAssignedEnvLotNos.includes(n));
+
+            const selectedCatchOnly = selectedCatchNos.filter(s => !selectedEnvLotNos.includes(Number(s)));
+
+            // If catch numbers selected, assign them to an EnvLot
+            if (selectedCatchOnly.length > 0) {
+              const assignResult = await assignEnvLotByCatchNos(selectedCatchOnly);
+              if (!assignResult || !assignResult.assignedEnvLotNo) {
+                return;
+              }
+              envLotNumbers.push(assignResult.assignedEnvLotNo);
+              assignedCatchNos = selectedCatchOnly;
             }
 
-            envLotNumbers = [assignResult.assignedEnvLotNo];
-            assignedCatchNos = selectedCatchNos;
+            // Include any explicitly selected existing envLot numbers for regeneration
+            if (selectedEnvLotNos.length > 0) {
+              envLotNumbers = envLotNumbers.concat(selectedEnvLotNos);
+            }
           }
         } else if (action === "generate") {
           message.info("All catches already have an envelope lot assigned.");
@@ -1811,7 +1905,9 @@ const ProcessingPipeline = () => {
 
   const closeLotWisePanel = () => {
     setLotWisePanel({ open: false, moduleKey: null });
-    setAvailableLots([]);
+    // NOTE: intentionally NOT clearing availableLots or lotReportStatus here.
+    // Those values drive the "X/Y lots completed" badge in the table and must persist
+    // after the panel is closed. They will be refreshed next time the panel opens.
     setSelectedLotTab(null);
   };
 
@@ -2352,7 +2448,8 @@ const ProcessingPipeline = () => {
 
   const handleSelectAll = (checked) => {
     if (checked) {
-      setSelectedModules(steps.map((s) => s.key));
+      const keys = (data || []).filter(isStepSelectable).map((s) => s.key);
+      setSelectedModules(keys);
     } else {
       setSelectedModules([]);
     }
@@ -2424,7 +2521,8 @@ const ProcessingPipeline = () => {
       return;
     }
 
-    if (!hasPendingPipelineChanges && !configChanged) {
+    const hasAnyPendingStep = pipelineStepStatus && Object.values(pipelineStepStatus).some(v => v === true);
+    if (!hasPendingPipelineChanges && !hasAnyPendingStep && !configChanged) {
       message.info("No new data changes found. Re-run is allowed only after changes (add/remove catch, upload, edit, etc.).");
       return;
     }
@@ -2462,14 +2560,18 @@ const ProcessingPipeline = () => {
 
   const processModules = async (modulesToProcess) => {
     const allOrder = computeRunOrder(enabledModuleNames);
-    const initialSteps = allOrder.map((o) => ({
-      key: o.key,
-      title: o.title,
-      status: "pending",
-      duration: null,
-      fileUrl: null,
-    }));
-    setSteps(initialSteps);
+    // Only reset the steps being re-run to "pending"; preserve the status of steps NOT selected
+    setSteps((prev) =>
+      allOrder.map((o) => {
+        const existing = prev.find((s) => s.key === o.key);
+        if (modulesToProcess.includes(o.key)) {
+          // This step is being re-run: reset it
+          return { key: o.key, title: o.title, status: "pending", duration: null, fileUrl: null };
+        }
+        // Not being re-run: keep its existing status (may be "completed" etc.)
+        return existing || { key: o.key, title: o.title, status: "pending", duration: null, fileUrl: null };
+      })
+    );
     setIsProcessing(true);
     const stepTimers = new Map();
     const completedSteps = new Set();
@@ -2569,6 +2671,16 @@ const ProcessingPipeline = () => {
 
               // Run box breaking with selected lots
               await runBoxBreaking(projectId, selectedLots);
+
+              // Immediately update availableLots and mark selectedLots as completed
+              // in lotReportStatus so the badge is accurate right away (before the
+              // async checkReportExistence re-confirms via file-existence calls).
+              setAvailableLots(lots);
+              setLotReportStatus((prev) => {
+                const next = { ...prev };
+                selectedLots.forEach((lotNo) => { next[lotNo] = true; });
+                return next;
+              });
             } else {
               // No lots found
               message.warning("No lots found for this project");
@@ -2743,44 +2855,127 @@ const ProcessingPipeline = () => {
       return normalized.includes(step.key);
     }) || step.title;
 
+    // Default lot counts from step
+    let completedLots = step.completedLots ?? 0;
+    let totalLots = step.totalLots ?? 0;
+
+    // For box breaking use actual available lots and lot report status
+    if (step.key === "box") {
+      const availableCount = (availableLots && availableLots.length) || 0;
+      const reportedCount = Object.keys(lotReportStatus || {}).length || 0;
+      totalLots = Math.max(availableCount, reportedCount, totalLots || 0);
+      // `lotReportStatus` stores booleans per lotNo (true if exists)
+      completedLots = Object.values(lotReportStatus || {}).filter(Boolean).length;
+    }
+
     return {
       key: step.key,
       moduleName: moduleName,
       status: step.status || "pending",
       report: step.fileUrl,
-      completedLots: step.completedLots,
-      totalLots: step.totalLots,
+      completedLots,
+      totalLots,
     };
   });
 
   const showTemplatePanel = templatePanel.open;
   const showLotWisePanel = lotWisePanel.open;
 
+  // Helper to determine if a step is outdated based on realtime flags and lot statuses
+  const isStepOutdated = (step) => {
+    let isOutdated = false;
+    if (pipelineStepStatus) {
+      const keyMap = {
+        duplicate: "duplicatePending",
+        enhancement: "enhancementPending",
+        extra: "extraPending",
+        envelopebreaking: "envelopePending",
+        box: "boxPending",
+      };
+      const pendingFlag = keyMap[step.key];
+      if (pendingFlag && pipelineStepStatus[pendingFlag]) {
+        // boxPending means data was modified → always mark outdated so user can re-run,
+        // regardless of how many lots were previously completed.
+        isOutdated = true;
+      }
+    }
+
+    return isOutdated;
+  };
+
+  const isStepSelectable = (step) => {
+    // Selectable if not completed, or completed but outdated (needs re-run)
+    const outdated = isStepOutdated(step);
+    return !(step.status === "completed" && !outdated);
+  };
+
+  // Keep selectedModules in sync: remove any modules that are no longer selectable
+  useEffect(() => {
+    const selectableKeys = new Set((data || []).filter(isStepSelectable).map(s => s.key));
+    setSelectedModules((prev) => {
+      const next = prev.filter(k => selectableKeys.has(k));
+      // Avoid updating state if nothing changed (prevents infinite re-renders)
+      if (next.length === prev.length && next.every((v, i) => v === prev[i])) {
+        return prev;
+      }
+      return next;
+    });
+  }, [data, pipelineStepStatus, availableLots, lotReportStatus, hasDeactivatedCatches]);
+
   const columns = [
     {
-      title: () => (
-        <Checkbox
-          checked={selectedModules.length === steps.length && steps.length > 0}
-          indeterminate={selectedModules.length > 0 && selectedModules.length < steps.length}
-          onChange={(e) => handleSelectAll(e.target.checked)}
-          disabled={isProcessing || steps.length === 0}
-        >
-          Select
-        </Checkbox>
-      ),
+      title: () => {
+        const selectable = (data || []).filter(isStepSelectable);
+        const selectableKeys = new Set(selectable.map(s => s.key));
+        const selectedSelectableCount = selectedModules.filter(k => selectableKeys.has(k)).length;
+        const selectableCount = selectable.length;
+
+        return (
+          <Checkbox
+            checked={selectedSelectableCount === selectableCount && selectableCount > 0}
+            indeterminate={selectedSelectableCount > 0 && selectedSelectableCount < selectableCount}
+            onChange={(e) => handleSelectAll(e.target.checked)}
+            disabled={isProcessing || selectableCount === 0}
+          >
+            Select
+          </Checkbox>
+        );
+      },
       dataIndex: "select",
       key: "select",
       width: 100,
       render: (_, record) => {
-        let disabled = isProcessing;
+          // Determine if a completed step is actually outdated (so it should remain selectable)
+          let isOutdated = false;
+          if (pipelineStepStatus) {
+            const keyMap = {
+              duplicate: "duplicatePending",
+              enhancement: "enhancementPending",
+              extra: "extraPending",
+              envelopebreaking: "envelopePending",
+              box: "boxPending",
+            };
+            const pendingFlag = keyMap[record.key];
+            if (pendingFlag && pipelineStepStatus[pendingFlag]) {
+                // boxPending = data changed → always outdated/selectable for re-run
+                isOutdated = true;
+            }
+          }
 
-        return (
-          <Checkbox
-            checked={selectedModules.includes(record.key)}
-            onChange={(e) => handleModuleSelection(record.key, e.target.checked)}
-            disabled={disabled}
-          />
-        );
+          // If step is completed and NOT outdated, hide selection checkbox
+          if (record.status === "completed" && !isOutdated) {
+            return <Text type="secondary">—</Text>;
+          }
+
+          let disabled = isProcessing;
+
+          return (
+            <Checkbox
+              checked={selectedModules.includes(record.key)}
+              onChange={(e) => handleModuleSelection(record.key, e.target.checked)}
+              disabled={disabled}
+            />
+          );
       },
     },
     {
@@ -2825,6 +3020,27 @@ const ProcessingPipeline = () => {
         let displayStatus = status;
         let isOutdated = false;
 
+        // Compute live box lot counts from availableLots and lotReportStatus to avoid stale record values
+        let currentTotalLots = record.totalLots ?? 0;
+        let currentCompletedLots = record.completedLots ?? 0;
+        if (record.key === "box") {
+          const availableCount = (availableLots && availableLots.length) || 0;
+          const reportedCount = Object.keys(lotReportStatus || {}).length || 0;
+          currentTotalLots = Math.max(availableCount, reportedCount, currentTotalLots || 0);
+          currentCompletedLots = Object.values(lotReportStatus || {}).filter(Boolean).length;
+        }
+
+        // Determine if the backend has flagged pending changes for this step
+        const isBoxPending = record.key === "box" && pipelineStepStatus?.boxPending === true;
+
+        // "All lots completed" shortcut: only applies when there are NO pending data changes.
+        // If boxPending=true the user must be able to re-run, so skip the shortcut.
+        const boxComplete = record.key === "box" && currentTotalLots > 0 && currentCompletedLots >= currentTotalLots && !isBoxPending;
+        if (boxComplete) {
+          displayStatus = "completed";
+          isOutdated = false;
+        }
+
         // Use real-time DB state if available
         if (pipelineStepStatus) {
           const keyMap = {
@@ -2832,22 +3048,25 @@ const ProcessingPipeline = () => {
             enhancement: "enhancementPending",
             extra: "extraPending",
             envelopebreaking: "envelopePending",
-            box: "boxPending"
+            box: "boxPending",
           };
           const pendingFlag = keyMap[record.key];
           if (pendingFlag && pipelineStepStatus[pendingFlag]) {
-            displayStatus = "pending";
-            if (record.status === "completed" || record.report || (record.key === "box" && record.completedLots > 0)) {
+            if (record.key === "box") {
+              // boxPending=true: data was modified. Show as outdated so user can re-run.
+              // Keep lot-count display if some lots exist, but mark as outdated.
               isOutdated = true;
+              if (currentCompletedLots === 0) {
+                displayStatus = "pending";
+              }
+              // If some/all lots exist, displayStatus stays as-is (shows lot count tag or
+              // completed tag below), but isOutdated=true makes the Outdated tag render instead.
+            } else {
+              displayStatus = "pending";
+              if (record.status === "completed" || record.report) {
+                isOutdated = true;
+              }
             }
-          }
-        }
-
-        // Keep legacy check for deactivated catches if any
-        if ((record.key === "envelopebreaking" || record.key === "box") && displayStatus === "completed" && hasDeactivatedCatches) {
-          displayStatus = "pending";
-          if (record.status === "completed" || record.report || (record.key === "box" && record.completedLots > 0)) {
-            isOutdated = true;
           }
         }
 
@@ -2867,10 +3086,10 @@ const ProcessingPipeline = () => {
           );
         }
 
-        if (record.key === "box" && record.completedLots > 0 && record.completedLots < record.totalLots) {
+        if (record.key === "box" && currentCompletedLots > 0 && currentCompletedLots < currentTotalLots) {
           return (
-            <Tooltip title={`${record.completedLots} out of ${record.totalLots} lots have generated reports`}>
-              <Tag color="orange">{record.completedLots}/{record.totalLots} Lots completed</Tag>
+            <Tooltip title={`${currentCompletedLots} out of ${currentTotalLots} lots have generated reports`}>
+              <Tag color="orange">{currentCompletedLots}/{currentTotalLots} Lots completed</Tag>
             </Tooltip>
           );
         }
@@ -3289,7 +3508,8 @@ const ProcessingPipeline = () => {
   }
 
   return (
-    <div className="p-4">
+    <ErrorBoundary>
+      <div className="p-4">
       <StaticVariablesModal
         open={staticVarModal.open}
         template={staticVarModal.template}
@@ -3344,9 +3564,14 @@ const ProcessingPipeline = () => {
           ) : (
             <Badge status="default" text="Idle" color="gray" />
           )}
+          {(() => {
+            const hasAnyPendingStep = pipelineStepStatus && Object.values(pipelineStepStatus).some(v => v === true);
+            const canStartByData = hasPendingPipelineChanges || hasAnyPendingStep || configChanged;
+            
+            return (
           <Tooltip
             title={
-              (!hasPendingPipelineChanges && !configChanged)
+              (!canStartByData)
                 ? "No new data found for processing. All data is already processed."
                 : (selectedModules.length === 0
                   ? "Please select at least one module"
@@ -3365,7 +3590,7 @@ const ProcessingPipeline = () => {
                     : "")
             }
           >
-            <span style={{ cursor: (!hasPendingPipelineChanges && !configChanged) || selectedModules.length === 0 ? "not-allowed" : "default" }}>
+            <span style={{ cursor: (!canStartByData) || selectedModules.length === 0 ? "not-allowed" : "default" }}>
               <Button
                 type="primary"
                 onClick={handleAudit}
@@ -3391,6 +3616,8 @@ const ProcessingPipeline = () => {
               </Button>
             </span>
           </Tooltip>
+          );
+          })()}
         </div>
       </div>
 
@@ -3438,8 +3665,7 @@ const ProcessingPipeline = () => {
                     box: "boxPending"
                   };
                   const pendingFlag = keyMap[record.key];
-                  const isPending = (pendingFlag && pipelineStepStatus && pipelineStepStatus[pendingFlag]) ||
-                    ((record.key === "envelopebreaking" || record.key === "box") && record.status === "completed" && hasDeactivatedCatches);
+                  const isPending = (pendingFlag && pipelineStepStatus && pipelineStepStatus[pendingFlag]);
                   const isOutdated = isPending && (record.status === "completed" || record.report || (record.key === "box" && record.completedLots > 0));
 
                   if (isOutdated) {
@@ -3463,6 +3689,7 @@ const ProcessingPipeline = () => {
             templateReportStatus={templateReportStatus}
             templateDownloads={templateDownloads}
             staleTemplateIds={staleTemplateIds}
+            staleEnvLotIds={staleEnvLotIds}
             envLotReports={envLotReports}
             expandedReportsTemplates={expandedReportsTemplates}
             bulkGenerating={bulkGenerating}
@@ -3630,6 +3857,13 @@ const ProcessingPipeline = () => {
         onConfirm={handleEnvLotSelectionConfirm}
         onCancel={handleEnvLotSelectionCancel}
         isRegenerate={envLotSelectionModal.isRegenerate}
+        generatedEnvLots={envLotSelectionModal.generatedEnvLots}
+        templateIsOutdated={envLotSelectionModal.templateIsOutdated}
+        staleEnvLotIds={envLotSelectionModal.staleEnvLotIds}
+        assignedEnvLots={envLotSelectionModal.assignedEnvLots}
+        unassignedCatches={envLotSelectionModal.unassignedCatches}
+        showAssigned={envLotSelectionModal.showAssigned}
+        onToggleShowAssigned={(val) => setEnvLotSelectionModal(prev => ({ ...prev, showAssigned: val }))}
       />
 
       <ExistingReportModal
@@ -3738,7 +3972,8 @@ const ProcessingPipeline = () => {
            .pipeline-panel-actions .ant-btn { width: 100%; }
         }
       `}</style>
-    </div>
+      </div>
+    </ErrorBoundary>
   );
 };
 

@@ -92,7 +92,9 @@ const TemplatesPanel = ({
                   const needsRegenerate = hasMappingUpdate || isStale;
                   const existsInDb = envLotReports.some((r) => r.templateId === templateId);
                   const reportExists = reportStatus?.exists || template.reportStatus || existsInDb;
-                  const alreadyGenerated = reportExists && !needsRegenerate;
+                  // Only treat as "already generated" if it exists AND doesn't need regeneration
+                  // For envelope-dependent templates with missing catches, should still be treated as "generate" (not "regenerate")
+                  const alreadyGenerated = reportExists && !needsRegenerate && !existsInDb; // Exclude env lot reports from "alreadyGenerated" logic
                   
                   const isEnvelopeDependent = checkIsEnvelopeDependent ? checkIsEnvelopeDependent(template) : false;
                   const isQS = isQuantitySheetTemplate ? isQuantitySheetTemplate(resolveTemplateName(template)) : false;
@@ -121,35 +123,14 @@ const TemplatesPanel = ({
                           )}
                         </div>
                         <Space>
-                          {showBothButtons ? (
-                            <>
-                              <Button
-                                size="small"
-                                type="primary"
-                                onClick={() => handleGenerateTemplate(template, "generate")}
-                                loading={isGenerating}
-                              >
-                                Generate
-                              </Button>
-                              <Button
-                                size="small"
-                                type="default"
-                                onClick={() => handleGenerateTemplate(template, "regenerate")}
-                                loading={isGenerating}
-                              >
-                                Regenerate
-                              </Button>
-                            </>
-                          ) : (
-                            <Button
-                              size="small"
-                              type={alreadyGenerated ? "default" : "primary"}
-                              onClick={() => handleGenerateTemplate(template, alreadyGenerated ? "regenerate" : "generate")}
-                              loading={isGenerating}
-                            >
-                              {alreadyGenerated ? "Regenerate" : "Generate"}
-                            </Button>
-                          )}
+                          <Button
+                            size="small"
+                            type={alreadyGenerated ? "default" : "primary"}
+                            onClick={() => handleGenerateTemplate(template, alreadyGenerated ? "regenerate" : "generate")}
+                            loading={isGenerating}
+                          >
+                            Generate
+                          </Button>
                         </Space>
                       </div>
 

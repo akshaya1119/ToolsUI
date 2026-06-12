@@ -12,6 +12,7 @@ const useStore = create((set) => ({
   isConfigured: false,
   isLoadingData: true, // Keep guards from redirecting before initial fetch
   hasDeactivatedCatches: false,  
+  staleEnvLotIds: JSON.parse(localStorage.getItem("staleEnvLotIds") || "[]"),
 
   // Action to set project name and id
   setProject: (name, id, groupId, typeId) => {
@@ -37,6 +38,22 @@ const useStore = create((set) => ({
   setIsConfigured: (status) => set({ isConfigured: status }),
   setIsLoadingData: (status) => set({ isLoadingData: status }), // ✅ Action to set loading status
   setHasDeactivatedCatches: (status) => set({ hasDeactivatedCatches: status }),  // ✅ Set deactivated catches flag
+
+  // ✅ Actions for specific EnvLot staleness
+  addStaleEnvLotIds: (envLotIds) => set((state) => {
+    const nextList = [...new Set([...state.staleEnvLotIds, ...envLotIds])];
+    localStorage.setItem("staleEnvLotIds", JSON.stringify(nextList));
+    return { staleEnvLotIds: nextList };
+  }),
+  removeStaleEnvLotIds: (envLotIds) => set((state) => {
+    const nextList = state.staleEnvLotIds.filter(id => !envLotIds.includes(id));
+    localStorage.setItem("staleEnvLotIds", JSON.stringify(nextList));
+    return { staleEnvLotIds: nextList };
+  }),
+  clearStaleEnvLotIds: () => set(() => {
+    localStorage.removeItem("staleEnvLotIds");
+    return { staleEnvLotIds: [] };
+  }),
 }));
 
 export default useStore;

@@ -266,14 +266,7 @@ const LotWisePanel = ({
                                     }))}
                                   />
                                 )}
-                                <Button
-                                  size="small"
-                                  type={getBoxVersionsForLot(lot.lotNo).length > 0 ? "default" : "primary"}
-                                  onClick={() => handleGenerateAllLots(lot.lotNo)}
-                                  loading={generatingLotReport[lot.lotNo]}
-                                >
-                                  {lotReportStatus[lot.lotNo] ? "Regenerate" : "Generate"}
-                                </Button>
+                               
                               </Space>
                             </div>
                           </Card>
@@ -398,37 +391,20 @@ const LotWisePanel = ({
                                       )}
                                     </div>
                                     <Space size="small">
-                                      {canGenerate ? (
-                                        <Button
-                                          size="small"
-                                          type="primary"
-                                          onClick={() => {
-                                            if (isQtySheet) {
-                                              handleGenerateTemplate(template);
-                                            } else {
-                                              handleGenerateLotTemplate(lot.lotNo, template);
-                                            }
-                                          }}
-                                          loading={isGenerating}
-                                        >
-                                          Generate
-                                        </Button>
-                                      ) : (
-                                        <Button
-                                          size="small"
-                                          type="primary"
-                                          onClick={() => {
-                                            if (isQtySheet) {
-                                              handleGenerateTemplate(template);
-                                            } else {
-                                              handleGenerateLotTemplate(lot.lotNo, template);
-                                            }
-                                          }}
-                                          loading={isGenerating}
-                                        >
-                                          Regenerate
-                                        </Button>
-                                      )}
+                                      <Button
+                                        size="small"
+                                        type="primary"
+                                        onClick={() => {
+                                          if (isQtySheet) {
+                                            handleGenerateTemplate(template);
+                                          } else {
+                                            handleGenerateLotTemplate(lot.lotNo, template);
+                                          }
+                                        }}
+                                        loading={isGenerating}
+                                      >
+                                        Generate
+                                      </Button>
                                       <Button
                                         size="small"
                                         onClick={() => {
