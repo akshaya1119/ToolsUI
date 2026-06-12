@@ -1200,14 +1200,14 @@ const ProjectTemplates = () => {
     }
   };
 
-  const handleGenerateReportFromVersion = (template) => {
-    if (!template) return;
-    if (template?.isActive) {
-      runReportGeneration(template);
-      return;
-    }
-    setPendingGenerateTemplate(template);
-  };
+  // const handleGenerateReportFromVersion = (template) => {
+  //   if (!template) return;
+  //   if (template?.isActive) {
+  //     runReportGeneration(template);
+  //     return;
+  //   }
+  //   setPendingGenerateTemplate(template);
+  // };
 
   const handleDownload = async (template) => {
     try {
@@ -1352,14 +1352,14 @@ const ProjectTemplates = () => {
         activatingVersionId,
         confirmActivateVersion,
         handleDownload,
-        onGenerate: handleGenerateReportFromVersion,
+        // onGenerate: handleGenerateReportFromVersion,
       }),
     [
       userMap,
       activatingVersionId,
       confirmActivateVersion,
       handleDownload,
-      handleGenerateReportFromVersion,
+      // handleGenerateReportFromVersion,
     ],
   );
 

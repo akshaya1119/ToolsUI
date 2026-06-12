@@ -90,16 +90,16 @@ const LotWisePanel = ({
             size="small"
             items={[
               {
-                key: "project-wide",
-                label: (
-                  <Space size="small">
-                    <Text>Project-wide</Text>
-                  </Space>
-                ),
+                // key: "project-wide",
+                // label: (
+                //   <Space size="small">
+                //     <Text>Project-wide</Text>
+                //   </Space>
+                // ),
                 children: (
                   <div style={{ padding: "12px" }}>
                     <div style={{ marginBottom: 24 }}>
-                      <div style={{
+                      {/* <div style={{
                         display: "flex",
                         justifyContent: "space-between",
                         alignItems: "center",
@@ -110,7 +110,7 @@ const LotWisePanel = ({
                         <Text strong style={{ fontSize: "14px", color: "#1890ff" }}>
                           Generic Templates
                         </Text>
-                      </div>
+                      </div> */}
 
                       {getTemplatesForModuleKey("box").length === 0 ? (
                         <Text type="secondary">No templates linked to Box Breaking module.</Text>

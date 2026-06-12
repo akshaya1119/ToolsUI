@@ -1381,40 +1381,37 @@ const ProcessingPipeline = () => {
         }
       } else {
         const missingCatchItems = await fetchMissingEnvLotCatchesForSelection(projectId);
-        if (missingCatchItems.length > 0) {
-          // Also fetch assigned env-lot items so user can optionally show them
-          const assignedCatchItems = await fetchAssignedEnvLotCatchesForSelection(projectId);
-          const selectedCatchNos = await showEnvLotSelectionModal([], false, { unassignedCatches: missingCatchItems, assignedEnvLots: assignedCatchItems, showAssigned: false });
-          if (selectedCatchNos === null) {
-            return; // user cancelled
-          }
-          if (selectedCatchNos.length > 0) {
-            // Separate any selected envLotNos (when user toggled to show assigned) from pure catchNos
-            const allAssignedEnvLotNos = (assignedCatchItems || []).map(a => Number(a.envLotNo));
-            const selectedEnvLotNos = selectedCatchNos
-              .map(s => (typeof s === 'number' ? Number(s) : (String(s).match(/^\d+$/) ? Number(s) : NaN)))
-              .filter(n => !isNaN(n) && allAssignedEnvLotNos.includes(n));
+        // Fetch assigned env-lot items so user can optionally show them
+        const assignedCatchItems = await fetchAssignedEnvLotCatchesForSelection(projectId);
+        
+        // Show modal even if all catches are assigned, allowing user to select from assigned envelopes for regeneration
+        const selectedCatchNos = await showEnvLotSelectionModal([], false, { unassignedCatches: missingCatchItems, assignedEnvLots: assignedCatchItems, showAssigned: missingCatchItems.length === 0 });
+        if (selectedCatchNos === null) {
+          return; // user cancelled
+        }
+        if (selectedCatchNos.length > 0) {
+          // Separate any selected envLotNos (when user toggled to show assigned) from pure catchNos
+          const allAssignedEnvLotNos = (assignedCatchItems || []).map(a => Number(a.envLotNo));
+          const selectedEnvLotNos = selectedCatchNos
+            .map(s => (typeof s === 'number' ? Number(s) : (String(s).match(/^\d+$/) ? Number(s) : NaN)))
+            .filter(n => !isNaN(n) && allAssignedEnvLotNos.includes(n));
 
-            const selectedCatchOnly = selectedCatchNos.filter(s => !selectedEnvLotNos.includes(Number(s)));
+          const selectedCatchOnly = selectedCatchNos.filter(s => !selectedEnvLotNos.includes(Number(s)));
 
-            // If catch numbers selected, assign them to an EnvLot
-            if (selectedCatchOnly.length > 0) {
-              const assignResult = await assignEnvLotByCatchNos(selectedCatchOnly);
-              if (!assignResult || !assignResult.assignedEnvLotNo) {
-                return;
-              }
-              envLotNumbers.push(assignResult.assignedEnvLotNo);
-              assignedCatchNos = selectedCatchOnly;
+          // If catch numbers selected, assign them to an EnvLot
+          if (selectedCatchOnly.length > 0) {
+            const assignResult = await assignEnvLotByCatchNos(selectedCatchOnly);
+            if (!assignResult || !assignResult.assignedEnvLotNo) {
+              return;
             }
-
-            // Include any explicitly selected existing envLot numbers for regeneration
-            if (selectedEnvLotNos.length > 0) {
-              envLotNumbers = envLotNumbers.concat(selectedEnvLotNos);
-            }
+            envLotNumbers.push(assignResult.assignedEnvLotNo);
+            assignedCatchNos = selectedCatchOnly;
           }
-        } else if (action === "generate") {
-          message.info("All catches already have an envelope lot assigned.");
-          return;
+
+          // Include any explicitly selected existing envLot numbers for regeneration
+          if (selectedEnvLotNos.length > 0) {
+            envLotNumbers = envLotNumbers.concat(selectedEnvLotNos);
+          }
         }
       }
     }
