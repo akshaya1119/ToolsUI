@@ -1135,7 +1135,7 @@ const DataImport = () => {
 
       resetForm();
       fetchExistingData(projectId);
-      await rerunDuplicateTool();
+      // await rerunDuplicateTool();
     } catch (err) {
       console.error("Validation failed", err);
 
@@ -1739,7 +1739,7 @@ const handleSaveEdit = async () => {
     setEditFormData({});
     setOriginalEditFormData({});
     await fetchExistingData(projectId);
-    await rerunDuplicateTool();
+    // await rerunDuplicateTool();
     // Determine affected catch number(s) and mark their EnvLot(s) stale so users know to regenerate
     try {
       const catchNo = originalEditFormData?.CatchNo ?? originalEditFormData?.catchNo ?? editFormData?.CatchNo ?? editFormData?.catchNo ?? null;
