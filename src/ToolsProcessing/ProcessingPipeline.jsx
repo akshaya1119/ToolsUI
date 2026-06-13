@@ -3088,18 +3088,18 @@ const ProcessingPipeline = () => {
           skipped: "default",
         };
 
-        if (isOutdated && status !== "in-progress") {
+        if (record.key === "box" && currentCompletedLots > 0 && currentCompletedLots < currentTotalLots) {
           return (
-            <Tooltip title="Recent updates require this step to be run again. The current report might be outdated.">
-              <Tag color="orange" icon={<ExclamationCircleOutlined />}>Outdated</Tag>
+            <Tooltip title={`${currentCompletedLots} out of ${currentTotalLots} lots have generated reports. Some data might be outdated if recent changes were made.`}>
+              <Tag color="orange">{currentCompletedLots}/{currentTotalLots} Lots completed</Tag>
             </Tooltip>
           );
         }
 
-        if (record.key === "box" && currentCompletedLots > 0 && currentCompletedLots < currentTotalLots) {
+        if (isOutdated && status !== "in-progress") {
           return (
-            <Tooltip title={`${currentCompletedLots} out of ${currentTotalLots} lots have generated reports`}>
-              <Tag color="orange">{currentCompletedLots}/{currentTotalLots} Lots completed</Tag>
+            <Tooltip title="Recent updates require this step to be run again. The current report might be outdated.">
+              <Tag color="orange" icon={<ExclamationCircleOutlined />}>Outdated</Tag>
             </Tooltip>
           );
         }
