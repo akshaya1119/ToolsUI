@@ -2710,6 +2710,10 @@ const ProcessingPipeline = () => {
           if ((step.key === "envelopebreaking" || step.key === "box") && hasDeactivatedCatches) {
             setHasDeactivatedCatches(false);
           }
+
+          // Refresh status immediately after each step finishes to avoid "Outdated" flicker
+          await fetchPipelineRerunStatus(projectId);
+          await checkReportExistence(projectId);
         } catch (stepErr) {
           console.error(`Step ${step.key} failed`, stepErr);
           updateStepStatus(step.key, { status: "failed" });
@@ -3060,13 +3064,15 @@ const ProcessingPipeline = () => {
               // boxPending=true: data was modified. Show as outdated so user can re-run.
               // Keep lot-count display if some lots exist, but mark as outdated.
               isOutdated = true;
-              if (currentCompletedLots === 0) {
+              if (currentCompletedLots === 0 && status !== "in-progress") {
                 displayStatus = "pending";
               }
               // If some/all lots exist, displayStatus stays as-is (shows lot count tag or
               // completed tag below), but isOutdated=true makes the Outdated tag render instead.
             } else {
-              displayStatus = "pending";
+              if (status !== "in-progress") {
+                displayStatus = "pending";
+              }
               if (record.status === "completed" || record.report) {
                 isOutdated = true;
               }
@@ -3082,18 +3088,18 @@ const ProcessingPipeline = () => {
           skipped: "default",
         };
 
-        if (isOutdated) {
+        if (record.key === "box" && currentCompletedLots > 0 && currentCompletedLots < currentTotalLots) {
           return (
-            <Tooltip title="Recent updates require this step to be run again. The current report might be outdated.">
-              <Tag color="orange" icon={<ExclamationCircleOutlined />}>Outdated</Tag>
+            <Tooltip title={`${currentCompletedLots} out of ${currentTotalLots} lots have generated reports. Some data might be outdated if recent changes were made.`}>
+              <Tag color="orange">{currentCompletedLots}/{currentTotalLots} Lots completed</Tag>
             </Tooltip>
           );
         }
 
-        if (record.key === "box" && currentCompletedLots > 0 && currentCompletedLots < currentTotalLots) {
+        if (isOutdated && status !== "in-progress") {
           return (
-            <Tooltip title={`${currentCompletedLots} out of ${currentTotalLots} lots have generated reports`}>
-              <Tag color="orange">{currentCompletedLots}/{currentTotalLots} Lots completed</Tag>
+            <Tooltip title="Recent updates require this step to be run again. The current report might be outdated.">
+              <Tag color="orange" icon={<ExclamationCircleOutlined />}>Outdated</Tag>
             </Tooltip>
           );
         }
