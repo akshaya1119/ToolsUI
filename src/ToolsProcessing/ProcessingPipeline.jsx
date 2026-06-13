@@ -956,7 +956,7 @@ const ProcessingPipeline = () => {
 
   const isQuantitySheetTemplate = (templateName) => {
     if (!templateName) return false;
-    const n = templateName.toLowerCase().replace(/\s/g, "");
+    const n = templateName.toLowerCase().replace(/[^a-z0-9]/g, "");
     return n.includes("quantitysheet") || n.includes("qtysheet");
   };
 
@@ -1442,7 +1442,8 @@ const ProcessingPipeline = () => {
       projectId: Number(projectId),
       templateId: Number(templateId),
       ...(Object.keys(staticVariables).length > 0 ? { staticVariables } : {}),
-      ...(envLotNumbers.length > 0 ? { LotNos: envLotNumbers.join(',') } : {}),
+      // Only include LotNos if NOT a quantity sheet template (quantity sheet only needs projectId and templateId)
+      ...(envLotNumbers.length > 0 && !isQS ? { LotNos: envLotNumbers.join(',') } : {}),
     };
     const messageKey = `generate-report-${payload.templateId}-${Date.now()}`;
     setGeneratingTemplates((prev) => ({ ...prev, [templateId]: true }));
@@ -1673,15 +1674,21 @@ const ProcessingPipeline = () => {
     try {
       message.loading({ content: "Downloading report...", key: `download-${report.id}` });
 
-      // Reconstruct the lot numbers for the API call
-      const lotNos = report.envLotNumbers.join(',');
+      // Check if this is a quantity sheet template
+      const isQS = isQuantitySheetTemplate(report.templateName);
+
+      const params = {
+        templateId: report.templateId,
+        projectId: Number(projectId),
+      };
+
+      // Only include LotNos if NOT a quantity sheet template
+      if (!isQS && report.envLotNumbers && report.envLotNumbers.length > 0) {
+        params.LotNos = report.envLotNumbers.join(',');
+      }
 
       const res = await axios.get(`${rptApiUrl}/report/generated-download`, {
-        params: {
-          templateId: report.templateId,
-          projectId: Number(projectId),
-          LotNos: lotNos,
-        },
+        params,
         responseType: "blob",
       });
 
