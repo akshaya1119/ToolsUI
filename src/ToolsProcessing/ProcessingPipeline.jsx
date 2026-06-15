@@ -104,6 +104,7 @@ const ProcessingPipeline = () => {
   const [extraConfigData, setExtraConfigData] = useState([]);
   const [configChanged, setConfigChanged] = useState(false);
   const [changedFieldsInfo, setChangedFieldsInfo] = useState([]);
+  const [freshlyRunSteps, setFreshlyRunSteps] = useState(new Set());
   const [dependencyModal, setDependencyModal] = useState({ visible: false, unprocessedSteps: [], selectedStep: null });
   const [templatesLoading, setTemplatesLoading] = useState(false);
   const [templateOptions, setTemplateOptions] = useState([]);
@@ -645,6 +646,9 @@ const ProcessingPipeline = () => {
           setSelectedModules(data.affectedReports);
           setConfigChanged(true);
           setChangedFieldsInfo(data.changedModules || []);
+
+          // Refresh pipeline rerun status to update pending flags
+          fetchPipelineRerunStatus(projectId);
 
           // Clear the sessionStorage
           sessionStorage.removeItem("configChangeData");
@@ -2734,6 +2738,10 @@ const ProcessingPipeline = () => {
       // Mark modules with templates as stale if their processing step was re-run
       // Also mark downstream modules (steps that come after a re-run step) as stale
       const freshlyRun = modulesToProcess.filter((key) => completedSteps.has(key));
+      setFreshlyRunSteps(new Set(freshlyRun));
+      
+      // Clear the configChanged flag now that fresh run is complete
+      setConfigChanged(false);
       const staleIds = new Set();
       freshlyRun.forEach((runKey) => {
         const runIndex = allOrder.findIndex((s) => s.key === runKey);
