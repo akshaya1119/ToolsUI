@@ -35,6 +35,7 @@ const LotWisePanel = ({
   handleGenerateTemplate,
   handleDownloadTemplate,
   isQuantitySheetTemplate,
+  isCompositeSummaryTemplate,
   staleTemplateIds,
 }) => {
   if (!open) return null;
@@ -295,8 +296,8 @@ const LotWisePanel = ({
                               disabled={lotTemplates.length === 0 || lotTemplates.every((template) => {
                                 const templateId = resolveTemplateId(template);
                                 if (!templateId) return true;
-                                const isQtySheet = isQuantitySheetTemplate(resolveTemplateName(template));
-                                if (isQtySheet) {
+                                const isProjectWide = isQuantitySheetTemplate(resolveTemplateName(template)) || (isCompositeSummaryTemplate && isCompositeSummaryTemplate(resolveTemplateName(template)));
+                                if (isProjectWide) {
                                   const status = templateReportStatus[templateId];
                                   const isStale = staleLotIds.has(templateId);
                                   return status?.exists && !isStale;
@@ -317,8 +318,8 @@ const LotWisePanel = ({
                               disabled={lotTemplates.length === 0 || !lotTemplates.every((template) => {
                                 const templateId = resolveTemplateId(template);
                                 if (!templateId) return false;
-                                const isQtySheet = isQuantitySheetTemplate(resolveTemplateName(template));
-                                if (isQtySheet) {
+                                const isProjectWide = isQuantitySheetTemplate(resolveTemplateName(template)) || (isCompositeSummaryTemplate && isCompositeSummaryTemplate(resolveTemplateName(template)));
+                                if (isProjectWide) {
                                   const status = templateReportStatus[templateId];
                                   const isStale = staleLotIds.has(templateId);
                                   return status?.exists && !isStale;
@@ -341,22 +342,22 @@ const LotWisePanel = ({
                           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                             {lotTemplates.map((template) => {
                               const templateId = resolveTemplateId(template);
-                              const isQtySheet = isQuantitySheetTemplate(resolveTemplateName(template));
+                              const isProjectWide = isQuantitySheetTemplate(resolveTemplateName(template)) || (isCompositeSummaryTemplate && isCompositeSummaryTemplate(resolveTemplateName(template)));
                               
-                              const isGenerating = isQtySheet 
-                                ? generatingTemplates[templateId]           // QS uses project-level generating
+                              const isGenerating = isProjectWide 
+                                ? generatingTemplates[templateId]
                                 : generatingLotTemplates[`${lot.lotNo}_${templateId}`];
                                 
-                              const isDownloading = isQtySheet 
+                              const isDownloading = isProjectWide 
                                 ? false 
                                 : downloadingLotTemplates[`${lot.lotNo}_${templateId}`];
                                 
-                              const status = isQtySheet 
-                                ? templateReportStatus[templateId]          // QS uses project-level status
+                              const status = isProjectWide 
+                                ? templateReportStatus[templateId]
                                 : lotTemplateStatus[`${lot.lotNo}_${templateId}`];
                                 
-                              const isStale = isQtySheet 
-                                ? staleTemplateIds.has(templateId)          // QS uses project-level stale
+                              const isStale = isProjectWide 
+                                ? staleTemplateIds.has(templateId)
                                 : staleLotIds.has(`${lot.lotNo}_${templateId}`);
                                 
                               const canGenerate = !status?.exists || isStale;
@@ -395,7 +396,7 @@ const LotWisePanel = ({
                                         size="small"
                                         type="primary"
                                         onClick={() => {
-                                          if (isQtySheet) {
+                                          if (isProjectWide) {
                                             handleGenerateTemplate(template);
                                           } else {
                                             handleGenerateLotTemplate(lot.lotNo, template);
@@ -408,7 +409,7 @@ const LotWisePanel = ({
                                       <Button
                                         size="small"
                                         onClick={() => {
-                                          if (isQtySheet) {
+                                          if (isProjectWide) {
                                             handleDownloadTemplate(template);
                                           } else {
                                             handleDownloadLotTemplate(lot.lotNo, template);
