@@ -84,6 +84,7 @@ console.log("unassignedCatches:", unassignedCatches);
       width={600}
       okText="Generate"
       cancelText="Cancel"
+      okButtonProps={{ disabled: sourceItems.length === 0 }}
     >
       <div style={{ marginBottom: 16 }}>
         <Alert
@@ -128,6 +129,7 @@ console.log("unassignedCatches:", unassignedCatches);
           onChange={(e) =>
             onSelectAll(e.target.checked)
           }
+          disabled={sourceItems.length === 0}
           style={{
             marginBottom: 12,
             fontWeight: 500
@@ -137,6 +139,23 @@ console.log("unassignedCatches:", unassignedCatches);
           {filteredItems.length})
         </Checkbox>
       </div>
+
+      {sourceItems.length === 0 ? (
+        <Alert
+          message={showAssigned ? "No envelope lots to process" : "No catches to process"}
+          type="warning"
+          showIcon
+          style={{ marginBottom: 16 }}
+        />
+      ) : filteredItems.length === 0 ? (
+        <Alert
+          message="No results found"
+          description="Try adjusting your search criteria"
+          type="info"
+          showIcon
+          style={{ marginBottom: 16 }}
+        />
+      ) : null}
 
       <div
         style={{
