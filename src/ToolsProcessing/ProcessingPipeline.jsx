@@ -646,6 +646,9 @@ const ProcessingPipeline = () => {
           setConfigChanged(true);
           setChangedFieldsInfo(data.changedModules || []);
 
+          // Refresh pipeline rerun status to update pending flags
+          fetchPipelineRerunStatus(projectId);
+
           // Clear the sessionStorage
           sessionStorage.removeItem("configChangeData");
 
