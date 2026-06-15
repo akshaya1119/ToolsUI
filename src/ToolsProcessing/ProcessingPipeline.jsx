@@ -960,6 +960,12 @@ const ProcessingPipeline = () => {
     return n.includes("quantitysheet") || n.includes("qtysheet");
   };
 
+  const isCompositeSummaryTemplate = (templateName) => {
+    if (!templateName) return false;
+    const n = templateName.toLowerCase().replace(/[^a-z0-9]/g, "");
+    return n.includes("compositesummary");
+  };
+
   const showExistingReportModal = (report) => {
     return new Promise((resolve) => {
       setExistingReportModal({
@@ -1337,6 +1343,7 @@ const ProcessingPipeline = () => {
     let envLotNumbers = [];
 
     const isQS = isQuantitySheetTemplate(resolveTemplateName(template));
+    const isComposite = isCompositeSummaryTemplate(resolveTemplateName(template));
 
     // Check if template depends on envelope breaking module
     const envelopeBreakingModuleId = moduleKeyToIdMap["envelopebreaking"];
@@ -1347,7 +1354,7 @@ const ProcessingPipeline = () => {
     let assignedCatchNos = [];
     // Debug: log why the missing-catches branch may not run
     console.debug('handleGenerateTemplate: isQS=', isQS, 'isEnvelopeDependent=', isEnvelopeDependent, 'action=', action, 'projectId=', projectId, 'envelopeBreakingModuleId=', envelopeBreakingModuleId, 'templateModuleIds=', templateModuleIds);
-    if (!isQS && isEnvelopeDependent) {
+    if (!isQS && !isComposite && isEnvelopeDependent) {
       if (action === "regenerate") {
         const assignedCatchItems = await fetchAssignedEnvLotCatchesForSelection(projectId);
         if (assignedCatchItems.length > 0) {
@@ -1417,7 +1424,7 @@ const ProcessingPipeline = () => {
     }
 
     // Check if report already exists for this template and envelope lots combination
-    const envLotKey = envLotNumbers.length > 0 ? envLotNumbers.sort((a, b) => a - b).join(',') : (isQS ? "" : null);
+    const envLotKey = envLotNumbers.length > 0 ? envLotNumbers.sort((a, b) => a - b).join(',') : ((isQS || isComposite) ? "" : null);
 
     if (envLotKey !== null) {
       const existingReport = envLotReports.find(report =>
@@ -1442,8 +1449,8 @@ const ProcessingPipeline = () => {
       projectId: Number(projectId),
       templateId: Number(templateId),
       ...(Object.keys(staticVariables).length > 0 ? { staticVariables } : {}),
-      // Only include LotNos if NOT a quantity sheet template (quantity sheet only needs projectId and templateId)
-      ...(envLotNumbers.length > 0 && !isQS ? { LotNos: envLotNumbers.join(',') } : {}),
+      // Only include LotNos if NOT a quantity sheet template or composite summary
+      ...(envLotNumbers.length > 0 && !isQS && !isComposite ? { LotNos: envLotNumbers.join(',') } : {}),
     };
     const messageKey = `generate-report-${payload.templateId}-${Date.now()}`;
     setGeneratingTemplates((prev) => ({ ...prev, [templateId]: true }));
@@ -3720,6 +3727,7 @@ const ProcessingPipeline = () => {
               return envelopeBreakingModuleId && templateModuleIds.includes(envelopeBreakingModuleId);
             }}
             isQuantitySheetTemplate={isQuantitySheetTemplate}
+            isCompositeSummaryTemplate={isCompositeSummaryTemplate}
           />
           <Modal
             title="Report Generation Error"
@@ -3836,6 +3844,7 @@ const ProcessingPipeline = () => {
             handleGenerateTemplate={handleGenerateTemplate}
             handleDownloadTemplate={handleDownloadTemplate}
             isQuantitySheetTemplate={isQuantitySheetTemplate}
+            isCompositeSummaryTemplate={isCompositeSummaryTemplate}
             onClose={closeLotWisePanel}
           />
         </div>
