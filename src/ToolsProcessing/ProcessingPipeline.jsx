@@ -223,7 +223,12 @@ const ProcessingPipeline = () => {
         const hasExistingReport = step && (step.status === "completed" || step.fileUrl || (key === "box" && step.completedLots > 0));
         return hasExistingReport;
       })
-      .map(([_, config]) => config.name);
+      .map(([key, config]) => {
+        if (key === "box" && pipelineStepStatus.pendingBoxLots && pipelineStepStatus.pendingBoxLots.length > 0) {
+          return `${config.name} (Lot ${pipelineStepStatus.pendingBoxLots.join(", ")})`;
+        }
+        return config.name;
+      });
   }, [pipelineStepStatus, steps, hasDeactivatedCatches]);
 
   const rptApiUrl = import.meta.env.VITE_RPT_API_URL;
@@ -2917,9 +2922,13 @@ const ProcessingPipeline = () => {
       };
       const pendingFlag = keyMap[step.key];
       if (pendingFlag && pipelineStepStatus[pendingFlag]) {
-        // boxPending means data was modified → always mark outdated so user can re-run,
-        // regardless of how many lots were previously completed.
-        isOutdated = true;
+        if (step.key === "box") {
+          isOutdated = (availableLots || []).some(
+            lot => lotReportStatus[lot.lotNo] && lot.minStep < 6
+          );
+        } else {
+          isOutdated = step.status === "completed" || step.report;
+        }
       }
     }
 
@@ -2929,6 +2938,20 @@ const ProcessingPipeline = () => {
   const isStepSelectable = (step) => {
     // Selectable if not completed, or completed but outdated (needs re-run)
     const outdated = isStepOutdated(step);
+    const stepToNumMap = {
+      duplicate: 1,
+      enhancement: 2,
+      extra: 4,
+      envelopebreaking: 5,
+      box: 6,
+    };
+    if (pipelineStepStatus && stepToNumMap[step.key] !== undefined) {
+      const minStep = pipelineStepStatus.minStep ?? 0;
+      const stepNum = stepToNumMap[step.key];
+      if (stepNum < minStep) {
+        return false;
+      }
+    }
     return !(step.status === "completed" && !outdated);
   };
 
@@ -2980,8 +3003,13 @@ const ProcessingPipeline = () => {
             };
             const pendingFlag = keyMap[record.key];
             if (pendingFlag && pipelineStepStatus[pendingFlag]) {
-                // boxPending = data changed → always outdated/selectable for re-run
-                isOutdated = true;
+                if (record.key === "box") {
+                  isOutdated = (availableLots || []).some(
+                    lot => lotReportStatus[lot.lotNo] && lot.minStep < 6
+                  );
+                } else {
+                  isOutdated = record.status === "completed" || record.report;
+                }
             }
           }
 
@@ -2991,6 +3019,28 @@ const ProcessingPipeline = () => {
           }
 
           let disabled = isProcessing;
+          let isOutsideRange = false;
+          if (pipelineStepStatus) {
+            const stepToNumMap = {
+              duplicate: 1,
+              enhancement: 2,
+              extra: 4,
+              envelopebreaking: 5,
+              box: 6,
+            };
+            const stepNum = stepToNumMap[record.key];
+            if (stepNum !== undefined) {
+              const minStep = pipelineStepStatus.minStep ?? 0;
+              if (stepNum < minStep) {
+                isOutsideRange = true;
+                disabled = true;
+              }
+            }
+          }
+
+          if (isOutsideRange) {
+            return <Text type="secondary">—</Text>;
+          }
 
           return (
             <Checkbox
@@ -3074,22 +3124,31 @@ const ProcessingPipeline = () => {
             box: "boxPending",
           };
           const pendingFlag = keyMap[record.key];
-          if (pendingFlag && pipelineStepStatus[pendingFlag]) {
-            if (record.key === "box") {
-              // boxPending=true: data was modified. Show as outdated so user can re-run.
-              // Keep lot-count display if some lots exist, but mark as outdated.
-              isOutdated = true;
-              if (currentCompletedLots === 0 && status !== "in-progress") {
-                displayStatus = "pending";
+          if (pendingFlag) {
+            if (pipelineStepStatus[pendingFlag]) {
+              if (record.key === "box") {
+                // boxPending=true: data was modified. Show as outdated so user can re-run.
+                // Keep lot-count display if some lots exist, but mark as outdated.
+                isOutdated = (availableLots || []).some(
+                  lot => lotReportStatus[lot.lotNo] && lot.minStep < 6
+                );
+                if (!isOutdated && status !== "in-progress") {
+                  displayStatus = "pending";
+                }
+                // If some/all lots exist, displayStatus stays as-is (shows lot count tag or
+                // completed tag below), but isOutdated=true makes the Outdated tag render instead.
+              } else {
+                if (status !== "in-progress") {
+                  displayStatus = "pending";
+                }
+                if (record.status === "completed" || record.report) {
+                  isOutdated = true;
+                }
               }
-              // If some/all lots exist, displayStatus stays as-is (shows lot count tag or
-              // completed tag below), but isOutdated=true makes the Outdated tag render instead.
             } else {
-              if (status !== "in-progress") {
-                displayStatus = "pending";
-              }
-              if (record.status === "completed" || record.report) {
-                isOutdated = true;
+              // If not pending according to the API, mark it as completed
+              if (displayStatus !== "in-progress") {
+                displayStatus = "completed";
               }
             }
           }
@@ -3103,18 +3162,18 @@ const ProcessingPipeline = () => {
           skipped: "default",
         };
 
-        if (record.key === "box" && currentCompletedLots > 0 && currentCompletedLots < currentTotalLots) {
-          return (
-            <Tooltip title={`${currentCompletedLots} out of ${currentTotalLots} lots have generated reports. Some data might be outdated if recent changes were made.`}>
-              <Tag color="orange">{currentCompletedLots}/{currentTotalLots} Lots completed</Tag>
-            </Tooltip>
-          );
-        }
-
         if (isOutdated && status !== "in-progress") {
           return (
             <Tooltip title="Recent updates require this step to be run again. The current report might be outdated.">
               <Tag color="orange" icon={<ExclamationCircleOutlined />}>Outdated</Tag>
+            </Tooltip>
+          );
+        }
+
+        if (record.key === "box" && currentCompletedLots > 0 && currentCompletedLots < currentTotalLots) {
+          return (
+            <Tooltip title={`${currentCompletedLots} out of ${currentTotalLots} lots have generated reports. Some data might be outdated if recent changes were made.`}>
+              <Tag color="orange">{currentCompletedLots}/{currentTotalLots} Lots completed</Tag>
             </Tooltip>
           );
         }
@@ -3591,7 +3650,10 @@ const ProcessingPipeline = () => {
           )}
           {(() => {
             const hasAnyPendingStep = pipelineStepStatus && Object.values(pipelineStepStatus).some(v => v === true);
-            const canStartByData = hasPendingPipelineChanges || hasAnyPendingStep || configChanged;
+            const availableCount = (availableLots && availableLots.length) || 0;
+            const completedCount = Object.values(lotReportStatus || {}).filter(Boolean).length;
+            const boxHasRemaining = availableCount > 0 && completedCount < availableCount;
+            const canStartByData = hasPendingPipelineChanges || hasAnyPendingStep || configChanged || boxHasRemaining;
             
             return (
           <Tooltip
@@ -3609,6 +3671,12 @@ const ProcessingPipeline = () => {
                       box: "boxPending"
                     };
                     const flag = keyMap[m];
+                    if (m === "box") {
+                      const avCount = (availableLots && availableLots.length) || 0;
+                      const compCount = Object.values(lotReportStatus || {}).filter(Boolean).length;
+                      const hasRemainingLots = avCount > 0 && compCount < avCount;
+                      return hasRemainingLots || (pipelineStepStatus && pipelineStepStatus[flag]);
+                    }
                     return !flag || (pipelineStepStatus && pipelineStepStatus[flag]);
                   }) && !configChanged)
                     ? "Selected modules have no pending data to process."
@@ -3632,7 +3700,12 @@ const ProcessingPipeline = () => {
                       box: "boxPending"
                     };
                     const flag = keyMap[m];
-                    // If no flag (like summaries), assume it's okay to run if project is not done
+                    if (m === "box") {
+                      const avCount = (availableLots && availableLots.length) || 0;
+                      const compCount = Object.values(lotReportStatus || {}).filter(Boolean).length;
+                      const hasRemainingLots = avCount > 0 && compCount < avCount;
+                      return hasRemainingLots || (pipelineStepStatus && pipelineStepStatus[flag]);
+                    }
                     return !flag || (pipelineStepStatus && pipelineStepStatus[flag]);
                   }) && !configChanged)
                 }
