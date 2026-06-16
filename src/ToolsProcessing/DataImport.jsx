@@ -65,9 +65,14 @@ const DataImport = () => {
     current: 1,
     pageSize: 10,
   });
-  const [searchText, setSearchText] = useState('');
+  // Uploaded Data search:
+  // - globalSearchText => top search bar (key = null)
+  // - searchedColumn + columnSearchText => column-specific search (key = searchedColumn)
+  const [globalSearchText, setGlobalSearchText] = useState('');
   const [searchedColumn, setSearchedColumn] = useState('');
-  const debouncedSearchText = useDebounce(searchText, 500);
+  const [columnSearchText, setColumnSearchText] = useState('');
+  const debouncedGlobalSearchText = useDebounce(globalSearchText, 500);
+  const debouncedColumnSearchText = useDebounce(columnSearchText, 500);
   const [skippedRows, setSkippedRows] = useState([]);
   const [editableSkippedRows, setEditableSkippedRows] = useState([]); // user-edited cells
   const [selectedUploadedCatchNos, setSelectedUploadedCatchNos] = useState([]);
@@ -80,6 +85,8 @@ const DataImport = () => {
   const lotBifurcationRef = useRef(null);
   const mergeCatchRef = useRef(null);
   const [mergeSelectionCount, setMergeSelectionCount] = useState(0);
+  const [showUploadedDisplayFieldsModal, setShowUploadedDisplayFieldsModal] = useState(false);
+  const [uploadedDisplayFields, setUploadedDisplayFields] = useState([]);
 
   // 👉 Initialize activeTab from localStorage on mount
   useEffect(() => {
@@ -103,6 +110,32 @@ const DataImport = () => {
     setActiveTab(key);
     localStorage.setItem(`dataImportActiveTab_${projectId}`, key);
   };
+
+  useEffect(() => {
+    const storageKey = `uploadedData_displayFields_${projectId || "default"}`;
+    const lockedFields = columns.filter((field) => requiredFieldNames.includes(field));
+
+    if (!columns.length) {
+      setUploadedDisplayFields([]);
+      return;
+    }
+
+    const savedValue = localStorage.getItem(storageKey);
+    if (savedValue !== null) {
+      try {
+        const parsed = JSON.parse(savedValue);
+        const validSavedFields = Array.isArray(parsed)
+          ? parsed.filter((field) => columns.includes(field))
+          : [];
+        setUploadedDisplayFields(Array.from(new Set([...lockedFields, ...validSavedFields])));
+        return;
+      } catch (error) {
+        console.warn("Failed to restore uploaded data display fields", error);
+      }
+    }
+
+    setUploadedDisplayFields(Array.from(new Set([...lockedFields, ...columns])));
+  }, [columns, projectId, requiredFieldNames]);
   // Load projects
   useEffect(() => {
     if (!projectId) return;
@@ -158,7 +191,8 @@ const DataImport = () => {
     projectId,
     pagination.current,
     pagination.pageSize,
-    debouncedSearchText,
+    debouncedGlobalSearchText,
+    debouncedColumnSearchText,
     searchedColumn,
     uploadedTableSorter.field,
     uploadedTableSorter.order,
@@ -169,11 +203,15 @@ const DataImport = () => {
 
     setLoading(true);
     try {
+      const effectiveSearch = searchedColumn
+        ? debouncedColumnSearchText
+        : debouncedGlobalSearchText;
+
       const res = await API.get(`/NRDatas/GetByProjectId/${projectId}`, {
         params: {
           pageSize: pagination.pageSize,
           pageNo: pagination.current,
-          search: searchText || null,
+          search: effectiveSearch || null,
           key: searchedColumn || null,
           sortField: uploadedTableSorter.field || null,
           sortOrder: uploadedTableSorter.order || null,
@@ -1222,7 +1260,24 @@ const DataImport = () => {
     return date; // Return the original value if it's not a valid date
   };
 
-  const getColumnSearchProps = dataIndex => ({
+  const handleColumnSearch = (selectedKeys, confirm, dataIndex) => {
+    confirm?.();
+    const value = (selectedKeys?.[0] ?? "").toString();
+    setSearchedColumn(dataIndex);
+    setColumnSearchText(value);
+    // Column search overrides global search
+    setGlobalSearchText("");
+    setPagination((prev) => ({ ...prev, current: 1 }));
+  };
+
+  const handleColumnReset = (clearFilters) => {
+    clearFilters?.();
+    setSearchedColumn("");
+    setColumnSearchText("");
+    setPagination((prev) => ({ ...prev, current: 1 }));
+  };
+
+  const getColumnSearchProps = (dataIndex) => ({
     filterDropdown: ({
       setSelectedKeys,
       selectedKeys,
@@ -1233,18 +1288,35 @@ const DataImport = () => {
         <Input
           autoFocus
           placeholder={`Search ${dataIndex}`}
-          value={searchText}
+          value={selectedKeys[0]}
           onChange={(e) => {
             const val = e.target.value;
-            setSearchText(val);       // update search text
-            setSearchedColumn(dataIndex); // set key immediately
+            setSelectedKeys(val ? [val] : []);
           }}
+          onPressEnter={() => handleColumnSearch(selectedKeys, confirm, dataIndex)}
           style={{ width: 188, marginBottom: 8, display: 'block' }}
         />
+        <Space size={8}>
+          <Button
+            type="primary"
+            size="small"
+            onClick={() => handleColumnSearch(selectedKeys, confirm, dataIndex)}
+            disabled={!selectedKeys?.[0]}
+          >
+            Search
+          </Button>
+          <Button
+            size="small"
+            onClick={() => handleColumnReset(clearFilters)}
+            disabled={!selectedKeys?.length && searchedColumn !== dataIndex}
+          >
+            Reset
+          </Button>
+        </Space>
       </div>
     ),
-    filterIcon: filtered => (
-      <SearchOutlined style={{ color: filtered ? '#1890ff' : undefined }} />
+    filterIcon: () => (
+      <SearchOutlined style={{ color: searchedColumn === dataIndex ? '#1890ff' : undefined }} />
     ),
     render: text =>
       searchedColumn === dataIndex ? (
@@ -1260,6 +1332,13 @@ const DataImport = () => {
     return d.isValid() ? d : null;
   };
 
+  // Build a set of unique field names from master fields — these are NOT editable in the uploaded data tab
+  const uniqueFieldNames = new Set(
+    (expectedFields || [])
+      .filter(f => f.isUnique === true)
+      .map(f => f.name)
+  );
+
   // columnsFromBackend = response.columns
   const enhancedColumns = [
     ...columns.map(col => ({
@@ -1273,6 +1352,10 @@ const DataImport = () => {
       sortOrder: uploadedTableSorter.field === col ? uploadedTableSorter.order : null,
       render: (text, record) => {
         if (editingRowId === record.id) {
+          // Unique fields from masters are NOT editable
+          if (uniqueFieldNames.has(col)) {
+            return <span style={{ color: '#8c8c8c', cursor: 'not-allowed' }} title="Unique field – cannot be edited">{text}</span>;
+          }
           if (col === 'ExamDate') {
             return (
               <DatePicker
@@ -1362,6 +1445,16 @@ const DataImport = () => {
       }
     }
   ];
+
+  const visibleEnhancedColumns = enhancedColumns.filter((column) => {
+    if (column.key === 'actions') {
+      return true;
+    }
+
+    return uploadedDisplayFields.includes(column.dataIndex);
+  });
+
+  const lockedUploadedFields = columns.filter((field) => requiredFieldNames.includes(field));
 
   const handleDeleteRow = async (record) => {
     if (!record?.id) return;
@@ -2491,7 +2584,15 @@ const handleFieldChange = (fieldName, value) => {
               onChange={handleTabChange}
               style={{ marginTop: 8 }}
               tabBarExtraContent={
-                activeTab === "2" ? (
+                activeTab === "1" ? (
+                  <Button
+                    size="small"
+                    onClick={() => setShowUploadedDisplayFieldsModal(true)}
+                    disabled={!columns.length}
+                  >
+                    Display Fields
+                  </Button>
+                ) : activeTab === "2" ? (
                   <Space size={8}>
                     <Button
                       type="primary"
@@ -2531,12 +2632,34 @@ const handleFieldChange = (fieldName, value) => {
               }
             >
               <TabPane tab="Uploaded Data" key="1">
-                {enhancedColumns.length > 0 ? (
-                  <Space direction="vertical" size={12} style={{ width: "100%" }}>
-                   
+                <Space direction="vertical" size={12} style={{ width: "100%" }}>
+                  <Space wrap size={8} style={{ width: "100%", justifyContent: "space-between" }}>
+                    <Input.Search
+                      placeholder="Search uploaded data"
+                      allowClear
+                      value={globalSearchText}
+                      loading={loading && globalSearchText !== ""}
+                      onChange={(e) => {
+                        setGlobalSearchText(e.target.value);
+                        // Top search is global search
+                        setSearchedColumn("");
+                        setColumnSearchText("");
+                        setPagination((prev) => ({ ...prev, current: 1 }));
+                      }}
+                      onSearch={(value) => {
+                        setGlobalSearchText(value);
+                        // Top search is global search
+                        setSearchedColumn("");
+                        setColumnSearchText("");
+                        setPagination((prev) => ({ ...prev, current: 1 }));
+                      }}
+                      style={{ width: 280 }}
+                    />
+                  </Space>
+                  {enhancedColumns.length > 0 ? (
                     <Table
                       dataSource={existingData}
-                      columns={enhancedColumns}
+                      columns={visibleEnhancedColumns}
                       pagination={{
                         ...pagination,
                         showSizeChanger: true,
@@ -2609,10 +2732,10 @@ const handleFieldChange = (fieldName, value) => {
                       loading={loading}
                       onChange={handleUploadedTableChange}
                     />
-                  </Space>
-                ) : (
-                  <Typography.Text type="secondary">No data found</Typography.Text>
-                )}
+                  ) : (
+                    <Typography.Text type="secondary">No data found</Typography.Text>
+                  )}
+                </Space>
 
               </TabPane>
 
@@ -2636,6 +2759,79 @@ const handleFieldChange = (fieldName, value) => {
             
           </Card>
         </motion.div>
+
+        <Modal
+          title="Select Display Fields"
+          open={showUploadedDisplayFieldsModal}
+          onCancel={() => setShowUploadedDisplayFieldsModal(false)}
+          footer={[
+            <Button
+              key="selectAll"
+              size="small"
+              onClick={() => {
+                setUploadedDisplayFields([...columns]);
+                localStorage.setItem(
+                  `uploadedData_displayFields_${projectId || "default"}`,
+                  JSON.stringify(columns)
+                );
+              }}
+              disabled={columns.length === 0}
+            >
+              Select All
+            </Button>,
+            <Button
+              key="clearAll"
+              size="small"
+              onClick={() => {
+                setUploadedDisplayFields([...lockedUploadedFields]);
+                localStorage.setItem(
+                  `uploadedData_displayFields_${projectId || "default"}`,
+                  JSON.stringify(lockedUploadedFields)
+                );
+              }}
+              disabled={uploadedDisplayFields.length === lockedUploadedFields.length}
+            >
+              Clear All
+            </Button>,
+            <Button
+              key="ok"
+              type="primary"
+              onClick={() => setShowUploadedDisplayFieldsModal(false)}
+            >
+              OK
+            </Button>
+          ]}
+          width={500}
+        >
+          <div style={{ marginBottom: 16 }}>
+            <Text type="secondary">
+              Select fields from the uploaded data table to show or hide columns.
+            </Text>
+          </div>
+          <Checkbox.Group
+            style={{ width: "100%", display: "flex", flexDirection: "column", gap: 8 }}
+            value={uploadedDisplayFields}
+            onChange={(checkedValues) => {
+              const nextValues = Array.from(new Set([...lockedUploadedFields, ...checkedValues]));
+              setUploadedDisplayFields(nextValues);
+              localStorage.setItem(
+                `uploadedData_displayFields_${projectId || "default"}`,
+                JSON.stringify(nextValues)
+              );
+            }}
+          >
+            {columns.map((field) => (
+              <Checkbox
+                key={field}
+                value={field}
+                disabled={lockedUploadedFields.includes(field)}
+              >
+                {field}
+                {lockedUploadedFields.includes(field) ? " (Configured)" : ""}
+              </Checkbox>
+            ))}
+          </Checkbox.Group>
+        </Modal>
       </>
 
     </div>
