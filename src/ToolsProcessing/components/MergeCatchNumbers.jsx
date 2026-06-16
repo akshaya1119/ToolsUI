@@ -129,18 +129,52 @@ const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
   const [extrasInitialized, setExtrasInitialized] = useState(false);
   const [extrasLoaded, setExtrasLoaded] = useState(false);
 
-  const loadRows = async () => {
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [totalCount, setTotalCount] = useState(0);
+  const [sortField, setSortField] = useState(null);
+  const [sortOrder, setSortOrder] = useState(null);
+  const [searchKey, setSearchKey] = useState(null);
+  const [searchVal, setSearchVal] = useState(null);
+
+  const loadRows = async (page = currentPage, limit = pageSize, sField = sortField, sOrder = sortOrder, sKey = searchKey, sVal = searchVal) => {
     if (!projectId) return;
     setLoading(true);
     try {
-      const res = await API.get(`/NRDatas/GetByProjectId/${projectId}`, {
-        params: {
-          pageSize: 100000,
-          pageNo: 1,
-        },
-      });
+      const params = {
+        pageSize: limit,
+        pageNo: page,
+      };
+      if (sField && sOrder) {
+        const backendFieldMap = {
+          catchNo: "CatchNo",
+          examDate: "ExamDate",
+          examTime: "ExamTime",
+          quantity: "Quantity",
+          courseName: "CourseName",
+          subjectName: "SubjectName",
+        };
+        params.sortField = backendFieldMap[sField] || sField;
+        params.sortOrder = sOrder;
+      }
+      if (sKey && sVal) {
+        const backendKeyMap = {
+          catchNo: "CatchNo",
+          centerCode: "CenterCode",
+          subjectName: "SubjectName",
+          examDate: "ExamDate",
+          examTime: "ExamTime",
+          quantity: "Quantity",
+        };
+        params.key = backendKeyMap[sKey] || sKey;
+        params.search = sVal;
+      }
+
+      const res = await API.get(`/NRDatas/GetUniqueByProjectId/${projectId}`, { params });
 
       const items = Array.isArray(res.data?.items) ? res.data.items : [];
+      setTotalCount(res.data?.totalCount || 0);
+
       const uniqueByCatch = new Map();
 
       items.forEach((item) => {
@@ -181,7 +215,7 @@ const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
             item?.paperCode ??
             "",
           pages: item?.Pages ?? item?.pages ?? "",
-          lotNumber: coerceNumber(item?.LotNumber ?? item?.lotNumber ?? 0, 0),
+          lotNumber: coerceNumber(item?.LotNumber ?? item?.lotNumber ?? item?.LotNo ?? item?.lotNo ?? 0, 0),
           aValue: readJsonValue(nrDatas, "A"),
           bValue: readJsonValue(nrDatas, "B"),
           cValue: readJsonValue(nrDatas, "C"),
@@ -195,13 +229,7 @@ const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
         }
       });
 
-      const list = Array.from(uniqueByCatch.values()).sort((a, b) =>
-        String(a.catchNo).localeCompare(String(b.catchNo), undefined, {
-          numeric: true,
-          sensitivity: "base",
-        })
-      );
-
+      const list = Array.from(uniqueByCatch.values());
       setRows(list);
     } catch (error) {
       console.error("Failed to load catch data for merge", error);
@@ -213,8 +241,8 @@ const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
   };
 
   useEffect(() => {
-    loadRows();
-  }, [projectId]);
+    loadRows(currentPage, pageSize, sortField, sortOrder, searchKey, searchVal);
+  }, [projectId, currentPage, pageSize, sortField, sortOrder, searchKey, searchVal]);
 
   const openMergeModal = () => {
     if (selectedCatchNos.length < 2) {
@@ -434,11 +462,25 @@ const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
             setSearchText(value);
             setSearchedColumn(dataIndex);
           }}
-          onPressEnter={() => confirm()}
+          onPressEnter={() => {
+            confirm();
+            setSearchKey(dataIndex);
+            setSearchVal(searchText);
+            setCurrentPage(1);
+          }}
           style={{ width: 188, marginBottom: 8, display: "block" }}
         />
         <Space>
-          <Button type="primary" size="small" onClick={() => confirm()}>
+          <Button
+            type="primary"
+            size="small"
+            onClick={() => {
+              confirm();
+              setSearchKey(dataIndex);
+              setSearchVal(searchText);
+              setCurrentPage(1);
+            }}
+          >
             Search
           </Button>
           <Button
@@ -447,6 +489,9 @@ const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
               clearFilters?.();
               setSearchText("");
               setSearchedColumn("");
+              setSearchKey(null);
+              setSearchVal(null);
+              setCurrentPage(1);
               confirm({ closeDropdown: true });
             }}
           >
@@ -458,13 +503,6 @@ const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
     filterIcon: (filtered) => (
       <SearchOutlined style={{ color: filtered ? "#1890ff" : undefined }} />
     ),
-    onFilter: (value, record) => {
-      const rawValue = record?.[dataIndex];
-      if (rawValue === undefined || rawValue === null) return false;
-      return String(rawValue)
-        .toLowerCase()
-        .includes(String(value).toLowerCase());
-    },
     filterDropdownProps: {
       onOpenChange: (open) => {
         if (!open && searchedColumn === dataIndex && !searchText) {
@@ -482,7 +520,7 @@ const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
         dataIndex: "catchNo",
         key: "catchNo",
         width: 130,
-        sorter: (a, b) => String(a.catchNo).localeCompare(String(b.catchNo)),
+        sorter: true,
         ...getColumnSearchProps("catchNo"),
       },
       {
@@ -490,8 +528,7 @@ const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
         dataIndex: "examDate",
         key: "examDate",
         width: 120,
-        sorter: (a, b) =>
-          String(a.examDate || "").localeCompare(String(b.examDate || "")),
+        sorter: true,
         ...getColumnSearchProps("examDate"),
       },
       {
@@ -499,8 +536,7 @@ const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
         dataIndex: "examTime",
         key: "examTime",
         width: 140,
-        sorter: (a, b) =>
-          String(a.examTime || "").localeCompare(String(b.examTime || "")),
+        sorter: true,
         ...getColumnSearchProps("examTime"),
       },
       {
@@ -508,7 +544,7 @@ const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
         dataIndex: "quantity",
         key: "quantity",
         width: 90,
-        sorter: (a, b) => Number(a.quantity || 0) - Number(b.quantity || 0),
+        sorter: true,
         ...getColumnSearchProps("quantity"),
       },
       {
@@ -517,8 +553,7 @@ const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
         key: "subjectName",
         width: 220,
         ellipsis: true,
-        sorter: (a, b) =>
-          String(a.subjectName || "").localeCompare(String(b.subjectName || "")),
+        sorter: true,
         ...getColumnSearchProps("subjectName"),
         render: (value) =>
           value ? (
@@ -535,7 +570,6 @@ const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
         key: "aValue",
         width: 200,
         ellipsis: true,
-        sorter: (a, b) => String(a.aValue || "").localeCompare(String(b.aValue || "")),
         ...getColumnSearchProps("aValue"),
         render: (value) =>
           value ? (
@@ -552,7 +586,6 @@ const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
         key: "bValue",
         width: 160,
         ellipsis: true,
-        sorter: (a, b) => String(a.bValue || "").localeCompare(String(b.bValue || "")),
         ...getColumnSearchProps("bValue"),
         render: (value) =>
           value ? (
@@ -569,7 +602,6 @@ const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
         key: "cValue",
         width: 220,
         ellipsis: true,
-        sorter: (a, b) => String(a.cValue || "").localeCompare(String(b.cValue || "")),
         ...getColumnSearchProps("cValue"),
         render: (value) =>
           value ? (
@@ -586,7 +618,6 @@ const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
         key: "dValue",
         width: 160,
         ellipsis: true,
-        sorter: (a, b) => String(a.dValue || "").localeCompare(String(b.dValue || "")),
         ...getColumnSearchProps("dValue"),
         render: (value) =>
           value ? (
@@ -1186,11 +1217,29 @@ const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
                 },
               }}
               pagination={{
-                pageSize: 20,
+                current: currentPage,
+                pageSize: pageSize,
+                total: totalCount,
                 showSizeChanger: true,
                 pageSizeOptions: ["10", "20", "50", "100"],
                 showTotal: (total, range) =>
                   `${range[0]}-${range[1]} of ${total} records`,
+              }}
+              onChange={(pagination, filters, sorter) => {
+                if (pagination.current !== currentPage) {
+                  setCurrentPage(pagination.current);
+                }
+                if (pagination.pageSize !== pageSize) {
+                  setPageSize(pagination.pageSize);
+                  setCurrentPage(1);
+                }
+                if (sorter && sorter.field) {
+                  setSortField(sorter.field);
+                  setSortOrder(sorter.order);
+                } else {
+                  setSortField(null);
+                  setSortOrder(null);
+                }
               }}
               scroll={{ x: "max-content" }}
               locale={{
