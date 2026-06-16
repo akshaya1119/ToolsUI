@@ -17,6 +17,9 @@ import {
   Space,
   Table,
   Tooltip,
+  Tag,
+  Alert,
+  Collapse,
 } from "antd";
 import { SearchOutlined } from "@ant-design/icons";
 import { motion } from "framer-motion";
@@ -88,6 +91,7 @@ const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
   const token = localStorage.getItem("token");
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState([]);
+  const [recentlyMerged, setRecentlyMerged] = useState(null);
   const [manualSelectedCatchNos, setManualSelectedCatchNos] = useState([]);
   const [selectedSuggestionKeys, setSelectedSuggestionKeys] = useState([]);
   const [mergeModalOpen, setMergeModalOpen] = useState(false);
@@ -326,6 +330,7 @@ const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
         }
       );
       showToast(res.data?.message || "Catch numbers merged successfully.", "success");
+      setRecentlyMerged(res.data?.catchNo || selectedCatchNos.join(mergeSeparator || "/"));
       setManualSelectedCatchNos([]);
       setSelectedSuggestionKeys([]);
       setMergeModalOpen(false);
@@ -1127,6 +1132,20 @@ const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
           }
         `}
       </style>
+      {recentlyMerged && (
+        <Alert
+          message={
+            <span>
+              Catch number <strong>{recentlyMerged}</strong> has been merged just now!
+            </span>
+          }
+          type="success"
+          showIcon
+          closable
+          onClose={() => setRecentlyMerged(null)}
+          style={{ marginBottom: 16 }}
+        />
+      )}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -1142,61 +1161,76 @@ const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
           styles={{ body: { paddingTop: 12 } }}
         >
           <Space direction="vertical" size={16} style={{ width: "100%" }}>
-            <div className="merge-suggest-panel">
-              <div className="merge-suggest-header">
-                <div>
-                  <div className="merge-suggest-title">Merge Suggestions</div>
-                  <div className="merge-suggest-sub">
-                    Choose fields to group catch numbers. Default is D (Paper Title).
-                  </div>
-                </div>
-                <Select
-                  size="small"
-                  mode="multiple"
-                  value={suggestionFields}
-                  onChange={(value) =>
-                    setSuggestionFields(value?.length ? value : ["D"])
-                  }
-                  options={suggestionOptions}
-                  placeholder="Pick fields"
-                  maxTagCount={2}
-                  style={{ minWidth: 240 }}
-                />
-              </div>
-              {suggestedGroups.length === 0 ? (
-                <div style={{ fontSize: 11, color: "#64748b" }}>
-                  No suggestions found for the selected fields.
-                </div>
-              ) : (
-                <div className="merge-suggest-list">
-                  {suggestedGroups.map((group) => {
-                    const isSelected = selectedSuggestionKeys.includes(group.key);
-                    return (
-                    <div
-                      key={group.key}
-                      className={`merge-suggest-item${isSelected ? " selected" : ""}`}
-                    >
-                      <div className="merge-suggest-label">
-                        {group.label} ({group.catchNos.length})
-                      </div>
-                      <div className="merge-suggest-actions">
-                        <Button
+            <Collapse
+              size="small"
+              ghost
+              style={{ padding: 0 }}
+              items={[
+                {
+                  key: "suggestions",
+                  label: (
+                    <span style={{ fontSize: 13, fontWeight: 700, color: "#0f172a" }}>
+                      Merge Suggestions
+                    </span>
+                  ),
+                  children: (
+                    <div className="merge-suggest-panel" style={{ border: "none", padding: 0 }}>
+                      <div className="merge-suggest-header" style={{ paddingTop: 0 }}>
+                        <div>
+                          <div className="merge-suggest-sub">
+                            Choose fields to group catch numbers. Default is D (Paper Title).
+                          </div>
+                        </div>
+                        <Select
                           size="small"
-                          type={isSelected ? "primary" : "default"}
-                          onClick={() => toggleSuggestion(group.key)}
-                        >
-                          {isSelected ? "Selected" : "Select"}
-                        </Button>
+                          mode="multiple"
+                          value={suggestionFields}
+                          onChange={(value) => setSuggestionFields(value)}
+                          options={suggestionOptions}
+                          placeholder="Pick fields"
+                          maxTagCount={2}
+                          allowClear
+                          style={{ minWidth: 240 }}
+                        />
                       </div>
-                      <div className="merge-suggest-catches">
-                        {group.catchNos.join(", ")}
-                      </div>
+                      {suggestedGroups.length === 0 ? (
+                        <div style={{ fontSize: 11, color: "#64748b" }}>
+                          No suggestions found for the selected fields.
+                        </div>
+                      ) : (
+                        <div className="merge-suggest-list">
+                          {suggestedGroups.map((group) => {
+                            const isSelected = selectedSuggestionKeys.includes(group.key);
+                            return (
+                              <div
+                                key={group.key}
+                                className={`merge-suggest-item${isSelected ? " selected" : ""}`}
+                              >
+                                <div className="merge-suggest-label">
+                                  {group.label} ({group.catchNos.length})
+                                </div>
+                                <div className="merge-suggest-actions">
+                                  <Button
+                                    size="small"
+                                    type={isSelected ? "primary" : "default"}
+                                    onClick={() => toggleSuggestion(group.key)}
+                                  >
+                                    {isSelected ? "Selected" : "Select"}
+                                  </Button>
+                                </div>
+                                <div className="merge-suggest-catches">
+                                  {group.catchNos.join(", ")}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
-                  );
-                  })}
-                </div>
-              )}
-            </div>
+                  )
+                }
+              ]}
+            />
             <Table
               dataSource={tableRows}
               columns={columns}
@@ -1274,6 +1308,19 @@ const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
                   {selectedCatchNos.length} selected
                 </div>
               )}
+            </div>
+          </div>
+
+          <div className="merge-modal-panel">
+            <div className="merge-modal-panel-header">
+              <span className="merge-modal-panel-title">Catches being merged</span>
+            </div>
+            <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: 6, maxHeight: 100, overflowY: "auto", padding: "4px 0" }}>
+              {selectedCatchNos.map((c) => (
+                <Tag key={c} color="blue" style={{ fontSize: 11, margin: 0 }}>
+                  {c}
+                </Tag>
+              ))}
             </div>
           </div>
 
@@ -1389,31 +1436,6 @@ const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
                   </div>
                 </div>
               )}
-
-              <div className="merge-modal-panel">
-                <div className="merge-modal-panel-header">
-                  <span className="merge-modal-panel-title">Post-Merge Module</span>
-                </div>
-                <Select
-                  size="small"
-                  mode="multiple"
-                  style={{ width: "100%", marginTop: 6 }}
-                  placeholder={
-                    loadingModules ? "Loading modules..." : "Select modules (optional)"
-                  }
-                  value={mergeModuleIds}
-                  loading={loadingModules}
-                  allowClear
-                  onChange={(value) => setMergeModuleIds(value)}
-                  showSearch
-                  optionFilterProp="label"
-                  filterOption={filterSelectOption}
-                  options={(modules || []).map((m) => ({
-                    value: m.id,
-                    label: m.name,
-                  }))}
-                />
-              </div>
             </div>
 
             <div className="merge-modal-col">
