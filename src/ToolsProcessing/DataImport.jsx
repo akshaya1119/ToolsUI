@@ -69,10 +69,8 @@ const DataImport = () => {
   // - globalSearchText => top search bar (key = null)
   // - searchedColumn + columnSearchText => column-specific search (key = searchedColumn)
   const [globalSearchText, setGlobalSearchText] = useState('');
-  const [searchedColumn, setSearchedColumn] = useState('');
-  const [columnSearchText, setColumnSearchText] = useState('');
+  const [columnFilters, setColumnFilters] = useState({});
   const debouncedGlobalSearchText = useDebounce(globalSearchText, 500);
-  const debouncedColumnSearchText = useDebounce(columnSearchText, 500);
   const [skippedRows, setSkippedRows] = useState([]);
   const [editableSkippedRows, setEditableSkippedRows] = useState([]); // user-edited cells
   const [selectedUploadedCatchNos, setSelectedUploadedCatchNos] = useState([]);
@@ -87,6 +85,7 @@ const DataImport = () => {
   const [mergeSelectionCount, setMergeSelectionCount] = useState(0);
   const [showUploadedDisplayFieldsModal, setShowUploadedDisplayFieldsModal] = useState(false);
   const [uploadedDisplayFields, setUploadedDisplayFields] = useState([]);
+  const [addedFieldIds, setAddedFieldIds] = useState([]);
 
   // 👉 Initialize activeTab from localStorage on mount
   useEffect(() => {
@@ -192,8 +191,7 @@ const DataImport = () => {
     pagination.current,
     pagination.pageSize,
     debouncedGlobalSearchText,
-    debouncedColumnSearchText,
-    searchedColumn,
+    columnFilters,
     uploadedTableSorter.field,
     uploadedTableSorter.order,
   ]);
@@ -203,16 +201,12 @@ const DataImport = () => {
 
     setLoading(true);
     try {
-      const effectiveSearch = searchedColumn
-        ? debouncedColumnSearchText
-        : debouncedGlobalSearchText;
-
       const res = await API.get(`/NRDatas/GetByProjectId/${projectId}`, {
         params: {
           pageSize: pagination.pageSize,
           pageNo: pagination.current,
-          search: effectiveSearch || null,
-          key: searchedColumn || null,
+          search: debouncedGlobalSearchText || null,
+          filters: Object.keys(columnFilters).length ? JSON.stringify(columnFilters) : null,
           sortField: uploadedTableSorter.field || null,
           sortOrder: uploadedTableSorter.order || null,
         },
@@ -1050,6 +1044,7 @@ const DataImport = () => {
     setFileList([file]); // Show the selected file
     setFileHeaders([]);
     setFieldMappings({});
+    setAddedFieldIds([]);
     proceedWithReading(file);
     return false; // prevent auto upload
   };
@@ -1101,6 +1096,7 @@ const DataImport = () => {
     setFileList([]); // Since only one file is allowed
     setFileHeaders([]);
     setFieldMappings({});
+    setAddedFieldIds([]);
   };
 
   const isAnyFieldMapped = () => {
@@ -1110,6 +1106,7 @@ const DataImport = () => {
     setFileHeaders([]);
     setFileList([]);
     setFieldMappings({});
+    setAddedFieldIds([]);
     setExcelData([]);
     setExpectedFields([]);
     setConflicts(null);
@@ -1263,17 +1260,25 @@ const DataImport = () => {
   const handleColumnSearch = (selectedKeys, confirm, dataIndex) => {
     confirm?.();
     const value = (selectedKeys?.[0] ?? "").toString();
-    setSearchedColumn(dataIndex);
-    setColumnSearchText(value);
-    // Column search overrides global search
-    setGlobalSearchText("");
+    setColumnFilters((prev) => {
+      const nextFilters = { ...prev };
+      if (value) {
+        nextFilters[dataIndex] = value;
+      } else {
+        delete nextFilters[dataIndex];
+      }
+      return nextFilters;
+    });
     setPagination((prev) => ({ ...prev, current: 1 }));
   };
 
-  const handleColumnReset = (clearFilters) => {
+  const handleColumnReset = (clearFilters, dataIndex) => {
     clearFilters?.();
-    setSearchedColumn("");
-    setColumnSearchText("");
+    setColumnFilters((prev) => {
+      const nextFilters = { ...prev };
+      delete nextFilters[dataIndex];
+      return nextFilters;
+    });
     setPagination((prev) => ({ ...prev, current: 1 }));
   };
 
@@ -1288,7 +1293,7 @@ const DataImport = () => {
         <Input
           autoFocus
           placeholder={`Search ${dataIndex}`}
-          value={selectedKeys[0]}
+          value={selectedKeys[0] || columnFilters[dataIndex] || ""}
           onChange={(e) => {
             const val = e.target.value;
             setSelectedKeys(val ? [val] : []);
@@ -1301,14 +1306,14 @@ const DataImport = () => {
             type="primary"
             size="small"
             onClick={() => handleColumnSearch(selectedKeys, confirm, dataIndex)}
-            disabled={!selectedKeys?.[0]}
+            disabled={!selectedKeys?.[0] && !columnFilters[dataIndex]}
           >
             Search
           </Button>
           <Button
             size="small"
-            onClick={() => handleColumnReset(clearFilters)}
-            disabled={!selectedKeys?.length && searchedColumn !== dataIndex}
+            onClick={() => handleColumnReset(clearFilters, dataIndex)}
+            disabled={!columnFilters[dataIndex]}
           >
             Reset
           </Button>
@@ -1316,10 +1321,11 @@ const DataImport = () => {
       </div>
     ),
     filterIcon: () => (
-      <SearchOutlined style={{ color: searchedColumn === dataIndex ? '#1890ff' : undefined }} />
+      <SearchOutlined style={{ color: columnFilters[dataIndex] ? '#1890ff' : undefined }} />
     ),
+    filteredValue: columnFilters[dataIndex] ? [columnFilters[dataIndex]] : null,
     render: text =>
-      searchedColumn === dataIndex ? (
+      columnFilters[dataIndex] ? (
         <span style={{ color: '#1890ff' }}>{text}</span>
       ) : (
         text
@@ -1728,6 +1734,42 @@ const handleInlineSave = async () => {
       }
     });
 
+    // Verify if new values exist in the database (excluding catchno, quantity, nrquantity, lotno, pages)
+    const fieldsToVerify = Object.keys(rowData).filter(
+      (col) =>
+        col.toLowerCase() !== "catchno" &&
+        col.toLowerCase() !== "quantity" &&
+        col.toLowerCase() !== "nrquantity" &&
+        col.toLowerCase() !== "lotno" &&
+        col.toLowerCase() !== "pages" &&
+        rowData[col] !== null &&
+        rowData[col] !== undefined &&
+        String(rowData[col]).trim() !== ""
+    );
+
+    for (const col of fieldsToVerify) {
+      const newValue = rowData[col];
+      const checkRes = await API.get(`/NRDatas/CheckValueExists/${projectId}`, {
+        params: { fieldName: col, value: newValue }
+      });
+      if (checkRes.data && checkRes.data.exists === false) {
+        const confirmed = await MessageService.confirm(
+          <span>
+            Value <strong>{newValue}</strong> for field <strong>{col}</strong> does not exist in this project. Are you sure you want to add this row?
+          </span>,
+          {
+            title: "Value does not exist",
+            confirmText: "Yes, Add Row",
+            cancelText: "No, Cancel",
+            type: "warning"
+          }
+        );
+        if (!confirmed) {
+          return;
+        }
+      }
+    }
+
     // Use the same endpoint as file upload
     const payload = {
       projectId: Number(projectId),
@@ -1820,6 +1862,40 @@ const handleSaveEdit = async () => {
       setEditFormData({});
       setOriginalEditFormData({});
       return;
+    }
+
+    // Verify if new values exist in the database (excluding quantity & nrquantity)
+    const fieldsToVerify = Object.keys(changedPayload).filter(
+      (col) =>
+        col.toLowerCase() !== "quantity" &&
+        col.toLowerCase() !== "nrquantity" &&
+        changedPayload[col] !== null &&
+        changedPayload[col] !== undefined &&
+        String(changedPayload[col]).trim() !== ""
+    );
+
+    for (const col of fieldsToVerify) {
+      const newValue = changedPayload[col];
+      const checkRes = await API.get(`/NRDatas/CheckValueExists/${projectId}`, {
+        params: { fieldName: col, value: newValue }
+      });
+      if (checkRes.data && checkRes.data.exists === false) {
+        const confirmed = await MessageService.confirm(
+          <span>
+            Value <strong>{newValue}</strong> for field <strong>{col}</strong> does not exist in this project. Are you sure you want to save?
+          </span>,
+          {
+            title: "Value does not exist",
+            confirmText: "Yes, Save",
+            cancelText: "No, Cancel",
+            type: "warning"
+          }
+        );
+        if (!confirmed) {
+          setLoading(false);
+          return;
+        }
+      }
     }
 
     // Use the new UpdateSingle endpoint
@@ -1988,6 +2064,21 @@ const handleFieldChange = (fieldName, value) => {
   }
 }, [addRowOpen]);
 
+  const getMappedFieldsToDisplay = () => {
+    return expectedFields.filter(f => {
+      if (requiredFieldNames.includes(f.name)) return true;
+      if (fieldMappings[f.fieldId]) return true;
+      if (addedFieldIds.includes(f.fieldId)) return true;
+      return false;
+    });
+  };
+
+  const getRemainingFields = () => {
+    const displayed = getMappedFieldsToDisplay();
+    const displayedIds = new Set(displayed.map(d => d.fieldId));
+    return expectedFields.filter(f => !displayedIds.has(f.fieldId));
+  };
+
   return (
     <div style={{ padding: 0 }}>
       {/* === PAGE HEADER === */}
@@ -2125,6 +2216,26 @@ const handleFieldChange = (fieldName, value) => {
             >
               <Card
                 title="Field Mapping"
+                extra={
+                  getRemainingFields().length > 0 && (
+                    <Select
+                      style={{ width: 200 }}
+                      placeholder="+ Add Field to Map"
+                      value={null}
+                      onChange={(value) => {
+                        if (value) {
+                          setAddedFieldIds(prev => [...prev, value]);
+                        }
+                      }}
+                    >
+                      {getRemainingFields().map(f => (
+                        <Select.Option key={f.fieldId} value={f.fieldId}>
+                          {f.name}
+                        </Select.Option>
+                      ))}
+                    </Select>
+                  )
+                }
                 styles={{ body: { paddingTop: 12, paddingBottom: 12 } }}
                 style={{
                   border: "1px solid #d9d9d9",
@@ -2135,11 +2246,11 @@ const handleFieldChange = (fieldName, value) => {
                   type="secondary"
                   style={{ display: "block", marginBottom: 16 }}
                 >
-                  Map fields from your file to expected fields
+                  Map fields from your file to expected fields (Required fields are shown by default)
                 </Text>
 
                 <Row gutter={[16, 16]}>
-                  {[...expectedFields]
+                  {[...getMappedFieldsToDisplay()]
                     .sort((a, b) => {
                       const aReq = requiredFieldNames.includes(a.name);
                       const bReq = requiredFieldNames.includes(b.name);
@@ -2198,6 +2309,9 @@ const handleFieldChange = (fieldName, value) => {
                                   delete updated[expectedField.fieldId];
                                   return updated;
                                 });
+                                if (!requiredFieldNames.includes(expectedField.name)) {
+                                  setAddedFieldIds(prev => prev.filter(id => id !== expectedField.fieldId));
+                                }
                               }}
                             >
                               {fileHeaders
@@ -2634,27 +2748,38 @@ const handleFieldChange = (fieldName, value) => {
               <TabPane tab="Uploaded Data" key="1">
                 <Space direction="vertical" size={12} style={{ width: "100%" }}>
                   <Space wrap size={8} style={{ width: "100%", justifyContent: "space-between" }}>
-                    <Input.Search
-                      placeholder="Search uploaded data"
-                      allowClear
-                      value={globalSearchText}
-                      loading={loading && globalSearchText !== ""}
-                      onChange={(e) => {
-                        setGlobalSearchText(e.target.value);
-                        // Top search is global search
-                        setSearchedColumn("");
-                        setColumnSearchText("");
-                        setPagination((prev) => ({ ...prev, current: 1 }));
-                      }}
-                      onSearch={(value) => {
-                        setGlobalSearchText(value);
-                        // Top search is global search
-                        setSearchedColumn("");
-                        setColumnSearchText("");
-                        setPagination((prev) => ({ ...prev, current: 1 }));
-                      }}
-                      style={{ width: 280 }}
-                    />
+                    <Space size={8}>
+                      <Input.Search
+                        placeholder="Search uploaded data"
+                        allowClear
+                        value={globalSearchText}
+                        loading={loading && globalSearchText !== ""}
+                        onChange={(e) => {
+                          setGlobalSearchText(e.target.value);
+                          // Top search is global search
+                          setColumnFilters({});
+                          setPagination((prev) => ({ ...prev, current: 1 }));
+                        }}
+                        onSearch={(value) => {
+                          setGlobalSearchText(value);
+                          // Top search is global search
+                          setColumnFilters({});
+                          setPagination((prev) => ({ ...prev, current: 1 }));
+                        }}
+                        style={{ width: 280 }}
+                      />
+                      {(globalSearchText || Object.keys(columnFilters).length > 0) && (
+                        <Button
+                          onClick={() => {
+                            setGlobalSearchText("");
+                            setColumnFilters({});
+                            setPagination((prev) => ({ ...prev, current: 1 }));
+                          }}
+                        >
+                          Reset Filters
+                        </Button>
+                      )}
+                    </Space>
                   </Space>
                   {enhancedColumns.length > 0 ? (
                     <Table
@@ -2665,6 +2790,27 @@ const handleFieldChange = (fieldName, value) => {
                         showSizeChanger: true,
                         pageSizeOptions: ['10', '20', '50', '100'],
                         showQuickJumper: true,
+                      }}
+                      locale={{
+                        emptyText: (
+                          <div style={{ padding: '24px 0', textAlign: 'center' }}>
+                            <Text type="secondary" style={{ display: 'block', marginBottom: 12, fontSize: '15px' }}>
+                              No data available matching your search criteria.
+                            </Text>
+                            {(globalSearchText || Object.keys(columnFilters).length > 0) && (
+                              <Button
+                                type="primary"
+                                onClick={() => {
+                                  setGlobalSearchText("");
+                                  setColumnFilters({});
+                                  setPagination((prev) => ({ ...prev, current: 1 }));
+                                }}
+                              >
+                                Clear Search & Filters
+                              </Button>
+                            )}
+                          </div>
+                        )
                       }}
                       rowKey="id"
                       rowSelection={{
