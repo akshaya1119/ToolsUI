@@ -169,8 +169,15 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted }, ref) => {
   const [searchText, setSearchText] = useState("");
   const [searchedColumn, setSearchedColumn] = useState("");
   const [bifurcationModalOpen, setBifurcationModalOpen] = useState(false);
-  const [pageSize, setPageSize] = useState(20);
+  const [pageSize, setPageSize] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [sortField, setSortField] = useState(null);
+  const [sortOrder, setSortOrder] = useState(null);
+  const [searchKey, setSearchKey] = useState(null);
+  const [searchVal, setSearchVal] = useState(null);
+  const [projectLots, setProjectLots] = useState([]);
+  const [uniqueColumns, setUniqueColumns] = useState([]);
   const [lotAssignmentFilter, setLotAssignmentFilter] = useState("all");
   const [editingCatchNo, setEditingCatchNo] = useState(null);
   const [editingLotValue, setEditingLotValue] = useState(0);
@@ -184,18 +191,79 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted }, ref) => {
     setStartTouched(false);
   };
 
-  const loadRows = async () => {
+  const loadProjectLots = async () => {
+    if (!projectId) return;
+    try {
+      const res = await API.get(`/NRDataLots/GetByProjectId/${projectId}`);
+      setProjectLots(Array.isArray(res.data) ? res.data : []);
+    } catch (err) {
+      console.error("Failed to load project lots", err);
+      setProjectLots([]);
+    }
+  };
+
+  const loadRows = async (
+    page = currentPage,
+    limit = pageSize,
+    sField = sortField,
+    sOrder = sortOrder,
+    sKey = searchKey,
+    sVal = searchVal,
+    lotTab = activeLotTab,
+    lotFilter = lotAssignmentFilter
+  ) => {
     if (!projectId) return;
     setLoading(true);
     try {
-      const res = await API.get(`/NRDatas/GetByProjectId/${projectId}`, {
-        params: {
-          pageSize: 100000,
-          pageNo: 1,
-        },
-      });
+      const params = {
+        pageSize: limit,
+        pageNo: page,
+      };
+
+      if (lotTab !== "all") {
+        const lotValue = Number(lotTab);
+        if (lotValue === 0) {
+          params.missingExamDate = true;
+        } else {
+          params.lotNo = lotValue;
+        }
+      } else {
+        if (lotFilter === "assigned") {
+          params.assigned = true;
+        } else if (lotFilter === "unassigned") {
+          params.assigned = false;
+        }
+      }
+
+      if (sField && sOrder) {
+        const backendFieldMap = {
+          catchNo: "CatchNo",
+          examDate: "ExamDate",
+          examTime: "ExamTime",
+          quantity: "Quantity",
+          subjectName: "SubjectName",
+        };
+        params.sortField = backendFieldMap[sField] || sField;
+        params.sortOrder = sOrder;
+      }
+      if (sKey && sVal) {
+        const backendKeyMap = {
+          catchNo: "CatchNo",
+          subjectName: "SubjectName",
+          examDate: "ExamDate",
+          examTime: "ExamTime",
+          quantity: "Quantity",
+        };
+        params.key = backendKeyMap[sKey] || sKey;
+        params.search = sVal;
+      }
+
+      const res = await API.get(`/NRDatas/GetUniqueByProjectId/${projectId}`, { params });
 
       const items = Array.isArray(res.data?.items) ? res.data.items : [];
+      setTotalCount(res.data?.totalCount || 0);
+      setUniqueColumns(res.data?.uniqueColumns || []);
+
       const uniqueByCatch = new Map();
 
       items.forEach((item) => {
@@ -235,13 +303,7 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted }, ref) => {
         }
       });
 
-      const list = Array.from(uniqueByCatch.values()).sort((a, b) =>
-        String(a.catchNo).localeCompare(String(b.catchNo), undefined, {
-          numeric: true,
-          sensitivity: "base",
-        })
-      );
-
+      const list = Array.from(uniqueByCatch.values());
       setRows(list);
     } catch (error) {
       console.error("Failed to load catch data for lots", error);
@@ -253,7 +315,11 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted }, ref) => {
   };
 
   useEffect(() => {
-    loadRows();
+    loadRows(currentPage, pageSize, sortField, sortOrder, searchKey, searchVal, activeLotTab, lotAssignmentFilter);
+  }, [projectId, currentPage, pageSize, sortField, sortOrder, searchKey, searchVal, activeLotTab, lotAssignmentFilter]);
+
+  useEffect(() => {
+    loadProjectLots();
   }, [projectId]);
 
   useEffect(() => {
@@ -278,35 +344,12 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted }, ref) => {
 
   const lotTabs = useMemo(() => {
     const uniqueLots = Array.from(
-      new Set(rows.map((row) => coerceNumber(row.lotNumber, 0)))
-    ).sort((a, b) => a - b);
-    return ["all", ...uniqueLots.map((lot) => String(lot))];
-  }, [rows]);
+      new Set(projectLots.map((lot) => coerceNumber(lot.lotNo ?? lot.LotNo, 0)))
+    ).filter(lot => lot > 0).sort((a, b) => a - b);
+    return ["all", "0", ...uniqueLots.map((lot) => String(lot))];
+  }, [projectLots]);
 
-  const filteredRows = useMemo(() => {
-    let list = rows;
-    if (activeLotTab === "all") {
-      if (lotAssignmentFilter === "assigned") {
-        list = list.filter((row) => coerceNumber(row.lotNumber, 0) > 0);
-      } else if (lotAssignmentFilter === "unassigned") {
-        list = list.filter((row) => coerceNumber(row.lotNumber, 0) <= 0);
-      }
-      return list;
-    }
-    const lotValue = Number(activeLotTab);
-    if (lotValue === 0) {
-      return list.filter((row) => !parseExamDate(row.examDate));
-    }
-    return list.filter((row) => coerceNumber(row.lotNumber, 0) === lotValue);
-  }, [rows, activeLotTab, lotAssignmentFilter]);
-
-  useEffect(() => {
-    const total = filteredRows.length;
-    const maxPage = Math.max(1, Math.ceil(total / pageSize));
-    if (currentPage > maxPage) {
-      setCurrentPage(maxPage);
-    }
-  }, [filteredRows, pageSize, currentPage]);
+  const filteredRows = rows;
 
   const saveLotAssignments = async (updates, successMessage) => {
     if (!projectId) return false;
@@ -322,6 +365,7 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted }, ref) => {
       if (successMessage) {
         showToast(successMessage, "success");
       }
+      loadProjectLots();
       return true;
     } catch (error) {
       console.error("Failed to save lot numbers", error);
@@ -670,11 +714,25 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted }, ref) => {
             setSearchText(value);
             setSearchedColumn(dataIndex);
           }}
-          onPressEnter={() => confirm()}
+          onPressEnter={() => {
+            confirm();
+            setSearchKey(dataIndex);
+            setSearchVal(searchText);
+            setCurrentPage(1);
+          }}
           style={{ width: 188, marginBottom: 8, display: "block" }}
         />
         <Space>
-          <Button type="primary" size="small" onClick={() => confirm()}>
+          <Button
+            type="primary"
+            size="small"
+            onClick={() => {
+              confirm();
+              setSearchKey(dataIndex);
+              setSearchVal(searchText);
+              setCurrentPage(1);
+            }}
+          >
             Search
           </Button>
           <Button
@@ -683,6 +741,9 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted }, ref) => {
               clearFilters?.();
               setSearchText("");
               setSearchedColumn("");
+              setSearchKey(null);
+              setSearchVal(null);
+              setCurrentPage(1);
               confirm({ closeDropdown: true });
             }}
           >
@@ -694,13 +755,6 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted }, ref) => {
     filterIcon: (filtered) => (
       <SearchOutlined style={{ color: filtered ? "#1890ff" : undefined }} />
     ),
-    onFilter: (value, record) => {
-      const rawValue = record?.[dataIndex];
-      if (rawValue === undefined || rawValue === null) return false;
-      return String(rawValue)
-        .toLowerCase()
-        .includes(String(value).toLowerCase());
-    },
     filterDropdownProps: {
       onOpenChange: (open) => {
         if (!open && searchedColumn === dataIndex && !searchText) {
@@ -711,69 +765,47 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted }, ref) => {
     filteredValue: searchedColumn === dataIndex && searchText ? [searchText] : null,
   });
 
-  const columns = [
-    {
-      title: "Catch No",
-      dataIndex: "catchNo",
-      key: "catchNo",
-      width: 130,
-      align: "center",
-      sorter: (a, b) => String(a.catchNo).localeCompare(String(b.catchNo)),
-      ...getColumnSearchProps("catchNo"),
-    },
-    {
-      title: "Exam Date",
-      dataIndex: "examDate",
-      key: "examDate",
-      width: 120,
-      sorter: (a, b) =>
-        String(a.examDate || "").localeCompare(String(b.examDate || "")),
-      ...getColumnSearchProps("examDate"),
-    },
-    {
-      title: "Exam Time",
-      dataIndex: "examTime",
-      key: "examTime",
-      width: 140,
-      sorter: (a, b) =>
-        String(a.examTime || "").localeCompare(String(b.examTime || "")),
-      ...getColumnSearchProps("examTime"),
-    },
-    {
-      title: "Quantity",
-      dataIndex: "quantity",
-      key: "quantity",
-      width: 90,
-      sorter: (a, b) => Number(a.quantity || 0) - Number(b.quantity || 0),
-      ...getColumnSearchProps("quantity"),
-    },
-    {
-      title: "Subject Name",
-      dataIndex: "subjectName",
-      key: "subjectName",
-      width: 220,
-      ellipsis: true,
-      sorter: (a, b) =>
-        String(a.subjectName || "").localeCompare(String(b.subjectName || "")),
-      ...getColumnSearchProps("subjectName"),
-      render: (value) =>
-        value ? (
-          <Tooltip title={value}>
-            <span>{value}</span>
-          </Tooltip>
-        ) : (
-          ""
-        ),
-    },
-    {
-      title: "Pages",
-      dataIndex: "pages",
-      key: "pages",
-      width: 80,
-      sorter: (a, b) => Number(a.pages || 0) - Number(b.pages || 0),
-      ...getColumnSearchProps("pages"),
-    },
-    {
+  const columns = useMemo(() => {
+    const cols = [
+      {
+        title: "Catch No",
+        dataIndex: "catchNo",
+        key: "catchNo",
+        width: 130,
+        align: "center",
+        sorter: true,
+        ...getColumnSearchProps("catchNo"),
+      }
+    ];
+
+    uniqueColumns.forEach((fieldName) => {
+      if (!fieldName) return;
+      const dataIndex = fieldName.charAt(0).toLowerCase() + fieldName.slice(1);
+      if (dataIndex === "catchNo" || dataIndex === "lotNumber" || dataIndex === "lotNo") return;
+
+      const title = fieldName
+        .replace(/([A-Z])/g, " $1")
+        .replace(/^./, (str) => str.toUpperCase())
+        .trim();
+
+      cols.push({
+        title: title,
+        dataIndex: dataIndex,
+        key: dataIndex,
+        sorter: true,
+        ...getColumnSearchProps(dataIndex),
+        render: (value) =>
+          value ? (
+            <Tooltip title={value}>
+              <span>{value}</span>
+            </Tooltip>
+          ) : (
+            ""
+          ),
+      });
+    });
+
+    cols.push({
       title: "Lot Number",
       dataIndex: "lotNumber",
       key: "lotNumber",
@@ -842,10 +874,11 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted }, ref) => {
           </Space>
         );
       },
-      sorter: (a, b) => Number(a.lotNumber || 0) - Number(b.lotNumber || 0),
+      sorter: true,
       ...getColumnSearchProps("lotNumber"),
-    },
-    {
+    });
+
+    cols.push({
       title: "Actions",
       key: "actions",
       width: 100,
@@ -867,8 +900,10 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted }, ref) => {
           />
         </Popconfirm>
       ),
-    },
-  ];
+    });
+
+    return cols;
+  }, [uniqueColumns, activeLotTab, editingCatchNo, editingLotValue, searchedColumn, searchText]);
 
   return (
     <div className="pt-0">
@@ -1148,21 +1183,28 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted }, ref) => {
               }
               pagination={{
                 current: currentPage,
-                pageSize,
+                pageSize: pageSize,
+                total: totalCount,
                 showSizeChanger: true,
                 pageSizeOptions: ["10", "20", "50", "100"],
-                onChange: (page, size) => {
-                  setCurrentPage(page);
-                  if (Number.isFinite(size)) {
-                    setPageSize(size);
-                  }
-                },
-                onShowSizeChange: (_, size) => {
-                  setCurrentPage(1);
-                  setPageSize(size);
-                },
                 showTotal: (total, range) =>
                   `${range[0]}-${range[1]} of ${total} records`,
+              }}
+              onChange={(pagination, filters, sorter) => {
+                if (pagination.current !== currentPage) {
+                  setCurrentPage(pagination.current);
+                }
+                if (pagination.pageSize !== pageSize) {
+                  setPageSize(pagination.pageSize);
+                  setCurrentPage(1);
+                }
+                if (sorter && sorter.field) {
+                  setSortField(sorter.field);
+                  setSortOrder(sorter.order);
+                } else {
+                  setSortField(null);
+                  setSortOrder(null);
+                }
               }}
               locale={{
                 emptyText: "No catch numbers available for lots.",

@@ -241,7 +241,11 @@ const LotWisePanel = ({
                                         Ready
                                       </Tag>
                                     )
-                                  ) : null}
+                                  ) : (
+                                    <Tag color="default" style={{ margin: 0 }}>
+                                      Pending
+                                    </Tag>
+                                  )}
                                 </div>
                               </div>
                               <Space size="small">
