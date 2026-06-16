@@ -731,7 +731,8 @@ const ProcessingPipeline = () => {
     try {
       // Use the endpoint provided by user
       const res = await API.get(`/NRDataLots/GetByProjectId/${projectId}`);
-      return res.data || [];
+      const data = res.data || [];
+      return data.filter(lot => lot.lotNo > 0);
     } catch (err) {
       console.error("Failed to fetch lots for selection", err);
       // Fallback to internal route if NRDatas fails
@@ -1939,7 +1940,8 @@ const ProcessingPipeline = () => {
       let lots = [];
       try {
         const res = await API.get(`/NRDataLots/GetByProjectId/${projectId}`);
-        lots = res.data || [];
+        const data = res.data || [];
+        lots = data.filter(lot => lot.lotNo > 0);
       } catch (err) {
         // Fallback to by-project endpoint if GetByProjectId doesn't exist
         console.log("Using fallback endpoint for lots");
@@ -2678,27 +2680,18 @@ const ProcessingPipeline = () => {
             // Fetch available lots before running box breaking
             const lots = await fetchLotsForSelection();
 
-            // Check if lot bifurcation is done (all lots > 0)
-            const allLotsBifurcated = lots.every(lot => lot.lotNo > 0);
-            if (!allLotsBifurcated) {
-              Modal.warning({
-                title: "Lot Bifurcation Required",
-                content: "Please complete lot bifurcation before running Box Breaking.",
-                okText: "OK"
-              });
-              updateStepStatus(step.key, { status: "pending" });
-              setSelectedModules(prev => prev.filter(m => m !== step.key));
-              return;
-            }
+            // Filter out unassigned catches or invalid lot numbers (lotNo <= 0)
+            const validLots = lots.filter(lot => lot.lotNo > 0);
 
-            if (lots.length > 0) {
+            if (validLots.length > 0) {
               // Show lot selection modal for all cases
-              const selectedLots = await showLotSelectionModal(lots);
+              const selectedLots = await showLotSelectionModal(validLots);
 
               if (selectedLots === null) {
                 // User cancelled - stop processing
                 message.info("Box breaking cancelled by user");
                 updateStepStatus(step.key, { status: "pending" });
+                setSelectedModules(prev => prev.filter(m => m !== step.key));
                 break;
               }
 
@@ -2708,17 +2701,21 @@ const ProcessingPipeline = () => {
               // Immediately update availableLots and mark selectedLots as completed
               // in lotReportStatus so the badge is accurate right away (before the
               // async checkReportExistence re-confirms via file-existence calls).
-              setAvailableLots(lots);
+              setAvailableLots(validLots);
               setLotReportStatus((prev) => {
                 const next = { ...prev };
                 selectedLots.forEach((lotNo) => { next[lotNo] = true; });
                 return next;
               });
             } else {
-              // No lots found
-              message.warning("No lots found for this project");
-              updateStepStatus(step.key, { status: "failed" });
-              break;
+              Modal.warning({
+                title: "Lot Bifurcation Required",
+                content: "Please complete lot bifurcation before running Box Breaking.",
+                okText: "OK"
+              });
+              updateStepStatus(step.key, { status: "pending" });
+              setSelectedModules(prev => prev.filter(m => m !== step.key));
+              return;
             }
           }
           else if (step.key === "envelopeSummary") await runEnvelopeSummary(projectId);
