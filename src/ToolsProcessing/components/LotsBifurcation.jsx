@@ -185,6 +185,7 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted }, ref) => {
   const [endPickerValue, setEndPickerValue] = useState(null);
   const [editingField, setEditingField] = useState(null);
   const [editingValue, setEditingValue] = useState(null);
+  const [editingRowValues, setEditingRowValues] = useState({});
 
   const closeBifurcationPanel = () => {
     setBifurcationModalOpen(false);
@@ -267,8 +268,17 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted }, ref) => {
       setTotalCount(res.data?.totalCount || 0);
       
       // Get unique columns from API and exclude NRDatas, Id, ImportRowNo
-      let uniqueCols = res.data?.uniqueColumns || [];
+      let uniqueCols = res.data?.uniqueColumns || res.data?.columns || [];
       uniqueCols = uniqueCols.filter(col => col && col !== "NRDatas" && col !== "Id" && col !== "ImportRowNo" && col !== "RecordCount");
+
+      // Normalize columns casing to match the returned items keys case-insensitively
+      uniqueCols = uniqueCols.map(col => {
+        for (const item of items) {
+          const match = Object.keys(item || {}).find(k => k.toLowerCase() === col.toLowerCase());
+          if (match) return match;
+        }
+        return col;
+      });
 
       // Extract all parsed NRDatas keys to add to columns
       const parsedNRDataKeys = new Set();
@@ -300,6 +310,13 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted }, ref) => {
         const row = {
           ...Object.fromEntries(Object.entries(item).filter(([k]) => k !== "NRDatas")),
           ...parsedNRData,
+          catchNo: catchNo,
+          examDate: item?.ExamDate ?? item?.examDate,
+          examTime: item?.ExamTime ?? item?.examTime,
+          lotNumber: coerceNumber(item?.LotNo ?? item?.lotNo ?? item?.lotNumber, 0),
+          lotNo: coerceNumber(item?.LotNo ?? item?.lotNo, 0),
+          quantity: coerceNumber(item?.Quantity ?? item?.quantity, 0),
+          subjectName: item?.SubjectName ?? item?.subjectName,
           key: catchNo,
         };
 
@@ -818,7 +835,7 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted }, ref) => {
       if (!fieldName) return;
 
       // Skip system fields and NRDatas
-      if (["CatchNo", "LotNo", "LotNumber", "Id", "NRDatas", "ImportRowNo", "RecordCount"].includes(fieldName)) {
+      if (["CatchNo", "LotNo", "LotNumber", "Id", "NRDatas", "ImportRowNo", "RecordCount", "Quantity"].includes(fieldName)) {
         return;
       }
 
@@ -835,12 +852,10 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted }, ref) => {
         width: 150,
         ...getColumnSearchProps(fieldName),
         render: (value, record) => {
-          const allowInlineEdit = activeLotTab === "0";
-          const isEditing = editingCatchNo === record?.CatchNo && editingField === fieldName;
-
+          const isEditing = editingCatchNo === record?.CatchNo;
           const displayValue = value || "";
 
-          if (!allowInlineEdit) {
+          if (!isEditing) {
             return displayValue ? (
               <Tooltip title={displayValue}>
                 <span>{displayValue}</span>
@@ -850,78 +865,37 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted }, ref) => {
             );
           }
 
-          if (!isEditing) {
+          if (fieldName.toLowerCase() === "examdate") {
+            const dateValue = editingRowValues[fieldName] ?? displayValue;
+            const dayjsValue = dateValue ? dayjs(dateValue, "DD-MM-YYYY") : null;
             return (
-              <Space size={4} style={{ display: "flex", alignItems: "center" }}>
-                <span style={{ flex: 1 }}>
-                  {displayValue ? (
-                    <Tooltip title={displayValue}>
-                      <span>{displayValue}</span>
-                    </Tooltip>
-                  ) : (
-                    <span style={{ color: "#999" }}>-</span>
-                  )}
-                </span>
-                <Button
-                  size="small"
-                  type="text"
-                  icon={<EditOutlined />}
-                  title="Edit field"
-                  onClick={() => {
-                    setEditingCatchNo(record.CatchNo);
-                    setEditingField(fieldName);
-                    setEditingValue(displayValue);
-                  }}
-                />
-              </Space>
+              <DatePicker
+                size="small"
+                format="DD-MM-YYYY"
+                value={dayjsValue && dayjsValue.isValid() ? dayjsValue : null}
+                style={{ width: "100%" }}
+                onChange={(date) => {
+                  const formatted = date ? date.format("DD-MM-YYYY") : "";
+                  setEditingRowValues((prev) => ({
+                    ...prev,
+                    [fieldName]: formatted,
+                  }));
+                }}
+              />
             );
           }
 
           return (
-            <Space size={4} style={{ display: "flex", alignItems: "center" }}>
-              <Input
-                size="small"
-                value={editingValue}
-                onChange={(e) => setEditingValue(e.target.value)}
-                autoFocus
-                style={{ flex: 1 }}
-              />
-              <Button
-                size="small"
-                type="primary"
-                onClick={async () => {
-                  const ok = await saveCatchFieldValue(
-                    record.CatchNo,
-                    fieldName,
-                    editingValue
-                  );
-                  if (ok) {
-                    setRows((prev) =>
-                      prev.map((row) =>
-                        row.CatchNo === record.CatchNo
-                          ? { ...row, [fieldName]: editingValue }
-                          : row
-                      )
-                    );
-                    setEditingCatchNo(null);
-                    setEditingField(null);
-                    setEditingValue(null);
-                  }
-                }}
-              >
-                Save
-              </Button>
-              <Button
-                size="small"
-                onClick={() => {
-                  setEditingCatchNo(null);
-                  setEditingField(null);
-                  setEditingValue(null);
-                }}
-              >
-                Cancel
-              </Button>
-            </Space>
+            <Input
+              size="small"
+              value={editingRowValues[fieldName] ?? displayValue}
+              onChange={(e) => {
+                setEditingRowValues((prev) => ({
+                  ...prev,
+                  [fieldName]: e.target.value,
+                }));
+              }}
+            />
           );
         },
       });
@@ -1013,46 +987,106 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted }, ref) => {
       key: "actions",
       width: 160,
       align: "center",
-      render: (_, record) => (
-        <Space size={4}>
-          <Tooltip title="Edit this row inline">
-            <Button
-              size="small"
-              icon={<EditOutlined />}
-              onClick={() => {
-                const firstEditableField = uniqueColumns.find(
-                  f => f && !["CatchNo", "LotNumber", "LotNo", "NRDatas", "Id", "ImportRowNo", "RecordCount"].includes(f)
-                );
-                if (firstEditableField) {
+      render: (_, record) => {
+        const isEditing = editingCatchNo === record?.CatchNo;
+        if (isEditing) {
+          return (
+            <Space size={4}>
+              <Button
+                size="small"
+                type="primary"
+                onClick={async () => {
+                  try {
+                    const payload = { projectId: Number(projectId) };
+                    const fieldsToCheck = [
+                      ...uniqueColumns,
+                      "ExamDate", "ExamTime", "SubjectName", "Pages", "CourseName"
+                    ];
+                    fieldsToCheck.forEach(fieldName => {
+                      if (!fieldName) return;
+                      const originalValue = record[fieldName];
+                      const currentValue = editingRowValues[fieldName];
+                      if (currentValue !== originalValue) {
+                        payload[fieldName] = currentValue;
+                      }
+                    });
+
+                    // If no fields changed, just cancel edit
+                    if (Object.keys(payload).length <= 1) {
+                      setEditingCatchNo(null);
+                      setEditingRowValues({});
+                      return;
+                    }
+                    await API.put(`/NRDatas/UpdateCatchwise/${record.CatchNo}`, payload);
+                    showToast("Catch fields updated successfully", "success");
+
+                    // Update rows state in UI
+                    setRows((prev) =>
+                      prev.map((row) =>
+                        row.CatchNo === record.CatchNo
+                          ? { ...row, ...editingRowValues }
+                          : row
+                      )
+                    );
+                    setEditingCatchNo(null);
+                    setEditingRowValues({});
+                  } catch (error) {
+                    console.error("Failed to update catch", error);
+                    showToast("Failed to update catch", "error");
+                  }
+                }}
+              >
+                Save
+              </Button>
+              <Button
+                size="small"
+                onClick={() => {
+                  setEditingCatchNo(null);
+                  setEditingRowValues({});
+                }}
+              >
+                Cancel
+              </Button>
+            </Space>
+          );
+        }
+
+        return (
+          <Space size={4}>
+            <Tooltip title="Edit this row inline">
+              <Button
+                size="small"
+                icon={<EditOutlined />}
+                onClick={() => {
                   setEditingCatchNo(record.CatchNo);
-                  setEditingField(firstEditableField);
-                  setEditingValue(record[firstEditableField] || "");
-                }
-              }}
-              title="Edit inline"
-            />
-          </Tooltip>
-          <Popconfirm
-            title="Delete Catch Number"
-            description={`Are you sure you want to delete catch number ${record.CatchNo}?`}
-            onConfirm={() => handleDeleteCatchNo(record.CatchNo)}
-            okText="Yes"
-            cancelText="No"
-            okButtonProps={{ danger: true }}
-          >
-            <Button
-              size="small"
-              danger
-              icon={<DeleteOutlined />}
-              title="Delete this catch number"
-            />
-          </Popconfirm>
-        </Space>
-      ),
+                  // Initialize editing values with all record fields
+                  setEditingRowValues({ ...record });
+                }}
+                title="Edit inline"
+              />
+            </Tooltip>
+            <Popconfirm
+              title="Delete Catch Number"
+              description={`Are you sure you want to delete catch number ${record.CatchNo}?`}
+              onConfirm={() => handleDeleteCatchNo(record.CatchNo)}
+              okText="Yes"
+              cancelText="No"
+              okButtonProps={{ danger: true }}
+            >
+              <Button
+                size="small"
+                danger
+                icon={<DeleteOutlined />}
+                title="Delete this catch number"
+              />
+            </Popconfirm>
+          </Space>
+        );
+      },
     });
 
     return cols;
-  }, [uniqueColumns, activeLotTab, editingCatchNo, editingField, editingValue, searchedColumn, searchText]);
+  }, [uniqueColumns, activeLotTab, editingCatchNo, editingField, editingValue, searchedColumn, searchText, editingRowValues]);
 
   return (
     <div className="pt-0">
