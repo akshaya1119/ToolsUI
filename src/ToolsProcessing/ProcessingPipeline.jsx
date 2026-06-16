@@ -2678,6 +2678,13 @@ const ProcessingPipeline = () => {
             // Fetch available lots before running box breaking
             const lots = await fetchLotsForSelection();
 
+            // Check if lot bifurcation is done (all lots > 0)
+            const allLotsBifurcated = lots.every(lot => lot.lotNo > 0);
+            if (!allLotsBifurcated) {
+              message.warning("Please complete lot bifurcation before running Box Breaking.");
+              return;
+            }
+
             if (lots.length > 0) {
               // Show lot selection modal for all cases
               const selectedLots = await showLotSelectionModal(lots);
@@ -2938,6 +2945,14 @@ const ProcessingPipeline = () => {
   const isStepSelectable = (step) => {
     // Selectable if not completed, or completed but outdated (needs re-run)
     const outdated = isStepOutdated(step);
+    
+    // For "box" step, disable if all lots are 0 (lot bifurcation not done)
+    if (step.key === "box") {
+      const hasNonZeroLot = (availableLots || []).some(lot => lot.lotNo > 0);
+      if (!hasNonZeroLot) {
+                return false;
+      }
+    }
     const stepToNumMap = {
       duplicate: 1,
       enhancement: 2,
@@ -3040,6 +3055,31 @@ const ProcessingPipeline = () => {
 
           if (isOutsideRange) {
             return <Text type="secondary">—</Text>;
+          }
+
+          // Special validation for Box Breaking: all data must be assigned to lots
+          if (record.key === "box") {
+            const hasUnassignedCatches = (availableLots || []).some(lot => lot.lotNo === 0 || lot.lotNo === null);
+            const totalCatches = (availableLots || []).length;
+            const assignedCatches = (availableLots || []).filter(lot => lot.lotNo > 0).length;
+            
+            const boxBreakingCheckbox = (
+              <Checkbox
+                checked={selectedModules.includes(record.key)}
+                onChange={(e) => handleModuleSelection(record.key, e.target.checked)}
+                disabled={disabled || hasUnassignedCatches}
+              />
+            );
+
+            if (hasUnassignedCatches) {
+              return (
+                <Tooltip title={`All data must be assigned to lots before running Box Breaking. Currently: ${assignedCatches}/${totalCatches} catches assigned. Please complete lot bifurcation first.`}>
+                  <span>{boxBreakingCheckbox}</span>
+                </Tooltip>
+              );
+            }
+
+            return boxBreakingCheckbox;
           }
 
           return (

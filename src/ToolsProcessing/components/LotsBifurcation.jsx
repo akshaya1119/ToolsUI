@@ -177,11 +177,14 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted }, ref) => {
   const [searchKey, setSearchKey] = useState(null);
   const [searchVal, setSearchVal] = useState(null);
   const [projectLots, setProjectLots] = useState([]);
-  const [uniqueColumns, setUniqueColumns] = useState([]);
+  const [columnsFromApi, setColumnsFromApi] = useState([]);
+   const [uniqueColumns, setUniqueColumns] = useState([]);
   const [lotAssignmentFilter, setLotAssignmentFilter] = useState("all");
   const [editingCatchNo, setEditingCatchNo] = useState(null);
   const [editingLotValue, setEditingLotValue] = useState(0);
   const [endPickerValue, setEndPickerValue] = useState(null);
+  const [editingField, setEditingField] = useState(null);
+  const [editingValue, setEditingValue] = useState(null);
 
   const closeBifurcationPanel = () => {
     setBifurcationModalOpen(false);
@@ -262,38 +265,42 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted }, ref) => {
 
       const items = Array.isArray(res.data?.items) ? res.data.items : [];
       setTotalCount(res.data?.totalCount || 0);
-      setUniqueColumns(res.data?.uniqueColumns || []);
+      
+      // Get unique columns from API and exclude NRDatas, Id, ImportRowNo
+      let uniqueCols = res.data?.uniqueColumns || [];
+      uniqueCols = uniqueCols.filter(col => col && col !== "NRDatas" && col !== "Id" && col !== "ImportRowNo" && col !== "RecordCount");
 
+      // Extract all parsed NRDatas keys to add to columns
+      const parsedNRDataKeys = new Set();
+      
       const uniqueByCatch = new Map();
 
       items.forEach((item) => {
         const catchNo = item?.CatchNo ?? item?.catchNo;
         if (!catchNo) return;
 
+        // Parse NRDatas JSON if it exists
+        let parsedNRData = {};
+        if (item?.NRDatas) {
+          try {
+            parsedNRData = JSON.parse(item.NRDatas);
+            if (parsedNRData && typeof parsedNRData === 'object') {
+              Object.keys(parsedNRData).forEach(key => {
+                if (key !== "ImportRowNo") {
+                  parsedNRDataKeys.add(key);
+                }
+              });
+            }
+          } catch (e) {
+            console.warn("Failed to parse NRDatas for", catchNo, e);
+          }
+        }
+
+        // Build row with all item fields (excluding NRDatas itself) + parsed data
         const row = {
+          ...Object.fromEntries(Object.entries(item).filter(([k]) => k !== "NRDatas")),
+          ...parsedNRData,
           key: catchNo,
-          catchNo,
-          examDate: item?.ExamDate ?? item?.examDate ?? "",
-          examTime: item?.ExamTime ?? item?.examTime ?? "",
-          quantity:
-            item?.NRQuantity ??
-            item?.nrQuantity ??
-            item?.Quantity ??
-            item?.quantity ??
-            "",
-          subjectName:
-            item?.SubjectName ??
-            item?.subjectName ??
-            item?.PaperName ??
-            item?.paperName ??
-            item?.PaperCode ??
-            item?.paperCode ??
-            "",
-          pages: item?.Pages ?? item?.pages ?? "",
-          lotNumber: coerceNumber(
-            item?.LotNo ?? item?.lotNo ?? item?.LotNumber ?? item?.lotNumber ?? 0,
-            0
-          ),
         };
 
         if (uniqueByCatch.has(catchNo)) {
@@ -303,6 +310,16 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted }, ref) => {
         }
       });
 
+      // Add parsed NRData keys to unique columns
+      const finalColumns = [...uniqueCols];
+      parsedNRDataKeys.forEach(key => {
+        if (!finalColumns.includes(key)) {
+          finalColumns.push(key);
+        }
+      });
+
+      setUniqueColumns(finalColumns);
+      
       const list = Array.from(uniqueByCatch.values());
       setRows(list);
     } catch (error) {
@@ -370,6 +387,24 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted }, ref) => {
     } catch (error) {
       console.error("Failed to save lot numbers", error);
       showToast("Failed to save lot numbers", "error");
+      return false;
+    }
+  };
+
+  const saveCatchFieldValue = async (catchNo, fieldName, value) => {
+    if (!projectId) return false;
+    try {
+      const payload = {
+        catchNo,
+        fieldName,
+        value: String(value).trim(),
+      };
+      await API.put(`/NRDatas/UpdateCatchField/${projectId}`, payload);
+      showToast(`${fieldName} updated successfully`, "success");
+      return true;
+    } catch (error) {
+      console.error(`Failed to update ${fieldName}:`, error);
+      showToast(`Failed to update ${fieldName}`, "error");
       return false;
     }
   };
@@ -769,19 +804,23 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted }, ref) => {
     const cols = [
       {
         title: "Catch No",
-        dataIndex: "catchNo",
-        key: "catchNo",
+        dataIndex: "CatchNo",
+        key: "CatchNo",
         width: 130,
         align: "center",
         sorter: true,
-        ...getColumnSearchProps("catchNo"),
+        ...getColumnSearchProps("CatchNo"),
       }
     ];
 
+    // Add columns from uniqueColumns (dynamic fields)
     uniqueColumns.forEach((fieldName) => {
       if (!fieldName) return;
-      const dataIndex = fieldName.charAt(0).toLowerCase() + fieldName.slice(1);
-      if (dataIndex === "catchNo" || dataIndex === "lotNumber" || dataIndex === "lotNo") return;
+
+      // Skip system fields and NRDatas
+      if (["CatchNo", "LotNo", "LotNumber", "Id", "NRDatas", "ImportRowNo", "RecordCount"].includes(fieldName)) {
+        return;
+      }
 
       const title = fieldName
         .replace(/([A-Z])/g, " $1")
@@ -790,42 +829,127 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted }, ref) => {
 
       cols.push({
         title: title,
-        dataIndex: dataIndex,
-        key: dataIndex,
+        dataIndex: fieldName,
+        key: fieldName,
         sorter: true,
-        ...getColumnSearchProps(dataIndex),
-        render: (value) =>
-          value ? (
-            <Tooltip title={value}>
-              <span>{value}</span>
-            </Tooltip>
-          ) : (
-            ""
-          ),
+        width: 150,
+        ...getColumnSearchProps(fieldName),
+        render: (value, record) => {
+          const allowInlineEdit = activeLotTab === "0";
+          const isEditing = editingCatchNo === record?.CatchNo && editingField === fieldName;
+
+          const displayValue = value || "";
+
+          if (!allowInlineEdit) {
+            return displayValue ? (
+              <Tooltip title={displayValue}>
+                <span>{displayValue}</span>
+              </Tooltip>
+            ) : (
+              <span style={{ color: "#999" }}>-</span>
+            );
+          }
+
+          if (!isEditing) {
+            return (
+              <Space size={4} style={{ display: "flex", alignItems: "center" }}>
+                <span style={{ flex: 1 }}>
+                  {displayValue ? (
+                    <Tooltip title={displayValue}>
+                      <span>{displayValue}</span>
+                    </Tooltip>
+                  ) : (
+                    <span style={{ color: "#999" }}>-</span>
+                  )}
+                </span>
+                <Button
+                  size="small"
+                  type="text"
+                  icon={<EditOutlined />}
+                  title="Edit field"
+                  onClick={() => {
+                    setEditingCatchNo(record.CatchNo);
+                    setEditingField(fieldName);
+                    setEditingValue(displayValue);
+                  }}
+                />
+              </Space>
+            );
+          }
+
+          return (
+            <Space size={4} style={{ display: "flex", alignItems: "center" }}>
+              <Input
+                size="small"
+                value={editingValue}
+                onChange={(e) => setEditingValue(e.target.value)}
+                autoFocus
+                style={{ flex: 1 }}
+              />
+              <Button
+                size="small"
+                type="primary"
+                onClick={async () => {
+                  const ok = await saveCatchFieldValue(
+                    record.CatchNo,
+                    fieldName,
+                    editingValue
+                  );
+                  if (ok) {
+                    setRows((prev) =>
+                      prev.map((row) =>
+                        row.CatchNo === record.CatchNo
+                          ? { ...row, [fieldName]: editingValue }
+                          : row
+                      )
+                    );
+                    setEditingCatchNo(null);
+                    setEditingField(null);
+                    setEditingValue(null);
+                  }
+                }}
+              >
+                Save
+              </Button>
+              <Button
+                size="small"
+                onClick={() => {
+                  setEditingCatchNo(null);
+                  setEditingField(null);
+                  setEditingValue(null);
+                }}
+              >
+                Cancel
+              </Button>
+            </Space>
+          );
+        },
       });
     });
 
+    // Lot Number column
     cols.push({
       title: "Lot Number",
-      dataIndex: "lotNumber",
-      key: "lotNumber",
+      dataIndex: "LotNo",
+      key: "LotNo",
       width: 120,
       render: (_, record) => {
         const allowInlineEdit = activeLotTab === "0";
-        const isEditing = editingCatchNo === record.catchNo;
+        const isEditing = editingCatchNo === record?.CatchNo && editingField === "LotNo";
         if (!allowInlineEdit) {
-          return <span>{coerceNumber(record?.lotNumber, 0)}</span>;
+          return <span>{coerceNumber(record?.LotNo, 0)}</span>;
         }
         if (!isEditing) {
           return (
             <Space size={6}>
-              <span>{coerceNumber(record?.lotNumber, 0)}</span>
+              <span>{coerceNumber(record?.LotNo, 0)}</span>
               <Button
                 size="small"
                 icon={<EditOutlined />}
                 onClick={() => {
-                  setEditingCatchNo(record.catchNo);
-                  setEditingLotValue(coerceNumber(record?.lotNumber, 0));
+                  setEditingCatchNo(record.CatchNo);
+                  setEditingField("LotNo");
+                  setEditingValue(coerceNumber(record?.LotNo, 0));
                 }}
               />
             </Space>
@@ -836,27 +960,31 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted }, ref) => {
           <Space size={6}>
             <InputNumber
               min={0}
-              value={editingLotValue}
-              onChange={(value) => setEditingLotValue(coerceNumber(value, 0))}
+              size="small"
+              value={editingValue}
+              onChange={(value) => setEditingValue(coerceNumber(value, 0))}
+              autoFocus
             />
             <Button
               size="small"
               type="primary"
               onClick={async () => {
-                const nextLot = coerceNumber(editingLotValue, 0);
+                const nextLot = coerceNumber(editingValue, 0);
                 const ok = await saveLotAssignments(
-                  [{ catchNo: record.catchNo, lotNo: nextLot }],
+                  [{ catchNo: record.CatchNo, lotNo: nextLot }],
                   "Lot number saved"
                 );
                 if (ok) {
                   setRows((prev) =>
                     prev.map((row) =>
-                      row.catchNo === record.catchNo
-                        ? { ...row, lotNumber: nextLot }
+                      row.CatchNo === record.CatchNo
+                        ? { ...row, LotNo: nextLot }
                         : row
                     )
                   );
                   setEditingCatchNo(null);
+                  setEditingField(null);
+                  setEditingValue(null);
                 }
               }}
             >
@@ -866,7 +994,8 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted }, ref) => {
               size="small"
               onClick={() => {
                 setEditingCatchNo(null);
-                setEditingLotValue(0);
+                setEditingField(null);
+                setEditingValue(null);
               }}
             >
               Cancel
@@ -875,35 +1004,55 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted }, ref) => {
         );
       },
       sorter: true,
-      ...getColumnSearchProps("lotNumber"),
+      ...getColumnSearchProps("LotNo"),
     });
 
+    // Actions column
     cols.push({
       title: "Actions",
       key: "actions",
-      width: 100,
+      width: 160,
       align: "center",
       render: (_, record) => (
-        <Popconfirm
-          title="Delete Catch Number"
-          description={`Are you sure you want to delete catch number ${record.catchNo}?`}
-          onConfirm={() => handleDeleteCatchNo(record.catchNo)}
-          okText="Yes"
-          cancelText="No"
-          okButtonProps={{ danger: true }}
-        >
-          <Button
-            size="small"
-            danger
-            icon={<DeleteOutlined />}
-            title="Delete this catch number"
-          />
-        </Popconfirm>
+        <Space size={4}>
+          <Tooltip title="Edit this row inline">
+            <Button
+              size="small"
+              icon={<EditOutlined />}
+              onClick={() => {
+                const firstEditableField = uniqueColumns.find(
+                  f => f && !["CatchNo", "LotNumber", "LotNo", "NRDatas", "Id", "ImportRowNo", "RecordCount"].includes(f)
+                );
+                if (firstEditableField) {
+                  setEditingCatchNo(record.CatchNo);
+                  setEditingField(firstEditableField);
+                  setEditingValue(record[firstEditableField] || "");
+                }
+              }}
+              title="Edit inline"
+            />
+          </Tooltip>
+          <Popconfirm
+            title="Delete Catch Number"
+            description={`Are you sure you want to delete catch number ${record.CatchNo}?`}
+            onConfirm={() => handleDeleteCatchNo(record.CatchNo)}
+            okText="Yes"
+            cancelText="No"
+            okButtonProps={{ danger: true }}
+          >
+            <Button
+              size="small"
+              danger
+              icon={<DeleteOutlined />}
+              title="Delete this catch number"
+            />
+          </Popconfirm>
+        </Space>
       ),
     });
 
     return cols;
-  }, [uniqueColumns, activeLotTab, editingCatchNo, editingLotValue, searchedColumn, searchText]);
+  }, [uniqueColumns, activeLotTab, editingCatchNo, editingField, editingValue, searchedColumn, searchText]);
 
   return (
     <div className="pt-0">
