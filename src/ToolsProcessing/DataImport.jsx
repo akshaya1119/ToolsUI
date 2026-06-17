@@ -1358,9 +1358,9 @@ const DataImport = () => {
       sortOrder: uploadedTableSorter.field === col ? uploadedTableSorter.order : null,
       render: (text, record) => {
         if (editingRowId === record.id) {
-          // Unique fields from masters are NOT editable
-          if (uniqueFieldNames.has(col)) {
-            return <span style={{ color: '#8c8c8c', cursor: 'not-allowed' }} title="Unique field – cannot be edited">{text}</span>;
+          // Unique fields, LotNo, and CatchNo are NOT editable
+          if (uniqueFieldNames.has(col) || col.toLowerCase() === 'lotno' || col.toLowerCase() === 'catchno') {
+            return <span style={{ color: '#8c8c8c', cursor: 'not-allowed' }} title={`${col} – cannot be edited`}>{text}</span>;
           }
           if (col === 'ExamDate') {
             return (
