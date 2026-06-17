@@ -183,11 +183,13 @@ const DataImport = () => {
       .catch(err => console.error("Failed to fetch fields", err));
   }, [projectId]);
 
+  // 👉 Lazy load Tab 1 (Uploaded Data) - only when tab is clicked
   useEffect(() => {
-    if (!projectId) return;
+    if (!projectId || activeTab !== "1") return;
     fetchExistingData(projectId);
   }, [
     projectId,
+    activeTab,
     pagination.current,
     pagination.pageSize,
     debouncedGlobalSearchText,
@@ -2889,16 +2891,18 @@ const handleFieldChange = (fieldName, value) => {
                 {renderConflicts()}
               </TabPane>
               <TabPane tab="Fill Missing Data" key="3">
-                <MissingData />
+                {activeTab === "3" && <MissingData />}
               </TabPane>
               <TabPane tab="Lot Bifurcation" key="4">
-                <LotsBifurcation ref={lotBifurcationRef} />
+                {activeTab === "4" && <LotsBifurcation ref={lotBifurcationRef} />}
               </TabPane>
               <TabPane tab="Merge Catch Numbers" key="5">
-                <MergeCatchNumbers
-                  ref={mergeCatchRef}
-                  onSelectionCountChange={setMergeSelectionCount}
-                />
+                {activeTab === "5" && (
+                  <MergeCatchNumbers
+                    ref={mergeCatchRef}
+                    onSelectionCountChange={setMergeSelectionCount}
+                  />
+                )}
               </TabPane>
             </Tabs>
 

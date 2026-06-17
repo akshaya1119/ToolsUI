@@ -92,6 +92,7 @@ const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState([]);
   const [recentlyMerged, setRecentlyMerged] = useState(null);
+  const [mergeHistory, setMergeHistory] = useState([]);
   const [manualSelectedCatchNos, setManualSelectedCatchNos] = useState([]);
   const [selectedSuggestionKeys, setSelectedSuggestionKeys] = useState([]);
   const [mergeModalOpen, setMergeModalOpen] = useState(false);
@@ -244,9 +245,23 @@ const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
     }
   };
 
+  const loadMergeHistory = async () => {
+    if (!projectId) return;
+    try {
+      const res = await API.get(`/NRDatas/merged-catch-history/${projectId}`);
+      setMergeHistory(res.data || []);
+    } catch (err) {
+      console.error("Failed to load merge history", err);
+    }
+  };
+
   useEffect(() => {
     loadRows(currentPage, pageSize, sortField, sortOrder, searchKey, searchVal);
   }, [projectId, currentPage, pageSize, sortField, sortOrder, searchKey, searchVal]);
+
+  useEffect(() => {
+    loadMergeHistory();
+  }, [projectId]);
 
   const openMergeModal = () => {
     if (selectedCatchNos.length < 2) {
@@ -335,6 +350,7 @@ const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
       setSelectedSuggestionKeys([]);
       setMergeModalOpen(false);
       await loadRows();
+      await loadMergeHistory();
     } catch (error) {
       console.error("Error merging catch numbers:", error);
       const errorMessage =
@@ -1143,6 +1159,23 @@ const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
           showIcon
           closable
           onClose={() => setRecentlyMerged(null)}
+          style={{ marginBottom: 16 }}
+        />
+      )}
+      {mergeHistory.length > 0 && (
+        <Alert
+          message="Previously Merged Catches"
+          description={
+            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '6px' }}>
+              {mergeHistory.map((item, index) => (
+                <Tag color="blue" key={index} style={{ padding: '2px 8px', borderRadius: '4px', fontSize: '12px' }}>
+                  {item}
+                </Tag>
+              ))}
+            </div>
+          }
+          type="info"
+          showIcon
           style={{ marginBottom: 16 }}
         />
       )}
