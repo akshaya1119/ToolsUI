@@ -48,6 +48,7 @@ const TemplatesMappingPanel = ({
   duplicateLabelsEnabled = true,
   onDuplicateLabelsChange,
   handleSaveMapping,
+  savingMapping = false,
   useBoxLabelSP,
   setUseBoxLabelSP,
   handleRefreshFields,
@@ -122,7 +123,8 @@ const TemplatesMappingPanel = ({
               <Button
                 type="primary"
                 onClick={handleSaveMapping}
-                loading={mappingLoading}
+                htmlType="button"
+                loading={savingMapping}
                 disabled={!mappingTemplate?.templateId}
               >
                 Save Mapping

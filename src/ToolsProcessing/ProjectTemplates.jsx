@@ -38,12 +38,14 @@ import {
   buildReportFileName,
   getErrorMessage,
   getErrorMessageAsync,
+  getErrorDetails,
   getScopeLabel,
   normalizeId,
   normalizeKey,
   normalizeModuleIds,
   parseMappingJson,
   resolveTemplateId,
+  retryAsync,
 } from "../utils/rptTemplateUtils";
 import {
   buildTemplateColumns,
@@ -106,6 +108,7 @@ const ProjectTemplates = () => {
   const [mappingModalOpen, setMappingModalOpen] = useState(false);
   const [mappingTemplate, setMappingTemplate] = useState(null);
   const [mappingLoading, setMappingLoading] = useState(false);
+  const [savingMapping, setSavingMapping] = useState(false);
   const [mappingNotFound, setMappingNotFound] = useState(false);
   const [parsedFields, setParsedFields] = useState([]);
   const [parsedFieldsLoading, setParsedFieldsLoading] = useState(false);
@@ -849,7 +852,7 @@ const ProjectTemplates = () => {
 
   const handleSaveMapping = async () => {
     if (!mappingTemplate?.templateId) return;
-    setMappingLoading(true);
+    setSavingMapping(true);
     try {
       const mappingsPayload = parsedFields
         .map((f) => {
@@ -897,7 +900,7 @@ const ProjectTemplates = () => {
       console.error("Failed to save mapping", err);
       showError(err, "Failed to save mapping.");
     } finally {
-      setMappingLoading(false);
+      setSavingMapping(false);
     }
   };
 
@@ -1778,6 +1781,7 @@ const ProjectTemplates = () => {
           filterMode={filterMode}
           setFilterMode={setFilterMode}
           handleSaveMapping={handleSaveMapping}
+          savingMapping={savingMapping}
           parsedFieldsLoading={parsedFieldsLoading}
           mappingLoading={mappingLoading}
           closeMappingPanel={closeMappingPanel}

@@ -71,6 +71,7 @@ const RPTFiles = () => {
   const [mappingModalOpen, setMappingModalOpen] = useState(false);
   const [mappingTemplate, setMappingTemplate] = useState(null);
   const [mappingLoading, setMappingLoading] = useState(false);
+  const [savingMapping, setSavingMapping] = useState(false);
   const [mappingNotFound, setMappingNotFound] = useState(false);
   const [parsedFields, setParsedFields] = useState([]);
   const [parsedFieldsLoading, setParsedFieldsLoading] = useState(false);
@@ -783,7 +784,7 @@ setUseBoxLabelSP(parsed.useBoxLabelSP || false);
 
   const handleSaveMapping = async () => {
     if (!mappingTemplate?.templateId) return;
-    setMappingLoading(true);
+    setSavingMapping(true);
     try {
       const mappingsPayload = parsedFields
         .map((f) => {
@@ -827,7 +828,7 @@ setUseBoxLabelSP(parsed.useBoxLabelSP || false);
       console.error("Failed to save mapping", err);
       showError(err, "Failed to save mapping.");
     } finally {
-      setMappingLoading(false);
+      setSavingMapping(false);
     }
   };
 
@@ -1447,6 +1448,7 @@ setUseBoxLabelSP(parsed.useBoxLabelSP || false);
   useBoxLabelSP={useBoxLabelSP}
   setUseBoxLabelSP={setUseBoxLabelSP}
   handleSaveMapping={handleSaveMapping}
+  savingMapping={savingMapping}
   mappingLoading={mappingLoading}
   closeMappingPanel={closeMappingPanel}
 />

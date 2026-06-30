@@ -6,9 +6,11 @@ export const normalizeId = (value) => {
 export const getErrorMessage = (err, fallback) => {
   if (!err) return fallback;
   const data = err?.response?.data;
+  
+  // Handle structured error response from backend
+  if (data?.message) return data.message;
+  if (data?.Message) return data.Message;
   if (typeof data === "string" && data.trim()) return data;
-  if (typeof data?.message === "string" && data.message.trim()) return data.message;
-  if (typeof data?.Message === "string" && data.Message.trim()) return data.Message;
   if (Array.isArray(data) && data.length) return data.join(", ");
   if (data?.errors) {
     const first = Object.values(data.errors).flat()[0];
@@ -16,6 +18,13 @@ export const getErrorMessage = (err, fallback) => {
   }
   if (typeof err?.message === "string" && err.message.trim()) return err.message;
   return fallback;
+};
+
+export const getErrorDetails = (err) => {
+  if (!err) return null;
+  const data = err?.response?.data;
+  if (data?.data) return data.data; // Return the error details object
+  return null;
 };
 
 export const getErrorMessageAsync = async (err, fallback) => {
@@ -294,4 +303,28 @@ export const buildReportFileName = ({
   
   const extension = ext.startsWith(".") ? ext.slice(1) : ext;
   return `${name}_${project}_${type}${lotPart}.${extension}`;
+};
+
+/**
+ * Retry utility with exponential backoff
+ * @param {Function} fn - Async function to retry
+ * @param {number} maxAttempts - Maximum retry attempts (default: 3)
+ * @param {number} initialDelayMs - Initial delay in milliseconds (default: 1000)
+ * @returns {Promise} Result of the function
+ */
+export const retryAsync = async (fn, maxAttempts = 3, initialDelayMs = 1000) => {
+  let lastError;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastError = err;
+      if (attempt < maxAttempts) {
+        const delayMs = initialDelayMs * Math.pow(2, attempt - 1); // Exponential backoff
+        console.warn(`Attempt ${attempt} failed, retrying in ${delayMs}ms...`, err.message);
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+      }
+    }
+  }
+  throw lastError;
 };
