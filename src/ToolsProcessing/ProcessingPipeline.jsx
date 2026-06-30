@@ -930,12 +930,10 @@ const ProcessingPipeline = () => {
     if (checked) {
       setEnvLotSelectionModal(prev => {
         let ids = [];
-        if (prev.isRegenerate) {
-          ids = prev.availableEnvLots.map(lot => lot.envLotNo);
-        } else if (prev.showAssigned && Array.isArray(prev.assignedEnvLots) && prev.assignedEnvLots.length > 0) {
-          ids = prev.assignedEnvLots.map(lot => lot.envLotNo);
+        if (prev.showAssigned) {
+          ids = (prev.assignedEnvLots || []).map(lot => lot.envLotNo);
         } else {
-          ids = prev.availableEnvLots.map(lot => lot.catchNo);
+          ids = (prev.unassignedCatches || []).map(lot => lot.catchNo);
         }
 
         return {
