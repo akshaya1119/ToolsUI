@@ -186,6 +186,7 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted }, ref) => {
   const [editingField, setEditingField] = useState(null);
   const [editingValue, setEditingValue] = useState(null);
   const [editingRowValues, setEditingRowValues] = useState({});
+  const [bifurcateRows, setBifurcateRows] = useState([]);
 
   const closeBifurcationPanel = () => {
     setBifurcationModalOpen(false);
@@ -365,16 +366,16 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted }, ref) => {
 
   useEffect(() => {
     if (!bifurcationModalOpen) return;
-    if (!rows.length) return;
+    if (!bifurcateRows.length) return;
     if (startTouched) return;
 
     const targetLot = lotNumber;
-    const autoStart = getAutoStartDate(rows, targetLot);
+    const autoStart = getAutoStartDate(bifurcateRows, targetLot);
     if (!autoStart) return;
 
     setDateRange((prev) => [autoStart, prev?.[1] || null]);
     setEndPickerValue(autoStart);
-  }, [bifurcationModalOpen, rows, lotNumber, startTouched]);
+  }, [bifurcationModalOpen, bifurcateRows, lotNumber, startTouched]);
 
   const lotTabs = useMemo(() => {
     const uniqueLots = Array.from(
@@ -476,7 +477,9 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted }, ref) => {
 
     const inRangeCatchNos = [];
 
-    rows.forEach((row) => {
+    const bRows = bifurcateRows.length ? bifurcateRows : rows;
+
+    bRows.forEach((row) => {
       const parsedDate = parseExamDate(row.examDate);
       if (!parsedDate) return;
 
@@ -496,7 +499,7 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted }, ref) => {
     const targetLot = coerceNumber(lotNumber, 0);
     const inRangeSet = new Set(inRangeCatchNos);
 
-    const outOfRangeTargetRows = rows.filter((row) => {
+    const outOfRangeTargetRows = bRows.filter((row) => {
       const parsedDate = parseExamDate(row.examDate);
       if (!parsedDate) return false;
       const isTargetLot = coerceNumber(row.lotNumber, 0) === targetLot;
@@ -515,7 +518,7 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted }, ref) => {
     }) => {
       const prevRows = rows;
       const shouldShiftPrevTail = Boolean(prevLotNumber && hasPrevOverlap);
-      const nextRows = rows.map((row) => {
+      const nextRows = bRows.map((row) => {
         const parsedDate = parseExamDate(row.examDate);
         const hasValidDate = Boolean(parsedDate);
         const isTargetLot = coerceNumber(row.lotNumber, 0) === targetLot;
@@ -559,30 +562,29 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted }, ref) => {
         .filter(
           (row, index) =>
             coerceNumber(row.lotNumber, 0) !==
-            coerceNumber(rows[index]?.lotNumber, 0)
+            coerceNumber(bRows[index]?.lotNumber, 0)
         )
         .map((row) => ({ catchNo: row.catchNo, lotNo: row.lotNumber }));
-
-      setRows(nextRows);
 
       const ok = await saveLotAssignments(
         updates,
         `Assigned ${inRangeCatchNos.length} catch numbers to lot ${lotNumber}`
       );
-      if (!ok) {
-        setRows(prevRows);
-      } else if (targetLot > 0) {
-        setActiveLotTab(String(targetLot));
+      if (ok) {
+        if (targetLot > 0) {
+          setActiveLotTab(String(targetLot));
+        }
+        loadRows();
       }
 
       closeBifurcationPanel();
       return true;
     };
 
-    const nextLotNumber = getNextLotNumber(rows, targetLot);
-    const prevLotNumber = getPrevLotNumber(rows, targetLot);
-    const prevRange = prevLotNumber ? getLotRange(rows, prevLotNumber) : null;
-    const nextRange = nextLotNumber ? getLotRange(rows, nextLotNumber) : null;
+    const nextLotNumber = getNextLotNumber(bRows, targetLot);
+    const prevLotNumber = getPrevLotNumber(bRows, targetLot);
+    const prevRange = prevLotNumber ? getLotRange(bRows, prevLotNumber) : null;
+    const nextRange = nextLotNumber ? getLotRange(bRows, nextLotNumber) : null;
     const boundaryDateForPrev =
       prevRange && start.isSame(prevRange.end, "day") && prevLotNumber
         ? prevRange.end
@@ -593,16 +595,16 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted }, ref) => {
         : null;
     const hasPrevBoundary =
       boundaryDateForPrev &&
-      hasLotDate(rows, prevLotNumber, boundaryDateForPrev);
+      hasLotDate(bRows, prevLotNumber, boundaryDateForPrev);
     const hasNextBoundary =
       boundaryDateForNext &&
-      hasLotDate(rows, nextLotNumber, boundaryDateForNext);
+      hasLotDate(bRows, nextLotNumber, boundaryDateForNext);
     const hasPrevOverlap =
       prevRange &&
-      hasLotDateInRange(rows, prevLotNumber, start, end);
+      hasLotDateInRange(bRows, prevLotNumber, start, end);
     const hasNextOverlap =
       nextRange &&
-      hasLotDateInRange(rows, nextLotNumber, start, end);
+      hasLotDateInRange(bRows, nextLotNumber, start, end);
     const hasPrevTailBeyondRange =
       prevRange && end.isBefore(prevRange.end, "day");
 
@@ -638,7 +640,7 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted }, ref) => {
 
     const proceedWithBifurcation = async (allowBoundaryOverlap) => {
       if (nextLotNumber && outOfRangeTargetRows.length) {
-        const nextLotDates = rows
+        const nextLotDates = bRows
           .filter(
             (row) => coerceNumber(row.lotNumber, 0) === nextLotNumber
           )
@@ -750,7 +752,24 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted }, ref) => {
   };
 
   useImperativeHandle(ref, () => ({
-    openBifurcationModal: () => setBifurcationModalOpen(true),
+    openBifurcationModal: async () => {
+      setBifurcationModalOpen(true);
+      if (!projectId) return;
+      try {
+        const res = await API.get(`/NRDatas/GetUniqueByProjectId/${projectId}`, { 
+          params: { pageSize: 100000, pageNo: 1 } 
+        });
+        const items = Array.isArray(res.data?.items) ? res.data.items : [];
+        const allRows = items.map(item => ({
+          catchNo: item.CatchNo ?? item.catchNo,
+          examDate: item.ExamDate ?? item.examDate,
+          lotNumber: coerceNumber(item.LotNo ?? item.lotNo ?? item.lotNumber, 0)
+        }));
+        setBifurcateRows(allRows);
+      } catch (err) {
+        console.error("Failed to load full data for bifurcation", err);
+      }
+    },
   }));
 
   const getColumnSearchProps = (dataIndex) => ({
