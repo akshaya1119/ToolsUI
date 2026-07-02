@@ -179,6 +179,15 @@ const Project = () => {
             } else {
                 await API.post('/Projects', payload);
                 message.success('Added successfully');
+                // Clear project-related caches when new project is created
+                try {
+                    localStorage.removeItem('projectsCache');
+                    localStorage.removeItem('projectNamesCache');
+                    sessionStorage.removeItem('projectsCache');
+                    sessionStorage.removeItem('projectNamesCache');
+                } catch (cacheError) {
+                    console.warn('Failed to clear cache:', cacheError);
+                }
             }
 
             setModalVisible(false);
