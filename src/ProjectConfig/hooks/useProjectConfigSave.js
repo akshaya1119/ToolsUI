@@ -380,6 +380,7 @@ export const useProjectConfigSave = (
             extraType: et.extraTypeId,
             mode: mode || config.nodalMode || "Fixed", // Use mode from selection, or nodalMode, or default to Fixed
             envelopeType: JSON.stringify(normalizedEnvelope),
+            IsExtraProcessingAsPerNR: !!extraProcessingConfig?.extraProcessingAsPerNR,
           };
 
           // Handle nodal configuration if isPerNodal is true
