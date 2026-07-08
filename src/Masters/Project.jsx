@@ -33,6 +33,24 @@ const Project = () => {
     });
     
     useEffect(() => {
+        // Authorization check: Managers (RoleId 4) are not allowed to access Project Master
+        const checkAuthorization = async () => {
+            try {
+                const res = await axios.get(`${url}/User`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                });
+                const currentUser = res.data.find(u => u.userId === parseInt(localStorage.getItem("userId") || "0"));
+                if (currentUser && currentUser.roleId === 4) {
+                    message.error("Managers are not authorized to access project master configuration.");
+                    window.history.back();
+                    return;
+                }
+            } catch (err) {
+                console.error("Failed to check authorization", err);
+            }
+        };
+        
+        checkAuthorization();
         fetchProjects(pagination.current, pagination.pageSize);
         fetchCreatedProjectIds();
         fetchProjectNames();
@@ -179,6 +197,15 @@ const Project = () => {
             } else {
                 await API.post('/Projects', payload);
                 message.success('Added successfully');
+                // Clear project-related caches when new project is created
+                try {
+                    localStorage.removeItem('projectsCache');
+                    localStorage.removeItem('projectNamesCache');
+                    sessionStorage.removeItem('projectsCache');
+                    sessionStorage.removeItem('projectNamesCache');
+                } catch (cacheError) {
+                    console.warn('Failed to clear cache:', cacheError);
+                }
             }
 
             setModalVisible(false);
