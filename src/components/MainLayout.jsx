@@ -9,6 +9,7 @@ export default function MainLayout({ children }) {
   const [dashboardSearchQuery, setDashboardSearchQuery] = useState("");
   const [dashboardView, setDashboardView] = useState("groups");
   const [selectedGroup, setSelectedGroup] = useState(null);
+  const [generalSearchQuery, setGeneralSearchQuery] = useState(""); // For non-dashboard pages
   
   const navigate = useNavigate();
   const location = useLocation();
@@ -54,8 +55,8 @@ export default function MainLayout({ children }) {
       <Navbar
         onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
         onLogout={handleLogout}
-        searchQuery={isDashboardPage ? dashboardSearchQuery : ""}
-        onSearchChange={isDashboardPage ? setDashboardSearchQuery : () => {}}
+        searchQuery={isDashboardPage ? dashboardSearchQuery : generalSearchQuery}
+        onSearchChange={isDashboardPage ? setDashboardSearchQuery : setGeneralSearchQuery}
         searchPlaceholder={isDashboardPage ? searchPlaceholder : "Search..."}
       />
 

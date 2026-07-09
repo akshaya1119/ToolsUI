@@ -17,6 +17,9 @@ import {
   Space,
   Table,
   Tooltip,
+  Tag,
+  Alert,
+  Collapse,
 } from "antd";
 import { SearchOutlined } from "@ant-design/icons";
 import { motion } from "framer-motion";
@@ -88,6 +91,8 @@ const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
   const token = localStorage.getItem("token");
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState([]);
+  const [recentlyMerged, setRecentlyMerged] = useState(null);
+  const [mergeHistory, setMergeHistory] = useState([]);
   const [manualSelectedCatchNos, setManualSelectedCatchNos] = useState([]);
   const [selectedSuggestionKeys, setSelectedSuggestionKeys] = useState([]);
   const [mergeModalOpen, setMergeModalOpen] = useState(false);
@@ -97,7 +102,7 @@ const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
   const [loadingModules, setLoadingModules] = useState(false);
   const [searchText, setSearchText] = useState("");
   const [searchedColumn, setSearchedColumn] = useState("");
-  const [suggestionFields, setSuggestionFields] = useState(["C"]);
+  const [suggestionFields, setSuggestionFields] = useState(["D"]);
   const [mergeExamDate, setMergeExamDate] = useState("");
   const [mergeExamTime, setMergeExamTime] = useState("");
   const [abcdMode, setAbcdMode] = useState("single");
@@ -129,18 +134,52 @@ const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
   const [extrasInitialized, setExtrasInitialized] = useState(false);
   const [extrasLoaded, setExtrasLoaded] = useState(false);
 
-  const loadRows = async () => {
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [totalCount, setTotalCount] = useState(0);
+  const [sortField, setSortField] = useState(null);
+  const [sortOrder, setSortOrder] = useState(null);
+  const [searchKey, setSearchKey] = useState(null);
+  const [searchVal, setSearchVal] = useState(null);
+
+  const loadRows = async (page = currentPage, limit = pageSize, sField = sortField, sOrder = sortOrder, sKey = searchKey, sVal = searchVal) => {
     if (!projectId) return;
     setLoading(true);
     try {
-      const res = await API.get(`/NRDatas/GetByProjectId/${projectId}`, {
-        params: {
-          pageSize: 100000,
-          pageNo: 1,
-        },
-      });
+      const params = {
+        pageSize: limit,
+        pageNo: page,
+      };
+      if (sField && sOrder) {
+        const backendFieldMap = {
+          catchNo: "CatchNo",
+          examDate: "ExamDate",
+          examTime: "ExamTime",
+          quantity: "Quantity",
+          courseName: "CourseName",
+          subjectName: "SubjectName",
+        };
+        params.sortField = backendFieldMap[sField] || sField;
+        params.sortOrder = sOrder;
+      }
+      if (sKey && sVal) {
+        const backendKeyMap = {
+          catchNo: "CatchNo",
+          centerCode: "CenterCode",
+          subjectName: "SubjectName",
+          examDate: "ExamDate",
+          examTime: "ExamTime",
+          quantity: "Quantity",
+        };
+        params.key = backendKeyMap[sKey] || sKey;
+        params.search = sVal;
+      }
+
+      const res = await API.get(`/NRDatas/GetUniqueByProjectId/${projectId}`, { params });
 
       const items = Array.isArray(res.data?.items) ? res.data.items : [];
+      setTotalCount(res.data?.totalCount || 0);
+
       const uniqueByCatch = new Map();
 
       items.forEach((item) => {
@@ -181,7 +220,7 @@ const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
             item?.paperCode ??
             "",
           pages: item?.Pages ?? item?.pages ?? "",
-          lotNumber: coerceNumber(item?.LotNumber ?? item?.lotNumber ?? 0, 0),
+          lotNumber: coerceNumber(item?.LotNumber ?? item?.lotNumber ?? item?.LotNo ?? item?.lotNo ?? 0, 0),
           aValue: readJsonValue(nrDatas, "A"),
           bValue: readJsonValue(nrDatas, "B"),
           cValue: readJsonValue(nrDatas, "C"),
@@ -195,13 +234,7 @@ const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
         }
       });
 
-      const list = Array.from(uniqueByCatch.values()).sort((a, b) =>
-        String(a.catchNo).localeCompare(String(b.catchNo), undefined, {
-          numeric: true,
-          sensitivity: "base",
-        })
-      );
-
+      const list = Array.from(uniqueByCatch.values());
       setRows(list);
     } catch (error) {
       console.error("Failed to load catch data for merge", error);
@@ -212,8 +245,22 @@ const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
     }
   };
 
+  const loadMergeHistory = async () => {
+    if (!projectId) return;
+    try {
+      const res = await API.get(`/NRDatas/merged-catch-history/${projectId}`);
+      setMergeHistory(res.data || []);
+    } catch (err) {
+      console.error("Failed to load merge history", err);
+    }
+  };
+
   useEffect(() => {
-    loadRows();
+    loadRows(currentPage, pageSize, sortField, sortOrder, searchKey, searchVal);
+  }, [projectId, currentPage, pageSize, sortField, sortOrder, searchKey, searchVal]);
+
+  useEffect(() => {
+    loadMergeHistory();
   }, [projectId]);
 
   const openMergeModal = () => {
@@ -298,10 +345,12 @@ const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
         }
       );
       showToast(res.data?.message || "Catch numbers merged successfully.", "success");
+      setRecentlyMerged(res.data?.catchNo || selectedCatchNos.join(mergeSeparator || "/"));
       setManualSelectedCatchNos([]);
       setSelectedSuggestionKeys([]);
       setMergeModalOpen(false);
       await loadRows();
+      await loadMergeHistory();
     } catch (error) {
       console.error("Error merging catch numbers:", error);
       const errorMessage =
@@ -434,11 +483,25 @@ const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
             setSearchText(value);
             setSearchedColumn(dataIndex);
           }}
-          onPressEnter={() => confirm()}
+          onPressEnter={() => {
+            confirm();
+            setSearchKey(dataIndex);
+            setSearchVal(searchText);
+            setCurrentPage(1);
+          }}
           style={{ width: 188, marginBottom: 8, display: "block" }}
         />
         <Space>
-          <Button type="primary" size="small" onClick={() => confirm()}>
+          <Button
+            type="primary"
+            size="small"
+            onClick={() => {
+              confirm();
+              setSearchKey(dataIndex);
+              setSearchVal(searchText);
+              setCurrentPage(1);
+            }}
+          >
             Search
           </Button>
           <Button
@@ -447,6 +510,9 @@ const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
               clearFilters?.();
               setSearchText("");
               setSearchedColumn("");
+              setSearchKey(null);
+              setSearchVal(null);
+              setCurrentPage(1);
               confirm({ closeDropdown: true });
             }}
           >
@@ -458,13 +524,6 @@ const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
     filterIcon: (filtered) => (
       <SearchOutlined style={{ color: filtered ? "#1890ff" : undefined }} />
     ),
-    onFilter: (value, record) => {
-      const rawValue = record?.[dataIndex];
-      if (rawValue === undefined || rawValue === null) return false;
-      return String(rawValue)
-        .toLowerCase()
-        .includes(String(value).toLowerCase());
-    },
     filterDropdownProps: {
       onOpenChange: (open) => {
         if (!open && searchedColumn === dataIndex && !searchText) {
@@ -482,7 +541,7 @@ const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
         dataIndex: "catchNo",
         key: "catchNo",
         width: 130,
-        sorter: (a, b) => String(a.catchNo).localeCompare(String(b.catchNo)),
+        sorter: true,
         ...getColumnSearchProps("catchNo"),
       },
       {
@@ -490,8 +549,7 @@ const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
         dataIndex: "examDate",
         key: "examDate",
         width: 120,
-        sorter: (a, b) =>
-          String(a.examDate || "").localeCompare(String(b.examDate || "")),
+        sorter: true,
         ...getColumnSearchProps("examDate"),
       },
       {
@@ -499,8 +557,7 @@ const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
         dataIndex: "examTime",
         key: "examTime",
         width: 140,
-        sorter: (a, b) =>
-          String(a.examTime || "").localeCompare(String(b.examTime || "")),
+        sorter: true,
         ...getColumnSearchProps("examTime"),
       },
       {
@@ -508,7 +565,7 @@ const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
         dataIndex: "quantity",
         key: "quantity",
         width: 90,
-        sorter: (a, b) => Number(a.quantity || 0) - Number(b.quantity || 0),
+        sorter: true,
         ...getColumnSearchProps("quantity"),
       },
       {
@@ -517,8 +574,7 @@ const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
         key: "subjectName",
         width: 220,
         ellipsis: true,
-        sorter: (a, b) =>
-          String(a.subjectName || "").localeCompare(String(b.subjectName || "")),
+        sorter: true,
         ...getColumnSearchProps("subjectName"),
         render: (value) =>
           value ? (
@@ -535,7 +591,6 @@ const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
         key: "aValue",
         width: 200,
         ellipsis: true,
-        sorter: (a, b) => String(a.aValue || "").localeCompare(String(b.aValue || "")),
         ...getColumnSearchProps("aValue"),
         render: (value) =>
           value ? (
@@ -552,7 +607,6 @@ const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
         key: "bValue",
         width: 160,
         ellipsis: true,
-        sorter: (a, b) => String(a.bValue || "").localeCompare(String(b.bValue || "")),
         ...getColumnSearchProps("bValue"),
         render: (value) =>
           value ? (
@@ -569,7 +623,6 @@ const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
         key: "cValue",
         width: 220,
         ellipsis: true,
-        sorter: (a, b) => String(a.cValue || "").localeCompare(String(b.cValue || "")),
         ...getColumnSearchProps("cValue"),
         render: (value) =>
           value ? (
@@ -586,7 +639,6 @@ const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
         key: "dValue",
         width: 160,
         ellipsis: true,
-        sorter: (a, b) => String(a.dValue || "").localeCompare(String(b.dValue || "")),
         ...getColumnSearchProps("dValue"),
         render: (value) =>
           value ? (
@@ -605,8 +657,8 @@ const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
     () => [
       { value: "A", label: "A - Exam" },
       { value: "B", label: "B - Subject" },
-      { value: "C", label: "C - Paper Title" },
-      { value: "D", label: "D - Paper Code" },
+      { value: "C", label: "C - Paper Code" },
+      { value: "D", label: "D - Paper Title" },
       { value: "ExamDate", label: "Exam Date" },
       { value: "ExamTime", label: "Exam Time" },
     ],
@@ -615,7 +667,7 @@ const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
 
   const suggestedGroups = useMemo(() => {
     const groups = new Map();
-    const activeFields = suggestionFields.length ? suggestionFields : ["C"];
+    const activeFields = suggestionFields.length ? suggestionFields : ["D"];
 
     rows.forEach((row) => {
       const aValue = normalizeText(row.aValue);
@@ -1096,6 +1148,37 @@ const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
           }
         `}
       </style>
+      {recentlyMerged && (
+        <Alert
+          message={
+            <span>
+              Catch number <strong>{recentlyMerged}</strong> has been merged just now!
+            </span>
+          }
+          type="success"
+          showIcon
+          closable
+          onClose={() => setRecentlyMerged(null)}
+          style={{ marginBottom: 16 }}
+        />
+      )}
+      {mergeHistory.length > 0 && (
+        <Alert
+          message="Previously Merged Catches"
+          description={
+            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '6px' }}>
+              {mergeHistory.map((item, index) => (
+                <Tag color="blue" key={index} style={{ padding: '2px 8px', borderRadius: '4px', fontSize: '12px' }}>
+                  {item}
+                </Tag>
+              ))}
+            </div>
+          }
+          type="info"
+          showIcon
+          style={{ marginBottom: 16 }}
+        />
+      )}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -1111,61 +1194,76 @@ const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
           styles={{ body: { paddingTop: 12 } }}
         >
           <Space direction="vertical" size={16} style={{ width: "100%" }}>
-            <div className="merge-suggest-panel">
-              <div className="merge-suggest-header">
-                <div>
-                  <div className="merge-suggest-title">Merge Suggestions</div>
-                  <div className="merge-suggest-sub">
-                    Choose fields to group catch numbers. Default is C (Paper Title).
-                  </div>
-                </div>
-                <Select
-                  size="small"
-                  mode="multiple"
-                  value={suggestionFields}
-                  onChange={(value) =>
-                    setSuggestionFields(value?.length ? value : ["C"])
-                  }
-                  options={suggestionOptions}
-                  placeholder="Pick fields"
-                  maxTagCount={2}
-                  style={{ minWidth: 240 }}
-                />
-              </div>
-              {suggestedGroups.length === 0 ? (
-                <div style={{ fontSize: 11, color: "#64748b" }}>
-                  No suggestions found for the selected fields.
-                </div>
-              ) : (
-                <div className="merge-suggest-list">
-                  {suggestedGroups.map((group) => {
-                    const isSelected = selectedSuggestionKeys.includes(group.key);
-                    return (
-                    <div
-                      key={group.key}
-                      className={`merge-suggest-item${isSelected ? " selected" : ""}`}
-                    >
-                      <div className="merge-suggest-label">
-                        {group.label} ({group.catchNos.length})
-                      </div>
-                      <div className="merge-suggest-actions">
-                        <Button
+            <Collapse
+              size="small"
+              ghost
+              style={{ padding: 0 }}
+              items={[
+                {
+                  key: "suggestions",
+                  label: (
+                    <span style={{ fontSize: 13, fontWeight: 700, color: "#0f172a" }}>
+                      Merge Suggestions
+                    </span>
+                  ),
+                  children: (
+                    <div className="merge-suggest-panel" style={{ border: "none", padding: 0 }}>
+                      <div className="merge-suggest-header" style={{ paddingTop: 0 }}>
+                        <div>
+                          <div className="merge-suggest-sub">
+                            Choose fields to group catch numbers. Default is D (Paper Title).
+                          </div>
+                        </div>
+                        <Select
                           size="small"
-                          type={isSelected ? "primary" : "default"}
-                          onClick={() => toggleSuggestion(group.key)}
-                        >
-                          {isSelected ? "Selected" : "Select"}
-                        </Button>
+                          mode="multiple"
+                          value={suggestionFields}
+                          onChange={(value) => setSuggestionFields(value)}
+                          options={suggestionOptions}
+                          placeholder="Pick fields"
+                          maxTagCount={2}
+                          allowClear
+                          style={{ minWidth: 240 }}
+                        />
                       </div>
-                      <div className="merge-suggest-catches">
-                        {group.catchNos.join(", ")}
-                      </div>
+                      {suggestedGroups.length === 0 ? (
+                        <div style={{ fontSize: 11, color: "#64748b" }}>
+                          No suggestions found for the selected fields.
+                        </div>
+                      ) : (
+                        <div className="merge-suggest-list">
+                          {suggestedGroups.map((group) => {
+                            const isSelected = selectedSuggestionKeys.includes(group.key);
+                            return (
+                              <div
+                                key={group.key}
+                                className={`merge-suggest-item${isSelected ? " selected" : ""}`}
+                              >
+                                <div className="merge-suggest-label">
+                                  {group.label} ({group.catchNos.length})
+                                </div>
+                                <div className="merge-suggest-actions">
+                                  <Button
+                                    size="small"
+                                    type={isSelected ? "primary" : "default"}
+                                    onClick={() => toggleSuggestion(group.key)}
+                                  >
+                                    {isSelected ? "Selected" : "Select"}
+                                  </Button>
+                                </div>
+                                <div className="merge-suggest-catches">
+                                  {group.catchNos.join(", ")}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
-                  );
-                  })}
-                </div>
-              )}
-            </div>
+                  )
+                }
+              ]}
+            />
             <Table
               dataSource={tableRows}
               columns={columns}
@@ -1186,11 +1284,29 @@ const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
                 },
               }}
               pagination={{
-                pageSize: 20,
+                current: currentPage,
+                pageSize: pageSize,
+                total: totalCount,
                 showSizeChanger: true,
                 pageSizeOptions: ["10", "20", "50", "100"],
                 showTotal: (total, range) =>
                   `${range[0]}-${range[1]} of ${total} records`,
+              }}
+              onChange={(pagination, filters, sorter) => {
+                if (pagination.current !== currentPage) {
+                  setCurrentPage(pagination.current);
+                }
+                if (pagination.pageSize !== pageSize) {
+                  setPageSize(pagination.pageSize);
+                  setCurrentPage(1);
+                }
+                if (sorter && sorter.field) {
+                  setSortField(sorter.field);
+                  setSortOrder(sorter.order);
+                } else {
+                  setSortField(null);
+                  setSortOrder(null);
+                }
               }}
               scroll={{ x: "max-content" }}
               locale={{
@@ -1225,6 +1341,19 @@ const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
                   {selectedCatchNos.length} selected
                 </div>
               )}
+            </div>
+          </div>
+
+          <div className="merge-modal-panel">
+            <div className="merge-modal-panel-header">
+              <span className="merge-modal-panel-title">Catches being merged</span>
+            </div>
+            <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: 6, maxHeight: 100, overflowY: "auto", padding: "4px 0" }}>
+              {selectedCatchNos.map((c) => (
+                <Tag key={c} color="blue" style={{ fontSize: 11, margin: 0 }}>
+                  {c}
+                </Tag>
+              ))}
             </div>
           </div>
 
@@ -1340,31 +1469,6 @@ const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
                   </div>
                 </div>
               )}
-
-              <div className="merge-modal-panel">
-                <div className="merge-modal-panel-header">
-                  <span className="merge-modal-panel-title">Post-Merge Module</span>
-                </div>
-                <Select
-                  size="small"
-                  mode="multiple"
-                  style={{ width: "100%", marginTop: 6 }}
-                  placeholder={
-                    loadingModules ? "Loading modules..." : "Select modules (optional)"
-                  }
-                  value={mergeModuleIds}
-                  loading={loadingModules}
-                  allowClear
-                  onChange={(value) => setMergeModuleIds(value)}
-                  showSearch
-                  optionFilterProp="label"
-                  filterOption={filterSelectOption}
-                  options={(modules || []).map((m) => ({
-                    value: m.id,
-                    label: m.name,
-                  }))}
-                />
-              </div>
             </div>
 
             <div className="merge-modal-col">
@@ -1390,7 +1494,7 @@ const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
                       {[
                         { key: "A", label: "Exam" },
                         { key: "B", label: "Subject" },
-                        { key: "C", label: "Paper Name" },
+                        { key: "C", label: "Paper Title" },
                         { key: "D", label: "Paper Code" },
                       ].map((field) => {
                         const options = abcdFieldOptions?.[field.key] || [];
@@ -1476,8 +1580,8 @@ const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
                         {[
                           { key: "A", label: "Exam" },
                           { key: "B", label: "Subject" },
-                          { key: "C", label: "Paper Name" },
-                          { key: "D", label: "Paper Code" },
+                          { key: "C", label: "Paper Code" },
+                          { key: "D", label: "Paper Title" },
                         ].map((field) => {
                           const options = abcdFieldOptions?.[field.key] || [];
                           if (options.length <= 1) return null;

@@ -43,14 +43,13 @@ const ProjectDashboard = () => {
     if (!projectId) return;
     try {
       const res = await API.get(`/ProjectConfigs/ByProject/${projectId}`);
-      if (res.data) {
-        setIsProjectConfigured(true);
-      } else {
-        setIsProjectConfigured(false);
-      }
+      const configured = !!res.data;
+      setIsProjectConfigured(configured);
+      useStore.getState().setIsConfigured(configured);
     } catch (err) {
       console.error("Failed to fetch project config", err);
       setIsProjectConfigured(false);
+      useStore.getState().setIsConfigured(false);
     }
   };
 
@@ -61,6 +60,7 @@ const ProjectDashboard = () => {
     try {
       const res = await API.get(`/NRDatas/Counts?ProjectId=${projectId}`);
       setExistingData(res.data.nrData);
+      useStore.getState().setNrDataCount(res.data.nrData);
       console.log(res.data.nrData)
       setConflicts(res.data.conflict);
       console.log(res.data.conflict)
@@ -196,12 +196,18 @@ const ProjectDashboard = () => {
           await API.post(`/ExtraEnvelopes?ProjectId=${projectId}`);
         else if (step.key === "envelope")
           await API.post(
-            `/EnvelopeBreakages/EnvelopeConfiguration?ProjectId=${projectId}`
+            `/EnvelopeBreakageProcessing/ProcessEnvelopeBreaking?ProjectId=${projectId}&bypassDispatch=true`
           );
-        else if (step.key === "box")
-          await API.post(
-            `/BoxBreakingProcessing/ProcessBoxBreaking?ProjectId=${projectId}`
-          );
+        else if (step.key === "box") {
+          // Fetch lots and pass them as query parameters
+          const lots = await API.get(`/NRDataLots/GetLotsWithDispatchInfo/${projectId}`).then(res => res.data || []).catch(() => []);
+          const lotNumbers = lots.map(l => l.lotNo);
+          const params = new URLSearchParams();
+          params.append('ProjectId', projectId);
+          lotNumbers.forEach(lot => params.append('LotNo', lot));
+          params.append('bypassDispatch', 'true');
+          await API.post(`/BoxBreakingProcessing/ProcessBoxBreaking?${params.toString()}`);
+        }
         else if (step.key === "envelopeSummary")
           await API.get(
             `/EnvelopeBreakages/EnvelopeSummaryReport?ProjectId=${projectId}`

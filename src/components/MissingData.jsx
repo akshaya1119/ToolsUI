@@ -617,10 +617,11 @@ setModifiedRows(newModified);
                     
                     const updatedRow = { ...row };
                     
-                    // Update all fields from editingDraft
+                    // Update all fields from editingDraft (normalize ExamTime)
                     Object.keys(editingDraft).forEach(key => {
                         if (key !== 'catchNo') {
-                            updatedRow[key] = editingDraft[key] === null ? "" : editingDraft[key];
+                            const raw = editingDraft[key] === null ? "" : editingDraft[key];
+                            updatedRow[key] = key === 'ExamTime' ? normalizeTimeValue(raw) : raw;
                         }
                     });
                     
@@ -638,6 +639,11 @@ setModifiedRows(newModified);
                 ([, value]) => value !== "" && value !== null && value !== undefined
             )
         );
+
+        // Normalize ExamTime in bulk patch if present
+        if (effectivePatch.ExamTime) {
+            effectivePatch.ExamTime = normalizeTimeValue(effectivePatch.ExamTime);
+        }
 
         if (!Object.keys(effectivePatch).length) {
             showToast("Enter at least one bulk value first", "warning");
@@ -697,7 +703,10 @@ for (const row of missingDataRows) {
 
     for (const field of displayFields) {
         const fieldName = field.name;
-        const value = row[fieldName];
+        let value = row[fieldName];
+        if (fieldName === 'ExamTime') {
+            value = normalizeTimeValue(value);
+        }
 
         if (value !== "" && value !== null && value !== undefined) {
             additionalFields[fieldName] = value;
@@ -889,21 +898,18 @@ for (const row of missingDataRows) {
                             );
                         } else if (isExamTime) {
                             return (
-                                <TimePicker
-                                    size="small"
-                                    format={TIME_FORMAT}
-                                    use12Hours
-                                    value={parseTimeValue(editingDraft[fieldName])}
-                                    style={{ width: "100%" }}
-                                    changeOnScroll
-                                    needConfirm
-                                    onChange={(time) =>
-                                        setEditingDraft((prev) => ({
-                                            ...prev,
-                                            [fieldName]: time ? time.format(TIME_FORMAT) : "",
-                                        }))
-                                    }
-                                />
+                                <Input
+        value={editingDraft[fieldName] || ""}
+        placeholder={fieldName}
+        size="small"
+        style={{ width: "100%" }}
+        onChange={(e) =>
+            setEditingDraft((prev) => ({
+                ...prev,
+                [fieldName]: e.target.value,
+            }))
+        }
+    />
                             );
                         } else {
                             return (
@@ -1211,18 +1217,15 @@ for (const row of missingDataRows) {
                                                                     }
                                                                 />
                                                             ) : isExamTime ? (
-                                                                <TimePicker
+                                                                <Input
+                                                                    value={bulkValues[fieldName] || ""}
+                                                                    placeholder={fieldName}
                                                                     size="small"
-                                                                    format={TIME_FORMAT}
-                                                                    use12Hours
                                                                     style={{ width: "100%" }}
-                                                                    value={parseTimeValue(bulkValues[fieldName])}
-                                                                    changeOnScroll
-                                                                    needConfirm
-                                                                    onChange={(time) =>
+                                                                    onChange={(e) =>
                                                                         setBulkValues((prev) => ({
                                                                             ...prev,
-                                                                            [fieldName]: time ? time.format(TIME_FORMAT) : "",
+                                                                            [fieldName]: e.target.value,
                                                                         }))
                                                                     }
                                                                 />

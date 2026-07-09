@@ -19,9 +19,10 @@ import {
   Typography,
   Input,
   Tooltip,
+  Popconfirm,
 } from "antd";
 import { motion } from "framer-motion";
-import { SearchOutlined, EditOutlined } from "@ant-design/icons";
+import { SearchOutlined, EditOutlined, DeleteOutlined } from "@ant-design/icons";
 import { MessageService } from "../../services/MessageService";
 import dayjs from "dayjs";
 import customParseFormat from "dayjs/plugin/customParseFormat";
@@ -154,8 +155,10 @@ const mergeRows = (base, patch) => ({
     : patch.lotNumber,
 });
 
-const LotsBifurcation = forwardRef((_, ref) => {
+const LotsBifurcation = forwardRef(({ onCatchDeleted }, ref) => {
   const projectId = useStore((state) => state.projectId);
+  const setHasDeactivatedCatches = useStore((state) => state.setHasDeactivatedCatches);
+  const addStaleEnvLotIds = useStore((state) => state.addStaleEnvLotIds);
   const { showToast } = useToast();
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState([]);
@@ -166,12 +169,24 @@ const LotsBifurcation = forwardRef((_, ref) => {
   const [searchText, setSearchText] = useState("");
   const [searchedColumn, setSearchedColumn] = useState("");
   const [bifurcationModalOpen, setBifurcationModalOpen] = useState(false);
-  const [pageSize, setPageSize] = useState(20);
+  const [pageSize, setPageSize] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [sortField, setSortField] = useState(null);
+  const [sortOrder, setSortOrder] = useState(null);
+  const [searchKey, setSearchKey] = useState(null);
+  const [searchVal, setSearchVal] = useState(null);
+  const [projectLots, setProjectLots] = useState([]);
+  const [columnsFromApi, setColumnsFromApi] = useState([]);
+   const [uniqueColumns, setUniqueColumns] = useState([]);
   const [lotAssignmentFilter, setLotAssignmentFilter] = useState("all");
   const [editingCatchNo, setEditingCatchNo] = useState(null);
   const [editingLotValue, setEditingLotValue] = useState(0);
   const [endPickerValue, setEndPickerValue] = useState(null);
+  const [editingField, setEditingField] = useState(null);
+  const [editingValue, setEditingValue] = useState(null);
+  const [editingRowValues, setEditingRowValues] = useState({});
+  const [bifurcateRows, setBifurcateRows] = useState([]);
 
   const closeBifurcationPanel = () => {
     setBifurcationModalOpen(false);
@@ -181,48 +196,129 @@ const LotsBifurcation = forwardRef((_, ref) => {
     setStartTouched(false);
   };
 
-  const loadRows = async () => {
+  const loadProjectLots = async () => {
+    if (!projectId) return;
+    try {
+      const res = await API.get(`/NRDataLots/GetByProjectId/${projectId}`);
+      setProjectLots(Array.isArray(res.data) ? res.data : []);
+    } catch (err) {
+      console.error("Failed to load project lots", err);
+      setProjectLots([]);
+    }
+  };
+
+  const loadRows = async (
+    page = currentPage,
+    limit = pageSize,
+    sField = sortField,
+    sOrder = sortOrder,
+    sKey = searchKey,
+    sVal = searchVal,
+    lotTab = activeLotTab,
+    lotFilter = lotAssignmentFilter
+  ) => {
     if (!projectId) return;
     setLoading(true);
     try {
-      const res = await API.get(`/NRDatas/GetByProjectId/${projectId}`, {
-        params: {
-          pageSize: 100000,
-          pageNo: 1,
-        },
-      });
+      const params = {
+        pageSize: limit,
+        pageNo: page,
+      };
+
+      if (lotTab !== "all") {
+        const lotValue = Number(lotTab);
+        if (lotValue === 0) {
+          params.missingExamDate = true;
+        } else {
+          params.lotNo = lotValue;
+        }
+      } else {
+        if (lotFilter === "assigned") {
+          params.assigned = true;
+        } else if (lotFilter === "unassigned") {
+          params.assigned = false;
+        }
+      }
+
+      if (sField && sOrder) {
+        const backendFieldMap = {
+          catchNo: "CatchNo",
+          examDate: "ExamDate",
+          examTime: "ExamTime",
+          quantity: "Quantity",
+          subjectName: "SubjectName",
+        };
+        params.sortField = backendFieldMap[sField] || sField;
+        params.sortOrder = sOrder;
+      }
+      if (sKey && sVal) {
+        const backendKeyMap = {
+          catchNo: "CatchNo",
+          subjectName: "SubjectName",
+          examDate: "ExamDate",
+          examTime: "ExamTime",
+          quantity: "Quantity",
+        };
+        params.key = backendKeyMap[sKey] || sKey;
+        params.search = sVal;
+      }
+
+      const res = await API.get(`/NRDatas/GetUniqueByProjectId/${projectId}`, { params });
 
       const items = Array.isArray(res.data?.items) ? res.data.items : [];
+      setTotalCount(res.data?.totalCount || 0);
+      
+      // Get unique columns from API and exclude NRDatas, Id, ImportRowNo
+      let uniqueCols = res.data?.uniqueColumns || res.data?.columns || [];
+      uniqueCols = uniqueCols.filter(col => col && col !== "NRDatas" && col !== "Id" && col !== "ImportRowNo" && col !== "RecordCount");
+
+      // Normalize columns casing to match the returned items keys case-insensitively
+      uniqueCols = uniqueCols.map(col => {
+        for (const item of items) {
+          const match = Object.keys(item || {}).find(k => k.toLowerCase() === col.toLowerCase());
+          if (match) return match;
+        }
+        return col;
+      });
+
+      // Extract all parsed NRDatas keys to add to columns
+      const parsedNRDataKeys = new Set();
+      
       const uniqueByCatch = new Map();
 
       items.forEach((item) => {
         const catchNo = item?.CatchNo ?? item?.catchNo;
         if (!catchNo) return;
 
+        // Parse NRDatas JSON if it exists
+        let parsedNRData = {};
+        if (item?.NRDatas) {
+          try {
+            parsedNRData = JSON.parse(item.NRDatas);
+            if (parsedNRData && typeof parsedNRData === 'object') {
+              Object.keys(parsedNRData).forEach(key => {
+                if (key !== "ImportRowNo") {
+                  parsedNRDataKeys.add(key);
+                }
+              });
+            }
+          } catch (e) {
+            console.warn("Failed to parse NRDatas for", catchNo, e);
+          }
+        }
+
+        // Build row with all item fields (excluding NRDatas itself) + parsed data
         const row = {
+          ...Object.fromEntries(Object.entries(item).filter(([k]) => k !== "NRDatas")),
+          ...parsedNRData,
+          catchNo: catchNo,
+          examDate: item?.ExamDate ?? item?.examDate,
+          examTime: item?.ExamTime ?? item?.examTime,
+          lotNumber: coerceNumber(item?.LotNo ?? item?.lotNo ?? item?.lotNumber, 0),
+          lotNo: coerceNumber(item?.LotNo ?? item?.lotNo, 0),
+          quantity: coerceNumber(item?.Quantity ?? item?.quantity, 0),
+          subjectName: item?.SubjectName ?? item?.subjectName,
           key: catchNo,
-          catchNo,
-          examDate: item?.ExamDate ?? item?.examDate ?? "",
-          examTime: item?.ExamTime ?? item?.examTime ?? "",
-          quantity:
-            item?.NRQuantity ??
-            item?.nrQuantity ??
-            item?.Quantity ??
-            item?.quantity ??
-            "",
-          subjectName:
-            item?.SubjectName ??
-            item?.subjectName ??
-            item?.PaperName ??
-            item?.paperName ??
-            item?.PaperCode ??
-            item?.paperCode ??
-            "",
-          pages: item?.Pages ?? item?.pages ?? "",
-          lotNumber: coerceNumber(
-            item?.LotNo ?? item?.lotNo ?? item?.LotNumber ?? item?.lotNumber ?? 0,
-            0
-          ),
         };
 
         if (uniqueByCatch.has(catchNo)) {
@@ -232,13 +328,17 @@ const LotsBifurcation = forwardRef((_, ref) => {
         }
       });
 
-      const list = Array.from(uniqueByCatch.values()).sort((a, b) =>
-        String(a.catchNo).localeCompare(String(b.catchNo), undefined, {
-          numeric: true,
-          sensitivity: "base",
-        })
-      );
+      // Add parsed NRData keys to unique columns
+      const finalColumns = [...uniqueCols];
+      parsedNRDataKeys.forEach(key => {
+        if (!finalColumns.includes(key)) {
+          finalColumns.push(key);
+        }
+      });
 
+      setUniqueColumns(finalColumns);
+      
+      const list = Array.from(uniqueByCatch.values());
       setRows(list);
     } catch (error) {
       console.error("Failed to load catch data for lots", error);
@@ -250,7 +350,11 @@ const LotsBifurcation = forwardRef((_, ref) => {
   };
 
   useEffect(() => {
-    loadRows();
+    loadRows(currentPage, pageSize, sortField, sortOrder, searchKey, searchVal, activeLotTab, lotAssignmentFilter);
+  }, [projectId, currentPage, pageSize, sortField, sortOrder, searchKey, searchVal, activeLotTab, lotAssignmentFilter]);
+
+  useEffect(() => {
+    loadProjectLots();
   }, [projectId]);
 
   useEffect(() => {
@@ -262,48 +366,25 @@ const LotsBifurcation = forwardRef((_, ref) => {
 
   useEffect(() => {
     if (!bifurcationModalOpen) return;
-    if (!rows.length) return;
+    if (!bifurcateRows.length) return;
     if (startTouched) return;
 
     const targetLot = lotNumber;
-    const autoStart = getAutoStartDate(rows, targetLot);
+    const autoStart = getAutoStartDate(bifurcateRows, targetLot);
     if (!autoStart) return;
 
     setDateRange((prev) => [autoStart, prev?.[1] || null]);
     setEndPickerValue(autoStart);
-  }, [bifurcationModalOpen, rows, lotNumber, startTouched]);
+  }, [bifurcationModalOpen, bifurcateRows, lotNumber, startTouched]);
 
   const lotTabs = useMemo(() => {
     const uniqueLots = Array.from(
-      new Set(rows.map((row) => coerceNumber(row.lotNumber, 0)))
-    ).sort((a, b) => a - b);
-    return ["all", ...uniqueLots.map((lot) => String(lot))];
-  }, [rows]);
+      new Set(projectLots.map((lot) => coerceNumber(lot.lotNo ?? lot.LotNo, 0)))
+    ).filter(lot => lot > 0).sort((a, b) => a - b);
+    return ["all", "0", ...uniqueLots.map((lot) => String(lot))];
+  }, [projectLots]);
 
-  const filteredRows = useMemo(() => {
-    let list = rows;
-    if (activeLotTab === "all") {
-      if (lotAssignmentFilter === "assigned") {
-        list = list.filter((row) => coerceNumber(row.lotNumber, 0) > 0);
-      } else if (lotAssignmentFilter === "unassigned") {
-        list = list.filter((row) => coerceNumber(row.lotNumber, 0) <= 0);
-      }
-      return list;
-    }
-    const lotValue = Number(activeLotTab);
-    if (lotValue === 0) {
-      return list.filter((row) => !parseExamDate(row.examDate));
-    }
-    return list.filter((row) => coerceNumber(row.lotNumber, 0) === lotValue);
-  }, [rows, activeLotTab, lotAssignmentFilter]);
-
-  useEffect(() => {
-    const total = filteredRows.length;
-    const maxPage = Math.max(1, Math.ceil(total / pageSize));
-    if (currentPage > maxPage) {
-      setCurrentPage(maxPage);
-    }
-  }, [filteredRows, pageSize, currentPage]);
+  const filteredRows = rows;
 
   const saveLotAssignments = async (updates, successMessage) => {
     if (!projectId) return false;
@@ -319,11 +400,64 @@ const LotsBifurcation = forwardRef((_, ref) => {
       if (successMessage) {
         showToast(successMessage, "success");
       }
+      loadProjectLots();
       return true;
     } catch (error) {
       console.error("Failed to save lot numbers", error);
       showToast("Failed to save lot numbers", "error");
       return false;
+    }
+  };
+
+  const saveCatchFieldValue = async (catchNo, fieldName, value) => {
+    if (!projectId) return false;
+    try {
+      const payload = {
+        catchNo,
+        fieldName,
+        value: String(value).trim(),
+      };
+      await API.put(`/NRDatas/UpdateCatchField/${projectId}`, payload);
+      showToast(`${fieldName} updated successfully`, "success");
+      return true;
+    } catch (error) {
+      console.error(`Failed to update ${fieldName}:`, error);
+      showToast(`Failed to update ${fieldName}`, "error");
+      return false;
+    }
+  };
+
+  const handleDeleteCatchNo = async (catchNo) => {
+    if (!projectId) return;
+    try {
+      // Find out which EnvLot this catch belongs to *before* deleting
+      let staleEnvLotNo = null;
+      try {
+        const envLotsRes = await API.get(`/NRDataLots/GetAssignedEnvLotCatches/${projectId}`);
+        if (envLotsRes?.data) {
+          const assignedLot = envLotsRes.data.find(lot => lot.catches?.includes(catchNo));
+          if (assignedLot) {
+            staleEnvLotNo = assignedLot.envLotNo;
+          }
+        }
+      } catch (err) {
+        console.error("Failed to check EnvLot assignments before deletion", err);
+      }
+
+      const response = await API.delete(`/NRDatas/DeleteCatchNo/${projectId}/${catchNo}`);
+      setRows((prev) => prev.filter((row) => row.catchNo !== catchNo));
+      showToast(`${response.data.message}. ${response.data.note}`, "info");
+      
+      // ✅ Notify store that a catch was deleted
+      setHasDeactivatedCatches(true);
+
+      // ✅ Flag the specific EnvLot as stale
+      if (staleEnvLotNo) {
+        addStaleEnvLotIds([staleEnvLotNo]);
+      }
+    } catch (error) {
+      console.error("Failed to delete catch number", error);
+      showToast("Failed to delete catch number", "error");
     }
   };
 
@@ -343,7 +477,9 @@ const LotsBifurcation = forwardRef((_, ref) => {
 
     const inRangeCatchNos = [];
 
-    rows.forEach((row) => {
+    const bRows = bifurcateRows.length ? bifurcateRows : rows;
+
+    bRows.forEach((row) => {
       const parsedDate = parseExamDate(row.examDate);
       if (!parsedDate) return;
 
@@ -363,7 +499,7 @@ const LotsBifurcation = forwardRef((_, ref) => {
     const targetLot = coerceNumber(lotNumber, 0);
     const inRangeSet = new Set(inRangeCatchNos);
 
-    const outOfRangeTargetRows = rows.filter((row) => {
+    const outOfRangeTargetRows = bRows.filter((row) => {
       const parsedDate = parseExamDate(row.examDate);
       if (!parsedDate) return false;
       const isTargetLot = coerceNumber(row.lotNumber, 0) === targetLot;
@@ -382,7 +518,7 @@ const LotsBifurcation = forwardRef((_, ref) => {
     }) => {
       const prevRows = rows;
       const shouldShiftPrevTail = Boolean(prevLotNumber && hasPrevOverlap);
-      const nextRows = rows.map((row) => {
+      const nextRows = bRows.map((row) => {
         const parsedDate = parseExamDate(row.examDate);
         const hasValidDate = Boolean(parsedDate);
         const isTargetLot = coerceNumber(row.lotNumber, 0) === targetLot;
@@ -426,30 +562,29 @@ const LotsBifurcation = forwardRef((_, ref) => {
         .filter(
           (row, index) =>
             coerceNumber(row.lotNumber, 0) !==
-            coerceNumber(rows[index]?.lotNumber, 0)
+            coerceNumber(bRows[index]?.lotNumber, 0)
         )
         .map((row) => ({ catchNo: row.catchNo, lotNo: row.lotNumber }));
-
-      setRows(nextRows);
 
       const ok = await saveLotAssignments(
         updates,
         `Assigned ${inRangeCatchNos.length} catch numbers to lot ${lotNumber}`
       );
-      if (!ok) {
-        setRows(prevRows);
-      } else if (targetLot > 0) {
-        setActiveLotTab(String(targetLot));
+      if (ok) {
+        if (targetLot > 0) {
+          setActiveLotTab(String(targetLot));
+        }
+        loadRows();
       }
 
       closeBifurcationPanel();
       return true;
     };
 
-    const nextLotNumber = getNextLotNumber(rows, targetLot);
-    const prevLotNumber = getPrevLotNumber(rows, targetLot);
-    const prevRange = prevLotNumber ? getLotRange(rows, prevLotNumber) : null;
-    const nextRange = nextLotNumber ? getLotRange(rows, nextLotNumber) : null;
+    const nextLotNumber = getNextLotNumber(bRows, targetLot);
+    const prevLotNumber = getPrevLotNumber(bRows, targetLot);
+    const prevRange = prevLotNumber ? getLotRange(bRows, prevLotNumber) : null;
+    const nextRange = nextLotNumber ? getLotRange(bRows, nextLotNumber) : null;
     const boundaryDateForPrev =
       prevRange && start.isSame(prevRange.end, "day") && prevLotNumber
         ? prevRange.end
@@ -460,16 +595,16 @@ const LotsBifurcation = forwardRef((_, ref) => {
         : null;
     const hasPrevBoundary =
       boundaryDateForPrev &&
-      hasLotDate(rows, prevLotNumber, boundaryDateForPrev);
+      hasLotDate(bRows, prevLotNumber, boundaryDateForPrev);
     const hasNextBoundary =
       boundaryDateForNext &&
-      hasLotDate(rows, nextLotNumber, boundaryDateForNext);
+      hasLotDate(bRows, nextLotNumber, boundaryDateForNext);
     const hasPrevOverlap =
       prevRange &&
-      hasLotDateInRange(rows, prevLotNumber, start, end);
+      hasLotDateInRange(bRows, prevLotNumber, start, end);
     const hasNextOverlap =
       nextRange &&
-      hasLotDateInRange(rows, nextLotNumber, start, end);
+      hasLotDateInRange(bRows, nextLotNumber, start, end);
     const hasPrevTailBeyondRange =
       prevRange && end.isBefore(prevRange.end, "day");
 
@@ -505,7 +640,7 @@ const LotsBifurcation = forwardRef((_, ref) => {
 
     const proceedWithBifurcation = async (allowBoundaryOverlap) => {
       if (nextLotNumber && outOfRangeTargetRows.length) {
-        const nextLotDates = rows
+        const nextLotDates = bRows
           .filter(
             (row) => coerceNumber(row.lotNumber, 0) === nextLotNumber
           )
@@ -617,7 +752,24 @@ const LotsBifurcation = forwardRef((_, ref) => {
   };
 
   useImperativeHandle(ref, () => ({
-    openBifurcationModal: () => setBifurcationModalOpen(true),
+    openBifurcationModal: async () => {
+      setBifurcationModalOpen(true);
+      if (!projectId) return;
+      try {
+        const res = await API.get(`/NRDatas/GetUniqueByProjectId/${projectId}`, { 
+          params: { pageSize: 100000, pageNo: 1 } 
+        });
+        const items = Array.isArray(res.data?.items) ? res.data.items : [];
+        const allRows = items.map(item => ({
+          catchNo: item.CatchNo ?? item.catchNo,
+          examDate: item.ExamDate ?? item.examDate,
+          lotNumber: coerceNumber(item.LotNo ?? item.lotNo ?? item.lotNumber, 0)
+        }));
+        setBifurcateRows(allRows);
+      } catch (err) {
+        console.error("Failed to load full data for bifurcation", err);
+      }
+    },
   }));
 
   const getColumnSearchProps = (dataIndex) => ({
@@ -633,11 +785,25 @@ const LotsBifurcation = forwardRef((_, ref) => {
             setSearchText(value);
             setSearchedColumn(dataIndex);
           }}
-          onPressEnter={() => confirm()}
+          onPressEnter={() => {
+            confirm();
+            setSearchKey(dataIndex);
+            setSearchVal(searchText);
+            setCurrentPage(1);
+          }}
           style={{ width: 188, marginBottom: 8, display: "block" }}
         />
         <Space>
-          <Button type="primary" size="small" onClick={() => confirm()}>
+          <Button
+            type="primary"
+            size="small"
+            onClick={() => {
+              confirm();
+              setSearchKey(dataIndex);
+              setSearchVal(searchText);
+              setCurrentPage(1);
+            }}
+          >
             Search
           </Button>
           <Button
@@ -646,6 +812,9 @@ const LotsBifurcation = forwardRef((_, ref) => {
               clearFilters?.();
               setSearchText("");
               setSearchedColumn("");
+              setSearchKey(null);
+              setSearchVal(null);
+              setCurrentPage(1);
               confirm({ closeDropdown: true });
             }}
           >
@@ -657,13 +826,6 @@ const LotsBifurcation = forwardRef((_, ref) => {
     filterIcon: (filtered) => (
       <SearchOutlined style={{ color: filtered ? "#1890ff" : undefined }} />
     ),
-    onFilter: (value, record) => {
-      const rawValue = record?.[dataIndex];
-      if (rawValue === undefined || rawValue === null) return false;
-      return String(rawValue)
-        .toLowerCase()
-        .includes(String(value).toLowerCase());
-    },
     filterDropdownProps: {
       onOpenChange: (open) => {
         if (!open && searchedColumn === dataIndex && !searchText) {
@@ -674,89 +836,113 @@ const LotsBifurcation = forwardRef((_, ref) => {
     filteredValue: searchedColumn === dataIndex && searchText ? [searchText] : null,
   });
 
-  const columns = [
-    {
-      title: "Catch No",
-      dataIndex: "catchNo",
-      key: "catchNo",
-      width: 130,
-      align: "center",
-      sorter: (a, b) => String(a.catchNo).localeCompare(String(b.catchNo)),
-      ...getColumnSearchProps("catchNo"),
-    },
-    {
-      title: "Exam Date",
-      dataIndex: "examDate",
-      key: "examDate",
-      width: 120,
-      sorter: (a, b) =>
-        String(a.examDate || "").localeCompare(String(b.examDate || "")),
-      ...getColumnSearchProps("examDate"),
-    },
-    {
-      title: "Exam Time",
-      dataIndex: "examTime",
-      key: "examTime",
-      width: 140,
-      sorter: (a, b) =>
-        String(a.examTime || "").localeCompare(String(b.examTime || "")),
-      ...getColumnSearchProps("examTime"),
-    },
-    {
-      title: "Quantity",
-      dataIndex: "quantity",
-      key: "quantity",
-      width: 90,
-      sorter: (a, b) => Number(a.quantity || 0) - Number(b.quantity || 0),
-      ...getColumnSearchProps("quantity"),
-    },
-    {
-      title: "Subject Name",
-      dataIndex: "subjectName",
-      key: "subjectName",
-      width: 220,
-      ellipsis: true,
-      sorter: (a, b) =>
-        String(a.subjectName || "").localeCompare(String(b.subjectName || "")),
-      ...getColumnSearchProps("subjectName"),
-      render: (value) =>
-        value ? (
-          <Tooltip title={value}>
-            <span>{value}</span>
-          </Tooltip>
-        ) : (
-          ""
-        ),
-    },
-    {
-      title: "Pages",
-      dataIndex: "pages",
-      key: "pages",
-      width: 80,
-      sorter: (a, b) => Number(a.pages || 0) - Number(b.pages || 0),
-      ...getColumnSearchProps("pages"),
-    },
-    {
+  const columns = useMemo(() => {
+    const cols = [
+      {
+        title: "Catch No",
+        dataIndex: "CatchNo",
+        key: "CatchNo",
+        width: 130,
+        align: "center",
+        sorter: true,
+        ...getColumnSearchProps("CatchNo"),
+      }
+    ];
+
+    // Add columns from uniqueColumns (dynamic fields)
+    uniqueColumns.forEach((fieldName) => {
+      if (!fieldName) return;
+
+      // Skip system fields and NRDatas
+      if (["CatchNo", "LotNo", "LotNumber", "Id", "NRDatas", "ImportRowNo", "RecordCount", "Quantity"].includes(fieldName)) {
+        return;
+      }
+
+      const title = fieldName
+        .replace(/([A-Z])/g, " $1")
+        .replace(/^./, (str) => str.toUpperCase())
+        .trim();
+
+      cols.push({
+        title: title,
+        dataIndex: fieldName,
+        key: fieldName,
+        sorter: true,
+        width: 150,
+        ...getColumnSearchProps(fieldName),
+        render: (value, record) => {
+          const isEditing = editingCatchNo === record?.CatchNo;
+          const displayValue = value || "";
+
+          if (!isEditing) {
+            return displayValue ? (
+              <Tooltip title={displayValue}>
+                <span>{displayValue}</span>
+              </Tooltip>
+            ) : (
+              <span style={{ color: "#999" }}>-</span>
+            );
+          }
+
+          if (fieldName.toLowerCase() === "examdate") {
+            const dateValue = editingRowValues[fieldName] ?? displayValue;
+            const dayjsValue = dateValue ? dayjs(dateValue, "DD-MM-YYYY") : null;
+            return (
+              <DatePicker
+                size="small"
+                format="DD-MM-YYYY"
+                value={dayjsValue && dayjsValue.isValid() ? dayjsValue : null}
+                style={{ width: "100%" }}
+                onChange={(date) => {
+                  const formatted = date ? date.format("DD-MM-YYYY") : "";
+                  setEditingRowValues((prev) => ({
+                    ...prev,
+                    [fieldName]: formatted,
+                  }));
+                }}
+              />
+            );
+          }
+
+          return (
+            <Input
+              size="small"
+              value={editingRowValues[fieldName] ?? displayValue}
+              onChange={(e) => {
+                setEditingRowValues((prev) => ({
+                  ...prev,
+                  [fieldName]: e.target.value,
+                }));
+              }}
+            />
+          );
+        },
+      });
+    });
+
+    // Lot Number column
+    cols.push({
       title: "Lot Number",
-      dataIndex: "lotNumber",
-      key: "lotNumber",
-      width: 170,
+      dataIndex: "LotNo",
+      key: "LotNo",
+      width: 120,
       render: (_, record) => {
         const allowInlineEdit = activeLotTab === "0";
-        const isEditing = editingCatchNo === record.catchNo;
+        const isEditing = editingCatchNo === record?.CatchNo && editingField === "LotNo";
         if (!allowInlineEdit) {
-          return <span>{coerceNumber(record?.lotNumber, 0)}</span>;
+          return <span>{coerceNumber(record?.LotNo, 0)}</span>;
         }
         if (!isEditing) {
           return (
             <Space size={6}>
-              <span>{coerceNumber(record?.lotNumber, 0)}</span>
+              <span>{coerceNumber(record?.LotNo, 0)}</span>
               <Button
                 size="small"
                 icon={<EditOutlined />}
                 onClick={() => {
-                  setEditingCatchNo(record.catchNo);
-                  setEditingLotValue(coerceNumber(record?.lotNumber, 0));
+                  setEditingCatchNo(record.CatchNo);
+                  setEditingField("LotNo");
+                  setEditingValue(coerceNumber(record?.LotNo, 0));
                 }}
               />
             </Space>
@@ -767,27 +953,31 @@ const LotsBifurcation = forwardRef((_, ref) => {
           <Space size={6}>
             <InputNumber
               min={0}
-              value={editingLotValue}
-              onChange={(value) => setEditingLotValue(coerceNumber(value, 0))}
+              size="small"
+              value={editingValue}
+              onChange={(value) => setEditingValue(coerceNumber(value, 0))}
+              autoFocus
             />
             <Button
               size="small"
               type="primary"
               onClick={async () => {
-                const nextLot = coerceNumber(editingLotValue, 0);
+                const nextLot = coerceNumber(editingValue, 0);
                 const ok = await saveLotAssignments(
-                  [{ catchNo: record.catchNo, lotNo: nextLot }],
+                  [{ catchNo: record.CatchNo, lotNo: nextLot }],
                   "Lot number saved"
                 );
                 if (ok) {
                   setRows((prev) =>
                     prev.map((row) =>
-                      row.catchNo === record.catchNo
-                        ? { ...row, lotNumber: nextLot }
+                      row.CatchNo === record.CatchNo
+                        ? { ...row, LotNo: nextLot }
                         : row
                     )
                   );
                   setEditingCatchNo(null);
+                  setEditingField(null);
+                  setEditingValue(null);
                 }
               }}
             >
@@ -797,7 +987,8 @@ const LotsBifurcation = forwardRef((_, ref) => {
               size="small"
               onClick={() => {
                 setEditingCatchNo(null);
-                setEditingLotValue(0);
+                setEditingField(null);
+                setEditingValue(null);
               }}
             >
               Cancel
@@ -805,10 +996,116 @@ const LotsBifurcation = forwardRef((_, ref) => {
           </Space>
         );
       },
-      sorter: (a, b) => Number(a.lotNumber || 0) - Number(b.lotNumber || 0),
-      ...getColumnSearchProps("lotNumber"),
-    },
-  ];
+      sorter: true,
+      ...getColumnSearchProps("LotNo"),
+    });
+
+    // Actions column
+    cols.push({
+      title: "Actions",
+      key: "actions",
+      width: 160,
+      align: "center",
+      render: (_, record) => {
+        const isEditing = editingCatchNo === record?.CatchNo;
+        if (isEditing) {
+          return (
+            <Space size={4}>
+              <Button
+                size="small"
+                type="primary"
+                onClick={async () => {
+                  try {
+                    const payload = { projectId: Number(projectId) };
+                    const fieldsToCheck = [
+                      ...uniqueColumns,
+                      "ExamDate", "ExamTime", "SubjectName", "Pages", "CourseName"
+                    ];
+                    fieldsToCheck.forEach(fieldName => {
+                      if (!fieldName) return;
+                      const originalValue = record[fieldName];
+                      const currentValue = editingRowValues[fieldName];
+                      if (currentValue !== originalValue) {
+                        payload[fieldName] = currentValue;
+                      }
+                    });
+
+                    // If no fields changed, just cancel edit
+                    if (Object.keys(payload).length <= 1) {
+                      setEditingCatchNo(null);
+                      setEditingRowValues({});
+                      return;
+                    }
+                    await API.put(`/NRDatas/UpdateCatchwise/${record.CatchNo}`, payload);
+                    showToast("Catch fields updated successfully", "success");
+
+                    // Update rows state in UI
+                    setRows((prev) =>
+                      prev.map((row) =>
+                        row.CatchNo === record.CatchNo
+                          ? { ...row, ...editingRowValues }
+                          : row
+                      )
+                    );
+                    setEditingCatchNo(null);
+                    setEditingRowValues({});
+                  } catch (error) {
+                    console.error("Failed to update catch", error);
+                    showToast("Failed to update catch", "error");
+                  }
+                }}
+              >
+                Save
+              </Button>
+              <Button
+                size="small"
+                onClick={() => {
+                  setEditingCatchNo(null);
+                  setEditingRowValues({});
+                }}
+              >
+                Cancel
+              </Button>
+            </Space>
+          );
+        }
+
+        return (
+          <Space size={4}>
+            <Tooltip title="Edit this row inline">
+              <Button
+                size="small"
+                icon={<EditOutlined />}
+                onClick={() => {
+                  setEditingCatchNo(record.CatchNo);
+                  // Initialize editing values with all record fields
+                  setEditingRowValues({ ...record });
+                }}
+                title="Edit inline"
+              />
+            </Tooltip>
+            <Popconfirm
+              title="Delete Catch Number"
+              description={`Are you sure you want to delete catch number ${record.CatchNo}?`}
+              onConfirm={() => handleDeleteCatchNo(record.CatchNo)}
+              okText="Yes"
+              cancelText="No"
+              okButtonProps={{ danger: true }}
+            >
+              <Button
+                size="small"
+                danger
+                icon={<DeleteOutlined />}
+                title="Delete this catch number"
+              />
+            </Popconfirm>
+          </Space>
+        );
+      },
+    });
+
+    return cols;
+  }, [uniqueColumns, activeLotTab, editingCatchNo, editingField, editingValue, searchedColumn, searchText, editingRowValues]);
 
   return (
     <div className="pt-0">
@@ -1088,21 +1385,28 @@ const LotsBifurcation = forwardRef((_, ref) => {
               }
               pagination={{
                 current: currentPage,
-                pageSize,
+                pageSize: pageSize,
+                total: totalCount,
                 showSizeChanger: true,
                 pageSizeOptions: ["10", "20", "50", "100"],
-                onChange: (page, size) => {
-                  setCurrentPage(page);
-                  if (Number.isFinite(size)) {
-                    setPageSize(size);
-                  }
-                },
-                onShowSizeChange: (_, size) => {
-                  setCurrentPage(1);
-                  setPageSize(size);
-                },
                 showTotal: (total, range) =>
                   `${range[0]}-${range[1]} of ${total} records`,
+              }}
+              onChange={(pagination, filters, sorter) => {
+                if (pagination.current !== currentPage) {
+                  setCurrentPage(pagination.current);
+                }
+                if (pagination.pageSize !== pageSize) {
+                  setPageSize(pagination.pageSize);
+                  setCurrentPage(1);
+                }
+                if (sorter && sorter.field) {
+                  setSortField(sorter.field);
+                  setSortOrder(sorter.order);
+                } else {
+                  setSortField(null);
+                  setSortOrder(null);
+                }
               }}
               locale={{
                 emptyText: "No catch numbers available for lots.",

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Progress,
   Badge,
@@ -15,19 +15,85 @@ import {
   Modal,
   Space,
   Tabs,
+  Tooltip,
+  Divider,
+  Select,
 } from "antd";
+import { HistoryOutlined, ExclamationCircleOutlined } from "@ant-design/icons";
+import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import axios from "axios";
 import API from "../hooks/api";
 import useStore from "../stores/ProjectData";
-import { buildReportFileName, getErrorMessageAsync, parseMappingJson, retryAsync, getErrorDetails } from "../utils/rptTemplateUtils";
+import { buildReportFileName, getErrorMessageAsync, parseMappingJson, getErrorDetails,retryAsync } from "../utils/rptTemplateUtils";
 import EnvLotReportsManager from "./EnvLotReportsManager";
+import DependencyModal from "./components/DependencyModal";
+import StaticVariablesModal from "./components/StaticVariablesModal";
+import LotSelectionModal from "./components/LotSelectionModal";
+import EnvLotSelectionModal from "./components/EnvLotSelectionModal";
+import ExistingReportModal from "./components/ExistingReportModal";
+import TemplatesPanel from "./components/TemplatesPanel";
+import LotWisePanel from "./components/LotWisePanel";
 
 const { Text } = Typography;
+
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, info) {
+    console.error("ErrorBoundary caught error:", error, info);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: 24 }}>
+          <Alert
+            message="An unexpected error occurred"
+            description={this.state.error?.toString() || "Unknown error"}
+            type="error"
+            showIcon
+          />
+          <pre style={{ marginTop: 12, maxHeight: 300, overflow: "auto" }}>{this.state.error?.stack}</pre>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 const url3 = import.meta.env.VITE_API_FILE_URL;
 
 const ProcessingPipeline = () => {
+  const navigate = useNavigate();
+  const isConfigured = useStore((state) => state.isConfigured);
+  const isLoadingData = useStore((state) => state.isLoadingData);
+  const nrDataCount = useStore((state) => state.nrDataCount);
+  const hasDeactivatedCatches = useStore((state) => state.hasDeactivatedCatches);
+  const setHasDeactivatedCatches = useStore((state) => state.setHasDeactivatedCatches);
+  const staleEnvLotIds = useStore((state) => state.staleEnvLotIds);
+  const removeStaleEnvLotIds = useStore((state) => state.removeStaleEnvLotIds);
+  const projectId = useStore((state) => state.projectId);
+  useEffect(() => {
+    if (projectId && !isLoadingData) {
+      if (!isConfigured) {
+        message.warning("Please complete project configuration first");
+        navigate("/projectdashboard");
+      } else if (nrDataCount === 0) {
+        message.warning("Please upload NR data (Data Import) first");
+        navigate("/projectdashboard");
+      }
+    }
+  }, [isConfigured, isLoadingData, nrDataCount, projectId, navigate]);
+
   const [enabledModuleNames, setEnabledModuleNames] = useState([]);
   const [loadingModules, setLoadingModules] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -38,6 +104,7 @@ const ProcessingPipeline = () => {
   const [extraConfigData, setExtraConfigData] = useState([]);
   const [configChanged, setConfigChanged] = useState(false);
   const [changedFieldsInfo, setChangedFieldsInfo] = useState([]);
+  const [freshlyRunSteps, setFreshlyRunSteps] = useState(new Set());
   const [dependencyModal, setDependencyModal] = useState({ visible: false, unprocessedSteps: [], selectedStep: null });
   const [templatesLoading, setTemplatesLoading] = useState(false);
   const [templateOptions, setTemplateOptions] = useState([]);
@@ -73,7 +140,8 @@ const ProcessingPipeline = () => {
     availableEnvLots: [],
     selectedEnvLots: [],
     loading: false,
-    resolve: null
+    resolve: null,
+    isRegenerate: false
   });
   const [envLotSearch, setEnvLotSearch] = useState("");
   const [existingReportModal, setExistingReportModal] = useState({
@@ -83,15 +151,45 @@ const ProcessingPipeline = () => {
   });
   const [lotReportStatus, setLotReportStatus] = useState({});
   const [envLotReports, setEnvLotReports] = useState([]); // Store generated envelope lot reports
+  const [reportsLoading, setReportsLoading] = useState(false);
+  const [reportVersions, setReportVersions] = useState({});
+
+  const loadReportVersions = async () => {
+    if (!projectId) return;
+    try {
+      const res = await API.get(`/EnvelopeBreakages/Reports/AllVersions?projectId=${projectId}`);
+      setReportVersions(res.data || {});
+    } catch (err) {
+      console.error("Failed to load report versions", err);
+    }
+  };
+
+  const getBoxVersionsForLot = (lotNo) => {
+    const allBoxVersions = reportVersions["box"] || [];
+    return allBoxVersions.filter(v =>
+      String(v.lotNo) === String(lotNo) ||
+      v.fileName.includes(`BoxBreaking_${lotNo}_v`) ||
+      v.fileName === `BoxBreaking_${lotNo}.xlsx`
+    );
+  };
+
   const [expandedReportsTemplates, setExpandedReportsTemplates] = useState(new Set()); // Track which templates have expanded reports
   const [errorDetailsModal, setErrorDetailsModal] = useState({ visible: false, error: null, retryFn: null, templateId: null });
   const projectId = useStore((state) => state.projectId);
+  const [isDetailPanelOpen, setIsDetailPanelOpen] = useState(false);
+  const [selectedModuleForDetails, setSelectedModuleForDetails] = useState(null);
+  const [selectedItems, setSelectedItems] = useState({});
+  const [detailGrouping, setDetailGrouping] = useState("lot");
+  const [detailViewType, setDetailViewType] = useState("reports");
+  const [hasPendingPipelineChanges, setHasPendingPipelineChanges] = useState(false);
+  const [pipelineStepStatus, setPipelineStepStatus] = useState(null);
   const projectName = useStore((state) => state.projectName);
   const storedGroupId = localStorage.getItem("selectedGroup");
   const storedTypeId = localStorage.getItem("selectedType");
   const groupId = storedGroupId ? Number(storedGroupId) : null;
   const typeId = storedTypeId ? Number(storedTypeId) : null;
-
+  const [envLotSearch, setEnvLotSearch] = useState("");
+  const [errorDetailsModal, setErrorDetailsModal] = useState({ visible: false, error: null, retryFn: null, templateId: null });
   const currentStep = useMemo(
     () =>
       steps.findIndex((s) => s.status === "in-progress") + 1 ||
@@ -109,6 +207,33 @@ const ProcessingPipeline = () => {
     [steps]
   );
 
+  const outdatedModules = useMemo(() => {
+    if (!pipelineStepStatus) return [];
+    const keyMap = {
+      duplicate: { flag: "duplicatePending", name: "Duplicate Tool" },
+      enhancement: { flag: "enhancementPending", name: "Envelope Setup and Enhancement" },
+      extra: { flag: "extraPending", name: "Extra Configuration" },
+      envelopebreaking: { flag: "envelopePending", name: "Envelope Breaking" },
+      box: { flag: "boxPending", name: "Box Breaking" }
+    };
+
+    return Object.entries(keyMap)
+      .filter(([key, config]) => {
+        const hasPending = pipelineStepStatus[config.flag];
+        if (!hasPending) return false;
+
+        const step = steps.find(s => s.key === key);
+        const hasExistingReport = step && (step.status === "completed" || step.fileUrl || (key === "box" && step.completedLots > 0));
+        return hasExistingReport;
+      })
+      .map(([key, config]) => {
+        if (key === "box" && pipelineStepStatus.pendingBoxLots && pipelineStepStatus.pendingBoxLots.length > 0) {
+          return `${config.name} (Lot ${pipelineStepStatus.pendingBoxLots.join(", ")})`;
+        }
+        return config.name;
+      });
+  }, [pipelineStepStatus, steps, hasDeactivatedCatches]);
+
   const rptApiUrl = import.meta.env.VITE_RPT_API_URL;
   const mappingUpdateKey = "rptTemplateMappingUpdatedAt";
 
@@ -124,6 +249,7 @@ const ProcessingPipeline = () => {
   };
 
   const checkReportExistence = async (projectId) => {
+    loadReportVersions();
     const fileNames = {
       duplicate: "DuplicateTool.xlsx",
       extra: "ExtrasCalculation.xlsx",
@@ -140,6 +266,30 @@ const ProcessingPipeline = () => {
     await Promise.all(
       Object.entries(fileNames).map(async ([key, fileName]) => {
         try {
+          if (key === "duplicate") {
+            const [fileRes, rerunRes] = await Promise.all([
+              API.get(`/EnvelopeBreakages/Reports/Exists?projectId=${projectId}&fileName=${fileName}`),
+              API.get(`/NRDatas/DuplicateRerunStatus`, { params: { ProjectId: projectId } }),
+            ]);
+
+            const exists = Boolean(fileRes.data?.exists);
+            const requiresDuplicateRerun = Boolean(rerunRes.data?.requiresDuplicateRerun);
+            results[fileName] = exists;
+
+            if (exists || !requiresDuplicateRerun) {
+              const fileUrl = exists
+                ? `${url3}/${projectId}/${fileName}?DateTime=${new Date().toISOString()}`
+                : null;
+
+              updateStepStatus(key, {
+                status: "completed",
+                fileUrl,
+                duration: "--:--",
+              });
+            }
+            return;
+          }
+
           // For box breaking, check if any lot-specific file exists
           if (key === "box") {
             try {
@@ -153,23 +303,37 @@ const ProcessingPipeline = () => {
                       const res = await API.get(
                         `/EnvelopeBreakages/Reports/Exists?projectId=${projectId}&fileName=${lotFileName}`
                       );
-                      return res.data.exists;
+                      return { lotNo: lot.lotNo, exists: Boolean(res.data?.exists) };
                     } catch (err) {
-                      return false;
+                      return { lotNo: lot.lotNo, exists: false };
                     }
                   })
                 );
-                const exists = lotResults.some(result => result);
-                results[fileName] = exists;
-                
-                if (exists) {
-                  console.log("Updating step", key, "to completed");
-                  updateStepStatus(key, {
-                    status: "completed",
-                    fileUrl: null,
-                    duration: "--:--",
+                const completedLotsCount = lotResults.filter(r => r.exists).length;
+                const totalLotsCount = lots.length;
+                const exists = completedLotsCount > 0;
+                results[fileName] = exists; // Boolean for overall module status
+
+                const allCompleted = completedLotsCount === totalLotsCount;
+                console.log("Updating step", key, allCompleted && exists ? "to completed" : "with partial/pending status");
+                updateStepStatus(key, {
+                  status: allCompleted && exists ? "completed" : "pending",
+                  completedLots: completedLotsCount,
+                  totalLots: totalLotsCount,
+                  fileUrl: null,
+                  duration: "--:--",
+                });
+
+                // Also populate availableLots and lotReportStatus so the badge is
+                // accurate without requiring the LotWisePanel to be opened first.
+                setAvailableLots(lots);
+                setLotReportStatus((prev) => {
+                  const next = { ...prev };
+                  lotResults.forEach(({ lotNo, exists: lotExists }) => {
+                    next[lotNo] = lotExists;
                   });
-                }
+                  return next;
+                });
               }
             } catch (err) {
               console.error(`Failed to check lot files for box breaking`, err);
@@ -256,57 +420,57 @@ const ProcessingPipeline = () => {
     };
   }, []);
 
-  // Load envelope lot reports from API on component mount
-  useEffect(() => {
-    const loadEnvLotReports = async () => {
-      if (!projectId) {
-        console.log('No projectId, skipping load');
+  const loadEnvLotReports = async () => {
+    if (!projectId) {
+      console.log('No projectId, skipping load');
+      return;
+    }
+
+    setReportsLoading(true);
+    try {
+      console.log('Loading envelope lot reports for project:', projectId);
+
+      // First test if the API is accessible
+      try {
+        await API.get('/EnvelopeLotReports/Test');
+      } catch (err) {
+        console.warn('EnvelopeLotReports API test failed, but continuing...');
+      }
+
+      const response = await API.get(`/EnvelopeLotReports/ByProject/${projectId}`);
+      const reports = response.data || [];
+
+      if (reports.length === 0) {
+        setEnvLotReports([]);
         return;
       }
-      
-      try {
-        console.log('Loading envelope lot reports for project:', projectId);
-        
-        const response = await API.get(`/EnvelopeLotReports/ByProject/${projectId}`);
-        console.log('Raw API response:', response);
-        console.log('Response data:', response.data);
-        const reports = response.data || [];
-        
-        if (reports.length === 0) {
-          console.log('No reports found in database for project', projectId);
-          setEnvLotReports([]);
-          return;
-        }
-        
-        // Transform API data to match our component format
-        const transformedReports = reports.map((report, index) => {
-          console.log(`Transforming report ${index}:`, report);
-          return {
-            id: `${report.templateId}_${report.envLotNumbers}_${report.id}`,
-            templateId: report.templateId,
-            templateName: report.templateName,
-            envLotNumbers: report.envLotNumbers.split(',').map(num => parseInt(num.trim())),
-            envLotKey: report.envLotNumbers,
-            fileName: report.fileName,
-            generatedAt: report.generatedAt,
-            generatedBy: report.generatedBy,
-            filePath: report.filePath, // Include the server file path
-            url: null, // Will be set when downloading
-            dbId: report.id // Store the database ID for deletion
-          };
-        });
-        
-        console.log('Transformed reports:', transformedReports);
-        setEnvLotReports(transformedReports);
-      } catch (err) {
-        console.error("Failed to load envelope lot reports from API", err);
-        console.error("Error details:", err.response?.data);
-        console.error("Error status:", err.response?.status);
-        console.error("Error config:", err.config);
-        setEnvLotReports([]);
-      }
-    };
 
+      // Transform API data to match our component format
+      const transformedReports = reports.map((report) => ({
+        id: `${report.templateId}_${report.envLotNumbers}_${report.id}`,
+        templateId: report.templateId,
+        templateName: report.templateName,
+        envLotNumbers: report.envLotNumbers ? report.envLotNumbers.split(',').map(num => parseInt(num.trim())).filter(num => !isNaN(num)) : [],
+        envLotKey: report.envLotNumbers,
+        fileName: report.fileName,
+        generatedAt: report.generatedAt,
+        generatedBy: report.generatedBy,
+        filePath: report.filePath, // Include the server file path
+        url: null, // Will be set when downloading
+        dbId: report.id // Store the database ID for deletion
+      }));
+
+      setEnvLotReports(transformedReports);
+    } catch (err) {
+      console.error("Failed to load envelope lot reports from API", err);
+      setEnvLotReports([]);
+    } finally {
+      setReportsLoading(false);
+    }
+  };
+
+  // Load envelope lot reports from API on component mount
+  useEffect(() => {
     loadEnvLotReports();
   }, [projectId]);
 
@@ -397,6 +561,25 @@ const ProcessingPipeline = () => {
     console.log("Final order:", order);
     return order;
   };
+
+  const fetchPipelineRerunStatus = async (targetProjectId) => {
+    if (!targetProjectId) {
+      setHasPendingPipelineChanges(false);
+      setPipelineStepStatus(null);
+      return;
+    }
+    try {
+      const res = await API.get(`/NRDatas/PipelineRerunStatus`, {
+        params: { ProjectId: targetProjectId },
+      });
+      setHasPendingPipelineChanges(Boolean(res.data?.hasPendingPipelineChanges));
+      setPipelineStepStatus(res.data);
+    } catch (err) {
+      console.error("Failed to fetch pipeline rerun status", err);
+      setHasPendingPipelineChanges(false);
+      setPipelineStepStatus(null);
+    }
+  };
   // Load enabled modules when project changes
   useEffect(() => {
     if (!projectId) {
@@ -446,6 +629,7 @@ const ProcessingPipeline = () => {
         setSteps(initialSteps);
         setSelectedModules([]);
         await checkReportExistence(projectId);
+        await fetchPipelineRerunStatus(projectId);
       } catch (err) {
         console.error("Failed to load enabled modules", err);
         setEnabledModuleNames([]);
@@ -470,6 +654,9 @@ const ProcessingPipeline = () => {
           setSelectedModules(data.affectedReports);
           setConfigChanged(true);
           setChangedFieldsInfo(data.changedModules || []);
+
+          // Refresh pipeline rerun status to update pending flags
+          fetchPipelineRerunStatus(projectId);
 
           // Clear the sessionStorage
           sessionStorage.removeItem("configChangeData");
@@ -506,13 +693,20 @@ const ProcessingPipeline = () => {
   };
 
   const runEnvelope = async (projectId) => {
-    const res = await API.post(`/EnvelopeBreakages/EnvelopeConfiguration?ProjectId=${projectId}`);
+    const res = await API.post(`/EnvelopeBreakageProcessing/ProcessEnvelopeBreaking?ProjectId=${projectId}`);
     message.success(res?.data?.message || "Envelope breaking completed");
   };
 
   const runBoxBreaking = async (projectId, lotNumbers = null) => {
-    const payload = lotNumbers && lotNumbers.length > 0 ? lotNumbers : [];
-    const res = await API.post(`/BoxBreakingProcessing/ProcessBoxBreaking?ProjectId=${projectId}`, payload);
+    // Build query string with lot numbers
+    const params = new URLSearchParams();
+    params.append('ProjectId', projectId);
+
+    if (lotNumbers && lotNumbers.length > 0) {
+      lotNumbers.forEach(lot => params.append('LotNo', lot));
+    }
+
+    const res = await API.post(`/BoxBreakingProcessing/ProcessBoxBreaking?${params.toString()}`);
     message.success(res?.data?.message || "Box breaking completed");
   };
 
@@ -540,44 +734,12 @@ const ProcessingPipeline = () => {
     try {
       // Use the endpoint provided by user
       const res = await API.get(`/NRDataLots/GetByProjectId/${projectId}`);
-      const allData = res.data || [];
-      
-      // Group by lot and count catches manually, ensuring strict uniqueness
-      const lotMap = new Map();
-      allData.forEach(item => {
-        const lotNumber = item.lotNo ?? item.LotNo;
-        const catchNo = item.catchNo ?? item.CatchNo;
-        const lotKey = String(lotNumber).trim();
-
-        if (lotNumber && lotNumber > 0 && lotKey !== "") {
-          if (!lotMap.has(lotKey)) {
-            lotMap.set(lotKey, {
-              lotNo: lotNumber,
-              catches: new Set()
-            });
-          }
-          if (catchNo) {
-            lotMap.get(lotKey).catches.add(catchNo);
-          }
-        }
-      });
-      
-      // Convert to expected format
-      const lots = Array.from(lotMap.values()).map(group => ({
-        lotNo: group.lotNo,
-        catchCount: group.catches.size
-      })).sort((a, b) => a.lotNo - b.lotNo);
-      
-      return lots;
+      const data = res.data || [];
+      return data.filter(lot => lot.lotNo > 0);
     } catch (err) {
       console.error("Failed to fetch lots for selection", err);
       // Fallback to internal route if NRDatas fails
       try {
-        const res = await API.get(`/NRDataLots/GetByProjectId/${projectId}`);
-        return res.data || [];
-      } catch (err) {
-        // Fallback to by-project endpoint if GetByProjectId doesn't exist
-        console.log("Using fallback endpoint for lots");
         const res = await API.get(`/NRDataLots/by-project/${projectId}`);
         const allData = res.data || [];
 
@@ -586,26 +748,33 @@ const ProcessingPipeline = () => {
         allData.forEach(item => {
           if (item.lotNo > 0) {
             if (!lotMap.has(item.lotNo)) {
-              lotMap.set(item.lotNo, new Set());
+              lotMap.set(item.lotNo, { catches: new Set(), steps: [] });
             }
             if (item.catchNo) {
-              lotMap.get(item.lotNo).add(item.catchNo);
+              lotMap.get(item.lotNo).catches.add(item.catchNo);
+            }
+            if (item.steps !== undefined) {
+              lotMap.get(item.lotNo).steps.push(item.steps);
             }
           }
         });
 
         // Convert to expected format
-        const lots = Array.from(lotMap.entries()).map(([lotNo, catches]) => ({
+        const lots = Array.from(lotMap.entries()).map(([lotNo, info]) => ({
           lotNo,
-          catchCount: catches.size
+          catchCount: info.catches.size,
+          minStep: info.steps.length > 0 ? Math.min(...info.steps) : 5
         })).sort((a, b) => a.lotNo - b.lotNo);
 
         return lots;
+      } catch (fallbackErr) {
+        return [];
       }
     }
   };
 
   const fetchMissingEnvLotCatchesForSelection = async (projectIdParam) => {
+    console.log(projectIdParam)
     try {
       const res = await API.get(`/NRDataLots/GetMissingEnvLotCatches/${projectIdParam}`);
       const rawData = res.data || [];
@@ -616,6 +785,33 @@ const ProcessingPipeline = () => {
     } catch (err) {
       console.error("Failed to fetch missing EnvLot catches for selection", err);
       message.error("Failed to load catches missing envelope lot assignments.");
+      return [];
+    }
+  };
+
+  const fetchAssignedEnvLotCatchesForSelection = async (projectIdParam) => {
+    try {
+      const res = await API.get(`/NRDataLots/GetAssignedEnvLotCatches/${projectIdParam}`);
+      const rawData = res.data || [];
+      const grouped = rawData.reduce((acc, item) => {
+        const envLotNo = item.envLotNo ?? item.EnvLotNo;
+        const catchNo = (item.catchNo ?? item.CatchNo ?? "").toString().trim();
+        if (envLotNo && catchNo) {
+          if (!acc[envLotNo]) {
+            acc[envLotNo] = [];
+          }
+          acc[envLotNo].push(catchNo);
+        }
+        return acc;
+      }, {});
+      
+      return Object.entries(grouped).map(([envLotNo, catches]) => ({
+        envLotNo: Number(envLotNo),
+        catches
+      })).sort((a, b) => a.envLotNo - b.envLotNo);
+    } catch (err) {
+      console.error("Failed to fetch assigned EnvLot catches for selection", err);
+      message.error("Failed to load assigned envelope lots.");
       return [];
     }
   };
@@ -678,7 +874,7 @@ const ProcessingPipeline = () => {
     }
   };
 
-  const showEnvLotSelectionModal = (envLots) => {
+  const showEnvLotSelectionModal = (envLots, isRegenerate = false, extraProps = {}) => {
     setEnvLotSearch("");
     return new Promise((resolve) => {
       setEnvLotSelectionModal({
@@ -686,28 +882,31 @@ const ProcessingPipeline = () => {
         availableEnvLots: envLots,
         selectedEnvLots: [],
         loading: false,
-        resolve
+        resolve,
+        isRegenerate,
+        showAssigned: extraProps.showAssigned,
+        assignedEnvLots: extraProps.assignedEnvLots,
+        unassignedCatches: extraProps.unassignedCatches,
+        ...extraProps
       });
     });
   };
 
   const handleEnvLotSelectionConfirm = () => {
-    const { selectedEnvLots, resolve } = envLotSelectionModal;
-    
+    const { selectedEnvLots, resolve, isRegenerate } = envLotSelectionModal;
+
     if (selectedEnvLots.length === 0) {
-      message.warning("Please select at least one catch to process");
+      message.warning(`Please select at least one ${isRegenerate ? 'lot' : 'catch'} to process`);
       return;
     }
 
-    setEnvLotSelectionModal({ 
-      visible: false, 
-      availableEnvLots: [], 
-      selectedEnvLots: [], 
-      loading: false,
-      resolve: null 
-    });
-    setEnvLotSearch("");
+    setEnvLotSelectionModal(prev => ({
+      ...prev,
+      visible: false,
+      resolve: null
+    }));
     
+    setEnvLotSearch("");
     if (resolve) {
       resolve(selectedEnvLots);
     }
@@ -715,16 +914,16 @@ const ProcessingPipeline = () => {
 
   const handleEnvLotSelectionCancel = () => {
     const { resolve } = envLotSelectionModal;
-    
-    setEnvLotSelectionModal({ 
-      visible: false, 
-      availableEnvLots: [], 
-      selectedEnvLots: [], 
+
+    setEnvLotSelectionModal({
+      visible: false,
+      availableEnvLots: [],
+      selectedEnvLots: [],
       loading: false,
-      resolve: null 
+      resolve: null
     });
-    setEnvLotSearch("");
-    
+    setEnvLotSearch("")
+
     if (resolve) {
       resolve(null);
     }
@@ -732,10 +931,19 @@ const ProcessingPipeline = () => {
 
   const handleSelectAllEnvLots = (checked) => {
     if (checked) {
-      setEnvLotSelectionModal(prev => ({
-        ...prev,
-        selectedEnvLots: prev.availableEnvLots.map(lot => lot.catchNo)
-      }));
+      setEnvLotSelectionModal(prev => {
+        let ids = [];
+        if (prev.showAssigned) {
+          ids = (prev.assignedEnvLots || []).map(lot => lot.envLotNo);
+        } else {
+          ids = (prev.unassignedCatches || []).map(lot => lot.catchNo);
+        }
+
+        return {
+          ...prev,
+          selectedEnvLots: ids
+        };
+      });
     } else {
       setEnvLotSelectionModal(prev => ({
         ...prev,
@@ -744,17 +952,29 @@ const ProcessingPipeline = () => {
     }
   };
 
-  const handleEnvLotToggle = (catchNo, checked) => {
+  const handleEnvLotToggle = (itemId, checked) => {
     setEnvLotSelectionModal(prev => {
       const newSelectedEnvLots = checked
-        ? [...prev.selectedEnvLots, catchNo]
-        : prev.selectedEnvLots.filter(l => l !== catchNo);
-      
+        ? [...prev.selectedEnvLots, itemId]
+        : prev.selectedEnvLots.filter(l => l !== itemId);
+
       return {
         ...prev,
         selectedEnvLots: newSelectedEnvLots
       };
     });
+  };
+
+  const isQuantitySheetTemplate = (templateName) => {
+    if (!templateName) return false;
+    const n = templateName.toLowerCase().replace(/[^a-z0-9]/g, "");
+    return n.includes("quantitysheet") || n.includes("qtysheet");
+  };
+
+  const isCompositeSummaryTemplate = (templateName) => {
+    if (!templateName) return false;
+    const n = templateName.toLowerCase().replace(/[^a-z0-9]/g, "");
+    return n.includes("compositesummary");
   };
 
   const showExistingReportModal = (report) => {
@@ -770,7 +990,7 @@ const ProcessingPipeline = () => {
   const handleExistingReportDownload = async () => {
     const { report, resolve } = existingReportModal;
     setExistingReportModal({ visible: false, report: null, resolve: null });
-    
+
     // Automatically expand the reports section for this template when downloading
     if (report?.templateId) {
       setExpandedReportsTemplates(prev => {
@@ -779,7 +999,7 @@ const ProcessingPipeline = () => {
         return newSet;
       });
     }
-    
+
     if (resolve) {
       resolve('download');
     }
@@ -928,9 +1148,19 @@ const ProcessingPipeline = () => {
 
     setSelectedModules((prev) => {
       // Filter ancestors to only include those NOT completed (except the clicked one)
+      // If a step has pending changes (is outdated), it is treated as not completed.
       const keysToSelect = ancestors.filter(key => {
         const step = steps.find(s => s.key === key);
-        return (step && step.status !== "completed") || key === moduleKey;
+        const keyMap = {
+          duplicate: "duplicatePending",
+          enhancement: "enhancementPending",
+          extra: "extraPending",
+          envelopebreaking: "envelopePending",
+          box: "boxPending"
+        };
+        const flag = keyMap[key];
+        const isPending = flag && pipelineStepStatus && pipelineStepStatus[flag];
+        return (step && (step.status !== "completed" || isPending)) || key === moduleKey;
       });
 
       // Merge with existing selections
@@ -992,6 +1222,8 @@ const ProcessingPipeline = () => {
     });
     return map;
   }, [allModules]);
+
+
 
   const templatesByModuleId = useMemo(() => {
     const map = new Map();
@@ -1101,7 +1333,7 @@ const ProcessingPipeline = () => {
     }
   };
 
-  const handleGenerateTemplate = async (template) => {
+  const handleGenerateTemplate = async (template, action = null) => {
     if (!projectId) {
       message.warning("Please select a project");
       return;
@@ -1125,10 +1357,11 @@ const ProcessingPipeline = () => {
       staticVariables = userValues;
     }
 
-    // Fetch available catches missing envelope lot assignment and assign a new EnvLot automatically
     let envLotNumbers = [];
+
     const isQS = isQuantitySheetTemplate(resolveTemplateName(template));
-    
+    const isComposite = isCompositeSummaryTemplate(resolveTemplateName(template));
+
     // Check if template depends on envelope breaking module
     const envelopeBreakingModuleId = moduleKeyToIdMap["envelopebreaking"];
     const templateModuleIds = normalizeModuleIds(template?.moduleIds ?? template?.ModuleIds);
@@ -1136,35 +1369,85 @@ const ProcessingPipeline = () => {
 
     // Only show env lot modal for reports dependent on envelope breakages (excluding QS)
     let assignedCatchNos = [];
-    if (!isQS && isEnvelopeDependent) {
-      const missingCatchItems = await fetchMissingEnvLotCatchesForSelection(projectId);
-      if (missingCatchItems.length > 0) {
-        const selectedCatchNos = await showEnvLotSelectionModal(missingCatchItems);
+    // Debug: log why the missing-catches branch may not run
+    console.debug('handleGenerateTemplate: isQS=', isQS, 'isEnvelopeDependent=', isEnvelopeDependent, 'action=', action, 'projectId=', projectId, 'envelopeBreakingModuleId=', envelopeBreakingModuleId, 'templateModuleIds=', templateModuleIds);
+    if (!isQS && !isComposite && isEnvelopeDependent) {
+      if (action === "regenerate") {
+        const assignedCatchItems = await fetchAssignedEnvLotCatchesForSelection(projectId);
+        if (assignedCatchItems.length > 0) {
+          const templateId = resolveTemplateId(template);
+          
+          let generatedEnvLots = [];
+          if (templateId) {
+             generatedEnvLots = envLotReports
+               .filter(r => r.templateId === templateId)
+               .flatMap(r => r.envLotNumbers);
+          }
+          
+          const hasMappingUpdate = templateId ? isMappingNewerThanReport(templateId) : false;
+          const isStale = templateId ? staleTemplateIds.has(templateId) : false;
+          const templateIsOutdated = hasMappingUpdate || isStale;
+          
+          const selectedEnvLots = await showEnvLotSelectionModal([], true, {
+             assignedEnvLots: assignedCatchItems,
+             generatedEnvLots,
+             templateIsOutdated,
+             staleEnvLotIds,
+             showAssigned: true
+          });
+          if (selectedEnvLots === null) return;
+          if (selectedEnvLots.length > 0) {
+            envLotNumbers = selectedEnvLots;
+          }
+        } else {
+          message.info("No generated envelope lots available for regeneration.");
+          return;
+        }
+      } else {
+        const missingCatchItems = await fetchMissingEnvLotCatchesForSelection(projectId);
+        // Fetch assigned env-lot items so user can optionally show them
+        const assignedCatchItems = await fetchAssignedEnvLotCatchesForSelection(projectId);
+        
+        // Show modal even if all catches are assigned, allowing user to select from assigned envelopes for regeneration
+        const selectedCatchNos = await showEnvLotSelectionModal([], false, { unassignedCatches: missingCatchItems, assignedEnvLots: assignedCatchItems, showAssigned: missingCatchItems.length === 0 });
         if (selectedCatchNos === null) {
           return; // user cancelled
         }
-
         if (selectedCatchNos.length > 0) {
-          const assignResult = await assignEnvLotByCatchNos(selectedCatchNos);
-          if (!assignResult || !assignResult.assignedEnvLotNo) {
-            return;
+          // Separate any selected envLotNos (when user toggled to show assigned) from pure catchNos
+          const allAssignedEnvLotNos = (assignedCatchItems || []).map(a => Number(a.envLotNo));
+          const selectedEnvLotNos = selectedCatchNos
+            .map(s => (typeof s === 'number' ? Number(s) : (String(s).match(/^\d+$/) ? Number(s) : NaN)))
+            .filter(n => !isNaN(n) && allAssignedEnvLotNos.includes(n));
+
+          const selectedCatchOnly = selectedCatchNos.filter(s => !selectedEnvLotNos.includes(Number(s)));
+
+          // If catch numbers selected, assign them to an EnvLot
+          if (selectedCatchOnly.length > 0) {
+            const assignResult = await assignEnvLotByCatchNos(selectedCatchOnly);
+            if (!assignResult || !assignResult.assignedEnvLotNo) {
+              return;
+            }
+            envLotNumbers.push(assignResult.assignedEnvLotNo);
+            assignedCatchNos = selectedCatchOnly;
           }
 
-          envLotNumbers = [assignResult.assignedEnvLotNo];
-          assignedCatchNos = selectedCatchNos;
+          // Include any explicitly selected existing envLot numbers for regeneration
+          if (selectedEnvLotNos.length > 0) {
+            envLotNumbers = envLotNumbers.concat(selectedEnvLotNos);
+          }
         }
       }
     }
 
     // Check if report already exists for this template and envelope lots combination
-    // For QS, an empty envLotNumbers array means generic (all lots)
-    const envLotKey = envLotNumbers.length > 0 ? envLotNumbers.sort((a, b) => a - b).join(',') : (isQS ? "" : null);
-    
+    const envLotKey = envLotNumbers.length > 0 ? envLotNumbers.sort((a, b) => a - b).join(',') : ((isQS || isComposite) ? "" : null);
+
     if (envLotKey !== null) {
-      const existingReport = envLotReports.find(report => 
+      const existingReport = envLotReports.find(report =>
         report.templateId === templateId && (report.envLotKey === envLotKey || (!report.envLotKey && envLotKey === ""))
       );
-      
+
       if (existingReport) {
         // Show confirmation modal for existing report
         const shouldProceed = await showExistingReportModal(existingReport);
@@ -1183,7 +1466,8 @@ const ProcessingPipeline = () => {
       projectId: Number(projectId),
       templateId: Number(templateId),
       ...(Object.keys(staticVariables).length > 0 ? { staticVariables } : {}),
-      ...(envLotNumbers.length > 0 ? { LotNos: envLotNumbers.join(',') } : {}),
+      // Only include LotNos if NOT a quantity sheet template or composite summary
+      ...(envLotNumbers.length > 0 && !isQS && !isComposite ? { LotNos: envLotNumbers.join(',') } : {}),
     };
     const messageKey = `generate-report-${payload.templateId}-${Date.now()}`;
     setGeneratingTemplates((prev) => ({ ...prev, [templateId]: true }));
@@ -1204,14 +1488,14 @@ const ProcessingPipeline = () => {
         3, // max 3 attempts
         1000 // initial delay 1 second
       );
-      
+
       // Extract file path from response headers (try different case variations)
-      const filePath = res.headers['x-generated-file-path'] || 
-                      res.headers['X-Generated-File-Path'] || 
-                      res.headers['X-GENERATED-FILE-PATH'] || null;
+      const filePath = res.headers['x-generated-file-path'] ||
+        res.headers['X-Generated-File-Path'] ||
+        res.headers['X-GENERATED-FILE-PATH'] || null;
       console.log('Generated file path:', filePath);
       console.log('All response headers:', res.headers);
-      
+
       const fileName = buildReportFileName({
         templateName: template?.templateName,
         projectName: projectName || (projectId ? `Project ${projectId}` : undefined),
@@ -1246,7 +1530,7 @@ const ProcessingPipeline = () => {
       });
 
       message.success({ content: "Report generated.", key: messageKey });
-      
+
       // Save the generated envelope lot report to database
       try {
         const reportData = {
@@ -1278,10 +1562,10 @@ const ProcessingPipeline = () => {
           url,
           dbId: savedReport.id
         };
-        
+
         setEnvLotReports(prev => {
           // Remove any existing report with the same template and envLotKey combination
-          const filtered = prev.filter(report => 
+          const filtered = prev.filter(report =>
             !(report.templateId === templateId && report.envLotKey === reportData.envLotNumbers)
           );
           return [newReport, ...filtered]; // Add new report at the beginning
@@ -1298,7 +1582,7 @@ const ProcessingPipeline = () => {
         console.error("Failed to save report to database", saveErr);
         console.error("Error details:", saveErr.response?.data);
         message.warning("Report generated but failed to save to database. It will be lost on refresh.");
-        
+
         // Still show the report locally even if database save fails
         const reportKey = envLotNumbers.sort((a, b) => a - b).join(',');
         const newReport = {
@@ -1313,9 +1597,9 @@ const ProcessingPipeline = () => {
           filePath: filePath, // Include the server file path even if DB save fails
           url,
         };
-        
+
         setEnvLotReports(prev => {
-          const filtered = prev.filter(report => 
+          const filtered = prev.filter(report =>
             !(report.templateId === templateId && report.envLotKey === reportKey)
           );
           return [newReport, ...filtered];
@@ -1386,6 +1670,9 @@ const ProcessingPipeline = () => {
         const rptApiUrl = import.meta.env.VITE_RPT_API_URL;
         const downloadUrl = `${rptApiUrl}/files/${encodeURIComponent(report.filePath)}`;
         
+
+        // Create a download link to the server file
+        const serverFileUrl = `${import.meta.env.VITE_API_BASE_URL}/files/${encodeURIComponent(report.filePath)}`;
         const link = document.createElement("a");
         link.href = downloadUrl;
         link.download = fileName;
@@ -1393,7 +1680,7 @@ const ProcessingPipeline = () => {
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
-        
+
         message.success({ content: "Download started.", key: `download-${report.id}` });
       } catch (err) {
         console.error("Failed to download from server path", err);
@@ -1415,16 +1702,22 @@ const ProcessingPipeline = () => {
 
     try {
       message.loading({ content: "Downloading report...", key: `download-${report.id}` });
-      
-      // Reconstruct the lot numbers for the API call
-      const lotNos = report.envLotNumbers.join(',');
-      
+
+      // Check if this is a quantity sheet template
+      const isQS = isQuantitySheetTemplate(report.templateName);
+
+      const params = {
+        templateId: report.templateId,
+        projectId: Number(projectId),
+      };
+
+      // Only include LotNos if NOT a quantity sheet template
+      if (!isQS && report.envLotNumbers && report.envLotNumbers.length > 0) {
+        params.LotNos = report.envLotNumbers.join(',');
+      }
+
       const res = await axios.get(`${rptApiUrl}/report/generated-download`, {
-        params: {
-          templateId: report.templateId,
-          projectId: Number(projectId),
-          LotNos: lotNos,
-        },
+        params,
         responseType: "blob",
       });
 
@@ -1437,13 +1730,13 @@ const ProcessingPipeline = () => {
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
-      
+
       message.success({ content: "Download started.", key: `download-${report.id}` });
     } catch (err) {
       console.error("Failed to download report", err);
-      message.error({ 
-        content: "Failed to download report. Please regenerate it.", 
-        key: `download-${report.id}` 
+      message.error({
+        content: "Failed to download report. Please regenerate it.",
+        key: `download-${report.id}`
       });
     }
   };
@@ -1469,7 +1762,7 @@ const ProcessingPipeline = () => {
         }
         return prev.filter(r => r.id !== reportId);
       });
-      
+
       message.success("Report deleted successfully.");
     } catch (err) {
       console.error("Failed to delete report", err);
@@ -1635,13 +1928,19 @@ const ProcessingPipeline = () => {
     }
 
     setTemplatePanel({ open: false, moduleKey: null }); // Ensure standard panel is closed
-    setLotWisePanel({ open: true, moduleKey });
+    
+    // Fetch data BEFORE opening the panel to avoid white screen
     await fetchAvailableLots();
+    
+    // Open panel after data is loaded
+    setLotWisePanel({ open: true, moduleKey });
   };
 
   const closeLotWisePanel = () => {
     setLotWisePanel({ open: false, moduleKey: null });
-    setAvailableLots([]);
+    // NOTE: intentionally NOT clearing availableLots or lotReportStatus here.
+    // Those values drive the "X/Y lots completed" badge in the table and must persist
+    // after the panel is closed. They will be refreshed next time the panel opens.
     setSelectedLotTab(null);
   };
 
@@ -1653,11 +1952,12 @@ const ProcessingPipeline = () => {
       let lots = [];
       try {
         const res = await API.get(`/NRDataLots/GetByProjectId/${projectId}`);
-        lots = res.data || [];
+        const data = res.data || [];
+        lots = data.filter(lot => lot.lotNo > 0);
       } catch (err) {
         // Fallback to by-project endpoint if GetByProjectId doesn't exist
         console.log("Using fallback endpoint for lots");
-        const res = await API.get(`/NRDataLots/GetByProjectId/${projectId}`);
+        const res = await API.get(`/NRDataLots/by-project/${projectId}`);
         const allData = res.data || [];
 
         // Group by lot and count catches manually
@@ -1665,18 +1965,22 @@ const ProcessingPipeline = () => {
         allData.forEach(item => {
           if (item.lotNo > 0) {
             if (!lotMap.has(item.lotNo)) {
-              lotMap.set(item.lotNo, new Set());
+              lotMap.set(item.lotNo, { catches: new Set(), steps: [] });
             }
             if (item.catchNo) {
-              lotMap.get(item.lotNo).add(item.catchNo);
+              lotMap.get(item.lotNo).catches.add(item.catchNo);
+            }
+            if (item.steps !== undefined) {
+              lotMap.get(item.lotNo).steps.push(item.steps);
             }
           }
         });
 
         // Convert to expected format
-        lots = Array.from(lotMap.entries()).map(([lotNo, catches]) => ({
+        lots = Array.from(lotMap.entries()).map(([lotNo, info]) => ({
           lotNo,
-          catchCount: catches.size
+          catchCount: info.catches.size,
+          minStep: info.steps.length > 0 ? Math.min(...info.steps) : 5
         })).sort((a, b) => a.lotNo - b.lotNo);
       }
 
@@ -1823,7 +2127,6 @@ const ProcessingPipeline = () => {
         lotNumber: lotNo,
       };
 
-      // Wrap with retry logic
       await retryAsync(
         () => axios.post(
           `${rptApiUrl}/report/generate-dynamic`,
@@ -1869,9 +2172,7 @@ const ProcessingPipeline = () => {
         key: messageKey,
         duration: 6,
       });
-      
-      // Show error details modal if available
-      if (errorDetails) {
+       if (errorDetails) {
         setErrorDetailsModal({
           visible: true,
           error: errorDetails,
@@ -2181,7 +2482,8 @@ const ProcessingPipeline = () => {
 
   const handleSelectAll = (checked) => {
     if (checked) {
-      setSelectedModules(steps.map((s) => s.key));
+      const keys = (data || []).filter(isStepSelectable).map((s) => s.key);
+      setSelectedModules(keys);
     } else {
       setSelectedModules([]);
     }
@@ -2209,13 +2511,13 @@ const ProcessingPipeline = () => {
       extra: {
         value: extraConfigData && extraConfigData.length > 0
           ? extraConfigData.map(ec => {
-              const type = ec.extraType ?? ec.ExtraType;
-              const mode = ec.mode ?? ec.Mode;
-              const nodalValue = ec.nodalValue ?? ec.NodalValue;
-              const typeName = type === 1 ? "Nodal" : type === 2 ? "University" : "Office";
-              const isPerNodal = nodalValue ? " (Different per Nodal)" : " (Unified)";
-              return `${typeName}: ${mode}${isPerNodal}`;
-            })
+            const type = ec.extraType ?? ec.ExtraType;
+            const mode = ec.mode ?? ec.Mode;
+            const nodalValue = ec.nodalValue ?? ec.NodalValue;
+            const typeName = type === 1 ? "Nodal" : type === 2 ? "University" : "Office";
+            const isPerNodal = nodalValue ? " (Different per Nodal)" : " (Unified)";
+            return `${typeName}: ${mode}${isPerNodal}`;
+          })
           : ["Not configured"],
       },
       envelopebreaking: {
@@ -2253,6 +2555,12 @@ const ProcessingPipeline = () => {
       return;
     }
 
+    const hasAnyPendingStep = pipelineStepStatus && Object.values(pipelineStepStatus).some(v => v === true);
+    if (!hasPendingPipelineChanges && !hasAnyPendingStep && !configChanged) {
+      message.info("No new data changes found. Re-run is allowed only after changes (add/remove catch, upload, edit, etc.).");
+      return;
+    }
+
     const allOrder = computeRunOrder(enabledModuleNames);
 
     // Check for unprocessed dependencies
@@ -2286,14 +2594,18 @@ const ProcessingPipeline = () => {
 
   const processModules = async (modulesToProcess) => {
     const allOrder = computeRunOrder(enabledModuleNames);
-    const initialSteps = allOrder.map((o) => ({
-      key: o.key,
-      title: o.title,
-      status: "pending",
-      duration: null,
-      fileUrl: null,
-    }));
-    setSteps(initialSteps);
+    // Only reset the steps being re-run to "pending"; preserve the status of steps NOT selected
+    setSteps((prev) =>
+      allOrder.map((o) => {
+        const existing = prev.find((s) => s.key === o.key);
+        if (modulesToProcess.includes(o.key)) {
+          // This step is being re-run: reset it
+          return { key: o.key, title: o.title, status: "pending", duration: null, fileUrl: null };
+        }
+        // Not being re-run: keep its existing status (may be "completed" etc.)
+        return existing || { key: o.key, title: o.title, status: "pending", duration: null, fileUrl: null };
+      })
+    );
     setIsProcessing(true);
     const stepTimers = new Map();
     const completedSteps = new Set();
@@ -2380,24 +2692,42 @@ const ProcessingPipeline = () => {
             // Fetch available lots before running box breaking
             const lots = await fetchLotsForSelection();
 
-            if (lots.length > 0) {
+            // Filter out unassigned catches or invalid lot numbers (lotNo <= 0)
+            const validLots = lots.filter(lot => lot.lotNo > 0);
+
+            if (validLots.length > 0) {
               // Show lot selection modal for all cases
-              const selectedLots = await showLotSelectionModal(lots);
+              const selectedLots = await showLotSelectionModal(validLots);
 
               if (selectedLots === null) {
                 // User cancelled - stop processing
                 message.info("Box breaking cancelled by user");
                 updateStepStatus(step.key, { status: "pending" });
+                setSelectedModules(prev => prev.filter(m => m !== step.key));
                 break;
               }
 
               // Run box breaking with selected lots
               await runBoxBreaking(projectId, selectedLots);
+
+              // Immediately update availableLots and mark selectedLots as completed
+              // in lotReportStatus so the badge is accurate right away (before the
+              // async checkReportExistence re-confirms via file-existence calls).
+              setAvailableLots(validLots);
+              setLotReportStatus((prev) => {
+                const next = { ...prev };
+                selectedLots.forEach((lotNo) => { next[lotNo] = true; });
+                return next;
+              });
             } else {
-              // No lots found
-              message.warning("No lots found for this project");
-              updateStepStatus(step.key, { status: "failed" });
-              break;
+              Modal.warning({
+                title: "Lot Bifurcation Required",
+                content: "Please complete lot bifurcation before running Box Breaking.",
+                okText: "OK"
+              });
+              updateStepStatus(step.key, { status: "pending" });
+              setSelectedModules(prev => prev.filter(m => m !== step.key));
+              return;
             }
           }
           else if (step.key === "envelopeSummary") await runEnvelopeSummary(projectId);
@@ -2413,6 +2743,15 @@ const ProcessingPipeline = () => {
             fileUrl: null,
           });
           completedSteps.add(step.key);
+
+          // ✅ Reset hasDeactivatedCatches flag when envelope breaking or box breaking completes
+          if ((step.key === "envelopebreaking" || step.key === "box") && hasDeactivatedCatches) {
+            setHasDeactivatedCatches(false);
+          }
+
+          // Refresh status immediately after each step finishes to avoid "Outdated" flicker
+          await fetchPipelineRerunStatus(projectId);
+          await checkReportExistence(projectId);
         } catch (stepErr) {
           console.error(`Step ${step.key} failed`, stepErr);
           updateStepStatus(step.key, { status: "failed" });
@@ -2420,11 +2759,16 @@ const ProcessingPipeline = () => {
         }
       }
       await checkReportExistence(projectId);
+      await fetchPipelineRerunStatus(projectId);
       message.success("Data processing completed");
 
       // Mark modules with templates as stale if their processing step was re-run
       // Also mark downstream modules (steps that come after a re-run step) as stale
       const freshlyRun = modulesToProcess.filter((key) => completedSteps.has(key));
+      setFreshlyRunSteps(new Set(freshlyRun));
+      
+      // Clear the configChanged flag now that fresh run is complete
+      setConfigChanged(false);
       const staleIds = new Set();
       freshlyRun.forEach((runKey) => {
         const runIndex = allOrder.findIndex((s) => s.key === runKey);
@@ -2455,7 +2799,7 @@ const ProcessingPipeline = () => {
 
         if (lots.length > 0) {
           const boxTemplates = getTemplatesForModuleKey("box");
-          
+
           lots.forEach((lot) => {
             boxTemplates.forEach((template) => {
               const templateId = resolveTemplateId(template);
@@ -2490,10 +2834,10 @@ const ProcessingPipeline = () => {
             setAvailableLots(lots);
           }
         }
-        
+
         // Mark all lot-template combinations as stale
         setStaleLotIds(staleKeys);
-        
+
         // Reset lot template status
         setLotTemplateStatus((prev) => {
           const next = { ...prev };
@@ -2505,6 +2849,9 @@ const ProcessingPipeline = () => {
           return next;
         });
       }
+
+      // Refresh report history to include any newly generated reports or maintain existing history
+      await loadEnvLotReports();
 
       // Clear selections and close alert after successful processing
       setSelectedModules([]);
@@ -2558,42 +2905,175 @@ const ProcessingPipeline = () => {
       return normalized.includes(step.key);
     }) || step.title;
 
+    // Default lot counts from step
+    let completedLots = step.completedLots ?? 0;
+    let totalLots = step.totalLots ?? 0;
+
+    // For box breaking use actual available lots and lot report status
+    if (step.key === "box") {
+      const availableCount = (availableLots && availableLots.length) || 0;
+      const reportedCount = Object.keys(lotReportStatus || {}).length || 0;
+      totalLots = Math.max(availableCount, reportedCount, totalLots || 0);
+      // `lotReportStatus` stores booleans per lotNo (true if exists)
+      completedLots = Object.values(lotReportStatus || {}).filter(Boolean).length;
+    }
+
     return {
       key: step.key,
       moduleName: moduleName,
       status: step.status || "pending",
       report: step.fileUrl,
+      completedLots,
+      totalLots,
     };
   });
 
   const showTemplatePanel = templatePanel.open;
   const showLotWisePanel = lotWisePanel.open;
 
+  // Helper to determine if a step is outdated based on realtime flags and lot statuses
+  const isStepOutdated = (step) => {
+    let isOutdated = false;
+    if (pipelineStepStatus) {
+      const keyMap = {
+        duplicate: "duplicatePending",
+        enhancement: "enhancementPending",
+        extra: "extraPending",
+        envelopebreaking: "envelopePending",
+        box: "boxPending",
+      };
+      const pendingFlag = keyMap[step.key];
+      if (pendingFlag && pipelineStepStatus[pendingFlag]) {
+        if (step.key === "box") {
+          isOutdated = (availableLots || []).some(
+            lot => lotReportStatus[lot.lotNo] && lot.minStep < 6
+          );
+        } else {
+          isOutdated = step.status === "completed" || step.report;
+        }
+      }
+    }
+
+    return isOutdated;
+  };
+
+  const isStepSelectable = (step) => {
+    // Selectable if not completed, or completed but outdated (needs re-run)
+    const outdated = isStepOutdated(step);
+    
+    const stepToNumMap = {
+      duplicate: 1,
+      enhancement: 2,
+      extra: 4,
+      envelopebreaking: 5,
+      box: 6,
+    };
+    if (pipelineStepStatus && stepToNumMap[step.key] !== undefined) {
+      const minStep = pipelineStepStatus.minStep ?? 0;
+      const stepNum = stepToNumMap[step.key];
+      if (stepNum < minStep) {
+        return false;
+      }
+    }
+    return !(step.status === "completed" && !outdated);
+  };
+
+  // Keep selectedModules in sync: remove any modules that are no longer selectable
+  useEffect(() => {
+    const selectableKeys = new Set((data || []).filter(isStepSelectable).map(s => s.key));
+    setSelectedModules((prev) => {
+      const next = prev.filter(k => selectableKeys.has(k));
+      // Avoid updating state if nothing changed (prevents infinite re-renders)
+      if (next.length === prev.length && next.every((v, i) => v === prev[i])) {
+        return prev;
+      }
+      return next;
+    });
+  }, [data, pipelineStepStatus, availableLots, lotReportStatus, hasDeactivatedCatches]);
+
   const columns = [
     {
-      title: () => (
-        <Checkbox
-          checked={selectedModules.length === steps.length && steps.length > 0}
-          indeterminate={selectedModules.length > 0 && selectedModules.length < steps.length}
-          onChange={(e) => handleSelectAll(e.target.checked)}
-          disabled={isProcessing || steps.length === 0}
-        >
-          Select
-        </Checkbox>
-      ),
+      title: () => {
+        const selectable = (data || []).filter(isStepSelectable);
+        const selectableKeys = new Set(selectable.map(s => s.key));
+        const selectedSelectableCount = selectedModules.filter(k => selectableKeys.has(k)).length;
+        const selectableCount = selectable.length;
+
+        return (
+          <Checkbox
+            checked={selectedSelectableCount === selectableCount && selectableCount > 0}
+            indeterminate={selectedSelectableCount > 0 && selectedSelectableCount < selectableCount}
+            onChange={(e) => handleSelectAll(e.target.checked)}
+            disabled={isProcessing || selectableCount === 0}
+          >
+            Select
+          </Checkbox>
+        );
+      },
       dataIndex: "select",
       key: "select",
       width: 100,
       render: (_, record) => {
-        let disabled = isProcessing;
+          // Determine if a completed step is actually outdated (so it should remain selectable)
+          let isOutdated = false;
+          if (pipelineStepStatus) {
+            const keyMap = {
+              duplicate: "duplicatePending",
+              enhancement: "enhancementPending",
+              extra: "extraPending",
+              envelopebreaking: "envelopePending",
+              box: "boxPending",
+            };
+            const pendingFlag = keyMap[record.key];
+            if (pendingFlag && pipelineStepStatus[pendingFlag]) {
+                if (record.key === "box") {
+                  isOutdated = (availableLots || []).some(
+                    lot => lotReportStatus[lot.lotNo] && lot.minStep < 6
+                  );
+                } else {
+                  isOutdated = record.status === "completed" || record.report;
+                }
+            }
+          }
 
-        return (
-          <Checkbox
-            checked={selectedModules.includes(record.key)}
-            onChange={(e) => handleModuleSelection(record.key, e.target.checked)}
-            disabled={disabled}
-          />
-        );
+          // If step is completed and NOT outdated, hide selection checkbox
+          if (record.status === "completed" && !isOutdated) {
+            return <Text type="secondary">—</Text>;
+          }
+
+          let disabled = isProcessing;
+          let isOutsideRange = false;
+          if (pipelineStepStatus) {
+            const stepToNumMap = {
+              duplicate: 1,
+              enhancement: 2,
+              extra: 4,
+              envelopebreaking: 5,
+              box: 6,
+            };
+            const stepNum = stepToNumMap[record.key];
+            if (stepNum !== undefined) {
+              const minStep = pipelineStepStatus.minStep ?? 0;
+              if (stepNum < minStep) {
+                isOutsideRange = true;
+                disabled = true;
+              }
+            }
+          }
+
+          if (isOutsideRange) {
+            return <Text type="secondary">—</Text>;
+          }
+
+
+
+          return (
+            <Checkbox
+              checked={selectedModules.includes(record.key)}
+              onChange={(e) => handleModuleSelection(record.key, e.target.checked)}
+              disabled={disabled}
+            />
+          );
       },
     },
     {
@@ -2634,7 +3114,71 @@ const ProcessingPipeline = () => {
       title: "Status",
       dataIndex: "status",
       key: "status",
-      render: (status) => {
+      render: (status, record) => {
+        let displayStatus = status;
+        let isOutdated = false;
+
+        // Compute live box lot counts from availableLots and lotReportStatus to avoid stale record values
+        let currentTotalLots = record.totalLots ?? 0;
+        let currentCompletedLots = record.completedLots ?? 0;
+        if (record.key === "box") {
+          const availableCount = (availableLots && availableLots.length) || 0;
+          const reportedCount = Object.keys(lotReportStatus || {}).length || 0;
+          currentTotalLots = Math.max(availableCount, reportedCount, currentTotalLots || 0);
+          currentCompletedLots = Object.values(lotReportStatus || {}).filter(Boolean).length;
+        }
+
+        // Determine if the backend has flagged pending changes for this step
+        const isBoxPending = record.key === "box" && pipelineStepStatus?.boxPending === true;
+
+        // "All lots completed" shortcut: only applies when there are NO pending data changes.
+        // If boxPending=true the user must be able to re-run, so skip the shortcut.
+        const boxComplete = record.key === "box" && currentTotalLots > 0 && currentCompletedLots >= currentTotalLots && !isBoxPending;
+        if (boxComplete) {
+          displayStatus = "completed";
+          isOutdated = false;
+        }
+
+        // Use real-time DB state if available
+        if (pipelineStepStatus) {
+          const keyMap = {
+            duplicate: "duplicatePending",
+            enhancement: "enhancementPending",
+            extra: "extraPending",
+            envelopebreaking: "envelopePending",
+            box: "boxPending",
+          };
+          const pendingFlag = keyMap[record.key];
+          if (pendingFlag) {
+            if (pipelineStepStatus[pendingFlag]) {
+              if (record.key === "box") {
+                // boxPending=true: data was modified. Show as outdated so user can re-run.
+                // Keep lot-count display if some lots exist, but mark as outdated.
+                isOutdated = (availableLots || []).some(
+                  lot => lotReportStatus[lot.lotNo] && lot.minStep < 6
+                );
+                if (!isOutdated && status !== "in-progress") {
+                  displayStatus = "pending";
+                }
+                // If some/all lots exist, displayStatus stays as-is (shows lot count tag or
+                // completed tag below), but isOutdated=true makes the Outdated tag render instead.
+              } else {
+                if (status !== "in-progress") {
+                  displayStatus = "pending";
+                }
+                if (record.status === "completed" || record.report) {
+                  isOutdated = true;
+                }
+              }
+            } else {
+              // If not pending according to the API, mark it as completed
+              if (displayStatus !== "in-progress") {
+                displayStatus = "completed";
+              }
+            }
+          }
+        }
+
         const colorMap = {
           completed: "green",
           "in-progress": "blue",
@@ -2642,7 +3186,24 @@ const ProcessingPipeline = () => {
           pending: "orange",
           skipped: "default",
         };
-        return <Tag color={colorMap[status] || "default"}>{status}</Tag>;
+
+        if (isOutdated && status !== "in-progress") {
+          return (
+            <Tooltip title="Recent updates require this step to be run again. The current report might be outdated.">
+              <Tag color="orange" icon={<ExclamationCircleOutlined />}>Outdated</Tag>
+            </Tooltip>
+          );
+        }
+
+        if (record.key === "box" && currentCompletedLots > 0 && currentCompletedLots < currentTotalLots) {
+          return (
+            <Tooltip title={`${currentCompletedLots} out of ${currentTotalLots} lots have generated reports. Some data might be outdated if recent changes were made.`}>
+              <Tag color="orange">{currentCompletedLots}/{currentTotalLots} Lots completed</Tag>
+            </Tooltip>
+          );
+        }
+
+        return <Tag color={colorMap[displayStatus] || "default"}>{displayStatus}</Tag>;
       },
     },
     {
@@ -2677,13 +3238,52 @@ const ProcessingPipeline = () => {
       dataIndex: "report",
       key: "report",
       render: (url, record) => {
-        if (record.key === "box") return <Text type="secondary">—</Text>;
-        return url ? (
-          <a href={url} target="_blank" rel="noopener noreferrer" className="text-blue-500">
-            Download
-          </a>
-        ) : (
-          <Text type="secondary">—</Text>
+        if (record.key === "box") {
+          if (!record.completedLots || record.completedLots === 0) {
+            return <Text type="secondary">—</Text>;
+          }
+          return (
+            <Button
+              type="link"
+              onClick={() => openLotWisePanel("box")}
+              style={{ padding: 0 }}
+            >
+              View Lot Reports
+            </Button>
+          );
+        }
+        const versions = reportVersions[record.key] || [];
+        if (versions.length === 0) {
+          return url ? (
+            <a href={url} target="_blank" rel="noopener noreferrer" className="text-blue-500">
+              Download
+            </a>
+          ) : (
+            <Text type="secondary">—</Text>
+          );
+        }
+
+        return (
+          <Select
+            placeholder="Download"
+            size="small"
+            style={{ width: 140 }}
+            value={undefined}
+            onChange={(fileName) => {
+              const fileUrl = `${url3}/${projectId}/${fileName}`;
+              const link = document.createElement("a");
+              link.href = fileUrl;
+              link.download = fileName;
+              link.target = "_blank";
+              document.body.appendChild(link);
+              link.click();
+              document.body.removeChild(link);
+            }}
+            options={versions.map((v) => ({
+              value: v.fileName,
+              label: v.version > 0 ? `v${v.version} (${v.generatedAt})` : `Latest (${v.generatedAt})`,
+            }))}
+          />
         );
       },
     },
@@ -3017,37 +3617,22 @@ const ProcessingPipeline = () => {
   }
 
   return (
-    <div className="p-4">
-      {/* Static Variables Input Modal */}
-      <Modal
-        title={`Enter values for "${staticVarModal.template?.templateName || "Report"}"`}
+    <ErrorBoundary>
+      <div className="p-4">
+      <StaticVariablesModal
         open={staticVarModal.open}
-        onOk={handleStaticVarConfirm}
+        template={staticVarModal.template}
+        variables={staticVarModal.variables}
+        values={staticVarModal.values}
+        onChange={(fieldName, val) =>
+          setStaticVarModal((prev) => ({
+            ...prev,
+            values: { ...prev.values, [fieldName]: val },
+          }))
+        }
+        onConfirm={handleStaticVarConfirm}
         onCancel={handleStaticVarCancel}
-        okText="Generate Report"
-        width={480}
-      >
-        <Typography.Text type="secondary" style={{ display: "block", marginBottom: 16 }}>
-          This report has fields that require custom text. Fill in the values below (pre-filled with saved defaults).
-        </Typography.Text>
-        {Object.entries(staticVarModal.variables || {}).map(([fieldName]) => (
-          <div key={fieldName} style={{ marginBottom: 12 }}>
-            <Typography.Text strong style={{ display: "block", marginBottom: 4 }}>
-              {fieldName}
-            </Typography.Text>
-            <Input
-              value={staticVarModal.values[fieldName] ?? ""}
-              onChange={(e) =>
-                setStaticVarModal((prev) => ({
-                  ...prev,
-                  values: { ...prev.values, [fieldName]: e.target.value },
-                }))
-              }
-              placeholder={`Enter value for ${fieldName}`}
-            />
-          </div>
-        ))}
-      </Modal>
+      />
 
       {configChanged && (
         <Alert
@@ -3057,6 +3642,22 @@ const ProcessingPipeline = () => {
           showIcon
           closable
           onClose={() => setConfigChanged(false)}
+          style={{ marginBottom: 16 }}
+        />
+      )}
+
+      {outdatedModules.length > 0 && (
+        <Alert
+          message="Outdated Reports Detected"
+          description={
+            <div>
+              Recent updates have modified the pipeline. The following reports need to be re-run:{" "}
+              <strong>{outdatedModules.join(", ")}</strong>.
+            </div>
+          }
+          type="warning"
+          showIcon
+          icon={<ExclamationCircleOutlined />}
           style={{ marginBottom: 16 }}
         />
       )}
@@ -3072,9 +3673,74 @@ const ProcessingPipeline = () => {
           ) : (
             <Badge status="default" text="Idle" color="gray" />
           )}
-          <Button type="primary" onClick={handleAudit} disabled={!projectId || isProcessing || selectedModules.length === 0}>
-            Start {selectedModules.length > 0 && `(${selectedModules.length} selected)`}
-          </Button>
+          {(() => {
+            const hasAnyPendingStep = pipelineStepStatus && Object.values(pipelineStepStatus).some(v => v === true);
+            const availableCount = (availableLots && availableLots.length) || 0;
+            const completedCount = Object.values(lotReportStatus || {}).filter(Boolean).length;
+            const boxHasRemaining = availableCount > 0 && completedCount < availableCount;
+            const canStartByData = hasPendingPipelineChanges || hasAnyPendingStep || configChanged || boxHasRemaining;
+            
+            return (
+          <Tooltip
+            title={
+              (!canStartByData)
+                ? "No new data found for processing. All data is already processed."
+                : (selectedModules.length === 0
+                  ? "Please select at least one module"
+                  : (!selectedModules.some(m => {
+                    const keyMap = {
+                      duplicate: "duplicatePending",
+                      enhancement: "enhancementPending",
+                      extra: "extraPending",
+                      envelopebreaking: "envelopePending",
+                      box: "boxPending"
+                    };
+                    const flag = keyMap[m];
+                    if (m === "box") {
+                      const avCount = (availableLots && availableLots.length) || 0;
+                      const compCount = Object.values(lotReportStatus || {}).filter(Boolean).length;
+                      const hasRemainingLots = avCount > 0 && compCount < avCount;
+                      return hasRemainingLots || (pipelineStepStatus && pipelineStepStatus[flag]);
+                    }
+                    return !flag || (pipelineStepStatus && pipelineStepStatus[flag]);
+                  }) && !configChanged)
+                    ? "Selected modules have no pending data to process."
+                    : "")
+            }
+          >
+            <span style={{ cursor: (!canStartByData) || selectedModules.length === 0 ? "not-allowed" : "default" }}>
+              <Button
+                type="primary"
+                onClick={handleAudit}
+                disabled={
+                  !projectId ||
+                  isProcessing ||
+                  selectedModules.length === 0 ||
+                  (!selectedModules.some(m => {
+                    const keyMap = {
+                      duplicate: "duplicatePending",
+                      enhancement: "enhancementPending",
+                      extra: "extraPending",
+                      envelopebreaking: "envelopePending",
+                      box: "boxPending"
+                    };
+                    const flag = keyMap[m];
+                    if (m === "box") {
+                      const avCount = (availableLots && availableLots.length) || 0;
+                      const compCount = Object.values(lotReportStatus || {}).filter(Boolean).length;
+                      const hasRemainingLots = avCount > 0 && compCount < avCount;
+                      return hasRemainingLots || (pipelineStepStatus && pipelineStepStatus[flag]);
+                    }
+                    return !flag || (pipelineStepStatus && pipelineStepStatus[flag]);
+                  }) && !configChanged)
+                }
+              >
+                Start {selectedModules.length > 0 && `(${selectedModules.length} selected)`}
+              </Button>
+            </span>
+          </Tooltip>
+          );
+          })()}
         </div>
       </div>
 
@@ -3113,684 +3779,225 @@ const ProcessingPipeline = () => {
                 pagination={false}
                 loading={loadingModules}
                 rowKey="key"
+                onRow={(record) => {
+                  const keyMap = {
+                    duplicate: "duplicatePending",
+                    enhancement: "enhancementPending",
+                    extra: "extraPending",
+                    envelopebreaking: "envelopePending",
+                    box: "boxPending"
+                  };
+                  const pendingFlag = keyMap[record.key];
+                  const isPending = (pendingFlag && pipelineStepStatus && pipelineStepStatus[pendingFlag]);
+                  const isOutdated = isPending && (record.status === "completed" || record.report || (record.key === "box" && record.completedLots > 0));
+
+                  if (isOutdated) {
+                    return {
+                      style: { background: "#fffbe6" }
+                    };
+                  }
+                  return {};
+                }}
               />
             )}
           </Card>
 
-          {showTemplatePanel && (
-            <Card
-              size="small"
-              className="pipeline-panel"
-              title={
-                <div className="pipeline-panel-title">
-                  <Typography.Text strong>
-                    Templates
-                    {templatePanel.moduleKey
-                      ? ` - ${steps.find((s) => s.key === templatePanel.moduleKey)?.title || "Module"}`
-                      : ""}
-                  </Typography.Text>
-                  <div className="pipeline-panel-actions">
-                    <Button
-                      size="small"
-                      type="primary"
-                      onClick={handleGenerateAllTemplates}
-                      loading={bulkGenerating}
-                    >
-                      Generate All
-                    </Button>
-                    <Button
-                      size="small"
-                      onClick={handleDownloadAllTemplates}
-                      loading={bulkDownloading}
-                    >
-                      Download All
-                    </Button>
-                    <Button size="small" onClick={closeTemplatePanel}>
-                      Close
-                    </Button>
-                  </div>
-                </div>
-              }
-              bodyStyle={{ padding: 0 }}
-              style={{
-                border: "1px solid #d9d9d9",
-                boxShadow: "0 4px 8px rgba(0,0,0,0.1)",
-                borderRadius: 8,
-                alignSelf: "start",
-              }}
-            >
-              <div className="pipeline-panel-body">
-                {templatesLoading ? (
-                  <Text type="secondary">Loading templates...</Text>
-                ) : (
-                  <>
-                    {templatePanel.moduleKey &&
-                      getTemplatesForModuleKey(templatePanel.moduleKey).length === 0 ? (
-                      <Text type="secondary">No templates linked to this module.</Text>
-                    ) : (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                        {getTemplatesForModuleKey(templatePanel.moduleKey || "").map((template) => {
-                          const templateId = resolveTemplateId(template);
-                          const isGenerating = templateId ? generatingTemplates[templateId] : false;
-                          const reportStatus = templateId ? templateReportStatus[templateId] : null;
-                          const hasDownload = templateId
-                            ? Boolean(templateDownloads[templateId]?.url || reportStatus?.exists)
-                            : false;
-                          const hasMappingUpdate = templateId
-                            ? isMappingNewerThanReport(templateId)
-                            : false;
-                          const isStale = staleTemplateIds.has(templateId);
-                          const needsRegenerate = hasMappingUpdate || isStale;
-                          const alreadyGenerated = reportStatus?.exists && !needsRegenerate;
-                          return (
-                            <Card
-                              size="small"
-                              key={templateId || resolveTemplateName(template)}
-                              bodyStyle={{ padding: 12 }}
-                              style={{ borderRadius: 8 }}
-                            >
-                              <div style={{ 
-                                display: 'flex', 
-                                justifyContent: 'space-between', 
-                                alignItems: 'center', 
-                                marginBottom: 8 
-                              }}>
-                                <div style={{ fontWeight: 600 }}>
-                                  {resolveTemplateName(template)}
-                                </div>
-                                <Button
-                                  size="small"
-                                  type={alreadyGenerated ? "default" : "primary"}
-                                  onClick={() => handleGenerateTemplate(template)}
-                                  loading={isGenerating}
-                                >
-                                  {alreadyGenerated ? "Regenerate" : "Generate"}
-                                </Button>
-                              </div>
-                              
-                              {/* Compact Envelope Lot Reports for this template */}
-                              <EnvLotReportsManager
-                                reports={envLotReports}
-                                templateId={templateId}
-                                onDownload={handleDownloadEnvLotReport}
-                                onDelete={handleDeleteEnvLotReport}
-                                compact={true}
-                                activeKey={expandedReportsTemplates.has(templateId) ? ['reports'] : []}
-                                onActiveKeyChange={(activeKey) => handleReportsExpansion(templateId, activeKey)}
-                              />
-                            </Card>
-                          );
-                        })}
-                      </div>
+          <TemplatesPanel
+            open={showTemplatePanel}
+            moduleKey={templatePanel.moduleKey}
+            moduleTitle={templatePanel.moduleKey ? (steps.find((s) => s.key === templatePanel.moduleKey)?.title || "Module") : ""}
+            templates={getTemplatesForModuleKey(templatePanel.moduleKey || "")}
+            templatesLoading={templatesLoading}
+            generatingTemplates={generatingTemplates}
+            templateReportStatus={templateReportStatus}
+            templateDownloads={templateDownloads}
+            staleTemplateIds={staleTemplateIds}
+            staleEnvLotIds={staleEnvLotIds}
+            envLotReports={envLotReports}
+            expandedReportsTemplates={expandedReportsTemplates}
+            bulkGenerating={bulkGenerating}
+            bulkDownloading={bulkDownloading}
+            isMappingNewerThanReport={isMappingNewerThanReport}
+            resolveTemplateId={resolveTemplateId}
+            resolveTemplateName={resolveTemplateName}
+            handleGenerateTemplate={handleGenerateTemplate}
+            handleDownloadEnvLotReport={handleDownloadEnvLotReport}
+            handleDeleteEnvLotReport={handleDeleteEnvLotReport}
+            handleReportsExpansion={handleReportsExpansion}
+            handleGenerateAllTemplates={handleGenerateAllTemplates}
+            handleDownloadAllTemplates={handleDownloadAllTemplates}
+            onClose={closeTemplatePanel}
+            checkIsEnvelopeDependent={(template) => {
+              const envelopeBreakingModuleId = moduleKeyToIdMap["envelopebreaking"];
+              const templateModuleIds = normalizeModuleIds(template?.moduleIds ?? template?.ModuleIds);
+              return envelopeBreakingModuleId && templateModuleIds.includes(envelopeBreakingModuleId);
+            }}
+            isQuantitySheetTemplate={isQuantitySheetTemplate}
+            isCompositeSummaryTemplate={isCompositeSummaryTemplate}
+          />
+          <Modal
+            title="Report Generation Error"
+            open={errorDetailsModal.visible}
+            onCancel={() => setErrorDetailsModal({ visible: false, error: null, retryFn: null, templateId: null })}
+            width={700}
+            footer={[
+              <Button key="close" onClick={() => setErrorDetailsModal({ visible: false, error: null, retryFn: null, templateId: null })}>
+                Close
+              </Button>,
+              errorDetailsModal.retryFn && (
+                <Button key="retry" type="primary" onClick={errorDetailsModal.retryFn}>
+                  Retry Report Generation
+                </Button>
+              )
+            ]}
+          >
+            {errorDetailsModal.error && (
+              <div>
+                <Alert
+                  message="An error occurred while generating the report"
+                  description="The error details are shown below. You can retry the generation or contact support if the problem persists."
+                  type="error"
+                  showIcon
+                  style={{ marginBottom: 16 }}
+                />
+
+                <div style={{ marginBottom: 16 }}>
+                  <Text strong style={{ fontSize: "16px" }}>Error Details:</Text>
+                  <div style={{
+                    backgroundColor: "#f5f5f5",
+                    padding: "12px",
+                    borderRadius: "4px",
+                    marginTop: "8px",
+                    fontFamily: "monospace",
+                    fontSize: "12px",
+                    maxHeight: "400px",
+                    overflowY: "auto",
+                    wordBreak: "break-word"
+                  }}>
+                    <p><strong>Type:</strong> {errorDetailsModal.error.type || 'Unknown'}</p>
+                    <p><strong>Message:</strong> {errorDetailsModal.error.message || 'No message'}</p>
+                    {errorDetailsModal.error.innerMessage && (
+                      <p><strong>Inner Message:</strong> {errorDetailsModal.error.innerMessage}</p>
                     )}
-                  </>
-                )}
-              </div>
-            </Card>
-          )}
-
-          {showLotWisePanel && (
-            <Card
-              size="small"
-              className="pipeline-panel pipeline-panel-wide"
-              title={
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <Typography.Text strong>
-                    Lot-wise Templates and Reports - Box Breaking
-                  </Typography.Text>
-                  <Button size="small" onClick={closeLotWisePanel}>
-                    Close
-                  </Button>
+                    {errorDetailsModal.error.templateId && (
+                      <p><strong>Template ID:</strong> {errorDetailsModal.error.templateId}</p>
+                    )}
+                    {errorDetailsModal.error.projectId && (
+                      <p><strong>Project ID:</strong> {errorDetailsModal.error.projectId}</p>
+                    )}
+                    {errorDetailsModal.error.lotNos && (
+                      <p><strong>Lot Numbers:</strong> {errorDetailsModal.error.lotNos}</p>
+                    )}
+                    {errorDetailsModal.error.timestamp && (
+                      <p><strong>Timestamp:</strong> {errorDetailsModal.error.timestamp}</p>
+                    )}
+                    {errorDetailsModal.error.stackTrace && (
+                      <>
+                        <p><strong>Stack Trace:</strong></p>
+                        <pre style={{ margin: "8px 0", padding: "8px", backgroundColor: "#fff", borderLeft: "2px solid #f5222d" }}>
+                          {errorDetailsModal.error.stackTrace}
+                        </pre>
+                      </>
+                    )}
+                  </div>
                 </div>
-              }
-              bodyStyle={{ padding: 0 }}
-              style={{
-                border: "1px solid #d9d9d9",
-                boxShadow: "0 4px 8px rgba(0,0,0,0.1)",
-                borderRadius: 8,
-                alignSelf: "start",
-              }}
-            >
-              <div className="pipeline-panel-body">
-                {loadingLots ? (
-                  <div style={{ textAlign: "center", padding: "20px" }}>
-                    <Text type="secondary">Loading lots...</Text>
-                  </div>
-                ) : availableLots.length === 0 ? (
-                  <div style={{ textAlign: "center", padding: "20px" }}>
-                    <Text type="secondary">No lots found for this project</Text>
-                  </div>
-                ) : (
-                  <Tabs
-                    activeKey={selectedLotTab?.toString()}
-                    onChange={(key) => setSelectedLotTab(key === "project-wide" ? "project-wide" : Number(key))}
-                    type="card"
-                    size="small"
-                    items={[
-                      {
-                        key: "project-wide",
-                        label: (
-                          <Space size="small">
-                            <Text>Project-wide</Text>
-                          </Space>
-                        ),
-                        children: (
-                          <div style={{ padding: "12px" }}>
-                            <div style={{ marginBottom: 24 }}>
-                              <div style={{
-                                display: "flex",
-                                justifyContent: "space-between",
-                                alignItems: "center",
-                                marginBottom: 12,
-                                paddingBottom: 8,
-                                borderBottom: "2px solid #f0f0f0"
-                              }}>
-                                <Text strong style={{ fontSize: "14px", color: "#1890ff" }}>
-                                  Generic Templates
-                                </Text>
-                              </div>
 
-                              {getTemplatesForModuleKey("box").length === 0 ? (
-                                <Text type="secondary">No templates linked to Box Breaking module.</Text>
-                              ) : (
-                                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                                  {getTemplatesForModuleKey("box").map((template) => {
-                                    const templateId = resolveTemplateId(template);
-                                    const status = templateReportStatus[templateId];
-                                    const isStale = staleTemplateIds.has(templateId);
-                                    const isGenerating = generatingTemplates[templateId];
-                                    
-                                    return (
-                                      <Card
-                                        size="small"
-                                        key={templateId || resolveTemplateName(template)}
-                                        bodyStyle={{ padding: "8px 12px" }}
-                                        style={{ borderRadius: 4, backgroundColor: "#fafafa" }}
-                                      >
-                                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                                          <div style={{ flex: 1 }}>
-                                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                                              <Text strong style={{ fontSize: "13px" }}>
-                                                {resolveTemplateName(template)}
-                                              </Text>
-                                              {status?.exists && !isStale && (
-                                                <Tag color="green" style={{ margin: 0 }}>Ready</Tag>
-                                              )}
-                                            </div>
-                                          </div>
-                                          <Space size="small">
-                                            <Button
-                                              size="small"
-                                              type="primary"
-                                              onClick={() => handleGenerateTemplate(template)}
-                                              loading={isGenerating}
-                                            >
-                                              Generate
-                                            </Button>
-                                            <Button
-                                              size="small"
-                                              onClick={() => handleDownloadTemplate(template)}
-                                              disabled={!status?.exists}
-                                            >
-                                              Download
-                                            </Button>
-                                          </Space>
-                                        </div>
-                                      </Card>
-                                    );
-                                  })}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        )
-                      },
-                      ...availableLots.map((lot) => {
-                      const lotTemplates = getTemplatesForModuleKey("box");
-
-                      // Count generated templates for this lot
-                      const generatedCount = lotTemplates.filter((template) => {
-                        const templateId = resolveTemplateId(template);
-                        if (!templateId) return false;
-                        const statusKey = `${lot.lotNo}_${templateId}`;
-                        const status = lotTemplateStatus[statusKey];
-                        const isStale = staleLotIds.has(statusKey);
-                        return status?.exists && !isStale;
-                      }).length;
-
-                      const hasStale = lotTemplates.some((template) => {
-                        const templateId = resolveTemplateId(template);
-                        if (!templateId) return false;
-                        const statusKey = `${lot.lotNo}_${templateId}`;
-                        return staleLotIds.has(statusKey);
-                      });
-
-                      return {
-                        key: lot.lotNo.toString(),
-                        label: (
-                          <Space size="small">
-                            <Text>Lot {lot.lotNo}</Text>
-                            {hasStale && (
-                              <Tag color="orange" style={{ margin: 0 }}>
-                                ⟳
-                              </Tag>
-                            )}
-                          </Space>
-                        ),
-                        children: (
-                          <div style={{ padding: "12px" }}>
-                            {/* Reports Section - Now First */}
-                            <div style={{ marginBottom: 24 }}>
-                              <div style={{
-                                display: "flex",
-                                justifyContent: "space-between",
-                                alignItems: "center",
-                                marginBottom: 12,
-                                paddingBottom: 8,
-                                borderBottom: "2px solid #f0f0f0"
-                              }}>
-                                <Text strong style={{ fontSize: "14px", color: "#52c41a" }}>
-                                  Reports
-                                </Text>
-                              </div>
-
-                              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                                {/* Box Breaking Report */}
-                                <Card
-                                  size="small"
-                                  bodyStyle={{ padding: "8px 12px" }}
-                                  style={{ borderRadius: 4, backgroundColor: "#fafafa" }}
-                                >
-                                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                                    <div style={{ flex: 1 }}>
-                                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                                        <Text strong style={{ fontSize: "13px" }}>
-                                          Box Breaking Report
-                                        </Text>
-                                        <Text type="secondary" style={{ fontSize: "11px" }}>
-                                          Lot {lot.lotNo}
-                                        </Text>
-                                        {lotReportStatus[lot.lotNo] && (
-                                          <Tag color="green" style={{ margin: 0 }}>
-                                            Ready
-                                          </Tag>
-                                        )}
-                                      </div>
-                                    </div>
-                                    {lotReportStatus[lot.lotNo] ? (
-                                      <Button
-                                        size="small"
-                                        onClick={() => handleDownloadLotReport(lot.lotNo, "BoxBreaking")}
-                                      >
-                                        Download
-                                      </Button>
-                                    ) : (
-                                      <Button
-                                        size="small"
-                                        type="primary"
-                                        onClick={() => handleGenerateAllLots(lot.lotNo)}
-                                        loading={generatingLotReport[lot.lotNo]}
-                                      >
-                                        Generate
-                                      </Button>
-                                    )}
-                                  </div>
-                                </Card>
-                              </div>
-                            </div>
-
-                            {/* Templates Section - Now Second */}
-                            <div style={{ marginBottom: 24 }}>
-                              <div style={{
-                                display: "flex",
-                                justifyContent: "space-between",
-                                alignItems: "center",
-                                marginBottom: 12,
-                                paddingBottom: 8,
-                                borderBottom: "2px solid #f0f0f0"
-                              }}>
-                                <Text strong style={{ fontSize: "14px", color: "#1890ff" }}>
-                                  Templates
-                                </Text>
-                                <Space size="small">
-                                  <Button
-                                    size="small"
-                                    type="primary"
-                                    onClick={() => handleGenerateAllLotTemplates(lot.lotNo)}
-                                    loading={bulkGeneratingLots}
-                                    disabled={lotTemplates.length === 0 || lotTemplates.every((template) => {
-                                      const templateId = resolveTemplateId(template);
-                                      if (!templateId) return true;
-                                      const statusKey = `${lot.lotNo}_${templateId}`;
-                                      const status = lotTemplateStatus[statusKey];
-                                      const isStale = staleLotIds.has(statusKey);
-                                      return status?.exists && !isStale;
-                                    })}
-                                  >
-                                    Generate All
-                                  </Button>
-                                  <Button
-                                    size="small"
-                                    onClick={() => handleDownloadAllLots(lot.lotNo)}
-                                    loading={bulkDownloadingLots}
-                                    disabled={lotTemplates.length === 0 || !lotTemplates.every((template) => {
-                                      const templateId = resolveTemplateId(template);
-                                      if (!templateId) return false;
-                                      const statusKey = `${lot.lotNo}_${templateId}`;
-                                      const status = lotTemplateStatus[statusKey];
-                                      const isStale = staleLotIds.has(statusKey);
-                                      return status?.exists && !isStale;
-                                    })}
-                                  >
-                                    Download All
-                                  </Button>
-                                </Space>
-                              </div>
-
-                              {lotTemplates.length === 0 ? (
-                                <Text type="secondary">No templates linked to Box Breaking module.</Text>
-                              ) : (
-                                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                                  {lotTemplates.map((template) => {
-                                    const templateId = resolveTemplateId(template);
-                                    const statusKey = `${lot.lotNo}_${templateId}`;
-                                    const isGenerating = generatingLotTemplates[statusKey];
-                                    const isDownloading = downloadingLotTemplates[statusKey];
-                                    const status = lotTemplateStatus[statusKey];
-                                    const isStale = staleLotIds.has(statusKey);
-                                    const canGenerate = !status?.exists || isStale;
-                                    const hasDownload = status?.exists && !isStale;
-
-                                    return (
-                                      <Card
-                                        size="small"
-                                        key={templateId || resolveTemplateName(template)}
-                                        bodyStyle={{ padding: "8px 12px" }}
-                                        style={{ borderRadius: 4, backgroundColor: "#fafafa" }}
-                                      >
-                                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                                          <div style={{ flex: 1 }}>
-                                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                                              <Text strong style={{ fontSize: "13px" }}>
-                                                {resolveTemplateName(template)}
-                                              </Text>
-                                              {status?.exists && !isStale && status.generatedAt && (
-                                                <Text type="secondary" style={{ fontSize: "11px" }}>
-                                                  Generated {new Date(status.generatedAt).toLocaleString()}
-                                                </Text>
-                                              )}
-                                            </div>
-                                            {isStale && (
-                                              <Tag color="warning" style={{ fontSize: "10px", marginTop: 4 }}>
-                                                Data updated - regeneration required
-                                              </Tag>
-                                            )}
-                                          </div>
-                                          <Space size="small">
-                                            {canGenerate ? (
-                                              <Button
-                                                size="small"
-                                                type="primary"
-                                                onClick={() => {
-                                                  if (isQuantitySheetTemplate(resolveTemplateName(template))) {
-                                                    handleGenerateTemplate(template);
-                                                  } else {
-                                                    handleGenerateLotTemplate(lot.lotNo, template);
-                                                  }
-                                                }}
-                                                loading={isGenerating}
-                                              >
-                                                Generate
-                                              </Button>
-                                            ) : (
-                                              <Button
-                                                size="small"
-                                                type="primary"
-                                                onClick={() => {
-                                                  if (isQuantitySheetTemplate(resolveTemplateName(template))) {
-                                                    handleGenerateTemplate(template);
-                                                  } else {
-                                                    handleGenerateLotTemplate(lot.lotNo, template);
-                                                  }
-                                                }}
-                                                loading={isGenerating}
-                                              >
-                                                Regenerate
-                                              </Button>
-                                            )}
-                                            <Button
-                                              size="small"
-                                              onClick={() => handleDownloadLotTemplate(lot.lotNo, template)}
-                                              loading={isDownloading}
-                                              disabled={!hasDownload}
-                                            >
-                                              Download
-                                            </Button>
-                                          </Space>
-                                        </div>
-                                      </Card>
-                                    );
-                                  })}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        ),
-                      };
-                    })]}
-                    tabBarStyle={{ margin: 0, paddingLeft: 12, paddingRight: 12 }}
-                  />
-                )}
+                <Alert
+                  message="Retry Tips"
+                  description={
+                    <ul style={{ margin: 0, paddingLeft: "20px" }}>
+                      <li>Check if all required templates and data are available</li>
+                      <li>Verify database connectivity</li>
+                      <li>Try generating with fewer lots or simpler parameters</li>
+                      <li>Contact system administrator if problem persists</li>
+                    </ul>
+                  }
+                  type="info"
+                  showIcon
+                  style={{ marginTop: 16 }}
+                />
               </div>
-            </Card>
-          )}
+            )}
+          </Modal>
+          <LotWisePanel
+            open={showLotWisePanel}
+            projectId={projectId}
+            url3={url3}
+            loadingLots={loadingLots}
+            availableLots={availableLots}
+            selectedLotTab={selectedLotTab}
+            setSelectedLotTab={setSelectedLotTab}
+            getTemplatesForModuleKey={getTemplatesForModuleKey}
+            resolveTemplateId={resolveTemplateId}
+            resolveTemplateName={resolveTemplateName}
+            lotTemplateStatus={lotTemplateStatus}
+            staleLotIds={staleLotIds}
+            generatingLotReport={generatingLotReport}
+            lotReportStatus={lotReportStatus}
+            getBoxVersionsForLot={getBoxVersionsForLot}
+            handleGenerateAllLots={handleGenerateAllLots}
+            generatingLotTemplates={generatingLotTemplates}
+            downloadingLotTemplates={downloadingLotTemplates}
+            handleGenerateLotTemplate={handleGenerateLotTemplate}
+            handleDownloadLotTemplate={handleDownloadLotTemplate}
+            handleGenerateAllLotTemplates={handleGenerateAllLotTemplates}
+            handleDownloadAllLots={handleDownloadAllLots}
+            bulkGeneratingLots={bulkGeneratingLots}
+            bulkDownloadingLots={bulkDownloadingLots}
+            staleTemplateIds={staleTemplateIds}
+            generatingTemplates={generatingTemplates}
+            templateReportStatus={templateReportStatus}
+            handleGenerateTemplate={handleGenerateTemplate}
+            handleDownloadTemplate={handleDownloadTemplate}
+            isQuantitySheetTemplate={isQuantitySheetTemplate}
+            isCompositeSummaryTemplate={isCompositeSummaryTemplate}
+            onClose={closeLotWisePanel}
+          />
         </div>
       </motion.div>
 
-      <Modal
-        title="Unprocessed Dependencies Detected"
-        open={dependencyModal.visible}
+      <DependencyModal
+        visible={dependencyModal.visible}
+        unprocessedSteps={dependencyModal.unprocessedSteps}
         onCancel={() => setDependencyModal({ visible: false, unprocessedSteps: [], selectedStep: null })}
-        footer={[
-          // <Button key="skip" onClick={() => handleDependencyModalOk(false)}>
-          //   Process Only Selected
-          // </Button>,
-          <Button key="include" type="primary" onClick={() => handleDependencyModalOk(true)}>
-            Process All Dependencies
-          </Button>,
-        ]}
-      >
-        <p style={{ marginBottom: 16 }}>
-          The following reports have not been processed yet and are required before running your selected module:
-        </p>
-        <ul style={{ marginBottom: 16 }}>
-          {dependencyModal.unprocessedSteps.map((step) => (
-            <li key={step.key}>{step.title}</li>
-          ))}
-        </ul>
-        <p>
-          <strong>What would you like to do?</strong>
-        </p>
-        <ul style={{ marginLeft: 20 }}>
-          <li><strong>Process Only Selected:</strong> Run only your selected module (may fail if dependencies are missing)</li>
-          <li><strong>Process All Dependencies:</strong> Run all unprocessed dependencies first, then your selected module</li>
-        </ul>
-      </Modal>
+        onConfirm={() => handleDependencyModalOk(true)}
+      />
 
-      {/* Lot Selection Modal */}
-        <Modal
-        title="Select Lots for Box Breaking"
-        open={lotSelectionModal.visible}
-        onOk={handleLotSelectionConfirm}
+      <LotSelectionModal
+        visible={lotSelectionModal.visible}
+        availableLots={lotSelectionModal.availableLots}
+        selectedLots={lotSelectionModal.selectedLots}
+        onToggle={handleLotToggle}
+        onSelectAll={handleSelectAllLots}
+        onConfirm={handleLotSelectionConfirm}
         onCancel={handleLotSelectionCancel}
-        width={600}
-        okText="Process Selected Lots"
-        cancelText="Cancel"
-      >
-        <div style={{ marginBottom: 16 }}>
-          <Alert
-            message="Multiple lots detected"
-            description="Please select which lot(s) you want to process for Box Breaking. You can select all lots or specific ones."
-            type="info"
-            showIcon
-            style={{ marginBottom: 16 }}
-          />
+      />
 
-          <Checkbox
-            checked={lotSelectionModal.selectedLots.length === lotSelectionModal.availableLots.length && lotSelectionModal.availableLots.length > 0}
-            indeterminate={lotSelectionModal.selectedLots.length > 0 && lotSelectionModal.selectedLots.length < lotSelectionModal.availableLots.length}
-            onChange={(e) => handleSelectAllLots(e.target.checked)}
-            style={{ marginBottom: 12, fontWeight: 500 }}
-          >
-            Select All Lots ({lotSelectionModal.availableLots.length})
-          </Checkbox>
-        </div>
-
-        <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 400, overflowY: "auto" }}>
-          {lotSelectionModal.availableLots.map((lot) => (
-            <Card
-              key={lot.lotNo}
-              size="small"
-              style={{
-                backgroundColor: lotSelectionModal.selectedLots.includes(lot.lotNo) ? "#f0f5ff" : "#fafafa",
-                border: lotSelectionModal.selectedLots.includes(lot.lotNo) ? "1px solid #91caff" : "1px solid #d9d9d9"
-              }}
-            >
-              <Checkbox
-                checked={lotSelectionModal.selectedLots.includes(lot.lotNo)}
-                onChange={(e) => handleLotToggle(lot.lotNo, e.target.checked)}
-              >
-                <Space>
-                  <Text strong style={{ fontSize: "14px" }}>Lot {lot.lotNo}</Text>
-                  <Badge
-                    count={lot.catchCount}
-                    style={{ backgroundColor: "#52c41a" }}
-                    title="Number of catches in this lot"
-                  />
-                  <Text type="secondary" style={{ fontSize: "12px" }}>catches</Text>
-                </Space>
-              </Checkbox>
-            </Card>
-          ))}
-        </div>
-
-        {lotSelectionModal.selectedLots.length > 0 && (
-          <div style={{ marginTop: 16, padding: "8px 12px", backgroundColor: "#e6f7ff", borderRadius: 4 }}>
-            <Text strong style={{ color: "#1890ff" }}>
-              {lotSelectionModal.selectedLots.length} lot(s) selected
-            </Text>
-          </div>
-        )}
-      </Modal>
-
-      <Modal
-        title="Select Catches For processing"
-        open={envLotSelectionModal.visible}
-        onOk={handleEnvLotSelectionConfirm}
+      <EnvLotSelectionModal
+        visible={envLotSelectionModal.visible}
+        availableEnvLots={envLotSelectionModal.availableEnvLots}
+        selectedEnvLots={envLotSelectionModal.selectedEnvLots}
+        onToggle={handleEnvLotToggle}
+        onSelectAll={handleSelectAllEnvLots}
+        onConfirm={handleEnvLotSelectionConfirm}
         onCancel={handleEnvLotSelectionCancel}
-        width={600}
-        okText="Generate"
-        cancelText="Cancel"
-      >
-        <div style={{ marginBottom: 16 }}>
-          <Alert
-            message="Catches with missing Envelope Lot"
-            description="Select the catch numbers you want to process."
-            type="info"
-            showIcon
-            style={{ marginBottom: 16 }}
-          />
+        isRegenerate={envLotSelectionModal.isRegenerate}
+        generatedEnvLots={envLotSelectionModal.generatedEnvLots}
+        templateIsOutdated={envLotSelectionModal.templateIsOutdated}
+        staleEnvLotIds={envLotSelectionModal.staleEnvLotIds}
+        assignedEnvLots={envLotSelectionModal.assignedEnvLots}
+        unassignedCatches={envLotSelectionModal.unassignedCatches}
+        showAssigned={envLotSelectionModal.showAssigned}
+        onToggleShowAssigned={(val) => setEnvLotSelectionModal(prev => ({ ...prev, showAssigned: val }))}
+      />
 
-          <Input.Search
-            placeholder="Search Catch No"
-            value={envLotSearch}
-            allowClear
-            onChange={(e) => setEnvLotSearch(e.target.value)}
-            style={{ marginBottom: 12 }}
-          />
-
-          <Checkbox
-            checked={envLotSelectionModal.selectedEnvLots.length === envLotSelectionModal.availableEnvLots.length && envLotSelectionModal.availableEnvLots.length > 0}
-            indeterminate={envLotSelectionModal.selectedEnvLots.length > 0 && envLotSelectionModal.selectedEnvLots.length < envLotSelectionModal.availableEnvLots.length}
-            onChange={(e) => handleSelectAllEnvLots(e.target.checked)}
-            style={{ marginBottom: 12, fontWeight: 500 }}
-          >
-            Select All Catches ({envLotSelectionModal.availableEnvLots.length})
-          </Checkbox>
-        </div>
-
-        <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 400, overflowY: "auto" }}>
-          {envLotSelectionModal.availableEnvLots
-            .filter(item => String(item.catchNo).toLowerCase().includes(envLotSearch.trim().toLowerCase()))
-            .map((catchItem) => (
-              <Card
-                key={catchItem.catchNo}
-                size="small"
-                style={{
-                  backgroundColor: envLotSelectionModal.selectedEnvLots.includes(catchItem.catchNo) ? "#f0f5ff" : "#fafafa",
-                  border: envLotSelectionModal.selectedEnvLots.includes(catchItem.catchNo) ? "1px solid #91caff" : "1px solid #d9d9d9"
-                }}
-              >
-                <Checkbox
-                  checked={envLotSelectionModal.selectedEnvLots.includes(catchItem.catchNo)}
-                  onChange={(e) => handleEnvLotToggle(catchItem.catchNo, e.target.checked)}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                    <Text strong style={{ fontSize: "14px" }}>Catch No {catchItem.catchNo}</Text>
-                  </div>
-                </Checkbox>
-              </Card>
-            ))}
-        </div>
-
-        {envLotSelectionModal.selectedEnvLots.length > 0 && (
-          <div style={{ marginTop: 16, padding: "8px 12px", backgroundColor: "#e6f7ff", borderRadius: 4 }}>
-            <Text strong style={{ color: "#1890ff" }}>
-              {envLotSelectionModal.selectedEnvLots.length} catch(es) selected
-            </Text>
-          </div>
-        )}
-      </Modal>
-
-      {/* Existing Report Modal */}
-      <Modal
-        title="Report Already Exists"
-        open={existingReportModal.visible}
+      <ExistingReportModal
+        visible={existingReportModal.visible}
+        report={existingReportModal.report}
+        onDownload={handleExistingReportDownload}
+        onGenerate={handleExistingReportGenerate}
         onCancel={handleExistingReportCancel}
-        width={500}
-        footer={[
-          <Button key="cancel" onClick={handleExistingReportCancel}>
-            Cancel
-          </Button>,
-          <Button key="download" type="default" onClick={handleExistingReportDownload}>
-            Download Existing
-          </Button>,
-          <Button key="generate" type="primary" onClick={handleExistingReportGenerate}>
-            Generate New
-          </Button>
-        ]}
-      >
-        {existingReportModal.report && (
-          <div>
-            <Alert
-              message="A report already exists for this template and envelope lot combination"
-              description={
-                <div style={{ marginTop: 8 }}>
-                  <p><strong>Template:</strong> {existingReportModal.report.templateName}</p>
-                  <p><strong>Envelope Lots:</strong> {existingReportModal.report.envLotNumbers.join(', ')}</p>
-                  <p><strong>Generated:</strong> {new Date(existingReportModal.report.generatedAt).toLocaleString()}</p>
-                  <p><strong>Generated By:</strong> {existingReportModal.report.generatedBy}</p>
-                </div>
-              }
-              type="warning"
-              showIcon
-              style={{ marginBottom: 16 }}
-            />
-            
-            <p>You can download the existing report or generate a new one to replace it.</p>
-          </div>
-        )}
-      </Modal>
+      />
 
       {/* Error Details Modal */}
       <Modal
@@ -3976,7 +4183,8 @@ const ProcessingPipeline = () => {
            .pipeline-panel-actions .ant-btn { width: 100%; }
         }
       `}</style>
-    </div>
+      </div>
+    </ErrorBoundary>
   );
 };
 

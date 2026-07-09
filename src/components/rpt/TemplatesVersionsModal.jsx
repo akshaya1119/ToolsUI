@@ -45,7 +45,7 @@ const TemplatesVersionsModal = ({
                 <Button size="small" onClick={() => setPendingGenerateTemplate(null)}>
                   Cancel
                 </Button>
-                <Button
+                {/* <Button
                   size="small"
                   type="primary"
                   onClick={() => {
@@ -55,7 +55,7 @@ const TemplatesVersionsModal = ({
                   }}
                 >
                   Generate
-                </Button>
+                </Button> */}
               </Space>
             </Space>
           </Card>

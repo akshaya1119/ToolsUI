@@ -12,6 +12,7 @@ import {
   Button,
   Switch,
   Modal,
+  Checkbox,
 } from "antd";
 import API from "../../hooks/api";
 import { FolderAddFilled, LockFilled, UndoOutlined, PlusOutlined, MinusCircleOutlined, DeleteOutlined } from "@ant-design/icons";
@@ -160,6 +161,22 @@ useEffect(() => {
           </div>
         }
       >
+        <Row style={{ marginBottom: 16 }}>
+          <Col span={24}>
+            <Checkbox
+              checked={extraProcessingConfig?.extraProcessingAsPerNR || false}
+              onChange={(e) =>
+                setExtraProcessingConfig((prev) => ({
+                  ...(prev || {}),
+                  extraProcessingAsPerNR: e.target.checked,
+                }))
+              }
+              disabled={!extraEnabled}
+            >
+              Extra Processing as per NR
+            </Checkbox>
+          </Col>
+        </Row>
         <Row gutter={[16, 16]}>
           {extraTypes.filter((et) => {
     const isNodalExtra = et?.type?.toLowerCase()?.includes("nodal");

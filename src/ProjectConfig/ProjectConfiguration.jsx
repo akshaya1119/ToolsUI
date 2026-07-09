@@ -259,14 +259,14 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
     }
 
     // Fetch box capacities
-    let resolvedCapacity = null;
+      let resolvedCapacity = null;
     try {
       const boxRes = await API.get(`/BoxCapacities`);
       const boxConfig = boxRes.data;
       setBoxCapacities(boxConfig);
-      resolvedCapacity =
-        projectConfig?.boxCapacity ||
-        (boxConfig.length > 0 ? boxConfig[0].id : null);
+        // Prefer BoxCapacityId if present, fall back to id for older payloads
+        const firstCapacityId = boxConfig.length > 0 ? (boxConfig[0].boxCapacityId ?? boxConfig[0].id ?? boxConfig[0].BoxCapacityId ?? null) : null;
+        resolvedCapacity = projectConfig?.boxCapacity ?? firstCapacityId;
       setSelectedCapacity(resolvedCapacity);
     } catch (err) {
       console.error(
@@ -477,6 +477,24 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
 
       extraProcessingParsed[type] = config;
       extraSelections[type] = item.mode;
+    });
+
+    extraProcessingParsed.extraProcessingAsPerNR = extrasConfig.some((item) => {
+      // Accept both PascalCase and camelCase names and boolean or numeric/string values
+      const v1 = item.IsExtraProcessingAsPerNR;
+      const v2 = item.isExtraProcessingAsPerNR;
+      const normalize = (v) => {
+        if (v === true || v === false) return v;
+        if (v === 1 || v === "1") return true;
+        if (v === 0 || v === "0") return false;
+        if (typeof v === "string") {
+          const s = v.toLowerCase();
+          if (s === "true") return true;
+          if (s === "false") return false;
+        }
+        return false;
+      };
+      return normalize(v1) || normalize(v2);
     });
 
     parsedValues.extraProcessingConfig = JSON.parse(
@@ -1047,8 +1065,12 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
 
   // Configuration status
   const envelopeConfigured =
-    isEnabled("Envelope Setup and Enhancement");
-  const boxConfigured = isEnabled("Box Breaking");
+    isEnabled("Envelope Setup and Enhancement") && Array.isArray(selectedEnvelopeFields) && selectedEnvelopeFields.length > 0;
+
+  const boxConfigured = isEnabled("Box Breaking") && (selectedCapacity !== null && selectedCapacity !== undefined) &&
+    Array.isArray(selectedDuplicatefields) && selectedDuplicatefields.length > 0 &&
+    Array.isArray(selectedSortingField) && selectedSortingField.length > 0 &&
+    Array.isArray(selectedBoxFields) && selectedBoxFields.length > 0;
   const extraConfigured = isEnabled(EXTRA_ALIAS_NAME);
   const duplicateConfigured = isEnabled("Duplicate Tool");
 

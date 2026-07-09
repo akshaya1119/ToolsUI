@@ -83,117 +83,127 @@ const EnvLotReportsManager = ({
       new Date(b.generatedAt) - new Date(a.generatedAt)
     );
 
+    const latestReport = sortedReports[0];
+    const otherReports = sortedReports.slice(1);
+
     return (
-      <Collapse
-        ghost
-        size="small"
-        expandIcon={({ isActive }) => <CaretRightOutlined rotate={isActive ? 90 : 0} />}
-        style={{ marginTop: 8 }}
-        activeKey={activeKey}
-        onChange={onActiveKeyChange}
-      >
-        <Panel
-          key="reports"
-          header={
-            <Space size="small">
-              <HistoryOutlined style={{ color: "#1890ff", fontSize: "12px" }} />
-              <Text strong style={{ fontSize: "12px" }}>
-                Generated Reports
-              </Text>
-              <Badge 
-                count={sortedReports.length} 
-                size="small" 
-                style={{ backgroundColor: "#52c41a" }} 
-              />
-            </Space>
-          }
-          style={{ padding: 0 }}
+      <div style={{ marginTop: 8 }}>
+        {/* Latest Report Block */}
+        <div
+          style={{ 
+            padding: "8px 10px",
+            borderRadius: 6, 
+            backgroundColor: "#f6ffed",
+            border: "1px solid #b7eb8f",
+            boxShadow: "0 1px 2px rgba(82, 196, 26, 0.1)",
+            marginBottom: otherReports.length > 0 ? 4 : 0
+          }}
         >
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            {sortedReports.map((report, index) => (
-              <div
-                key={report.id}
-                style={{ 
-                  padding: "6px 8px",
-                  borderRadius: 4, 
-                  backgroundColor: index === 0 ? "#f6ffed" : "#fafafa",
-                  border: index === 0 ? "1px solid #b7eb8f" : "1px solid #e8e8e8",
-                  boxShadow: index === 0 ? "0 1px 2px rgba(82, 196, 26, 0.1)" : "0 1px 2px rgba(0,0,0,0.03)",
-                  transition: "all 0.2s ease",
-                  cursor: "pointer"
-                }}
-                onMouseEnter={(e) => {
-                  e.target.style.backgroundColor = index === 0 ? "#f0f9e7" : "#f0f0f0";
-                }}
-                onMouseLeave={(e) => {
-                  e.target.style.backgroundColor = index === 0 ? "#f6ffed" : "#fafafa";
-                }}
-              >
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 2 }}>
-                      <Text strong style={{ fontSize: "10px", color: "#333", lineHeight: "14px" }}>
-                        {report.templateName}
-                      </Text>
-                      {index === 0 && (
-                        <Tag 
-                          color="gold" 
-                          style={{ 
-                            margin: 0, 
-                            fontSize: "8px", 
-                            fontWeight: 500,
-                            borderRadius: 2,
-                            padding: "0px 3px",
-                            lineHeight: "12px",
-                            height: "12px"
-                          }}
-                        >
-                          Latest
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+                <HistoryOutlined style={{ color: "#52c41a", fontSize: "14px" }} />
+                <Text strong style={{ fontSize: "12px", color: "#333" }}>
+                  Latest Result
+                </Text>
+                <Tag 
+                  color="green" 
+                  style={{ 
+                    margin: 0, 
+                    fontSize: "10px", 
+                    fontWeight: 600,
+                    borderRadius: 3,
+                    padding: "0px 4px",
+                    lineHeight: "16px"
+                  }}
+                >
+                  {formatRelativeTime(latestReport.generatedAt)}
+                </Tag>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                <Text style={{ fontSize: "11px", color: "#666", fontWeight: 500 }}>
+                  {formatEnvLotDisplay(latestReport.envLotNumbers)}
+                </Text>
+                <Text type="secondary" style={{ fontSize: "10px" }}>
+                  by {latestReport.generatedBy} • {formatDateTime(latestReport.generatedAt)}
+                </Text>
+              </div>
+            </div>
+            <Button
+              type="primary"
+              size="small"
+              icon={<DownloadOutlined />}
+              onClick={() => onDownload(latestReport)}
+              style={{ 
+                borderRadius: 4,
+                boxShadow: "0 2px 4px rgba(22, 119, 255, 0.15)"
+              }}
+            >
+              Download
+            </Button>
+          </div>
+        </div>
+
+        {/* Older Reports Collapse */}
+        {otherReports.length > 0 && (
+          <Collapse
+            ghost
+            size="small"
+            expandIcon={({ isActive }) => <CaretRightOutlined rotate={isActive ? 90 : 0} />}
+            activeKey={activeKey}
+            onChange={onActiveKeyChange}
+            style={{ border: "none", backgroundColor: "transparent" }}
+          >
+            <Panel
+              key="reports"
+              header={
+                <Text type="secondary" style={{ fontSize: "11px", fontWeight: 500 }}>
+                  Previous Versions ({otherReports.length})
+                </Text>
+              }
+              style={{ padding: 0 }}
+            >
+              <div style={{ display: "flex", flexDirection: "column", gap: 4, paddingLeft: 12 }}>
+                {otherReports.map((report) => (
+                  <div
+                    key={report.id}
+                    style={{ 
+                      padding: "4px 8px",
+                      borderRadius: 4, 
+                      backgroundColor: "#fafafa",
+                      border: "1px solid #f0f0f0",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center"
+                    }}
+                  >
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                        <Text style={{ fontSize: "11px", fontWeight: 500 }}>
+                          {formatRelativeTime(report.generatedAt)}
+                        </Text>
+                        <Tag style={{ margin: 0, fontSize: "9px", lineHeight: "14px", height: "14px" }}>
+                          {formatEnvLotDisplay(report.envLotNumbers)}
                         </Tag>
-                      )}
-                      <Text style={{ fontSize: "9px", color: "#666", fontWeight: 500 }}>
-                        {formatRelativeTime(report.generatedAt)}
-                      </Text>
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                      <Tag 
-                        color={index === 0 ? "green" : "blue"} 
-                        style={{ 
-                          margin: 0, 
-                          fontSize: "9px", 
-                          fontWeight: 500,
-                          borderRadius: 2,
-                          padding: "0px 4px",
-                          lineHeight: "14px",
-                          height: "14px"
-                        }}
-                      >
-                        {formatEnvLotDisplay(report.envLotNumbers)}
-                      </Tag>
-                      <Text style={{ fontSize: "9px", color: "#999", lineHeight: "12px" }}>
+                      </div>
+                      <Text type="secondary" style={{ fontSize: "9px", display: "block" }}>
                         {formatDateTime(report.generatedAt)}
                       </Text>
                     </div>
+                    <Button
+                      type="text"
+                      size="small"
+                      icon={<DownloadOutlined />}
+                      onClick={() => onDownload(report)}
+                      style={{ fontSize: "10px", color: "#1677ff" }}
+                    />
                   </div>
-                  <Button
-                    type="primary"
-                    size="small"
-                    icon={<DownloadOutlined />}
-                    onClick={() => onDownload(report)}
-                    style={{ 
-                      fontSize: "10px",
-                      height: "20px",
-                      padding: "0 6px",
-                      borderRadius: 3,
-                      marginLeft: 6
-                    }}
-                  />
-                </div>
+                ))}
               </div>
-            ))}
-          </div>
-        </Panel>
-      </Collapse>
+            </Panel>
+          </Collapse>
+        )}
+      </div>
     );
   }
 

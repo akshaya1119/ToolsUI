@@ -45,6 +45,7 @@ import {
   normalizeModuleIds,
   parseMappingJson,
   resolveTemplateId,
+  getErrorDetails,
   retryAsync,
 } from "../utils/rptTemplateUtils";
 import {
@@ -71,6 +72,7 @@ import {
   saveTemplateMapping,
   softDeleteTemplate,
   updateTemplate,
+
   uploadTemplate as uploadTemplateService,
 } from "../services/rptTemplatesService";
 import ProjectTemplatesHeader from "./components/ProjectTemplates/ProjectTemplatesHeader";
@@ -84,7 +86,7 @@ const ProjectTemplates = () => {
   const APIURL = import.meta.env.VITE_API_URL;
   const rptApiUrl = import.meta.env.VITE_RPT_API_URL;
   const token = localStorage.getItem("token");
-
+  const [savingMapping, setSavingMapping] = useState(false);
   const projectId = useStore((state) => state.projectId);
   const projectName = useStore((state) => state.projectName);
 
@@ -121,6 +123,7 @@ const ProjectTemplates = () => {
   const [filterMode, setFilterMode] = useState(null);
   const [mappingPinnedFields, setMappingPinnedFields] = useState([]);
   const [staticVariables, setStaticVariables] = useState({});
+  const [qrConfiguration, setQrConfiguration] = useState({ enabled: false, qrFields: [], separator: "|" });
 
   const [versionsOpen, setVersionsOpen] = useState(false);
   const [versionsLoading, setVersionsLoading] = useState(false);
@@ -579,7 +582,7 @@ const ProjectTemplates = () => {
       moduleIds,
       forceUpload,
     } = params;
-    
+
     const formData = new FormData();
     formData.append("typeId", typeId);
     formData.append("templateName", templateName);
@@ -622,8 +625,8 @@ const ProjectTemplates = () => {
           Array.isArray(check.changes) && check.changes.length > 0
             ? check.changes.map((c) => `- ${c}`).join("\n")
             : check.likelyLayoutOnly
-            ? "Layout/design changes detected (fields are the same but file has changed)."
-            : "Design changes detected.";
+              ? "Layout/design changes detected (fields are the same but file has changed)."
+              : "Design changes detected.";
 
         const confirmed = await MessageService.confirm(
           `Design changes detected since last version:\n\n${changeList}\n\nDo you want to upload this version anyway?`,
@@ -652,7 +655,7 @@ const ProjectTemplates = () => {
       }
       setAddSubmitting(true);
       const file = addFileList[0].originFileObj || addFileList[0];
-      
+
       const result = await uploadTemplate({
         groupId: projectGroupId,
         typeId: projectTypeId,
@@ -775,11 +778,10 @@ const ProjectTemplates = () => {
     try {
       const details = await fetchTemplateDetails(APIURL, template.templateId);
       let currentFields = details;
-      
-      const needsRefresh = !currentFields.requiredFieldsJson && 
-                           !currentFields.RequiredFieldsJson &&
-                           (!currentFields.parsedFieldsJson || currentFields.parsedFieldsJson === "[]") &&
-                           (!currentFields.ParsedFieldsJson || currentFields.ParsedFieldsJson === "[]");
+
+      const needsRefresh =
+        (!currentFields.parsedFieldsJson || currentFields.parsedFieldsJson === "[]") &&
+        (!currentFields.ParsedFieldsJson || currentFields.ParsedFieldsJson === "[]");
 
       if (needsRefresh) {
         setParsedFieldsLoading(true);
@@ -792,14 +794,14 @@ const ProjectTemplates = () => {
           setParsedFieldsLoading(false);
         }
       }
-      
+
       const richFields = extractParsedFields(currentFields);
       setParsedFields(richFields);
 
       const res = await fetchTemplateMapping(APIURL, template.templateId);
       const mappingRaw = res?.mappingJson ?? res?.MappingJson ?? res?.mapping ?? "";
       const parsed = parseMappingJson(mappingRaw);
-      
+
       // Explicitly set the state from the loaded mapping
       const loadedUseBoxLabelSP = parsed.useBoxLabelSP === true;
       console.log("LOADED useBoxLabelSP:", loadedUseBoxLabelSP);
@@ -812,6 +814,7 @@ const ProjectTemplates = () => {
       setStaticVariables(parsed.staticVariables || {});
       setFilterMode(parsed.filterMode ?? null);
       setMappingPinnedFields(Object.keys(parsed.mappings || {}));
+      setQrConfiguration(parsed.qrConfiguration || { enabled: false, qrFields: [], separator: "|" });
       const emptyMapping =
         Object.keys(parsed.mappings || {}).length === 0 &&
         (!parsed.groupBy || parsed.groupBy.length === 0);
@@ -870,6 +873,7 @@ const ProjectTemplates = () => {
         labelCopies: labelCopies ?? 1,
         staticVariables: staticVariables || {},
         useBoxLabelSP: useBoxLabelSP,
+        qrConfiguration: qrConfiguration || { enabled: false, qrFields: [], separator: "|" },
         ...(filterMode ? { filterMode } : {}),
       };
       const hasContent =
@@ -878,7 +882,8 @@ const ProjectTemplates = () => {
         (orderBySelections || []).length > 0 ||
         (labelCopies ?? 1) > 1 ||
         Object.keys(staticVariables || {}).length > 0 ||
-        !!filterMode;
+        !!filterMode ||
+        (qrConfiguration && qrConfiguration.enabled);
       const mappingJson = hasContent ? JSON.stringify(mappingPayload) : "";
       await saveTemplateMapping(
         APIURL,
@@ -1201,14 +1206,14 @@ const ProjectTemplates = () => {
     }
   };
 
-  const handleGenerateReportFromVersion = (template) => {
-    if (!template) return;
-    if (template?.isActive) {
-      runReportGeneration(template);
-      return;
-    }
-    setPendingGenerateTemplate(template);
-  };
+  // const handleGenerateReportFromVersion = (template) => {
+  //   if (!template) return;
+  //   if (template?.isActive) {
+  //     runReportGeneration(template);
+  //     return;
+  //   }
+  //   setPendingGenerateTemplate(template);
+  // };
 
   const handleDownload = async (template) => {
     try {
@@ -1353,14 +1358,14 @@ const ProjectTemplates = () => {
         activatingVersionId,
         confirmActivateVersion,
         handleDownload,
-        onGenerate: handleGenerateReportFromVersion,
+        // onGenerate: handleGenerateReportFromVersion,
       }),
     [
       userMap,
       activatingVersionId,
       confirmActivateVersion,
       handleDownload,
-      handleGenerateReportFromVersion,
+      // handleGenerateReportFromVersion,
     ],
   );
 
@@ -1491,11 +1496,10 @@ const ProjectTemplates = () => {
       />
 
       <div
-        className={`rpt-main ${
-          showMappingPanel || showSidePanel
-            ? "rpt-main--with-panel"
-            : "rpt-main--single"
-        }`}
+        className={`rpt-main ${showMappingPanel || showSidePanel
+          ? "rpt-main--with-panel"
+          : "rpt-main--single"
+          }`}
       >
         <TemplatesCard
           selectionReady={selectionReady}
@@ -1780,6 +1784,8 @@ const ProjectTemplates = () => {
           setStaticVariables={setStaticVariables}
           filterMode={filterMode}
           setFilterMode={setFilterMode}
+          qrConfiguration={qrConfiguration}
+          setQrConfiguration={setQrConfiguration}
           handleSaveMapping={handleSaveMapping}
           savingMapping={savingMapping}
           parsedFieldsLoading={parsedFieldsLoading}

@@ -23,6 +23,7 @@ const Project = () => {
     const [selectedProjectId, setSelectedProjectId] = useState(null);
     const selectedProject = projectNames.find(p => p.projectId === selectedProjectId);
     const [selectedUserIds, setSelectedUserIds] = useState([]); // For multiple user selection
+    const [selectedStatus, setSelectedStatus] = useState(null); // Preserve status when editing
     const token = localStorage.getItem("token");
     const url = import.meta.env.VITE_API_BASE_URL;
     const [pagination, setPagination] = useState({
@@ -32,6 +33,24 @@ const Project = () => {
     });
     
     useEffect(() => {
+        // Authorization check: Managers (RoleId 4) are not allowed to access Project Master
+        const checkAuthorization = async () => {
+            try {
+                const res = await axios.get(`${url}/User`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                });
+                const currentUser = res.data.find(u => u.userId === parseInt(localStorage.getItem("userId") || "0"));
+                if (currentUser && currentUser.roleId === 4) {
+                    message.error("Managers are not authorized to access project master configuration.");
+                    window.history.back();
+                    return;
+                }
+            } catch (err) {
+                console.error("Failed to check authorization", err);
+            }
+        };
+        
+        checkAuthorization();
         fetchProjects(pagination.current, pagination.pageSize);
         fetchCreatedProjectIds();
         fetchProjectNames();
@@ -124,14 +143,16 @@ const Project = () => {
         setName("");
         setSelectedProjectId(null);
         setSelectedUserIds([]); // Reset selected users
+        setSelectedStatus(false); // New projects default to active
         setModalVisible(true);
     };
 
     const handleEdit = (record) => {
         setEditingItem(record);
         setName(record.name);
-        setSelectedProjectId(record.projectId); // Set project from existing record
-        setSelectedUserIds(record.userAssigned || []); // Set selected users from existing record (assuming `userAssigned` is an array)
+        setSelectedProjectId(record.projectId);
+        setSelectedUserIds(record.userAssigned || []);
+        setSelectedStatus(record.status);
         setModalVisible(true);
     };
 
@@ -166,8 +187,8 @@ const Project = () => {
                 projectId: selectedProjectId,
                 userAssigned: selectedUserIds,
                 groupId: selectedProject?.groupId,
-                typeId: selectedProject?.typeId, // Send the list of user IDs
-                status:selectedProject?.status,
+                typeId: selectedProject?.typeId,
+                status: editingItem ? selectedStatus : false, // Preserve status on edit, default active on add
             };
 
             if (editingItem) {
@@ -176,6 +197,15 @@ const Project = () => {
             } else {
                 await API.post('/Projects', payload);
                 message.success('Added successfully');
+                // Clear project-related caches when new project is created
+                try {
+                    localStorage.removeItem('projectsCache');
+                    localStorage.removeItem('projectNamesCache');
+                    sessionStorage.removeItem('projectsCache');
+                    sessionStorage.removeItem('projectNamesCache');
+                } catch (cacheError) {
+                    console.warn('Failed to clear cache:', cacheError);
+                }
             }
 
             setModalVisible(false);

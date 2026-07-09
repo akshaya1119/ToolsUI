@@ -19,14 +19,12 @@ export const getErrorMessage = (err, fallback) => {
   if (typeof err?.message === "string" && err.message.trim()) return err.message;
   return fallback;
 };
-
 export const getErrorDetails = (err) => {
   if (!err) return null;
   const data = err?.response?.data;
   if (data?.data) return data.data; // Return the error details object
   return null;
 };
-
 export const getErrorMessageAsync = async (err, fallback) => {
   const data = err?.response?.data;
   if (typeof Blob !== "undefined" && data instanceof Blob) {
@@ -172,6 +170,7 @@ export const parseMappingJson = (raw) => {
         staticVariables,
         useBoxLabelSP: parsed?.useBoxLabelSP ?? false,
         filterMode: parsed?.filterMode ?? null,
+        qrConfiguration: parsed?.qrConfiguration ?? null,
       };
     }
     if (parsed?.mappings && typeof parsed.mappings === "object") {
@@ -328,3 +327,5 @@ export const retryAsync = async (fn, maxAttempts = 3, initialDelayMs = 1000) => 
   }
   throw lastError;
 };
+
+

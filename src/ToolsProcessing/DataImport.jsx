@@ -1,15 +1,19 @@
 import React, { useEffect, useRef, useState } from 'react';
 import '@ant-design/v5-patch-for-react-19'
-import { Row, Col, Card, Select, Upload, Button, Typography, Space, Table, Tabs, Checkbox, Input, Modal, Radio } from 'antd';
+import { Row, Col, Card, Select, Upload, Button, Typography, Space, Table, Tabs, Checkbox, Input, Modal, Radio, DatePicker, Popconfirm } from 'antd';
+import dayjs from 'dayjs';
 import { MessageService } from "../services/MessageService";
 import { useToast } from '../hooks/useToast';
-import { CheckCircleOutlined, UploadOutlined, ToolOutlined, SearchOutlined, PlusOutlined, EditOutlined,CloseCircleOutlined } from '@ant-design/icons';
+import { CheckCircleOutlined, UploadOutlined, ToolOutlined, SearchOutlined, PlusOutlined, EditOutlined,CloseCircleOutlined, DeleteOutlined } from '@ant-design/icons';
 import * as XLSX from 'xlsx-js-style';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { motion } from 'framer-motion';
+import { useLocation, useNavigate } from 'react-router-dom';
 import API from '../hooks/api';
+import axios from 'axios';
 import useStore from '../stores/ProjectData';
+import { buildReportFileName, resolveTemplateId } from "../utils/rptTemplateUtils";
 import useDebounce from '../services/useDebounce';
 import MissingData from '../components/MissingData';
 import DataImportConflictReport from '../components/DataImportConflictReport';
@@ -23,6 +27,21 @@ const PRIMARY_COLOR = "#1677ff";
 
 const DataImport = () => {
   const { showToast } = useToast();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const isConfigured = useStore((state) => state.isConfigured);
+  const isLoadingData = useStore((state) => state.isLoadingData);
+  const projectId = useStore((state) => state.projectId);
+  const addStaleEnvLotIds = useStore((state) => state.addStaleEnvLotIds);
+  const setHasDeactivatedCatches = useStore((state) => state.setHasDeactivatedCatches);
+
+  useEffect(() => {
+    if (projectId && !isLoadingData && !isConfigured) {
+      showToast("Please complete project configuration first", "warning");
+      navigate("/projectdashboard");
+    }
+  }, [projectId, isLoadingData, isConfigured, navigate, showToast]);
+
   const [fileHeaders, setFileHeaders] = useState([]);
   const [expectedFields, setExpectedFields] = useState([]);
   const [fieldMappings, setFieldMappings] = useState({});
@@ -36,7 +55,6 @@ const DataImport = () => {
   const [uploading, setUploading] = useState(false);
   const [activeTab, setActiveTab] = useState("1");
   const token = localStorage.getItem('token');
-  const projectId = useStore((state) => state.projectId);
   const [keepZeroQuantity, setKeepZeroQuantity] = useState(false);
   const [skipItems, setSkipItems] = useState(false);
   const [quantity, setQuantity] = useState(0);
@@ -47,9 +65,12 @@ const DataImport = () => {
     current: 1,
     pageSize: 10,
   });
-  const [searchText, setSearchText] = useState('');
-  const [searchedColumn, setSearchedColumn] = useState('');
-  const debouncedSearchText = useDebounce(searchText, 500);
+  // Uploaded Data search:
+  // - globalSearchText => top search bar (key = null)
+  // - searchedColumn + columnSearchText => column-specific search (key = searchedColumn)
+  const [globalSearchText, setGlobalSearchText] = useState('');
+  const [columnFilters, setColumnFilters] = useState({});
+  const debouncedGlobalSearchText = useDebounce(globalSearchText, 500);
   const [skippedRows, setSkippedRows] = useState([]);
   const [editableSkippedRows, setEditableSkippedRows] = useState([]); // user-edited cells
   const [selectedUploadedCatchNos, setSelectedUploadedCatchNos] = useState([]);
@@ -62,6 +83,58 @@ const DataImport = () => {
   const lotBifurcationRef = useRef(null);
   const mergeCatchRef = useRef(null);
   const [mergeSelectionCount, setMergeSelectionCount] = useState(0);
+  const [showUploadedDisplayFieldsModal, setShowUploadedDisplayFieldsModal] = useState(false);
+  const [uploadedDisplayFields, setUploadedDisplayFields] = useState([]);
+  const [addedFieldIds, setAddedFieldIds] = useState([]);
+
+  // 👉 Initialize activeTab from localStorage on mount
+  useEffect(() => {
+    const savedTab = localStorage.getItem(`dataImportActiveTab_${projectId}`);
+    if (savedTab) {
+      setActiveTab(savedTab);
+    }
+  }, [projectId]);
+
+  useEffect(() => {
+    const requestedTab = location.state?.activeTab;
+    if (requestedTab) {
+      handleTabChange(String(requestedTab));
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.state?.activeTab, location.pathname]);
+
+  // 👉 Save activeTab to localStorage whenever it changes
+  const handleTabChange = (key) => {
+    setActiveTab(key);
+    localStorage.setItem(`dataImportActiveTab_${projectId}`, key);
+  };
+
+  useEffect(() => {
+    const storageKey = `uploadedData_displayFields_${projectId || "default"}`;
+    const lockedFields = columns.filter((field) => requiredFieldNames.includes(field));
+
+    if (!columns.length) {
+      setUploadedDisplayFields([]);
+      return;
+    }
+
+    const savedValue = localStorage.getItem(storageKey);
+    if (savedValue !== null) {
+      try {
+        const parsed = JSON.parse(savedValue);
+        const validSavedFields = Array.isArray(parsed)
+          ? parsed.filter((field) => columns.includes(field))
+          : [];
+        setUploadedDisplayFields(Array.from(new Set([...lockedFields, ...validSavedFields])));
+        return;
+      } catch (error) {
+        console.warn("Failed to restore uploaded data display fields", error);
+      }
+    }
+
+    setUploadedDisplayFields(Array.from(new Set([...lockedFields, ...columns])));
+  }, [columns, projectId, requiredFieldNames]);
   // Load projects
   useEffect(() => {
     if (!projectId) return;
@@ -110,15 +183,17 @@ const DataImport = () => {
       .catch(err => console.error("Failed to fetch fields", err));
   }, [projectId]);
 
+  // 👉 Lazy load Tab 1 (Uploaded Data) - only when tab is clicked
   useEffect(() => {
-    if (!projectId) return;
+    if (!projectId || activeTab !== "1") return;
     fetchExistingData(projectId);
   }, [
     projectId,
+    activeTab,
     pagination.current,
     pagination.pageSize,
-    debouncedSearchText,
-    searchedColumn,
+    debouncedGlobalSearchText,
+    columnFilters,
     uploadedTableSorter.field,
     uploadedTableSorter.order,
   ]);
@@ -132,8 +207,8 @@ const DataImport = () => {
         params: {
           pageSize: pagination.pageSize,
           pageNo: pagination.current,
-          search: searchText || null,
-          key: searchedColumn || null,
+          search: debouncedGlobalSearchText || null,
+          filters: Object.keys(columnFilters).length ? JSON.stringify(columnFilters) : null,
           sortField: uploadedTableSorter.field || null,
           sortOrder: uploadedTableSorter.order || null,
         },
@@ -197,6 +272,7 @@ const DataImport = () => {
         ...prev,
         total: res.data.totalCount
       }));
+      useStore.getState().setNrDataCount(res.data.totalCount || 0);
       setShowData(res.data.items && res.data.items.length > 0);
       setSelectedUploadedCatchNos([]);
     } catch (err) {
@@ -970,6 +1046,7 @@ const DataImport = () => {
     setFileList([file]); // Show the selected file
     setFileHeaders([]);
     setFieldMappings({});
+    setAddedFieldIds([]);
     proceedWithReading(file);
     return false; // prevent auto upload
   };
@@ -1021,6 +1098,7 @@ const DataImport = () => {
     setFileList([]); // Since only one file is allowed
     setFileHeaders([]);
     setFieldMappings({});
+    setAddedFieldIds([]);
   };
 
   const isAnyFieldMapped = () => {
@@ -1030,6 +1108,7 @@ const DataImport = () => {
     setFileHeaders([]);
     setFileList([]);
     setFieldMappings({});
+    setAddedFieldIds([]);
     setExcelData([]);
     setExpectedFields([]);
     setConflicts(null);
@@ -1093,6 +1172,7 @@ const DataImport = () => {
 
       resetForm();
       fetchExistingData(projectId);
+      // await rerunDuplicateTool();
     } catch (err) {
       console.error("Validation failed", err);
 
@@ -1179,7 +1259,32 @@ const DataImport = () => {
     return date; // Return the original value if it's not a valid date
   };
 
-  const getColumnSearchProps = dataIndex => ({
+  const handleColumnSearch = (selectedKeys, confirm, dataIndex) => {
+    confirm?.();
+    const value = (selectedKeys?.[0] ?? "").toString();
+    setColumnFilters((prev) => {
+      const nextFilters = { ...prev };
+      if (value) {
+        nextFilters[dataIndex] = value;
+      } else {
+        delete nextFilters[dataIndex];
+      }
+      return nextFilters;
+    });
+    setPagination((prev) => ({ ...prev, current: 1 }));
+  };
+
+  const handleColumnReset = (clearFilters, dataIndex) => {
+    clearFilters?.();
+    setColumnFilters((prev) => {
+      const nextFilters = { ...prev };
+      delete nextFilters[dataIndex];
+      return nextFilters;
+    });
+    setPagination((prev) => ({ ...prev, current: 1 }));
+  };
+
+  const getColumnSearchProps = (dataIndex) => ({
     filterDropdown: ({
       setSelectedKeys,
       selectedKeys,
@@ -1190,26 +1295,57 @@ const DataImport = () => {
         <Input
           autoFocus
           placeholder={`Search ${dataIndex}`}
-          value={searchText}
+          value={selectedKeys[0] || columnFilters[dataIndex] || ""}
           onChange={(e) => {
             const val = e.target.value;
-            setSearchText(val);       // update search text
-            setSearchedColumn(dataIndex); // set key immediately
+            setSelectedKeys(val ? [val] : []);
           }}
+          onPressEnter={() => handleColumnSearch(selectedKeys, confirm, dataIndex)}
           style={{ width: 188, marginBottom: 8, display: 'block' }}
         />
+        <Space size={8}>
+          <Button
+            type="primary"
+            size="small"
+            onClick={() => handleColumnSearch(selectedKeys, confirm, dataIndex)}
+            disabled={!selectedKeys?.[0] && !columnFilters[dataIndex]}
+          >
+            Search
+          </Button>
+          <Button
+            size="small"
+            onClick={() => handleColumnReset(clearFilters, dataIndex)}
+            disabled={!columnFilters[dataIndex]}
+          >
+            Reset
+          </Button>
+        </Space>
       </div>
     ),
-    filterIcon: filtered => (
-      <SearchOutlined style={{ color: filtered ? '#1890ff' : undefined }} />
+    filterIcon: () => (
+      <SearchOutlined style={{ color: columnFilters[dataIndex] ? '#1890ff' : undefined }} />
     ),
+    filteredValue: columnFilters[dataIndex] ? [columnFilters[dataIndex]] : null,
     render: text =>
-      searchedColumn === dataIndex ? (
+      columnFilters[dataIndex] ? (
         <span style={{ color: '#1890ff' }}>{text}</span>
       ) : (
         text
       ),
   });
+
+  const parseDateValue = (val) => {
+    if (!val) return null;
+    const d = dayjs(val, "DD-MM-YYYY");
+    return d.isValid() ? d : null;
+  };
+
+  // Build a set of unique field names from master fields — these are NOT editable in the uploaded data tab
+  const uniqueFieldNames = new Set(
+    (expectedFields || [])
+      .filter(f => f.isUnique === true)
+      .map(f => f.name)
+  );
 
   // columnsFromBackend = response.columns
   const enhancedColumns = [
@@ -1224,6 +1360,21 @@ const DataImport = () => {
       sortOrder: uploadedTableSorter.field === col ? uploadedTableSorter.order : null,
       render: (text, record) => {
         if (editingRowId === record.id) {
+          // Unique fields, LotNo, and CatchNo are NOT editable
+          if (uniqueFieldNames.has(col) || col.toLowerCase() === 'lotno' || col.toLowerCase() === 'catchno') {
+            return <span style={{ color: '#8c8c8c', cursor: 'not-allowed' }} title={`${col} – cannot be edited`}>{text}</span>;
+          }
+          if (col === 'ExamDate') {
+            return (
+              <DatePicker
+                size="small"
+                format="DD-MM-YYYY"
+                value={parseDateValue(editFormData[col] ?? text)}
+                onChange={(date) => handleFieldChange(col, date ? date.format("DD-MM-YYYY") : "")}
+                style={{ width: '100%' }}
+              />
+            );
+          }
           return (
             <Input
               size="small"
@@ -1268,19 +1419,89 @@ const DataImport = () => {
           );
         }
         return (
-          <Button
-            type="link"
-            size="small"
-            onClick={() => handleEditRow(record)}
-            style={{ padding: 0, fontSize: '16px' }}
-            title="Edit"
-          >
-            <EditOutlined />
-          </Button>
+          <Space size="small">
+            <Button
+              type="link"
+              size="small"
+              onClick={() => handleEditRow(record)}
+              style={{ padding: 0, fontSize: '16px' }}
+              title="Edit"
+            >
+              <EditOutlined />
+            </Button>
+            <Popconfirm
+              title="Delete row"
+              description={`Are you sure you want to delete this row?`}
+              onConfirm={async () => {
+                await handleDeleteRow(record);
+              }}
+              okText="Yes"
+              cancelText="No"
+              okButtonProps={{ danger: true }}
+            >
+              <Button
+                type="link"
+                size="small"
+                style={{ padding: 0, color: '#ff4d4f', fontSize: '16px' }}
+                title="Delete"
+              >
+                <DeleteOutlined />
+              </Button>
+            </Popconfirm>
+          </Space>
         );
       }
     }
   ];
+
+  const visibleEnhancedColumns = enhancedColumns.filter((column) => {
+    if (column.key === 'actions') {
+      return true;
+    }
+
+    return uploadedDisplayFields.includes(column.dataIndex);
+  });
+
+  const lockedUploadedFields = columns.filter((field) => requiredFieldNames.includes(field));
+
+  const handleDeleteRow = async (record) => {
+    if (!record?.id) return;
+    try {
+      setLoading(true);
+      const token = localStorage.getItem("token");
+      // Soft-delete this specific NRData row by setting Status = false
+      // Before deleting, determine which EnvLot (if any) this catch belongs to so we can mark it stale
+      const catchNo = record?.CatchNo ?? record?.catchNo ?? null;
+      try {
+        if (catchNo && projectId) {
+          const envLotsRes = await API.get(`/NRDataLots/GetAssignedEnvLotCatches/${projectId}`);
+          const assignedLot = (envLotsRes?.data || []).find(l => Array.isArray(l.catches) && l.catches.includes(String(catchNo)));
+          if (assignedLot && assignedLot.envLotNo) {
+            addStaleEnvLotIds([Number(assignedLot.envLotNo)]);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to determine EnvLot before deletion", err);
+      }
+
+      await API.put(`/NRDatas/UpdateSingle/${record.id}`, { Status: false }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      // Notify other parts of app that catches changed
+      setHasDeactivatedCatches(true);
+
+      showToast("Row deleted successfully", "success");
+      // Refresh table
+      await fetchExistingData(projectId);
+    } catch (err) {
+      console.error("Error deleting row:", err);
+      const errorMsg = err?.response?.data || err?.message || "Failed to delete row";
+      showToast(errorMsg, "error");
+    } finally {
+      setLoading(false);
+    }
+  };
 
 const [masterFields, setMasterFields] = useState([]);
 const [loadingFields, setLoadingFields] = useState(false);
@@ -1293,6 +1514,134 @@ const [newRow, setNewRow] = useState({
 const [configuredFields, setConfiguredFields] = useState([]);
 const [editingRowId, setEditingRowId] = useState(null);
 const [editFormData, setEditFormData] = useState({});
+const [originalEditFormData, setOriginalEditFormData] = useState({});
+
+// const rerunDuplicateTool = async () => {
+//   try {
+//     await API.post(`/Duplicate?ProjectId=${projectId}`, null, {
+//       headers: { Authorization: `Bearer ${token}` },
+//     });
+//   } catch (err) {
+//     console.error("Duplicate tool rerun failed:", err);
+//     showToast("Data saved, but duplicate tool rerun failed", "warning");
+//   }
+// };
+
+// Runs envelope breaking + box breaking for a single lot only.
+// skipReset=true ensures global ReportStatus is NOT wiped for other lots.
+// const runTargetedPipelineForLot = async (lotNo, catchNo = null) => {
+//   if (!lotNo) return;
+
+//   try {
+//     // Envelope breaking for this lot only (picks up eligible-step rows naturally)
+//     // Now passing catchNo to support incremental sequence continuity
+//     const queryParams = new URLSearchParams({
+//         ProjectId: projectId,
+//         skipReset: 'true',
+//         lotNo: lotNo
+//     });
+//     if (catchNo) queryParams.append('catchNo', catchNo);
+
+//     await API.post(
+//       `/EnvelopeBreakageProcessing/ProcessEnvelopeBreaking?${queryParams.toString()}`,
+//       null,
+//       { headers: { Authorization: `Bearer ${token}` } }
+//     );
+//   } catch (err) {
+//     // Envelope breaking may not be configured for every project — log and continue
+//     console.warn("Targeted envelope breaking skipped or failed (may be expected):", err?.response?.data || err);
+//   }
+
+//   try {
+//     // Box breaking for this specific lot only (skip global reset)
+//     await API.post(
+//       `/BoxBreakingProcessing/ProcessBoxBreaking?ProjectId=${projectId}&LotNo=${lotNo}&skipReset=true`,
+//       null,
+//       { headers: { Authorization: `Bearer ${token}` } }
+//     );
+//     showToast(`Pipeline updated for lot ${lotNo}`, "success");
+    
+//     // Trigger "Outer" template regeneration if a specific catch was added
+//     if (catchNo) {
+//         await triggerOuterTemplateRegeneration(catchNo);
+//     }
+//   } catch (err) {
+//     console.error("Targeted box breaking failed:", err?.response?.data || err);
+//     showToast("Catch added, but pipeline run for this lot failed. Please re-run manually.", "warning");
+//   }
+// };
+
+const triggerOuterTemplateRegeneration = async (catchNo) => {
+    try {
+        const groupId = localStorage.getItem("selectedGroup");
+        const typeId = localStorage.getItem("selectedType");
+        const rptApiUrl = import.meta.env.VITE_RPT_API_URL;
+        const projectName = useStore.getState().projectName;
+
+        if (!rptApiUrl) {
+            console.warn("RPT API URL not configured, skipping auto-regeneration.");
+            return;
+        }
+
+        // 1. Fetch templates to find "Outer" envelope template
+        const templatesRes = await API.get("/RPTTemplates/by-group", {
+            params: { groupId, typeId, projectId }
+        });
+        
+        const templates = templatesRes.data || [];
+        // Look for template with "Outer" and "Envelope" in name
+        const outerTemplate = templates.find(t => {
+            const name = (t.templateName || "").toLowerCase();
+            return name.includes("outer") && name.includes("envelope");
+        });
+        
+        if (!outerTemplate) {
+            console.warn("Outer envelope template not found for auto-regeneration.");
+            return;
+        }
+
+        const templateId = resolveTemplateId(outerTemplate);
+
+        // 2. Trigger generation via RPT Microservice
+        const payload = {
+            projectId: Number(projectId),
+            templateId: Number(templateId),
+            CatchNos: catchNo // Map single catch to CatchNos filter
+        };
+        
+        const res = await axios.post(`${rptApiUrl}/report/generate-dynamic`, payload, { responseType: 'blob' });
+        
+        // Extract file path from response headers
+        const filePath = res.headers['x-generated-file-path'] || 
+                        res.headers['X-Generated-File-Path'] || 
+                        res.headers['X-GENERATED-FILE-PATH'] || null;
+
+        const fileName = buildReportFileName({
+            templateName: outerTemplate.templateName,
+            projectName: projectName || (projectId ? `Project ${projectId}` : undefined),
+            typeId: outerTemplate.typeId || typeId,
+            envLotNumbers: [parseInt(catchNo)], // Store as single-item array for utility compatibility
+        });
+
+        // 3. Save the generated report info to database (EnvelopeLotReports table)
+        const reportData = {
+            projectId: Number(projectId),
+            templateId,
+            templateName: outerTemplate.templateName,
+            envLotNumbers: catchNo,
+            fileName,
+            generatedBy: 'System (Auto)',
+            filePath: filePath
+        };
+
+        await API.post('/EnvelopeLotReports', reportData);
+        showToast("Outer template regenerated for catch " + catchNo, "success");
+        
+    } catch (err) {
+        console.error("Failed to regenerate outer template:", err);
+        // Don't show error toast to user if auto-generation fails, as the catch was already added successfully.
+    }
+};
 
 const fetchMasterFields = async () => {
   try {
@@ -1387,6 +1736,42 @@ const handleInlineSave = async () => {
       }
     });
 
+    // Verify if new values exist in the database (excluding catchno, quantity, nrquantity, lotno, pages)
+    const fieldsToVerify = Object.keys(rowData).filter(
+      (col) =>
+        col.toLowerCase() !== "catchno" &&
+        col.toLowerCase() !== "quantity" &&
+        col.toLowerCase() !== "nrquantity" &&
+        col.toLowerCase() !== "lotno" &&
+        col.toLowerCase() !== "pages" &&
+        rowData[col] !== null &&
+        rowData[col] !== undefined &&
+        String(rowData[col]).trim() !== ""
+    );
+
+    for (const col of fieldsToVerify) {
+      const newValue = rowData[col];
+      const checkRes = await API.get(`/NRDatas/CheckValueExists/${projectId}`, {
+        params: { fieldName: col, value: newValue }
+      });
+      if (checkRes.data && checkRes.data.exists === false) {
+        const confirmed = await MessageService.confirm(
+          <span>
+            Value <strong>{newValue}</strong> for field <strong>{col}</strong> does not exist in this project. Are you sure you want to add this row?
+          </span>,
+          {
+            title: "Value does not exist",
+            confirmText: "Yes, Add Row",
+            cancelText: "No, Cancel",
+            type: "warning"
+          }
+        );
+        if (!confirmed) {
+          return;
+        }
+      }
+    }
+
     // Use the same endpoint as file upload
     const payload = {
       projectId: Number(projectId),
@@ -1395,7 +1780,7 @@ const handleInlineSave = async () => {
 
     console.log("Sending payload:", payload);
 
-    const response = await API.post(`/NRDatas`, payload, {
+    const response = await API.post(`/NRDatas/single`, payload, {
       headers: { 
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json'
@@ -1414,6 +1799,14 @@ const handleInlineSave = async () => {
     });
 
     fetchExistingData(projectId);
+    // await rerunDuplicateTool();
+
+    // Targeted pipeline: run envelope + box breaking only for the new catch's lot
+    const newLotNo = response.data?.lotNo;
+    const addedCatchNo = response.data?.catchNo;
+    // if (newLotNo) {
+    //   await runTargetedPipelineForLot(newLotNo, addedCatchNo);
+    // }
 
   } catch (err) {
     console.error("Full error:", err);
@@ -1441,11 +1834,13 @@ const handleInlineSave = async () => {
 const handleEditRow = (record) => {
   setEditingRowId(record.id);
   setEditFormData({ ...record });
+  setOriginalEditFormData({ ...record });
 };
 
 const handleCancelEdit = () => {
   setEditingRowId(null);
   setEditFormData({});
+  setOriginalEditFormData({});
 };
 
 const handleSaveEdit = async () => {
@@ -1454,18 +1849,82 @@ const handleSaveEdit = async () => {
   try {
     setLoading(true);
 
-    // Remove the id from the data to send (it's in the URL)
-    const { id, ...dataToSend } = editFormData;
+    const changedPayload = {};
+    columns.forEach((col) => {
+      const oldValue = originalEditFormData?.[col] ?? null;
+      const newValue = editFormData?.[col] ?? null;
+      if (String(oldValue ?? "") !== String(newValue ?? "")) {
+        changedPayload[col] = newValue;
+      }
+    });
+
+    if (Object.keys(changedPayload).length === 0) {
+      showToast("No changes to save", "info");
+      setEditingRowId(null);
+      setEditFormData({});
+      setOriginalEditFormData({});
+      return;
+    }
+
+    // Verify if new values exist in the database (excluding quantity & nrquantity)
+    const fieldsToVerify = Object.keys(changedPayload).filter(
+      (col) =>
+        col.toLowerCase() !== "quantity" &&
+        col.toLowerCase() !== "nrquantity" &&
+        changedPayload[col] !== null &&
+        changedPayload[col] !== undefined &&
+        String(changedPayload[col]).trim() !== ""
+    );
+
+    for (const col of fieldsToVerify) {
+      const newValue = changedPayload[col];
+      const checkRes = await API.get(`/NRDatas/CheckValueExists/${projectId}`, {
+        params: { fieldName: col, value: newValue }
+      });
+      if (checkRes.data && checkRes.data.exists === false) {
+        const confirmed = await MessageService.confirm(
+          <span>
+            Value <strong>{newValue}</strong> for field <strong>{col}</strong> does not exist in this project. Are you sure you want to save?
+          </span>,
+          {
+            title: "Value does not exist",
+            confirmText: "Yes, Save",
+            cancelText: "No, Cancel",
+            type: "warning"
+          }
+        );
+        if (!confirmed) {
+          setLoading(false);
+          return;
+        }
+      }
+    }
 
     // Use the new UpdateSingle endpoint
-    await API.put(`/NRDatas/UpdateSingle/${id}`, dataToSend, {
+    await API.put(`/NRDatas/UpdateSingle/${editingRowId}`, changedPayload, {
       headers: { Authorization: `Bearer ${token}` }
     });
 
     showToast("Data updated successfully", "success");
     setEditingRowId(null);
     setEditFormData({});
+    setOriginalEditFormData({});
     await fetchExistingData(projectId);
+    // await rerunDuplicateTool();
+    // Determine affected catch number(s) and mark their EnvLot(s) stale so users know to regenerate
+    try {
+      const catchNo = originalEditFormData?.CatchNo ?? originalEditFormData?.catchNo ?? editFormData?.CatchNo ?? editFormData?.catchNo ?? null;
+      if (catchNo && projectId) {
+        const envLotsRes = await API.get(`/NRDataLots/GetAssignedEnvLotCatches/${projectId}`);
+        const assignedLot = (envLotsRes?.data || []).find(l => Array.isArray(l.catches) && l.catches.includes(String(catchNo)));
+        if (assignedLot && assignedLot.envLotNo) {
+          addStaleEnvLotIds([Number(assignedLot.envLotNo)]);
+          setHasDeactivatedCatches(true);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to mark EnvLot stale after edit", err);
+    }
   } catch (err) {
     console.error("Error updating data:", err);
     const errorMsg = err?.response?.data?.message || err?.response?.data || err?.message || "Failed to update data";
@@ -1497,6 +1956,7 @@ const handleFieldChange = (fieldName, value) => {
 
       // Clear local state
       setExistingData([]);
+      useStore.getState().setNrDataCount(0);
       setFileList([]);
       setFieldMappings({});
       setFileHeaders({});
@@ -1606,6 +2066,21 @@ const handleFieldChange = (fieldName, value) => {
   }
 }, [addRowOpen]);
 
+  const getMappedFieldsToDisplay = () => {
+    return expectedFields.filter(f => {
+      if (requiredFieldNames.includes(f.name)) return true;
+      if (fieldMappings[f.fieldId]) return true;
+      if (addedFieldIds.includes(f.fieldId)) return true;
+      return false;
+    });
+  };
+
+  const getRemainingFields = () => {
+    const displayed = getMappedFieldsToDisplay();
+    const displayedIds = new Set(displayed.map(d => d.fieldId));
+    return expectedFields.filter(f => !displayedIds.has(f.fieldId));
+  };
+
   return (
     <div style={{ padding: 0 }}>
       {/* === PAGE HEADER === */}
@@ -1677,7 +2152,7 @@ const handleFieldChange = (fieldName, value) => {
             <Col xs={24} md={12}>
               <div style={{ padding: 12, border: "1px solid #d9d9d9", borderRadius: 10, background: "#fff" }}>
                 <Space direction="vertical" size={10} style={{ width: "100%" }}>
-                  <div>
+                  {/* <div>
                     <Text strong>Changed NR Data</Text>
                     <Text type="secondary" style={{ display: "block", fontSize: 12, lineHeight: 1.3}}>
                     Enable this when the file is a Changed NRData.
@@ -1688,7 +2163,7 @@ const handleFieldChange = (fieldName, value) => {
                     onChange={(e) => setIsCorrectedNrdataReport(e.target.checked)}
                   >
                     Changed NR Data
-                  </Checkbox>
+                  </Checkbox> */}
                   
                 </Space>
 
@@ -1743,6 +2218,26 @@ const handleFieldChange = (fieldName, value) => {
             >
               <Card
                 title="Field Mapping"
+                extra={
+                  getRemainingFields().length > 0 && (
+                    <Select
+                      style={{ width: 200 }}
+                      placeholder="+ Add Field to Map"
+                      value={null}
+                      onChange={(value) => {
+                        if (value) {
+                          setAddedFieldIds(prev => [...prev, value]);
+                        }
+                      }}
+                    >
+                      {getRemainingFields().map(f => (
+                        <Select.Option key={f.fieldId} value={f.fieldId}>
+                          {f.name}
+                        </Select.Option>
+                      ))}
+                    </Select>
+                  )
+                }
                 styles={{ body: { paddingTop: 12, paddingBottom: 12 } }}
                 style={{
                   border: "1px solid #d9d9d9",
@@ -1753,11 +2248,11 @@ const handleFieldChange = (fieldName, value) => {
                   type="secondary"
                   style={{ display: "block", marginBottom: 16 }}
                 >
-                  Map fields from your file to expected fields
+                  Map fields from your file to expected fields (Required fields are shown by default)
                 </Text>
 
                 <Row gutter={[16, 16]}>
-                  {[...expectedFields]
+                  {[...getMappedFieldsToDisplay()]
                     .sort((a, b) => {
                       const aReq = requiredFieldNames.includes(a.name);
                       const bReq = requiredFieldNames.includes(b.name);
@@ -1816,6 +2311,9 @@ const handleFieldChange = (fieldName, value) => {
                                   delete updated[expectedField.fieldId];
                                   return updated;
                                 });
+                                if (!requiredFieldNames.includes(expectedField.name)) {
+                                  setAddedFieldIds(prev => prev.filter(id => id !== expectedField.fieldId));
+                                }
                               }}
                             >
                               {fileHeaders
@@ -2033,20 +2531,39 @@ const handleFieldChange = (fieldName, value) => {
                     {field.name}
                     {isRequired && <span style={{ color: "#ff4d4f", marginLeft: 2 }}>*</span>}
                   </Text>
-                  <Input
-                    size="small"
-                    placeholder={field.name}
-                    value={newRow.fields[field.name] || ""}
-                    onChange={(e) => {
-                      setNewRow((prev) => ({
-                        ...prev,
-                        fields: {
-                          ...prev.fields,
-                          [field.name]: e.target.value,
-                        },
-                      }));
-                    }}
-                  />
+                  {field.name === 'ExamDate' ? (
+                    <DatePicker
+                      size="small"
+                      format="DD-MM-YYYY"
+                      placeholder={field.name}
+                      value={parseDateValue(newRow.fields[field.name])}
+                      style={{ width: '100%' }}
+                      onChange={(date) => {
+                        setNewRow((prev) => ({
+                          ...prev,
+                          fields: {
+                            ...prev.fields,
+                            [field.name]: date ? date.format("DD-MM-YYYY") : "",
+                          },
+                        }));
+                      }}
+                    />
+                  ) : (
+                    <Input
+                      size="small"
+                      placeholder={field.name}
+                      value={newRow.fields[field.name] || ""}
+                      onChange={(e) => {
+                        setNewRow((prev) => ({
+                          ...prev,
+                          fields: {
+                            ...prev.fields,
+                            [field.name]: e.target.value,
+                          },
+                        }));
+                      }}
+                    />
+                  )}
                 </Col>
               );
             })}
@@ -2083,18 +2600,35 @@ const handleFieldChange = (fieldName, value) => {
                   />
                 </Col>
                 <Col span={15}>
-                  <Input
-                    size="small"
-                    placeholder="Value"
-                    value={field.value}
-                    onChange={(e) => {
-                      setNewRow((prev) => {
-                        const updated = [...prev.extraFields];
-                        updated[index].value = e.target.value;
-                        return { ...prev, extraFields: updated };
-                      });
-                    }}
-                  />
+                  {field.key === 'ExamDate' ? (
+                    <DatePicker
+                      size="small"
+                      format="DD-MM-YYYY"
+                      placeholder="Value"
+                      value={parseDateValue(field.value)}
+                      style={{ width: "100%" }}
+                      onChange={(date) => {
+                        setNewRow((prev) => {
+                          const updated = [...prev.extraFields];
+                          updated[index].value = date ? date.format("DD-MM-YYYY") : "";
+                          return { ...prev, extraFields: updated };
+                        });
+                      }}
+                    />
+                  ) : (
+                    <Input
+                      size="small"
+                      placeholder="Value"
+                      value={field.value}
+                      onChange={(e) => {
+                        setNewRow((prev) => {
+                          const updated = [...prev.extraFields];
+                          updated[index].value = e.target.value;
+                          return { ...prev, extraFields: updated };
+                        });
+                      }}
+                    />
+                  )}
                 </Col>
                 <Col span={2}>
                   <Button
@@ -2163,10 +2697,18 @@ const handleFieldChange = (fieldName, value) => {
           >
             <Tabs
               activeKey={activeTab}
-              onChange={(key) => setActiveTab(key)}
+              onChange={handleTabChange}
               style={{ marginTop: 8 }}
               tabBarExtraContent={
-                activeTab === "2" ? (
+                activeTab === "1" ? (
+                  <Button
+                    size="small"
+                    onClick={() => setShowUploadedDisplayFieldsModal(true)}
+                    disabled={!columns.length}
+                  >
+                    Display Fields
+                  </Button>
+                ) : activeTab === "2" ? (
                   <Space size={8}>
                     <Button
                       type="primary"
@@ -2206,17 +2748,71 @@ const handleFieldChange = (fieldName, value) => {
               }
             >
               <TabPane tab="Uploaded Data" key="1">
-                {enhancedColumns.length > 0 ? (
-                  <Space direction="vertical" size={12} style={{ width: "100%" }}>
-                   
+                <Space direction="vertical" size={12} style={{ width: "100%" }}>
+                  <Space wrap size={8} style={{ width: "100%", justifyContent: "space-between" }}>
+                    <Space size={8}>
+                      <Input.Search
+                        placeholder="Search uploaded data"
+                        allowClear
+                        value={globalSearchText}
+                        loading={loading && globalSearchText !== ""}
+                        onChange={(e) => {
+                          setGlobalSearchText(e.target.value);
+                          // Top search is global search
+                          setColumnFilters({});
+                          setPagination((prev) => ({ ...prev, current: 1 }));
+                        }}
+                        onSearch={(value) => {
+                          setGlobalSearchText(value);
+                          // Top search is global search
+                          setColumnFilters({});
+                          setPagination((prev) => ({ ...prev, current: 1 }));
+                        }}
+                        style={{ width: 280 }}
+                      />
+                      {(globalSearchText || Object.keys(columnFilters).length > 0) && (
+                        <Button
+                          onClick={() => {
+                            setGlobalSearchText("");
+                            setColumnFilters({});
+                            setPagination((prev) => ({ ...prev, current: 1 }));
+                          }}
+                        >
+                          Reset Filters
+                        </Button>
+                      )}
+                    </Space>
+                  </Space>
+                  {enhancedColumns.length > 0 ? (
                     <Table
                       dataSource={existingData}
-                      columns={enhancedColumns}
+                      columns={visibleEnhancedColumns}
                       pagination={{
                         ...pagination,
                         showSizeChanger: true,
                         pageSizeOptions: ['10', '20', '50', '100'],
                         showQuickJumper: true,
+                      }}
+                      locale={{
+                        emptyText: (
+                          <div style={{ padding: '24px 0', textAlign: 'center' }}>
+                            <Text type="secondary" style={{ display: 'block', marginBottom: 12, fontSize: '15px' }}>
+                              No data available matching your search criteria.
+                            </Text>
+                            {(globalSearchText || Object.keys(columnFilters).length > 0) && (
+                              <Button
+                                type="primary"
+                                onClick={() => {
+                                  setGlobalSearchText("");
+                                  setColumnFilters({});
+                                  setPagination((prev) => ({ ...prev, current: 1 }));
+                                }}
+                              >
+                                Clear Search & Filters
+                              </Button>
+                            )}
+                          </div>
+                        )
                       }}
                       rowKey="id"
                       rowSelection={{
@@ -2284,10 +2880,10 @@ const handleFieldChange = (fieldName, value) => {
                       loading={loading}
                       onChange={handleUploadedTableChange}
                     />
-                  </Space>
-                ) : (
-                  <Typography.Text type="secondary">No data found</Typography.Text>
-                )}
+                  ) : (
+                    <Typography.Text type="secondary">No data found</Typography.Text>
+                  )}
+                </Space>
 
               </TabPane>
 
@@ -2295,22 +2891,97 @@ const handleFieldChange = (fieldName, value) => {
                 {renderConflicts()}
               </TabPane>
               <TabPane tab="Fill Missing Data" key="3">
-                <MissingData />
+                {activeTab === "3" && <MissingData />}
               </TabPane>
               <TabPane tab="Lot Bifurcation" key="4">
-                <LotsBifurcation ref={lotBifurcationRef} />
+                {activeTab === "4" && <LotsBifurcation ref={lotBifurcationRef} />}
               </TabPane>
               <TabPane tab="Merge Catch Numbers" key="5">
-                <MergeCatchNumbers
-                  ref={mergeCatchRef}
-                  onSelectionCountChange={setMergeSelectionCount}
-                />
+                {activeTab === "5" && (
+                  <MergeCatchNumbers
+                    ref={mergeCatchRef}
+                    onSelectionCountChange={setMergeSelectionCount}
+                  />
+                )}
               </TabPane>
             </Tabs>
 
             
           </Card>
         </motion.div>
+
+        <Modal
+          title="Select Display Fields"
+          open={showUploadedDisplayFieldsModal}
+          onCancel={() => setShowUploadedDisplayFieldsModal(false)}
+          footer={[
+            <Button
+              key="selectAll"
+              size="small"
+              onClick={() => {
+                setUploadedDisplayFields([...columns]);
+                localStorage.setItem(
+                  `uploadedData_displayFields_${projectId || "default"}`,
+                  JSON.stringify(columns)
+                );
+              }}
+              disabled={columns.length === 0}
+            >
+              Select All
+            </Button>,
+            <Button
+              key="clearAll"
+              size="small"
+              onClick={() => {
+                setUploadedDisplayFields([...lockedUploadedFields]);
+                localStorage.setItem(
+                  `uploadedData_displayFields_${projectId || "default"}`,
+                  JSON.stringify(lockedUploadedFields)
+                );
+              }}
+              disabled={uploadedDisplayFields.length === lockedUploadedFields.length}
+            >
+              Clear All
+            </Button>,
+            <Button
+              key="ok"
+              type="primary"
+              onClick={() => setShowUploadedDisplayFieldsModal(false)}
+            >
+              OK
+            </Button>
+          ]}
+          width={500}
+        >
+          <div style={{ marginBottom: 16 }}>
+            <Text type="secondary">
+              Select fields from the uploaded data table to show or hide columns.
+            </Text>
+          </div>
+          <Checkbox.Group
+            style={{ width: "100%", display: "flex", flexDirection: "column", gap: 8 }}
+            value={uploadedDisplayFields}
+            onChange={(checkedValues) => {
+              const nextValues = Array.from(new Set([...lockedUploadedFields, ...checkedValues]));
+              setUploadedDisplayFields(nextValues);
+              localStorage.setItem(
+                `uploadedData_displayFields_${projectId || "default"}`,
+                JSON.stringify(nextValues)
+              );
+            }}
+          >
+            {columns.map((field) => (
+              <Checkbox
+                key={field}
+                value={field}
+                disabled={lockedUploadedFields.includes(field)}
+              >
+                {field}
+                {lockedUploadedFields.includes(field) ? " (Configured)" : ""}
+              </Checkbox>
+            ))}
+          </Checkbox.Group>
+        </Modal>
       </>
 
     </div>

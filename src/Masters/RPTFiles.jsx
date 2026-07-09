@@ -47,11 +47,10 @@ const RPTFiles = () => {
   const url = import.meta.env.VITE_API_BASE_URL;
   const APIURL = import.meta.env.VITE_API_URL;
   const token = localStorage.getItem("token");
-
   const [useBoxLabelSP, setUseBoxLabelSP] = useState(false);
   const [staticVariables, setStaticVariables] = useState({});
   const [filterMode, setFilterMode] = useState(null);
-
+  const [savingMapping, setSavingMapping] = useState(false);
   const [groupOptions, setGroupOptions] = useState([]);
   const [typeOptions, setTypeOptions] = useState([]);
   const [userOptions, setUserOptions] = useState([]);
@@ -82,6 +81,7 @@ const RPTFiles = () => {
   const [orderBySelections, setOrderBySelections] = useState([]);
   const [labelCopies, setLabelCopies] = useState(1);
   const [mappingPinnedFields, setMappingPinnedFields] = useState([]);
+  const [qrConfiguration, setQrConfiguration] = useState({ enabled: false, qrFields: [], separator: "|" });
 
   const [versionsOpen, setVersionsOpen] = useState(false);
   const [versionsLoading, setVersionsLoading] = useState(false);
@@ -744,6 +744,7 @@ setUseBoxLabelSP(parsed.useBoxLabelSP || false);
       setOrderBySelections(Array.isArray(parsed.orderBy) ? parsed.orderBy : []);
       setLabelCopies(Number.isFinite(parsed.labelCopies) && parsed.labelCopies >= 1 ? parsed.labelCopies : 1);
       setMappingPinnedFields(Object.keys(parsed.mappings || {}));
+      setQrConfiguration(parsed.qrConfiguration || { enabled: false, qrFields: [], separator: "|" });
       const emptyMapping =
         Object.keys(parsed.mappings || {}).length === 0 &&
         (!parsed.groupBy || parsed.groupBy.length === 0);
@@ -803,11 +804,17 @@ setUseBoxLabelSP(parsed.useBoxLabelSP || false);
         staticVariables: staticVariables || {},
   filterMode: filterMode || null,
   useBoxLabelSP: useBoxLabelSP || false,
+  qrConfiguration: qrConfiguration || { enabled: false, qrFields: [], separator: "|" },
       };
-      const mappingJson =
-        mappingsPayload.length > 0 || (groupBySelections || []).length > 0 || (orderBySelections || []).length > 0 || (labelCopies ?? 1) > 1
-          ? JSON.stringify(mappingPayload)
-          : "";
+      const hasContent =
+        mappingsPayload.length > 0 ||
+        (groupBySelections || []).length > 0 ||
+        (orderBySelections || []).length > 0 ||
+        (labelCopies ?? 1) > 1 ||
+        Object.keys(staticVariables || {}).length > 0 ||
+        !!filterMode ||
+        (qrConfiguration && qrConfiguration.enabled);
+      const mappingJson = hasContent ? JSON.stringify(mappingPayload) : "";
       await saveTemplateMapping(
         APIURL,
         mappingTemplate.templateId,
@@ -828,7 +835,7 @@ setUseBoxLabelSP(parsed.useBoxLabelSP || false);
       console.error("Failed to save mapping", err);
       showError(err, "Failed to save mapping.");
     } finally {
-      setSavingMapping(false);
+    setSavingMapping(false);
     }
   };
 
@@ -1439,6 +1446,8 @@ setUseBoxLabelSP(parsed.useBoxLabelSP || false);
   setGroupBySelections={setGroupBySelections}
   orderBySelections={orderBySelections}
   setOrderBySelections={setOrderBySelections}
+  qrConfiguration={qrConfiguration}
+  setQrConfiguration={setQrConfiguration}
   labelCopies={labelCopies}
   setLabelCopies={setLabelCopies}
   staticVariables={staticVariables}
@@ -1446,6 +1455,7 @@ setUseBoxLabelSP(parsed.useBoxLabelSP || false);
   filterMode={filterMode}
   setFilterMode={setFilterMode}
   useBoxLabelSP={useBoxLabelSP}
+    savingMapping={savingMapping}
   setUseBoxLabelSP={setUseBoxLabelSP}
   handleSaveMapping={handleSaveMapping}
   savingMapping={savingMapping}
