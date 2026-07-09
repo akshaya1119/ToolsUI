@@ -53,7 +53,6 @@ const TemplatesMappingPanel = ({
   savingMapping = false,
   useBoxLabelSP,
   setUseBoxLabelSP,
-  savingMapping = false,
   handleRefreshFields,
   parsedFieldsLoading,
   mappingLoading,

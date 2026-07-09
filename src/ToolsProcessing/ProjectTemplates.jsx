@@ -45,7 +45,6 @@ import {
   normalizeModuleIds,
   parseMappingJson,
   resolveTemplateId,
-  getErrorDetails,
   retryAsync,
 } from "../utils/rptTemplateUtils";
 import {
@@ -86,7 +85,6 @@ const ProjectTemplates = () => {
   const APIURL = import.meta.env.VITE_API_URL;
   const rptApiUrl = import.meta.env.VITE_RPT_API_URL;
   const token = localStorage.getItem("token");
-  const [savingMapping, setSavingMapping] = useState(false);
   const projectId = useStore((state) => state.projectId);
   const projectName = useStore((state) => state.projectName);
 

@@ -175,7 +175,6 @@ const ProcessingPipeline = () => {
 
   const [expandedReportsTemplates, setExpandedReportsTemplates] = useState(new Set()); // Track which templates have expanded reports
   const [errorDetailsModal, setErrorDetailsModal] = useState({ visible: false, error: null, retryFn: null, templateId: null });
-  const projectId = useStore((state) => state.projectId);
   const [isDetailPanelOpen, setIsDetailPanelOpen] = useState(false);
   const [selectedModuleForDetails, setSelectedModuleForDetails] = useState(null);
   const [selectedItems, setSelectedItems] = useState({});
@@ -188,8 +187,6 @@ const ProcessingPipeline = () => {
   const storedTypeId = localStorage.getItem("selectedType");
   const groupId = storedGroupId ? Number(storedGroupId) : null;
   const typeId = storedTypeId ? Number(storedTypeId) : null;
-  const [envLotSearch, setEnvLotSearch] = useState("");
-  const [errorDetailsModal, setErrorDetailsModal] = useState({ visible: false, error: null, retryFn: null, templateId: null });
   const currentStep = useMemo(
     () =>
       steps.findIndex((s) => s.status === "in-progress") + 1 ||
@@ -965,11 +962,6 @@ const ProcessingPipeline = () => {
     });
   };
 
-  const isQuantitySheetTemplate = (templateName) => {
-    if (!templateName) return false;
-    const n = templateName.toLowerCase().replace(/[^a-z0-9]/g, "");
-    return n.includes("quantitysheet") || n.includes("qtysheet");
-  };
 
   const isCompositeSummaryTemplate = (templateName) => {
     if (!templateName) return false;

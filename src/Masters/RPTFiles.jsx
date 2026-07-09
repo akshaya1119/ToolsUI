@@ -70,7 +70,6 @@ const RPTFiles = () => {
   const [mappingModalOpen, setMappingModalOpen] = useState(false);
   const [mappingTemplate, setMappingTemplate] = useState(null);
   const [mappingLoading, setMappingLoading] = useState(false);
-  const [savingMapping, setSavingMapping] = useState(false);
   const [mappingNotFound, setMappingNotFound] = useState(false);
   const [parsedFields, setParsedFields] = useState([]);
   const [parsedFieldsLoading, setParsedFieldsLoading] = useState(false);
