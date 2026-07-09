@@ -121,6 +121,7 @@ const ProjectTemplates = () => {
   const [filterMode, setFilterMode] = useState(null);
   const [mappingPinnedFields, setMappingPinnedFields] = useState([]);
   const [staticVariables, setStaticVariables] = useState({});
+  const [qrConfiguration, setQrConfiguration] = useState({ enabled: false, qrFields: [], separator: "|" });
 
   const [versionsOpen, setVersionsOpen] = useState(false);
   const [versionsLoading, setVersionsLoading] = useState(false);
@@ -811,6 +812,7 @@ const ProjectTemplates = () => {
       setStaticVariables(parsed.staticVariables || {});
       setFilterMode(parsed.filterMode ?? null);
       setMappingPinnedFields(Object.keys(parsed.mappings || {}));
+      setQrConfiguration(parsed.qrConfiguration || { enabled: false, qrFields: [], separator: "|" });
       const emptyMapping =
         Object.keys(parsed.mappings || {}).length === 0 &&
         (!parsed.groupBy || parsed.groupBy.length === 0);
@@ -869,6 +871,7 @@ const ProjectTemplates = () => {
         labelCopies: labelCopies ?? 1,
         staticVariables: staticVariables || {},
         useBoxLabelSP: useBoxLabelSP,
+        qrConfiguration: qrConfiguration || { enabled: false, qrFields: [], separator: "|" },
         ...(filterMode ? { filterMode } : {}),
       };
       const hasContent =
@@ -877,7 +880,8 @@ const ProjectTemplates = () => {
         (orderBySelections || []).length > 0 ||
         (labelCopies ?? 1) > 1 ||
         Object.keys(staticVariables || {}).length > 0 ||
-        !!filterMode;
+        !!filterMode ||
+        (qrConfiguration && qrConfiguration.enabled);
       const mappingJson = hasContent ? JSON.stringify(mappingPayload) : "";
       await saveTemplateMapping(
         APIURL,
@@ -1778,6 +1782,8 @@ const ProjectTemplates = () => {
           setStaticVariables={setStaticVariables}
           filterMode={filterMode}
           setFilterMode={setFilterMode}
+          qrConfiguration={qrConfiguration}
+          setQrConfiguration={setQrConfiguration}
           handleSaveMapping={handleSaveMapping}
           savingMapping={savingMapping}
           parsedFieldsLoading={parsedFieldsLoading}

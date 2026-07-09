@@ -40,6 +40,8 @@ const TemplatesMappingPanel = ({
   setOrderBySelections,
   labelCopies,
   setLabelCopies,
+  qrConfiguration,
+  setQrConfiguration,
   staticVariables = {},
   setStaticVariables,
   filterMode,
@@ -272,6 +274,54 @@ const TemplatesMappingPanel = ({
               Enable to fetch data via Box Label Stored Procedure.
             </Typography.Text>
           </Checkbox>
+        </Card>
+
+        {/* QR Code Settings Section */}
+        <Card size="small" style={{ marginBottom: 12 }} bodyStyle={{ padding: 12 }}>
+          <Space style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+            <Typography.Text strong>QR Code Settings</Typography.Text>
+            <Switch 
+              checked={qrConfiguration?.enabled ?? false}
+              onChange={(enabled) => setQrConfiguration?.({ ...(qrConfiguration || {}), enabled })}
+              checkedChildren="Enabled"
+              unCheckedChildren="Disabled"
+            />
+          </Space>
+          
+          {qrConfiguration?.enabled && (
+            <>
+              <Typography.Text type="secondary" style={{ display: "block", marginBottom: 8, fontSize: 11 }}>
+                Select fields to combine into the dynamically generated QrCodeImage.
+              </Typography.Text>
+              
+              <div style={{ marginBottom: 8 }}>
+                <Typography.Text type="secondary" style={{ fontSize: 12, marginRight: 8 }}>Fields to Add:</Typography.Text>
+                <Select
+                  mode="multiple"
+                  allowClear
+                  placeholder="Choose fields for QR"
+                  options={sourceOptionGroups}
+                  labelRender={labelRender}
+                  value={qrConfiguration?.qrFields || []}
+                  onChange={(fields) => setQrConfiguration?.({ ...(qrConfiguration || {}), qrFields: fields })}
+                  style={{ width: "100%", marginTop: 4 }}
+                  filterOption={(input, option) =>
+                    (option?.label ?? "").toString().toLowerCase().includes(input.toLowerCase())
+                  }
+                />
+              </div>
+
+              <div>
+                <Typography.Text type="secondary" style={{ fontSize: 12, marginRight: 8 }}>Separator:</Typography.Text>
+                <Input 
+                  size="small" 
+                  value={qrConfiguration?.separator ?? "|"} 
+                  onChange={(e) => setQrConfiguration?.({ ...(qrConfiguration || {}), separator: e.target.value })} 
+                  style={{ width: 60 }} 
+                />
+              </div>
+            </>
+          )}
         </Card>
 
         <Card size="small" style={{ marginBottom: 12 }} bodyStyle={{ padding: 12 }}>

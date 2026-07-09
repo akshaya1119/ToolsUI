@@ -170,6 +170,7 @@ export const parseMappingJson = (raw) => {
         staticVariables,
         useBoxLabelSP: parsed?.useBoxLabelSP ?? false,
         filterMode: parsed?.filterMode ?? null,
+        qrConfiguration: parsed?.qrConfiguration ?? null,
       };
     }
     if (parsed?.mappings && typeof parsed.mappings === "object") {
