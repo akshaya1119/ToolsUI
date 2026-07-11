@@ -606,31 +606,63 @@ setModifiedRows(newModifiedRows);
         setEditingDraft({});
     };
 
-    const saveEditingRow = (catchNo) => {
-        setMissingDataRows((prev) =>
-            prev.map((row) => {
-                if (row.catchNo === catchNo) {
-                    // Mark this row as modified
-                    const newModified = new Set(modifiedRows);
-newModified.add(catchNo);
-setModifiedRows(newModified);
-                    
-                    const updatedRow = { ...row };
-                    
-                    // Update all fields from editingDraft (normalize ExamTime)
-                    Object.keys(editingDraft).forEach(key => {
-                        if (key !== 'catchNo') {
-                            const raw = editingDraft[key] === null ? "" : editingDraft[key];
-                            updatedRow[key] = key === 'ExamTime' ? normalizeTimeValue(raw) : raw;
-                        }
-                    });
-                    
-                    return updatedRow;
+    const saveEditingRow = async (catchNo) => {
+        try {
+            // Find the row being edited
+            const rowToSave = missingDataRows.find(r => r.catchNo === catchNo);
+            if (!rowToSave) {
+                showToast("Row not found", "error");
+                return;
+            }
+
+            // Build additionalFields from edited data
+            const additionalFields = {};
+            displayFields.forEach(field => {
+                const fieldName = field.name;
+                let value = editingDraft[fieldName];
+                
+                if (fieldName === 'ExamTime') {
+                    value = normalizeTimeValue(value);
                 }
-                return row;
-            })
-        );
-        cancelEditingRow();
+
+                if (value !== "" && value !== null && value !== undefined) {
+                    additionalFields[fieldName] = value;
+                }
+            });
+
+            // If no meaningful data, show warning
+            if (Object.keys(additionalFields).length === 0) {
+                showToast("No data to save", "warning");
+                return;
+            }
+
+            // Call the API to save
+            await API.post("/NRDatas/missing-data", {
+                projectId,
+                data: [{
+                    id: rowToSave.id,
+                    catchNo: catchNo,
+                    additionalFields,
+                }]
+            });
+
+            showToast("Row saved successfully", "success");
+            
+            // Refresh data from API
+            await loadCatchTemplateData();
+            
+            cancelEditingRow();
+        } catch (error) {
+            console.error("Failed to save row", error);
+            const errorMessage =
+                error?.response?.data?.message ||
+                error?.response?.data ||
+                "Failed to save row";
+            showToast(
+                typeof errorMessage === "string" ? errorMessage : "Failed to save row",
+                "error"
+            );
+        }
     };
 
     const applyPatchToRows = (matcher, patch) => {
