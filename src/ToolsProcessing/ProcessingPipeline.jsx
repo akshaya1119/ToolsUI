@@ -2480,7 +2480,16 @@ const ProcessingPipeline = () => {
 
     const getNames = (criteria) => {
       if (!criteria) return ["Not configured"]; // return as array
-      if (Array.isArray(criteria)) return criteria.map(String);
+      if (Array.isArray(criteria)) {
+        return criteria.map(item => {
+          // If item is an object with 'name' property, return the name
+          if (typeof item === 'object' && item !== null && item.name) {
+            return item.name;
+          }
+          // Otherwise return as string
+          return String(item);
+        });
+      }
       if (criteria.names && Array.isArray(criteria.names)) return criteria.names.map(String);
       return [String(criteria)];
     };
