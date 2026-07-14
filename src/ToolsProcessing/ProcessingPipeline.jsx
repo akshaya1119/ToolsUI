@@ -2368,6 +2368,18 @@ const ProcessingPipeline = () => {
       return;
     }
 
+    // Build friendly file names for lot-wise templates
+    const fileNames = lotTemplates
+      .filter((t) => resolveTemplateId(t))
+      .map((t) =>
+        buildReportFileName({
+          templateName: t?.templateName,
+          projectName: projectName || (projectId ? `Project ${projectId}` : undefined),
+          typeId: t?.typeId ?? typeId,
+          lotNumber: lotNo,
+        })
+      );
+
     setBulkDownloadingLots(true);
     const messageKey = `download-all-lot-${lotNo}-${Date.now()}`;
     message.loading({
@@ -2382,19 +2394,20 @@ const ProcessingPipeline = () => {
           projectId: Number(projectId),
           templateIds: templateIds.join(","),
           lotNumber: lotNo,
+          fileNames: fileNames.join(","),
         },
         responseType: "blob",
       });
 
       const contentDisposition = res.headers["content-disposition"] || "";
       const fileNameMatch = contentDisposition.match(/filename="?([^\"]+)"?/i);
-      const fileName = fileNameMatch?.[1] || `Lot${lotNo}_Reports_${projectId}_${new Date().toISOString().slice(0, 10)}.zip`;
+      const zipFileName = fileNameMatch?.[1] || `Lot${lotNo}_Reports_${projectId}_${new Date().toISOString().slice(0, 10)}.zip`;
 
       const fileBlob = new Blob([res.data], { type: "application/zip" });
       const url = window.URL.createObjectURL(fileBlob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = fileName;
+      link.download = zipFileName;
       document.body.appendChild(link);
       link.click();
       link.remove();
