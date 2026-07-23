@@ -23,6 +23,7 @@ import ProjectDashboard from "./components/ProjectDashboard";
 import ProtectedRoute from "./routes/ProtectedRoute";
 import { useUserToken, useUserTokenActions } from "./stores/UserToken";
 import HToV from "./ToolsProcessing/HToV";
+import HeaderVerification from "./ToolsProcessing/HeaderVerification";
 
 
 function isTokenExpired(token) {
@@ -237,6 +238,15 @@ export default function App() {
                   <ProtectedRoute token={token}>
                     <MainLayout >
                       <ProjectDashboard />
+                    </MainLayout></ProtectedRoute>
+                }
+              />
+              <Route
+                path="/headerverification"
+                element={
+                  <ProtectedRoute token={token}>
+                    <MainLayout >
+                      <HeaderVerification />
                     </MainLayout></ProtectedRoute>
                 }
               />

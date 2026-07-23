@@ -86,6 +86,11 @@ export default function Sidebar({ collapsed }) {
     ...(projectName
       ? [
         {
+      label: "Header Verification",
+      icon: <FaBook className="text-black" />, // Book icon for header verification
+      path: "/headerverification",
+    },
+        {
           label: "Horizontal To Vertical Tool",
           icon: <FaWrench className="text-black" />, // Filled wrench icon
           path: "/horizontalToVertical"
