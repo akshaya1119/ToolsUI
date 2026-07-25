@@ -11,6 +11,8 @@ const LotSelectionModal = ({
   onSelectAll,
   onConfirm,
   onCancel,
+  description = "Please select which lot(s) you want to process for Box Breaking. You can select all lots or specific ones.",
+  okText = "Process Selected Lots",
 }) => {
   return (
     <Modal
@@ -19,13 +21,13 @@ const LotSelectionModal = ({
       onOk={onConfirm}
       onCancel={onCancel}
       width={600}
-      okText="Process Selected Lots"
+      okText={okText}
       cancelText="Cancel"
     >
       <div style={{ marginBottom: 16 }}>
         <Alert
           message="Multiple lots detected"
-          description="Please select which lot(s) you want to process for Box Breaking. You can select all lots or specific ones."
+          description={description}
           type="info"
           showIcon
           style={{ marginBottom: 16 }}

@@ -132,6 +132,8 @@ const ProcessingPipeline = () => {
     visible: false,
     availableLots: [],
     selectedLots: [],
+    description: "",
+    okText: "",
     loading: false,
     resolve: null
   });
@@ -1030,12 +1032,14 @@ const ProcessingPipeline = () => {
     });
   };
 
-  const showLotSelectionModal = (lots) => {
+  const showLotSelectionModal = (lots, options = {}) => {
     return new Promise((resolve) => {
       setLotSelectionModal({
         visible: true,
         availableLots: lots,
         selectedLots: lots.map(lot => lot.lotNo), // Select all by default
+        description: options.description || "Please select which lot(s) you want to process for Box Breaking. You can select all lots or specific ones.",
+        okText: options.okText || "Process Selected Lots",
         loading: false,
         resolve
       });
@@ -1054,6 +1058,8 @@ const ProcessingPipeline = () => {
       visible: false,
       availableLots: [],
       selectedLots: [],
+      description: "",
+      okText: "",
       loading: false,
       resolve: null
     });
@@ -1070,6 +1076,8 @@ const ProcessingPipeline = () => {
       visible: false,
       availableLots: [],
       selectedLots: [],
+      description: "",
+      okText: "",
       loading: false,
       resolve: null
     });
@@ -1353,6 +1361,30 @@ const ProcessingPipeline = () => {
     const isQS = isQuantitySheetTemplate(resolveTemplateName(template));
     const isComposite = isCompositeSummaryTemplate(resolveTemplateName(template));
 
+    let selectedLotsForQS = [];
+    if (isQS) {
+      const lots = await fetchLotsForSelection();
+      const validLots = lots.filter(lot => lot.lotNo > 0);
+
+      if (validLots.length > 0) {
+        const selectedLots = await showLotSelectionModal(validLots, {
+          description: "Please select which lot(s) you want to generate for quantity sheet. You can select all lots or specific ones.",
+          okText: "Generate",
+        });
+        if (selectedLots === null) {
+          return;
+        }
+        selectedLotsForQS = selectedLots;
+      } else {
+        Modal.warning({
+          title: "Lot Bifurcation Required",
+          content: "Please complete lot bifurcation before generating Quantity Sheet.",
+          okText: "OK"
+        });
+        return;
+      }
+    }
+
     // Check if template depends on envelope breaking module
     const envelopeBreakingModuleId = moduleKeyToIdMap["envelopebreaking"];
     const templateModuleIds = normalizeModuleIds(template?.moduleIds ?? template?.ModuleIds);
@@ -1432,7 +1464,9 @@ const ProcessingPipeline = () => {
     }
 
     // Check if report already exists for this template and envelope lots combination
-    const envLotKey = envLotNumbers.length > 0 ? envLotNumbers.sort((a, b) => a - b).join(',') : ((isQS || isComposite) ? "" : null);
+    const envLotKey = isQS 
+      ? (selectedLotsForQS.length > 0 ? [...selectedLotsForQS].sort((a, b) => a - b).join(',') : "")
+      : (envLotNumbers.length > 0 ? [...envLotNumbers].sort((a, b) => a - b).join(',') : (isComposite ? "" : null));
 
     if (envLotKey !== null) {
       const existingReport = envLotReports.find(report =>
@@ -1457,8 +1491,9 @@ const ProcessingPipeline = () => {
       projectId: Number(projectId),
       templateId: Number(templateId),
       ...(Object.keys(staticVariables).length > 0 ? { staticVariables } : {}),
-      // Only include LotNos if NOT a quantity sheet template or composite summary
-      ...(envLotNumbers.length > 0 && !isQS && !isComposite ? { LotNos: envLotNumbers.join(',') } : {}),
+      ...(isQS && selectedLotsForQS.length > 0 
+        ? { LotNos: selectedLotsForQS.join(',') } 
+        : (envLotNumbers.length > 0 && !isQS && !isComposite ? { LotNos: envLotNumbers.join(',') } : {})),
     };
     const messageKey = `generate-report-${payload.templateId}-${Date.now()}`;
     setGeneratingTemplates((prev) => ({ ...prev, [templateId]: true }));
@@ -1491,7 +1526,7 @@ const ProcessingPipeline = () => {
         templateName: template?.templateName,
         projectName: projectName || (projectId ? `Project ${projectId}` : undefined),
         typeId: template?.typeId ?? typeId,
-        envLotNumbers: envLotNumbers, // Include envelope lot numbers
+        envLotNumbers: isQS ? selectedLotsForQS : envLotNumbers, // Include selected QS lots or envelope lot numbers
       });
       const fileBlob = new Blob([res.data], { type: "application/pdf" });
       const url = window.URL.createObjectURL(fileBlob);
@@ -1528,7 +1563,7 @@ const ProcessingPipeline = () => {
           projectId: Number(projectId),
           templateId,
           templateName: template?.templateName || `Template ${templateId}`,
-          envLotNumbers: envLotNumbers.sort((a, b) => a - b).join(','),
+          envLotNumbers: (isQS ? selectedLotsForQS : envLotNumbers).sort((a, b) => a - b).join(','),
           fileName,
           generatedBy: 'Current User', // You can replace this with actual user info
           filePath: filePath // Include the server file path
@@ -1544,7 +1579,7 @@ const ProcessingPipeline = () => {
           id: `${templateId}_${reportData.envLotNumbers}_${savedReport.id}`,
           templateId,
           templateName: template?.templateName || `Template ${templateId}`,
-          envLotNumbers: [...envLotNumbers].sort((a, b) => a - b),
+          envLotNumbers: [...(isQS ? selectedLotsForQS : envLotNumbers)].sort((a, b) => a - b),
           envLotKey: reportData.envLotNumbers,
           fileName,
           generatedAt: savedReport.generatedAt,
@@ -1580,7 +1615,7 @@ const ProcessingPipeline = () => {
           id: `${templateId}_${reportKey}_${Date.now()}`,
           templateId,
           templateName: template?.templateName || `Template ${templateId}`,
-          envLotNumbers: [...envLotNumbers].sort((a, b) => a - b),
+          envLotNumbers: [...(isQS ? selectedLotsForQS : envLotNumbers)].sort((a, b) => a - b),
           envLotKey: reportKey,
           fileName,
           generatedAt: new Date().toISOString(),
@@ -3962,6 +3997,8 @@ const ProcessingPipeline = () => {
         visible={lotSelectionModal.visible}
         availableLots={lotSelectionModal.availableLots}
         selectedLots={lotSelectionModal.selectedLots}
+        description={lotSelectionModal.description}
+        okText={lotSelectionModal.okText}
         onToggle={handleLotToggle}
         onSelectAll={handleSelectAllLots}
         onConfirm={handleLotSelectionConfirm}
