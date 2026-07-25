@@ -814,7 +814,7 @@ const renderEnvLotTags = (envLotNumbers, templateId) => {
     },
 
     {
-      title: 'Batch / EnvLot',
+      title: 'Batch',
       key: 'envLot',
       width: 200,
       hidden: viewType !== 'Template',
