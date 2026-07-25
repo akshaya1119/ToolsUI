@@ -14,6 +14,7 @@ const LotSelectionModal = ({
   onCancel,
   description = "Please select which lot(s) you want to process for Box Breaking. You can select all lots or specific ones.",
   okText = "Process Selected Lots",
+  isQuantitySheet = false,
 }) => {
   // Count lots without pages
   const lotsWithoutPages = availableLots.filter(lot => lot.hasZeroPages);
@@ -24,17 +25,22 @@ const LotSelectionModal = ({
 
   const handleSelectAll = (checked) => {
     if (checked) {
-      // Only select valid lots (those with pages)
-      onSelectAll(checked, validLots.map(lot => lot.lotNo));
+      // For quantity sheet, select all lots including those with zero pages
+      // For other templates, only select valid lots (those with pages)
+      const lotsToSelect = isQuantitySheet 
+        ? availableLots.map(lot => lot.lotNo)
+        : validLots.map(lot => lot.lotNo);
+      onSelectAll(checked, lotsToSelect);
     } else {
       onSelectAll(false);
     }
   };
 
   const handleToggle = (lotNo, checked) => {
-    // Find the lot to check if it has zero pages
+    // For quantity sheet, allow toggling all lots regardless of pages
+    // For other templates, only allow toggling lots with valid pages
     const lot = availableLots.find(l => l.lotNo === lotNo);
-    if (lot && !lot.hasZeroPages) {
+    if (isQuantitySheet || (lot && !lot.hasZeroPages)) {
       onToggle(lotNo, checked);
     }
   };
@@ -50,15 +56,17 @@ const LotSelectionModal = ({
       cancelText="Cancel"
     >
       <div style={{ marginBottom: 16 }}>
-        <Alert
-          message="Multiple lots detected"
-          description={description}
-          type="info"
-          showIcon
-          style={{ marginBottom: 16 }}
-        />
+        {!isQuantitySheet && (
+          <Alert
+            message="Multiple lots detected"
+            description={description}
+            type="info"
+            showIcon
+            style={{ marginBottom: 16 }}
+          />
+        )}
 
-        {lotsWithoutPages.length > 0 && (
+        {!isQuantitySheet && lotsWithoutPages.length > 0 && (
           <Alert
             message="Some lots have missing page data"
             description={`${lotsWithoutPages.length} lot(s) with zero or missing page values cannot be processed. Only lots with valid page data are available for selection.`}
@@ -70,20 +78,24 @@ const LotSelectionModal = ({
         )}
 
         <Checkbox
-          checked={validSelectedLots.length === validLots.length && validLots.length > 0}
-          indeterminate={validSelectedLots.length > 0 && validSelectedLots.length < validLots.length}
+          checked={isQuantitySheet 
+            ? selectedLots.length === availableLots.length && availableLots.length > 0
+            : validSelectedLots.length === validLots.length && validLots.length > 0}
+          indeterminate={isQuantitySheet 
+            ? selectedLots.length > 0 && selectedLots.length < availableLots.length
+            : validSelectedLots.length > 0 && validSelectedLots.length < validLots.length}
           onChange={(e) => handleSelectAll(e.target.checked)}
           style={{ marginBottom: 12, fontWeight: 500 }}
-          disabled={validLots.length === 0}
+          disabled={availableLots.length === 0}
         >
-          Select All Valid Lots ({validLots.length}/{availableLots.length})
+          Select All Lots ({isQuantitySheet ? `${selectedLots.length}/${availableLots.length}` : `${validSelectedLots.length}/${validLots.length}`})
         </Checkbox>
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 400, overflowY: "auto" }}>
         {availableLots.map((lot) => {
-          const isDisabled = lot.hasZeroPages;
-          const isSelected = validSelectedLots.includes(lot.lotNo);
+          const isDisabled = !isQuantitySheet && lot.hasZeroPages;
+          const isSelected = selectedLots.includes(lot.lotNo);
 
           return (
             <Card
@@ -125,10 +137,10 @@ const LotSelectionModal = ({
         })}
       </div>
 
-      {validSelectedLots.length > 0 && (
+      {selectedLots.length > 0 && (
         <div style={{ marginTop: 16, padding: "8px 12px", backgroundColor: "#e6f7ff", borderRadius: 4 }}>
           <Text strong style={{ color: "#1890ff" }}>
-            {validSelectedLots.length} lot(s) selected
+            {selectedLots.length} lot(s) selected
           </Text>
         </div>
       )}

@@ -135,7 +135,8 @@ const ProcessingPipeline = () => {
     description: "",
     okText: "",
     loading: false,
-    resolve: null
+    resolve: null,
+    isQuantitySheet: false
   });
   const [envLotSelectionModal, setEnvLotSelectionModal] = useState({
     visible: false,
@@ -1058,14 +1059,22 @@ const ProcessingPipeline = () => {
 
   const showLotSelectionModal = (lots, options = {}) => {
     return new Promise((resolve) => {
-      // Only select valid lots (those with pages) by default
+      // For quantity sheet, select all lots including those with zero pages
+      // For other templates, only select valid lots (those with pages) by default
       const validLots = lots.filter(lot => !lot.hasZeroPages);
+      const defaultSelectedLots = options.isQuantitySheet 
+        ? lots.map(lot => lot.lotNo)
+        : validLots.map(lot => lot.lotNo);
+      
       setLotSelectionModal({
         visible: true,
         availableLots: lots,
-        selectedLots: validLots.map(lot => lot.lotNo), // Select only valid lots by default
+        selectedLots: defaultSelectedLots,
         loading: false,
-        resolve
+        resolve,
+        description: options.description || "Please select which lot(s) you want to process. You can select all lots or specific ones.",
+        okText: options.okText || "Process Selected Lots",
+        isQuantitySheet: options.isQuantitySheet || false
       });
     });
   };
@@ -1085,7 +1094,8 @@ const ProcessingPipeline = () => {
       description: "",
       okText: "",
       loading: false,
-      resolve: null
+      resolve: null,
+      isQuantitySheet: false
     });
 
     if (resolve) {
@@ -1103,7 +1113,8 @@ const ProcessingPipeline = () => {
       description: "",
       okText: "",
       loading: false,
-      resolve: null
+      resolve: null,
+      isQuantitySheet: false
     });
 
     if (resolve) {
@@ -1395,6 +1406,7 @@ const ProcessingPipeline = () => {
         const selectedLots = await showLotSelectionModal(validLots, {
           description: "Please select which lot(s) you want to generate for quantity sheet. You can select all lots or specific ones.",
           okText: "Generate",
+          isQuantitySheet: true
         });
         if (selectedLots === null) {
           return;
@@ -1512,186 +1524,192 @@ const ProcessingPipeline = () => {
       }
     }
 
-    const payload = {
-      projectId: Number(projectId),
-      templateId: Number(templateId),
-      ...(Object.keys(staticVariables).length > 0 ? { staticVariables } : {}),
-      ...(isQS && selectedLotsForQS.length > 0 
-        ? { LotNos: selectedLotsForQS.join(',') } 
-        : (envLotNumbers.length > 0 && !isQS && !isComposite ? { LotNos: envLotNumbers.join(',') } : {})),
-    };
-    const messageKey = `generate-report-${payload.templateId}-${Date.now()}`;
-    setGeneratingTemplates((prev) => ({ ...prev, [templateId]: true }));
-    message.loading({
-      content: "Generating report...",
-      key: messageKey,
-      duration: 0,
-    });
+    // For quantity sheet, generate one template per lot
+    // For other templates, generate one combined template
+    const lotsToProcess = isQS ? selectedLotsForQS : [null];
 
-    try {
-      // Wrap the API call with retry logic
-      const res = await retryAsync(
-        () => axios.post(
-          `${rptApiUrl}/report/generate-dynamic`,
-          payload,
-          { responseType: "blob" }
-        ),
-        3, // max 3 attempts
-        1000 // initial delay 1 second
-      );
-
-      // Extract file path from response headers (try different case variations)
-      const filePath = res.headers['x-generated-file-path'] ||
-        res.headers['X-Generated-File-Path'] ||
-        res.headers['X-GENERATED-FILE-PATH'] || null;
-      console.log('Generated file path:', filePath);
-      console.log('All response headers:', res.headers);
-
-      const fileName = buildReportFileName({
-        templateName: template?.templateName,
-        projectName: projectName || (projectId ? `Project ${projectId}` : undefined),
-        typeId: template?.typeId ?? typeId,
-        envLotNumbers: isQS ? selectedLotsForQS : envLotNumbers, // Include selected QS lots or envelope lot numbers
-      });
-      const fileBlob = new Blob([res.data], { type: "application/pdf" });
-      const url = window.URL.createObjectURL(fileBlob);
-
-      setTemplateDownloads((prev) => {
-        const existing = prev[templateId];
-        if (existing?.url) {
-          window.URL.revokeObjectURL(existing.url);
-        }
-        return { ...prev, [templateId]: { url, fileName } };
-      });
-      setTemplateReportStatus((prev) => ({
-        ...prev,
-        [templateId]: {
-          ...(prev[templateId] || {}),
-          exists: true,
-          fileName,
-          generatedAt: new Date().toISOString(),
-        },
-      }));
-      clearMappingUpdate(templateId);
-      // Clear stale flag for this specific template once regenerated
-      setStaleTemplateIds((prev) => {
-        const next = new Set(prev);
-        next.delete(templateId);
-        return next;
+    for (const currentLot of lotsToProcess) {
+      const payload = {
+        projectId: Number(projectId),
+        templateId: Number(templateId),
+        ...(Object.keys(staticVariables).length > 0 ? { staticVariables } : {}),
+        ...(isQS && currentLot
+          ? { LotNos: String(currentLot) }
+          : (envLotNumbers.length > 0 && !isQS && !isComposite ? { LotNos: envLotNumbers.join(',') } : {})),
+      };
+      const messageKey = `generate-report-${payload.templateId}-${Date.now()}`;
+      setGeneratingTemplates((prev) => ({ ...prev, [templateId]: true }));
+      message.loading({
+        content: isQS ? `Generating report for Lot ${currentLot}...` : "Generating report...",
+        key: messageKey,
+        duration: 0,
       });
 
-      message.success({ content: "Report generated.", key: messageKey });
-
-      // Save the generated envelope lot report to database
       try {
-        const reportData = {
-          projectId: Number(projectId),
-          templateId,
-          templateName: template?.templateName || `Template ${templateId}`,
-          envLotNumbers: (isQS ? selectedLotsForQS : envLotNumbers).sort((a, b) => a - b).join(','),
-          fileName,
-          generatedBy: 'Current User', // You can replace this with actual user info
-          filePath: filePath // Include the server file path
-        };
+        // Wrap the API call with retry logic
+        const res = await retryAsync(
+          () => axios.post(
+            `${rptApiUrl}/report/generate-dynamic`,
+            payload,
+            { responseType: "blob" }
+          ),
+          3, // max 3 attempts
+          1000 // initial delay 1 second
+        );
 
-        console.log('Saving report to database:', reportData);
-        const saveResponse = await API.post('/EnvelopeLotReports', reportData);
-        console.log('Report saved successfully:', saveResponse.data);
-        const savedReport = saveResponse.data;
+        // Extract file path from response headers (try different case variations)
+        const filePath = res.headers['x-generated-file-path'] ||
+          res.headers['X-Generated-File-Path'] ||
+          res.headers['X-GENERATED-FILE-PATH'] || null;
+        console.log('Generated file path:', filePath);
+        console.log('All response headers:', res.headers);
 
-        // Update local state with the saved report
-        const newReport = {
-          id: `${templateId}_${reportData.envLotNumbers}_${savedReport.id}`,
-          templateId,
-          templateName: template?.templateName || `Template ${templateId}`,
-          envLotNumbers: [...(isQS ? selectedLotsForQS : envLotNumbers)].sort((a, b) => a - b),
-          envLotKey: reportData.envLotNumbers,
-          fileName,
-          generatedAt: savedReport.generatedAt,
-          generatedBy: savedReport.generatedBy,
-          filePath: savedReport.filePath, // Include the server file path
-          url,
-          dbId: savedReport.id
-        };
-
-        setEnvLotReports(prev => {
-          // Remove any existing report with the same template and envLotKey combination
-          const filtered = prev.filter(report =>
-            !(report.templateId === templateId && report.envLotKey === reportData.envLotNumbers)
-          );
-          return [newReport, ...filtered]; // Add new report at the beginning
+        const fileName = buildReportFileName({
+          templateName: template?.templateName,
+          projectName: projectName || (projectId ? `Project ${projectId}` : undefined),
+          typeId: template?.typeId ?? typeId,
+          envLotNumbers: isQS ? [currentLot] : envLotNumbers, // Use current lot or envelope lot numbers
         });
+        const fileBlob = new Blob([res.data], { type: "application/pdf" });
+        const url = window.URL.createObjectURL(fileBlob);
 
-        // Automatically expand the reports section for this template
-        setExpandedReportsTemplates(prev => {
-          const newSet = new Set(prev);
-          newSet.add(templateId);
-          return newSet;
+        setTemplateDownloads((prev) => {
+          const existing = prev[templateId];
+          if (existing?.url) {
+            window.URL.revokeObjectURL(existing.url);
+          }
+          return { ...prev, [templateId]: { url, fileName } };
         });
-
-      } catch (saveErr) {
-        console.error("Failed to save report to database", saveErr);
-        console.error("Error details:", saveErr.response?.data);
-        message.warning("Report generated but failed to save to database. It will be lost on refresh.");
-
-        // Still show the report locally even if database save fails
-        const reportKey = envLotNumbers.sort((a, b) => a - b).join(',');
-        const newReport = {
-          id: `${templateId}_${reportKey}_${Date.now()}`,
-          templateId,
-          templateName: template?.templateName || `Template ${templateId}`,
-          envLotNumbers: [...(isQS ? selectedLotsForQS : envLotNumbers)].sort((a, b) => a - b),
-          envLotKey: reportKey,
-          fileName,
-          generatedAt: new Date().toISOString(),
-          generatedBy: 'Current User',
-          filePath: filePath, // Include the server file path even if DB save fails
-          url,
-        };
-
-        setEnvLotReports(prev => {
-          const filtered = prev.filter(report =>
-            !(report.templateId === templateId && report.envLotKey === reportKey)
-          );
-          return [newReport, ...filtered];
-        });
-
-        // Automatically expand the reports section for this template even if DB save fails
-        setExpandedReportsTemplates(prev => {
-          const newSet = new Set(prev);
-          newSet.add(templateId);
-          return newSet;
-        });
-      }
-    } catch (err) {
-      console.error("Generate report failed", err);
-      const msg = await getErrorMessageAsync(err, "Failed to generate report.");
-      const errorDetails = getErrorDetails(err);
-
-      // If we created a temporary envelope lot assignment, revert it on failure
-      if (assignedCatchNos.length > 0) {
-        await revertEnvLotByCatchNos(assignedCatchNos);
-      }
-
-      // Show error with details and retry option
-      message.error({ content: msg, key: messageKey, duration: 6 });
-
-      // Show error details modal if available
-      if (errorDetails) {
-        setErrorDetailsModal({
-          visible: true,
-          error: errorDetails,
-          retryFn: () => {
-            setErrorDetailsModal({ visible: false, error: null, retryFn: null, templateId: null });
-            // Retry the report generation
-            handleGenerateTemplate(template);
+        setTemplateReportStatus((prev) => ({
+          ...prev,
+          [templateId]: {
+            ...(prev[templateId] || {}),
+            exists: true,
+            fileName,
+            generatedAt: new Date().toISOString(),
           },
-          templateId
+        }));
+        clearMappingUpdate(templateId);
+        // Clear stale flag for this specific template once regenerated
+        setStaleTemplateIds((prev) => {
+          const next = new Set(prev);
+          next.delete(templateId);
+          return next;
         });
+
+        message.success({ content: isQS ? `Report generated for Lot ${currentLot}.` : "Report generated.", key: messageKey });
+
+        // Save the generated envelope lot report to database
+        try {
+          const reportData = {
+            projectId: Number(projectId),
+            templateId,
+            templateName: template?.templateName || `Template ${templateId}`,
+            envLotNumbers: isQS ? String(currentLot) : (envLotNumbers).sort((a, b) => a - b).join(','),
+            fileName,
+            generatedBy: 'Current User', // You can replace this with actual user info
+            filePath: filePath // Include the server file path
+          };
+
+          console.log('Saving report to database:', reportData);
+          const saveResponse = await API.post('/EnvelopeLotReports', reportData);
+          console.log('Report saved successfully:', saveResponse.data);
+          const savedReport = saveResponse.data;
+
+          // Update local state with the saved report
+          const newReport = {
+            id: `${templateId}_${reportData.envLotNumbers}_${savedReport.id}`,
+            templateId,
+            templateName: template?.templateName || `Template ${templateId}`,
+            envLotNumbers: isQS ? [currentLot] : [...envLotNumbers].sort((a, b) => a - b),
+            envLotKey: reportData.envLotNumbers,
+            fileName,
+            generatedAt: savedReport.generatedAt,
+            generatedBy: savedReport.generatedBy,
+            filePath: savedReport.filePath, // Include the server file path
+            url,
+            dbId: savedReport.id
+          };
+
+          setEnvLotReports(prev => {
+            // Remove any existing report with the same template and envLotKey combination
+            const filtered = prev.filter(report =>
+              !(report.templateId === templateId && report.envLotKey === reportData.envLotNumbers)
+            );
+            return [newReport, ...filtered]; // Add new report at the beginning
+          });
+
+          // Automatically expand the reports section for this template
+          setExpandedReportsTemplates(prev => {
+            const newSet = new Set(prev);
+            newSet.add(templateId);
+            return newSet;
+          });
+
+        } catch (saveErr) {
+          console.error("Failed to save report to database", saveErr);
+          console.error("Error details:", saveErr.response?.data);
+          message.warning("Report generated but failed to save to database. It will be lost on refresh.");
+
+          // Still show the report locally even if database save fails
+          const reportKey = isQS ? String(currentLot) : envLotNumbers.sort((a, b) => a - b).join(',');
+          const newReport = {
+            id: `${templateId}_${reportKey}_${Date.now()}`,
+            templateId,
+            templateName: template?.templateName || `Template ${templateId}`,
+            envLotNumbers: isQS ? [currentLot] : [...envLotNumbers].sort((a, b) => a - b),
+            envLotKey: reportKey,
+            fileName,
+            generatedAt: new Date().toISOString(),
+            generatedBy: 'Current User',
+            filePath: filePath, // Include the server file path even if DB save fails
+            url,
+          };
+
+          setEnvLotReports(prev => {
+            const filtered = prev.filter(report =>
+              !(report.templateId === templateId && report.envLotKey === reportKey)
+            );
+            return [newReport, ...filtered];
+          });
+
+          // Automatically expand the reports section for this template even if DB save fails
+          setExpandedReportsTemplates(prev => {
+            const newSet = new Set(prev);
+            newSet.add(templateId);
+            return newSet;
+          });
+        }
+      } catch (err) {
+        console.error("Generate report failed", err);
+        const msg = await getErrorMessageAsync(err, "Failed to generate report.");
+        const errorDetails = getErrorDetails(err);
+
+        // If we created a temporary envelope lot assignment, revert it on failure
+        if (assignedCatchNos.length > 0) {
+          await revertEnvLotByCatchNos(assignedCatchNos);
+        }
+
+        // Show error with details and retry option
+        message.error({ content: msg, key: messageKey, duration: 6 });
+
+        // Show error details modal if available
+        if (errorDetails) {
+          setErrorDetailsModal({
+            visible: true,
+            error: errorDetails,
+            retryFn: () => {
+              setErrorDetailsModal({ visible: false, error: null, retryFn: null, templateId: null });
+              // Retry the report generation
+              handleGenerateTemplate(template);
+            },
+            templateId
+          });
+        }
+      } finally {
+        setGeneratingTemplates((prev) => ({ ...prev, [templateId]: false }));
       }
-    } finally {
-      setGeneratingTemplates((prev) => ({ ...prev, [templateId]: false }));
-    }
+    } // End of for loop for quantity sheet lots
   };
 
   const handleDownloadEnvLotReport = async (report) => {
@@ -4049,6 +4067,7 @@ const ProcessingPipeline = () => {
         selectedLots={lotSelectionModal.selectedLots}
         description={lotSelectionModal.description}
         okText={lotSelectionModal.okText}
+        isQuantitySheet={lotSelectionModal.isQuantitySheet}
         onToggle={handleLotToggle}
         onSelectAll={handleSelectAllLots}
         onConfirm={handleLotSelectionConfirm}
