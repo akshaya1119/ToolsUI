@@ -1691,11 +1691,18 @@ const loadGeneratedTemplateReports = async () => {
 
         // Save the generated envelope lot report to database
         try {
+          // Determine envLotNumbers: use 0 if no specific lots, otherwise use the sorted lot numbers
+          const envLotNumbersValue = isQS 
+            ? String(currentLot) 
+            : (envLotNumbers && envLotNumbers.length > 0 
+                ? envLotNumbers.sort((a, b) => a - b).join(',')
+                : '0');
+
           const reportData = {
             projectId: Number(projectId),
             templateId,
             templateName: template?.templateName || `Template ${templateId}`,
-            envLotNumbers: isQS ? String(currentLot) : (envLotNumbers).sort((a, b) => a - b).join(','),
+            envLotNumbers: envLotNumbersValue,
             fileName,
             generatedBy: 'Current User', // You can replace this with actual user info
             filePath: filePath // Include the server file path
@@ -1742,12 +1749,16 @@ const loadGeneratedTemplateReports = async () => {
           message.warning("Report generated but failed to save to database. It will be lost on refresh.");
 
           // Still show the report locally even if database save fails
-          const reportKey = isQS ? String(currentLot) : envLotNumbers.sort((a, b) => a - b).join(',');
+          const reportKey = isQS 
+            ? String(currentLot) 
+            : (envLotNumbers && envLotNumbers.length > 0
+                ? envLotNumbers.sort((a, b) => a - b).join(',')
+                : '0');
           const newReport = {
             id: `${templateId}_${reportKey}_${Date.now()}`,
             templateId,
             templateName: template?.templateName || `Template ${templateId}`,
-            envLotNumbers: isQS ? [currentLot] : [...envLotNumbers].sort((a, b) => a - b),
+            envLotNumbers: isQS ? [currentLot] : [...(envLotNumbers || [])].sort((a, b) => a - b),
             envLotKey: reportKey,
             fileName,
             generatedAt: new Date().toISOString(),
