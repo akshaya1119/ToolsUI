@@ -451,6 +451,7 @@ const ProcessingPipeline = () => {
         templateName: report.templateName,
         envLotNumbers: report.envLotNumbers ? report.envLotNumbers.split(',').map(num => parseInt(num.trim())).filter(num => !isNaN(num)) : [],
         envLotKey: report.envLotNumbers,
+        lotNumber: report.lotNumber, // Use the lot number from database
         fileName: report.fileName,
         generatedAt: report.generatedAt,
         generatedBy: report.generatedBy,

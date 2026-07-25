@@ -52,32 +52,72 @@ const ReportTemplateManagement = ({
   };
 
   /**
-   * Get catches for a specific envelope lot number
+   * Get catches for a specific envelope lot number from EnvLotDetails
    */
-  const getCatchesForEnvLot = (envLotNo) => {
-    return envLotCatches[envLotNo] || [];
-  };
+  const getCatchesForEnvLot = (envLotNo, templateId) => {
+  if (templateId && envLotReportsLookup[templateId]) {
+    const envLotDetails =
+      envLotReportsLookup[templateId].envLotDetails || [];
+
+    const detail = envLotDetails.find(
+      (d) =>
+        Number(d.envLotNo || d.EnvLotNo) ===
+        Number(envLotNo)
+    );
+
+    if (detail) {
+      const lots = detail.lots || detail.Lots || [];
+      const catches = [];
+
+      lots.forEach((lot) => {
+        catches.push(
+          ...(lot.catchNos || lot.CatchNos || [])
+        );
+      });
+
+      return catches;
+    }
+  }
+
+  return envLotCatches[envLotNo] || [];
+};
 
   /**
    * Create lookup for EnvLotReports by TemplateId
-   * Maps templateId => { envLotNumbers, lotNumber }
+   * Maps templateId => { envLotNumbers, lotNumber, envLotDetails with catches }
    */
-  const envLotReportsLookup = useMemo(() => {
-    const lookup = {};
-    const dataToUse = envLotReports && envLotReports.length > 0 ? envLotReports : envLotReportsLocal;
-    
-    (dataToUse || []).forEach((report) => {
-      const templateId = report.templateId || report.TemplateId;
-      if (templateId) {
-        lookup[templateId] = {
-          envLotNumbers: report.envLotNumbers || report.EnvLotNumbers,
-          lotNumber: report.lotNumber || report.LotNumber,
-          ...report,
-        };
-      }
-    });
-    return lookup;
-  }, [envLotReports, envLotReportsLocal]);
+const envLotReportsLookup = useMemo(() => {
+  const lookup = {};
+
+  const dataToUse =envLotReportsLocal;
+
+  (dataToUse || []).forEach((report) => {
+    const templateId =
+      report.templateId || report.TemplateId;
+
+    if (!templateId) return;
+
+    const envLotDetails =
+      report.envLotDetails ||
+      report.EnvLotDetails ||
+      [];
+
+    const envLotNumbers = envLotDetails
+      .map((detail) =>
+        detail.envLotNo || detail.EnvLotNo
+      )
+      .filter(Boolean);
+
+    lookup[templateId] = {
+      ...report,
+      templateId,
+      envLotNumbers,
+      envLotDetails,
+    };
+  });
+
+  return lookup;
+}, [envLotReports, envLotReportsLocal]);
 
   // ============================================================================
   // FETCH ENV LOT REPORTS & CATCHES
@@ -86,24 +126,28 @@ const ReportTemplateManagement = ({
   /**
    * Fetch EnvLotReports if not passed as prop
    */
-  useEffect(() => {
-    if (!envLotReports || envLotReports.length === 0) {
-      fetchEnvLotReports();
-    }
-  }, [projectId, apiBaseUrl, envLotReports]);
+useEffect(() => {
+  fetchEnvLotReports();
+}, [projectId]);
 
   const fetchEnvLotReports = async () => {
-    if (!projectId || !apiBaseUrl) return;
-    try {
-      const response = await axios.get(
-        `${apiBaseUrl}/EnvelopeLotReports/ByProject/${projectId}`
-      );
-      setEnvLotReportsLocal(response.data || []);
-    } catch (error) {
-      console.error('Failed to fetch EnvLotReports:', error);
-      setEnvLotReportsLocal([]);
-    }
-  };
+  if (!projectId) return;
+
+  try {
+    const response = await axios.get(
+      `https://localhost:7276/api/EnvelopeLotReports/ByProject/${projectId}`
+    );
+
+    console.log(
+      'ENV LOT API RESPONSE:',
+      JSON.stringify(response.data, null, 2)
+    );
+
+    setEnvLotReportsLocal(response.data || []);
+  } catch (error) {
+    console.error('Failed to fetch EnvLotReports:', error);
+  }
+};
 
   /**
    * Fetch assigned EnvLot catches
@@ -294,15 +338,16 @@ const ReportTemplateManagement = ({
           const envLotReportData = templateId ? envLotReportsLookup[templateId] : null;
           
           if (envLotReportData) {
-            if (envLotReportData.lotNumber) {
-              lotNum = envLotReportData.lotNumber;
-            }
-            if (envLotReportData.envLotNumbers) {
-              envLotNums = parseEnvLotNumbers(envLotReportData.envLotNumbers);
-              if (!lotNum && envLotNums.length > 0) {
-                lotNum = envLotNums[0];
-              }
-            }
+  if (envLotReportData.lotNumber) {
+    lotNum = Number(envLotReportData.lotNumber);
+  }
+
+  envLotNums =
+    envLotReportData.envLotNumbers || [];
+
+  if (!lotNum && envLotNums.length > 0) {
+    lotNum = envLotNums[0];
+  }
           } else {
             // Fallback to report properties
             const envLotStr = report.envLotNumbers || report.EnvLotNumbers;
@@ -622,78 +667,92 @@ const ReportTemplateManagement = ({
   /**
    * Render EnvLot tags with catch tooltip
    */
-  const renderEnvLotTags = (envLotNumbers) => {
-    if (!envLotNumbers || envLotNumbers.length === 0) {
-      return <span className="text-sm text-slate-500">-</span>;
-    }
+const renderEnvLotTags = (envLotNumbers, templateId) => {
+  if (!envLotNumbers || envLotNumbers.length === 0) {
+    return <span className="text-sm text-slate-500">-</span>;
+  }
 
-    return (
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-        {envLotNumbers.map((envLotNo) => {
-          const catches = getCatchesForEnvLot(envLotNo);
-          const catchesDisplay =
-            catches.length > 0
-              ? catches.join(', ')
-              : 'No catches found';
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+      {envLotNumbers.map((envLotNo) => {
+        const catches = getCatchesForEnvLot(envLotNo, templateId);
 
-          const tooltipContent = (
-            <div style={{ padding: 8 }}>
-              <div style={{ marginBottom: 8, fontWeight: 600 }}>
-                EnvLot {envLotNo} - Catches:
-              </div>
-              <div
-                style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 4,
-                  maxHeight: 250,
-                  overflowY: 'auto',
-                }}
-              >
-                {catches.length > 0 ? (
-                  catches.map((catchNo, idx) => (
-                    <span
-                      key={idx}
-                      style={{
-                        fontSize: '12px',
-                        padding: '3px 8px',
-                        backgroundColor: '#e6f7ff',
-                        borderRadius: 3,
-                        borderLeft: '3px solid #1890ff',
-                      }}
-                    >
-                      {catchNo}
-                    </span>
-                  ))
-                ) : (
-                  <span style={{ fontSize: '12px', color: '#999' }}>
-                    No catches assigned
-                  </span>
-                )}
-              </div>
-            </div>
-          );
-
-          return (
-            <Tooltip
-              key={envLotNo}
-              title={tooltipContent}
-              color="white"
+        const tooltipContent = (
+          <div
+            style={{
+              padding: 8,
+              color: '#333',
+              minWidth: 180,
+            }}
+          >
+            <div
+              style={{
+                marginBottom: 8,
+                fontWeight: 600,
+                color: '#333',
+              }}
             >
-              <Tag color="blue">
-                Batch {envLotNo}
-                {catches.length > 0 && (
-                  <span style={{ marginLeft: 4, fontSize: '11px' }}>
-                    ({catches.length})
+              Batch {envLotNo} - Catches
+            </div>
+
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 4,
+                maxHeight: 250,
+                overflowY: 'auto',
+              }}
+            >
+              {catches.length > 0 ? (
+                catches.map((catchNo, idx) => (
+                  <span
+                    key={idx}
+                    style={{
+                      fontSize: 12,
+                      padding: '4px 8px',
+                      backgroundColor: '#f0f0f0',
+                      color: '#333',
+                      borderRadius: 4,
+                    }}
+                  >
+                    {catchNo}
                   </span>
-                )}
-              </Tag>
-            </Tooltip>
-          );
-        })}
-      </div>
-    );
-  };
+                ))
+              ) : (
+                <span style={{ color: '#999' }}>
+                  No catches assigned
+                </span>
+              )}
+            </div>
+          </div>
+        );
+
+        return (
+          <Tooltip
+            key={envLotNo}
+            title={tooltipContent}
+            color="#ffffff"
+            placement="top"
+            overlayInnerStyle={{
+              color: '#333',
+            }}
+          >
+            <Tag color="default" style={{ cursor: 'pointer' }}>
+              Batch {envLotNo}
+
+              {catches.length > 0 && (
+                <span style={{ marginLeft: 4, fontSize: 11 }}>
+                  ({catches.length})
+                </span>
+              )}
+            </Tag>
+          </Tooltip>
+        );
+      })}
+    </div>
+  );
+};
 
   // ============================================================================
   // TABLE COLUMNS
@@ -769,7 +828,7 @@ const ReportTemplateManagement = ({
       },
 
       render: (_, record) =>
-        renderEnvLotTags(record.extractedEnvLotNumbers),
+        renderEnvLotTags(record.extractedEnvLotNumbers, record.templateId || record.TemplateId),
     },
 
     {
@@ -1049,7 +1108,7 @@ const ReportTemplateManagement = ({
                 />
 
                 <p className="text-sm font-medium text-slate-600">
-                  No reports found
+                  No {viewType === 'Report' ? 'reports' : 'templates'} found
                 </p>
 
                 <p className="mt-1 text-xs text-slate-400">
