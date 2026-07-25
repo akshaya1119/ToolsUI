@@ -1227,6 +1227,8 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
                 options={groupOptions}
                 style={{ width: '100%' }}
                 size="large"
+                showSearch
+                optionFilterProp="label"
                 allowClear
                 clearIcon={<span style={{ fontSize: 12 }}>✕</span>}
               />
@@ -1244,6 +1246,8 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
                 options={typeOptions}
                 style={{ width: '100%' }}
                 size="large"
+                showSearch
+                optionFilterProp="label"
                 allowClear
                 clearIcon={<span style={{ fontSize: 12 }}>✕</span>}
               />

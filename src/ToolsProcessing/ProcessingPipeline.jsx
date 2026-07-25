@@ -734,7 +734,11 @@ const ProcessingPipeline = () => {
       // Use the endpoint provided by user
       const res = await API.get(`/NRDataLots/GetByProjectId/${projectId}`);
       const data = res.data || [];
-      return data.filter(lot => lot.lotNo > 0);
+      // Enhance with page validation
+      return data.filter(lot => lot.lotNo > 0).map(lot => ({
+        ...lot,
+        hasZeroPages: isLotMissingPages(lot)
+      }));
     } catch (err) {
       console.error("Failed to fetch lots for selection", err);
       // Fallback to internal route if NRDatas fails
@@ -742,12 +746,12 @@ const ProcessingPipeline = () => {
         const res = await API.get(`/NRDataLots/by-project/${projectId}`);
         const allData = res.data || [];
 
-        // Group by lot and count catches manually
+        // Group by lot and count catches manually, and check pages
         const lotMap = new Map();
         allData.forEach(item => {
           if (item.lotNo > 0) {
             if (!lotMap.has(item.lotNo)) {
-              lotMap.set(item.lotNo, { catches: new Set(), steps: [] });
+              lotMap.set(item.lotNo, { catches: new Set(), steps: [], hasZeroPages: false, pageValues: [] });
             }
             if (item.catchNo) {
               lotMap.get(item.lotNo).catches.add(item.catchNo);
@@ -755,6 +759,13 @@ const ProcessingPipeline = () => {
             if (item.steps !== undefined) {
               lotMap.get(item.lotNo).steps.push(item.steps);
             }
+            // Check if pages is 0 or missing
+            const pages = item.pages ?? item.Pages ?? 0;
+            const hasZero = pages === 0 || pages === null || pages === undefined || pages === '' || pages === '-';
+            if (hasZero) {
+              lotMap.get(item.lotNo).hasZeroPages = true;
+            }
+            lotMap.get(item.lotNo).pageValues.push(pages);
           }
         });
 
@@ -762,7 +773,9 @@ const ProcessingPipeline = () => {
         const lots = Array.from(lotMap.entries()).map(([lotNo, info]) => ({
           lotNo,
           catchCount: info.catches.size,
-          minStep: info.steps.length > 0 ? Math.min(...info.steps) : 5
+          minStep: info.steps.length > 0 ? Math.min(...info.steps) : 5,
+          hasZeroPages: info.hasZeroPages,
+          pageValues: info.pageValues
         })).sort((a, b) => a.lotNo - b.lotNo);
 
         return lots;
@@ -770,6 +783,17 @@ const ProcessingPipeline = () => {
         return [];
       }
     }
+  };
+
+  // Helper function to check if a lot has missing pages
+  const isLotMissingPages = (lot) => {
+    // Check direct hasZeroPages property
+    if (lot.hasZeroPages !== undefined) {
+      return lot.hasZeroPages;
+    }
+    // Fallback: check if pages is missing/empty/zero
+    const pages = lot.pages ?? lot.Pages ?? null;
+    return pages === 0 || pages === null || pages === undefined || pages === '' || pages === '-' || pages === 'null';
   };
 
   const fetchMissingEnvLotCatchesForSelection = async (projectIdParam) => {
@@ -1034,12 +1058,12 @@ const ProcessingPipeline = () => {
 
   const showLotSelectionModal = (lots, options = {}) => {
     return new Promise((resolve) => {
+      // Only select valid lots (those with pages) by default
+      const validLots = lots.filter(lot => !lot.hasZeroPages);
       setLotSelectionModal({
         visible: true,
         availableLots: lots,
-        selectedLots: lots.map(lot => lot.lotNo), // Select all by default
-        description: options.description || "Please select which lot(s) you want to process for Box Breaking. You can select all lots or specific ones.",
-        okText: options.okText || "Process Selected Lots",
+        selectedLots: validLots.map(lot => lot.lotNo), // Select only valid lots by default
         loading: false,
         resolve
       });
@@ -1087,11 +1111,12 @@ const ProcessingPipeline = () => {
     }
   };
 
-  const handleSelectAllLots = (checked) => {
+  const handleSelectAllLots = (checked, lotsToSelect = null) => {
     if (checked) {
+      const lotsToAdd = lotsToSelect || lotSelectionModal.availableLots.map(lot => lot.lotNo);
       setLotSelectionModal(prev => ({
         ...prev,
-        selectedLots: prev.availableLots.map(lot => lot.lotNo)
+        selectedLots: lotsToAdd
       }));
     } else {
       setLotSelectionModal(prev => ({
@@ -1974,19 +1999,22 @@ const ProcessingPipeline = () => {
       try {
         const res = await API.get(`/NRDataLots/GetByProjectId/${projectId}`);
         const data = res.data || [];
-        lots = data.filter(lot => lot.lotNo > 0);
+        lots = data.filter(lot => lot.lotNo > 0).map(lot => ({
+          ...lot,
+          hasZeroPages: isLotMissingPages(lot)
+        }));
       } catch (err) {
         // Fallback to by-project endpoint if GetByProjectId doesn't exist
         console.log("Using fallback endpoint for lots");
         const res = await API.get(`/NRDataLots/by-project/${projectId}`);
         const allData = res.data || [];
 
-        // Group by lot and count catches manually
+        // Group by lot and count catches manually, and check pages
         const lotMap = new Map();
         allData.forEach(item => {
           if (item.lotNo > 0) {
             if (!lotMap.has(item.lotNo)) {
-              lotMap.set(item.lotNo, { catches: new Set(), steps: [] });
+              lotMap.set(item.lotNo, { catches: new Set(), steps: [], hasZeroPages: false, pageValues: [] });
             }
             if (item.catchNo) {
               lotMap.get(item.lotNo).catches.add(item.catchNo);
@@ -1994,6 +2022,13 @@ const ProcessingPipeline = () => {
             if (item.steps !== undefined) {
               lotMap.get(item.lotNo).steps.push(item.steps);
             }
+            // Check if pages is 0 or missing
+            const pages = item.pages ?? item.Pages ?? 0;
+            const hasZero = pages === 0 || pages === null || pages === undefined || pages === '' || pages === '-' || pages === 'null';
+            if (hasZero) {
+              lotMap.get(item.lotNo).hasZeroPages = true;
+            }
+            lotMap.get(item.lotNo).pageValues.push(pages);
           }
         });
 
@@ -2001,7 +2036,9 @@ const ProcessingPipeline = () => {
         lots = Array.from(lotMap.entries()).map(([lotNo, info]) => ({
           lotNo,
           catchCount: info.catches.size,
-          minStep: info.steps.length > 0 ? Math.min(...info.steps) : 5
+          minStep: info.steps.length > 0 ? Math.min(...info.steps) : 5,
+          hasZeroPages: info.hasZeroPages,
+          pageValues: info.pageValues
         })).sort((a, b) => a.lotNo - b.lotNo);
       }
 
@@ -2403,6 +2440,18 @@ const ProcessingPipeline = () => {
       return;
     }
 
+    // Build friendly file names for lot-wise templates
+    const fileNames = lotTemplates
+      .filter((t) => resolveTemplateId(t))
+      .map((t) =>
+        buildReportFileName({
+          templateName: t?.templateName,
+          projectName: projectName || (projectId ? `Project ${projectId}` : undefined),
+          typeId: t?.typeId ?? typeId,
+          lotNumber: lotNo,
+        })
+      );
+
     setBulkDownloadingLots(true);
     const messageKey = `download-all-lot-${lotNo}-${Date.now()}`;
     message.loading({
@@ -2417,19 +2466,20 @@ const ProcessingPipeline = () => {
           projectId: Number(projectId),
           templateIds: templateIds.join(","),
           lotNumber: lotNo,
+          fileNames: fileNames.join(","),
         },
         responseType: "blob",
       });
 
       const contentDisposition = res.headers["content-disposition"] || "";
       const fileNameMatch = contentDisposition.match(/filename="?([^\"]+)"?/i);
-      const fileName = fileNameMatch?.[1] || `Lot${lotNo}_Reports_${projectId}_${new Date().toISOString().slice(0, 10)}.zip`;
+      const zipFileName = fileNameMatch?.[1] || `Lot${lotNo}_Reports_${projectId}_${new Date().toISOString().slice(0, 10)}.zip`;
 
       const fileBlob = new Blob([res.data], { type: "application/zip" });
       const url = window.URL.createObjectURL(fileBlob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = fileName;
+      link.download = zipFileName;
       document.body.appendChild(link);
       link.click();
       link.remove();
