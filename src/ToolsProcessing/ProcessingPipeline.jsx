@@ -34,6 +34,7 @@ import EnvLotSelectionModal from "./components/EnvLotSelectionModal";
 import ExistingReportModal from "./components/ExistingReportModal";
 import TemplatesPanel from "./components/TemplatesPanel";
 import LotWisePanel from "./components/LotWisePanel";
+import ReportTemplateManagement from './components/ReportTemplateManagement';
 
 const { Text } = Typography;
 
@@ -154,6 +155,7 @@ const ProcessingPipeline = () => {
   const [lotReportStatus, setLotReportStatus] = useState({});
   const [envLotReports, setEnvLotReports] = useState([]); // Store generated envelope lot reports
   const [reportsLoading, setReportsLoading] = useState(false);
+  const [generatedTemplateReports, setGeneratedTemplateReports] = useState([]);
   const [reportVersions, setReportVersions] = useState({});
 
   const loadReportVersions = async () => {
@@ -259,7 +261,7 @@ const ProcessingPipeline = () => {
       envelopeSummary: "EnvelopeSummary.xlsx",
       catchSummary: "CatchSummary.xlsx",
       catchOmrSerialing: "CatchWiseBookletAndOmrSerialing.xlsx",
-    };
+};
 
     const results = {};
 
@@ -452,6 +454,7 @@ const ProcessingPipeline = () => {
         templateName: report.templateName,
         envLotNumbers: report.envLotNumbers ? report.envLotNumbers.split(',').map(num => parseInt(num.trim())).filter(num => !isNaN(num)) : [],
         envLotKey: report.envLotNumbers,
+        lotNumber: report.lotNumber, // Use the lot number from database
         fileName: report.fileName,
         generatedAt: report.generatedAt,
         generatedBy: report.generatedBy,
@@ -1281,6 +1284,93 @@ const ProcessingPipeline = () => {
     return templatesByModuleId.get(moduleId) || [];
   };
 
+const loadGeneratedTemplateReports = async () => {
+  if (!rptApiUrl || !projectId) return;
+
+  const results = [];
+
+  for (const moduleKey of Object.keys(moduleKeyToIdMap)) {
+    const moduleName =
+      moduleKeyToNameMap[moduleKey] || moduleKey;
+
+    // Only process Box Breaking module
+    if (moduleName.toLowerCase() !== "box breaking") {
+      continue;
+    }
+
+    const templates = getTemplatesForModuleKey(moduleKey);
+
+    if (!templates.length) continue;
+
+    const boxResults = await Promise.all(
+      (availableLots || []).flatMap((lot) =>
+        templates.map(async (template) => {
+          const templateId = resolveTemplateId(template);
+
+          if (!templateId) return null;
+
+          try {
+            const res = await axios.get(
+              `${rptApiUrl}/report/generated-exists`,
+              {
+                params: {
+                  templateId,
+                  projectId: Number(projectId),
+                  lotNumber: lot.lotNo,
+                },
+              }
+            );
+
+            if (!res?.data?.exists) return null;
+
+            return {
+              ...res.data,
+              templateId,
+              lotNo: lot.lotNo,
+              module: moduleName,
+              templateName:
+                template.templateName ||
+                template.name ||
+                "-",
+            };
+          } catch (error) {
+            console.error(
+              "Failed to check Box Breaking template:",
+              templateId,
+              "Lot:",
+              lot.lotNo,
+              error
+            );
+
+            return null;
+          }
+        })
+      )
+    );
+
+    results.push(...boxResults.filter(Boolean));
+  }
+
+  setGeneratedTemplateReports(results);
+};
+
+
+  useEffect(() => {
+  if (
+    !projectId ||
+    !templateOptions.length ||
+    !Object.keys(moduleKeyToIdMap).length
+  ) {
+    return;
+  }
+
+  loadGeneratedTemplateReports();
+}, [
+  projectId,
+  templateOptions,
+  moduleKeyToIdMap,
+  availableLots,
+]);
   const loadTemplateReportStatus = async (moduleKey) => {
     if (!rptApiUrl || !projectId) return;
     const templates = getTemplatesForModuleKey(moduleKey);
@@ -1601,11 +1691,18 @@ const ProcessingPipeline = () => {
 
         // Save the generated envelope lot report to database
         try {
+          // Determine envLotNumbers: use 0 if no specific lots, otherwise use the sorted lot numbers
+          const envLotNumbersValue = isQS 
+            ? String(currentLot) 
+            : (envLotNumbers && envLotNumbers.length > 0 
+                ? envLotNumbers.sort((a, b) => a - b).join(',')
+                : '0');
+
           const reportData = {
             projectId: Number(projectId),
             templateId,
             templateName: template?.templateName || `Template ${templateId}`,
-            envLotNumbers: isQS ? String(currentLot) : (envLotNumbers).sort((a, b) => a - b).join(','),
+            envLotNumbers: envLotNumbersValue,
             fileName,
             generatedBy: 'Current User', // You can replace this with actual user info
             filePath: filePath // Include the server file path
@@ -1652,12 +1749,16 @@ const ProcessingPipeline = () => {
           message.warning("Report generated but failed to save to database. It will be lost on refresh.");
 
           // Still show the report locally even if database save fails
-          const reportKey = isQS ? String(currentLot) : envLotNumbers.sort((a, b) => a - b).join(',');
+          const reportKey = isQS 
+            ? String(currentLot) 
+            : (envLotNumbers && envLotNumbers.length > 0
+                ? envLotNumbers.sort((a, b) => a - b).join(',')
+                : '0');
           const newReport = {
             id: `${templateId}_${reportKey}_${Date.now()}`,
             templateId,
             templateName: template?.templateName || `Template ${templateId}`,
-            envLotNumbers: isQS ? [currentLot] : [...envLotNumbers].sort((a, b) => a - b),
+            envLotNumbers: isQS ? [currentLot] : [...(envLotNumbers || [])].sort((a, b) => a - b),
             envLotKey: reportKey,
             fileName,
             generatedAt: new Date().toISOString(),
@@ -3408,25 +3509,7 @@ const ProcessingPipeline = () => {
     setSelectedModuleForDetails(record);
     setIsDetailPanelOpen(true);
 
-    // Initialize all items as selected by default
-    const mockLotData = {
-      "LOT-001": [
-        { id: "lot1-1", name: "report1.pdf", url: "#" },
-        { id: "lot1-2", name: "report2.pdf", url: "#" },
-      ],
-      "LOT-002": [
-        { id: "lot2-1", name: "report3.pdf", url: "#" },
-      ],
-    };
 
-    const mockCatchData = {
-      "CATCH-A": [
-        { id: "catch-a-1", name: "report1.pdf", url: "#" },
-      ],
-      "CATCH-B": [
-        { id: "catch-b-1", name: "report2.pdf", url: "#" },
-      ],
-    };
 
     const dataToUse = detailGrouping === "lot" ? mockLotData : mockCatchData;
 
@@ -3713,6 +3796,262 @@ const ProcessingPipeline = () => {
       </div>
     );
   }
+
+  const combinedReportData = useMemo(() => {
+  const list = [];
+  let keyId = 0;
+
+  Object.keys(reportVersions || {}).forEach((moduleKey) => {
+    const versions = reportVersions[moduleKey] || [];
+
+    const grouped = {};
+
+    versions.forEach((v) => {
+  const baseName = v.fileName
+    .replace(/[_-]?v\d+(?=\.[^.]+$)/i, '');
+
+  if (!grouped[baseName]) {
+    grouped[baseName] = [];
+  }
+
+  grouped[baseName].push(v);
+});
+
+    Object.keys(grouped).forEach((baseName) => {
+  const fileVersions = [...grouped[baseName]].sort(
+    (a, b) =>
+      Number(b.version || 0) -
+      Number(a.version || 0)
+  );
+
+  const latestVersion = Number(
+    fileVersions[0]?.version || 0
+  );
+
+  fileVersions.forEach((fv) => {
+    const currentVersion = Number(
+      fv.version || 0
+    );
+
+    list.push({
+      key: `report-${keyId++}`,
+
+      type: "Report",
+
+      module:
+        moduleKeyToNameMap[moduleKey] ||
+        moduleKey,
+
+      templateName: "-",
+
+      reportName:
+        baseName +
+        (
+          currentVersion > 0
+            ? ` (v${currentVersion})`
+            : ""
+        ),
+
+      versions: [
+        {
+          version:
+            currentVersion > 0
+              ? `v${currentVersion}`
+              : "Latest",
+
+          generatedOn:
+            fv.generatedAt,
+
+          generatedBy:
+            fv.generatedBy || "-",
+
+          status:
+            currentVersion === latestVersion
+              ? "Latest"
+              : "Previous",
+
+          fileUrl:
+            `${url3}/${projectId}/${fv.fileName}`,
+        },
+      ],
+    });
+  });
+});
+  });
+    const allTemplateReports = [
+  ...(envLotReports || []),
+  ...(generatedTemplateReports || []),
+];
+
+const groupedTpl = {};
+
+allTemplateReports.forEach((rep) => {
+  const templateId =
+    rep.templateId ||
+    rep.TemplateId ||
+    null;
+
+  const templateName =
+    rep.templateName ||
+    rep.TemplateName ||
+    "-";
+
+  /*
+   * Use templateId as the primary grouping key.
+   * This is safer than grouping only by name.
+   */
+  const key = templateId
+    ? String(templateId)
+    : templateName;
+
+  if (!groupedTpl[key]) {
+    groupedTpl[key] = [];
+  }
+
+  groupedTpl[key].push({
+    ...rep,
+    templateId,
+    templateName,
+  });
+});
+
+Object.keys(groupedTpl).forEach((templateKey) => {
+  const reps = groupedTpl[templateKey].sort(
+    (a, b) =>
+      new Date(b.generatedAt || 0) -
+      new Date(a.generatedAt || 0)
+  );
+
+  const firstRep = reps[0];
+
+  /*
+   * Find template metadata
+   */
+  const tpl = templateOptions.find(
+    (t) =>
+      String(
+        resolveTemplateId(t)
+      ) === String(firstRep?.templateId)
+  );
+
+  /*
+   * Resolve module name
+   */
+  let resolvedModuleName =
+    firstRep?.module || null;
+
+  if (!resolvedModuleName && tpl) {
+    let mods = [];
+
+    let mIds =
+      tpl.moduleIds ||
+      tpl.ModuleIds;
+
+    if (typeof mIds === "string") {
+      mIds = mIds
+        .split(",")
+        .map((m) => parseInt(m.trim()))
+        .filter((n) => !isNaN(n));
+    }
+
+    if (
+      Array.isArray(mIds) &&
+      mIds.length > 0 &&
+      allModules?.length > 0
+    ) {
+      mIds.forEach((mId) => {
+        const mod = allModules.find(
+          (am) =>
+            am.id === mId ||
+            String(am.id) === String(mId)
+        );
+
+        if (mod?.name) {
+          mods.push(mod.name);
+        }
+      });
+    }
+
+    if (mods.length > 0) {
+      resolvedModuleName =
+        [...new Set(mods)].join(", ");
+    }
+  }
+
+  if (!resolvedModuleName) {
+    return;
+    // resolvedModuleName = "-";
+  }
+
+  /*
+   * Create table rows
+   */
+  reps.forEach((r, idx) => {
+    list.push({
+      key: `template-${keyId++}`,
+
+      type: "Template",
+
+      module:
+        r.module ||
+        resolvedModuleName,
+
+      templateName:
+        r.templateName ||
+        "-",
+
+      reportName:
+        r.fileName ||
+        "-",
+
+      templateId:
+        r.templateId ||
+        firstRep?.templateId,
+
+      envLotNumbers:
+        r.envLotNumbers ||
+        r.envLotKey ||
+        null,
+
+      versions: [
+        {
+          version:
+            r.version ||
+            `v${reps.length - idx}`,
+
+          generatedOn:
+            r.generatedAt ||
+            "-",
+
+          generatedBy:
+            r.generatedBy ||
+            "-",
+
+          status:
+            idx === 0
+              ? "Latest"
+              : "Previous",
+
+          fileUrl:
+            r.url ||
+            r.fileUrl ||
+            (
+              r.dbId
+                ? `${
+                    (import.meta.env.VITE_API_FILE_URL || "").replace(/\/api\/?$/i, "")
+                  }/api/EnvelopeLotReports/Download/${r.dbId}`
+                : null
+            ),
+
+          dbId: r.dbId || null,
+        },
+      ],
+    });
+  });
+    });
+
+    return list;
+  }, [reportVersions, envLotReports, generatedTemplateReports, projectId, templateOptions, allModules]);
 
   return (
     <ErrorBoundary>
@@ -4090,6 +4429,24 @@ const ProcessingPipeline = () => {
         unassignedCatches={envLotSelectionModal.unassignedCatches}
         showAssigned={envLotSelectionModal.showAssigned}
         onToggleShowAssigned={(val) => setEnvLotSelectionModal(prev => ({ ...prev, showAssigned: val }))}
+      />
+      <ReportTemplateManagement
+        reports={combinedReportData}
+        projectId={projectId}
+        apiBaseUrl={import.meta.env.VITE_API_URL}
+        rptApiUrl={import.meta.env.VITE_RPT_API_URL}
+        envLotReports={envLotReports}
+        onDownload={(version, report) => {
+          if (version?.fileUrl) {
+            const link = document.createElement("a");
+            link.href = version.fileUrl;
+            link.download = report?.reportName || 'Report';
+            link.target = "_blank";
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+          }
+        }}
       />
 
       <ExistingReportModal
