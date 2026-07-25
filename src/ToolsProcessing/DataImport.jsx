@@ -2224,6 +2224,10 @@ const handleFieldChange = (fieldName, value) => {
                       style={{ width: 200 }}
                       placeholder="+ Add Field to Map"
                       value={null}
+                      showSearch
+                      filterOption={(input, option) =>
+                        (option?.children ?? '').toLowerCase().includes(input.toLowerCase())
+                      }
                       onChange={(value) => {
                         if (value) {
                           setAddedFieldIds(prev => [...prev, value]);

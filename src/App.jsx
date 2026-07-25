@@ -24,6 +24,7 @@ import ProtectedRoute from "./routes/ProtectedRoute";
 import { useUserToken, useUserTokenActions } from "./stores/UserToken";
 import HToV from "./ToolsProcessing/HToV";
 import HeaderVerification from "./ToolsProcessing/HeaderVerification";
+import ChangedNRUpload from "./ToolsProcessing/ChangedNRUpload";
 
 
 function isTokenExpired(token) {
@@ -247,6 +248,15 @@ export default function App() {
                   <ProtectedRoute token={token}>
                     <MainLayout >
                       <HeaderVerification />
+                    </MainLayout></ProtectedRoute>
+                }
+              />
+               <Route
+                path="/changedNRUpload"
+                element={
+                  <ProtectedRoute token={token}>
+                    <MainLayout >
+                      <ChangedNRUpload />
                     </MainLayout></ProtectedRoute>
                 }
               />
