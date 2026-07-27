@@ -454,7 +454,7 @@ const ProcessingPipeline = () => {
         templateName: report.templateName,
         envLotNumbers: report.envLotNumbers ? report.envLotNumbers.split(',').map(num => parseInt(num.trim())).filter(num => !isNaN(num)) : [],
         envLotKey: report.envLotNumbers,
-        lotNumber: report.lotNumber, // Use the lot number from database
+        lotNumber: report.lotNo || report.lotNumber, // Use lotNo from database (the new field we added)
         fileName: report.fileName,
         generatedAt: report.generatedAt,
         generatedBy: report.generatedBy,
@@ -738,10 +738,10 @@ const ProcessingPipeline = () => {
       // Use the endpoint provided by user
       const res = await API.get(`/NRDataLots/GetByProjectId/${projectId}`);
       const data = res.data || [];
-      // Enhance with page validation
+      // Transform to use hasPages directly from API
       return data.filter(lot => lot.lotNo > 0).map(lot => ({
         ...lot,
-        hasZeroPages: isLotMissingPages(lot)
+        hasPages: lot.hasPages !== undefined ? lot.hasPages : true
       }));
     } catch (err) {
       console.error("Failed to fetch lots for selection", err);
@@ -755,7 +755,7 @@ const ProcessingPipeline = () => {
         allData.forEach(item => {
           if (item.lotNo > 0) {
             if (!lotMap.has(item.lotNo)) {
-              lotMap.set(item.lotNo, { catches: new Set(), steps: [], hasZeroPages: false, pageValues: [] });
+              lotMap.set(item.lotNo, { catches: new Set(), steps: [], hasPages: true, pageValues: [] });
             }
             if (item.catchNo) {
               lotMap.get(item.lotNo).catches.add(item.catchNo);
@@ -763,11 +763,11 @@ const ProcessingPipeline = () => {
             if (item.steps !== undefined) {
               lotMap.get(item.lotNo).steps.push(item.steps);
             }
-            // Check if pages is 0 or missing
-            const pages = item.pages ?? item.Pages ?? 0;
-            const hasZero = pages === 0 || pages === null || pages === undefined || pages === '' || pages === '-';
-            if (hasZero) {
-              lotMap.get(item.lotNo).hasZeroPages = true;
+            // Check if pages exist
+            const pages = item.pages ?? item.Pages ?? null;
+            const hasValidPages = pages !== 0 && pages !== null && pages !== undefined && pages !== '' && pages !== '-';
+            if (!hasValidPages) {
+              lotMap.get(item.lotNo).hasPages = false;
             }
             lotMap.get(item.lotNo).pageValues.push(pages);
           }
@@ -778,7 +778,7 @@ const ProcessingPipeline = () => {
           lotNo,
           catchCount: info.catches.size,
           minStep: info.steps.length > 0 ? Math.min(...info.steps) : 5,
-          hasZeroPages: info.hasZeroPages,
+          hasPages: info.hasPages,
           pageValues: info.pageValues
         })).sort((a, b) => a.lotNo - b.lotNo);
 
@@ -789,11 +789,11 @@ const ProcessingPipeline = () => {
     }
   };
 
-  // Helper function to check if a lot has missing pages
+  // Helper function to check if a lot has pages
   const isLotMissingPages = (lot) => {
-    // Check direct hasZeroPages property
-    if (lot.hasZeroPages !== undefined) {
-      return lot.hasZeroPages;
+    // Check direct hasPages property
+    if (lot.hasPages !== undefined) {
+      return !lot.hasPages;
     }
     // Fallback: check if pages is missing/empty/zero
     const pages = lot.pages ?? lot.Pages ?? null;
@@ -1062,9 +1062,9 @@ const ProcessingPipeline = () => {
 
   const showLotSelectionModal = (lots, options = {}) => {
     return new Promise((resolve) => {
-      // For quantity sheet, select all lots including those with zero pages
+      // For quantity sheet, select all lots including those without pages
       // For other templates, only select valid lots (those with pages) by default
-      const validLots = lots.filter(lot => !lot.hasZeroPages);
+      const validLots = lots.filter(lot => lot.hasPages);
       const defaultSelectedLots = options.isQuantitySheet 
         ? lots.map(lot => lot.lotNo)
         : validLots.map(lot => lot.lotNo);
@@ -1517,11 +1517,43 @@ const loadGeneratedTemplateReports = async () => {
     const templateModuleIds = normalizeModuleIds(template?.moduleIds ?? template?.ModuleIds);
     const isEnvelopeDependent = envelopeBreakingModuleId && templateModuleIds.includes(envelopeBreakingModuleId);
 
+    // Check if template depends on box breaking module
+    const boxBreakingModuleId = moduleKeyToIdMap["box"];
+    const isBoxBreakingDependent = boxBreakingModuleId && templateModuleIds.includes(boxBreakingModuleId);
+
     // Only show env lot modal for reports dependent on envelope breakages (excluding QS)
     let assignedCatchNos = [];
     // Debug: log why the missing-catches branch may not run
-    console.debug('handleGenerateTemplate: isQS=', isQS, 'isEnvelopeDependent=', isEnvelopeDependent, 'action=', action, 'projectId=', projectId, 'envelopeBreakingModuleId=', envelopeBreakingModuleId, 'templateModuleIds=', templateModuleIds);
-    if (!isQS && !isComposite && isEnvelopeDependent) {
+    console.debug('handleGenerateTemplate: isQS=', isQS, 'isEnvelopeDependent=', isEnvelopeDependent, 'isBoxBreakingDependent=', isBoxBreakingDependent, 'action=', action, 'projectId=', projectId, 'envelopeBreakingModuleId=', envelopeBreakingModuleId, 'templateModuleIds=', templateModuleIds);
+    
+    // For box breaking dependent templates, show lot selection modal
+    let selectedLotsForBoxBreaking = [];
+    if (isBoxBreakingDependent && !isQS && !isComposite) {
+      const lots = await fetchLotsForSelection();
+      const validLots = lots.filter(lot => lot.lotNo > 0);
+
+      if (validLots.length > 0) {
+        const selectedLots = await showLotSelectionModal(validLots, {
+          description: "Please select which lot(s) you want to generate for box breaking template. You can select all lots or specific ones.",
+          okText: "Generate",
+          isQuantitySheet: false
+        });
+        if (selectedLots === null) {
+          return;
+        }
+        selectedLotsForBoxBreaking = selectedLots;
+        // Don't set envLotNumbers here - we'll set it per lot in the loop
+      } else {
+        Modal.warning({
+          title: "Lot Bifurcation Required",
+          content: "Please complete lot bifurcation before generating this template.",
+          okText: "OK"
+        });
+        return;
+      }
+    }
+    
+    if (!isQS && !isComposite && isEnvelopeDependent && !isBoxBreakingDependent) {
       if (action === "regenerate") {
         const assignedCatchItems = await fetchAssignedEnvLotCatchesForSelection(projectId);
         if (assignedCatchItems.length > 0) {
@@ -1574,8 +1606,11 @@ const loadGeneratedTemplateReports = async () => {
 
           // If catch numbers selected, assign them to an EnvLot
           if (selectedCatchOnly.length > 0) {
+            console.log('Assigning catches to EnvLot:', selectedCatchOnly);
             const assignResult = await assignEnvLotByCatchNos(selectedCatchOnly);
+            console.log('Assign result:', assignResult);
             if (!assignResult || !assignResult.assignedEnvLotNo) {
+              message.error("Failed to assign catches to envelope lot");
               return;
             }
             envLotNumbers.push(assignResult.assignedEnvLotNo);
@@ -1616,7 +1651,8 @@ const loadGeneratedTemplateReports = async () => {
 
     // For quantity sheet, generate one template per lot
     // For other templates, generate one combined template
-    const lotsToProcess = isQS ? selectedLotsForQS : [null];
+    // For box breaking templates, loop through selected lots
+    const lotsToProcess = isQS ? selectedLotsForQS : (isBoxBreakingDependent ? selectedLotsForBoxBreaking : [null]);
 
     for (const currentLot of lotsToProcess) {
       const payload = {
@@ -1625,12 +1661,14 @@ const loadGeneratedTemplateReports = async () => {
         ...(Object.keys(staticVariables).length > 0 ? { staticVariables } : {}),
         ...(isQS && currentLot
           ? { LotNos: String(currentLot) }
-          : (envLotNumbers.length > 0 && !isQS && !isComposite ? { LotNos: envLotNumbers.join(',') } : {})),
+          : (isBoxBreakingDependent && currentLot
+            ? { LotNos: String(currentLot) }
+            : (envLotNumbers.length > 0 && !isQS && !isComposite ? { LotNos: envLotNumbers.join(',') } : {}))),
       };
       const messageKey = `generate-report-${payload.templateId}-${Date.now()}`;
       setGeneratingTemplates((prev) => ({ ...prev, [templateId]: true }));
       message.loading({
-        content: isQS ? `Generating report for Lot ${currentLot}...` : "Generating report...",
+        content: isQS ? `Generating report for Lot ${currentLot}...` : (isBoxBreakingDependent ? `Generating report for Lot ${currentLot}...` : "Generating report..."),
         key: messageKey,
         duration: 0,
       });
@@ -1688,99 +1726,6 @@ const loadGeneratedTemplateReports = async () => {
         });
 
         message.success({ content: isQS ? `Report generated for Lot ${currentLot}.` : "Report generated.", key: messageKey });
-
-        // Save the generated envelope lot report to database
-        try {
-          // Determine envLotNumbers: use 0 if no specific lots, otherwise use the sorted lot numbers
-          const envLotNumbersValue = isQS 
-            ? String(currentLot) 
-            : (envLotNumbers && envLotNumbers.length > 0 
-                ? envLotNumbers.sort((a, b) => a - b).join(',')
-                : '0');
-
-          const reportData = {
-            projectId: Number(projectId),
-            templateId,
-            templateName: template?.templateName || `Template ${templateId}`,
-            envLotNumbers: envLotNumbersValue,
-            fileName,
-            generatedBy: 'Current User', // You can replace this with actual user info
-            filePath: filePath // Include the server file path
-          };
-
-          console.log('Saving report to database:', reportData);
-          const saveResponse = await API.post('/EnvelopeLotReports', reportData);
-          console.log('Report saved successfully:', saveResponse.data);
-          const savedReport = saveResponse.data;
-
-          // Update local state with the saved report
-          const newReport = {
-            id: `${templateId}_${reportData.envLotNumbers}_${savedReport.id}`,
-            templateId,
-            templateName: template?.templateName || `Template ${templateId}`,
-            envLotNumbers: isQS ? [currentLot] : [...envLotNumbers].sort((a, b) => a - b),
-            envLotKey: reportData.envLotNumbers,
-            fileName,
-            generatedAt: savedReport.generatedAt,
-            generatedBy: savedReport.generatedBy,
-            filePath: savedReport.filePath, // Include the server file path
-            url,
-            dbId: savedReport.id
-          };
-
-          setEnvLotReports(prev => {
-            // Remove any existing report with the same template and envLotKey combination
-            const filtered = prev.filter(report =>
-              !(report.templateId === templateId && report.envLotKey === reportData.envLotNumbers)
-            );
-            return [newReport, ...filtered]; // Add new report at the beginning
-          });
-
-          // Automatically expand the reports section for this template
-          setExpandedReportsTemplates(prev => {
-            const newSet = new Set(prev);
-            newSet.add(templateId);
-            return newSet;
-          });
-
-        } catch (saveErr) {
-          console.error("Failed to save report to database", saveErr);
-          console.error("Error details:", saveErr.response?.data);
-          message.warning("Report generated but failed to save to database. It will be lost on refresh.");
-
-          // Still show the report locally even if database save fails
-          const reportKey = isQS 
-            ? String(currentLot) 
-            : (envLotNumbers && envLotNumbers.length > 0
-                ? envLotNumbers.sort((a, b) => a - b).join(',')
-                : '0');
-          const newReport = {
-            id: `${templateId}_${reportKey}_${Date.now()}`,
-            templateId,
-            templateName: template?.templateName || `Template ${templateId}`,
-            envLotNumbers: isQS ? [currentLot] : [...(envLotNumbers || [])].sort((a, b) => a - b),
-            envLotKey: reportKey,
-            fileName,
-            generatedAt: new Date().toISOString(),
-            generatedBy: 'Current User',
-            filePath: filePath, // Include the server file path even if DB save fails
-            url,
-          };
-
-          setEnvLotReports(prev => {
-            const filtered = prev.filter(report =>
-              !(report.templateId === templateId && report.envLotKey === reportKey)
-            );
-            return [newReport, ...filtered];
-          });
-
-          // Automatically expand the reports section for this template even if DB save fails
-          setExpandedReportsTemplates(prev => {
-            const newSet = new Set(prev);
-            newSet.add(templateId);
-            return newSet;
-          });
-        }
       } catch (err) {
         console.error("Generate report failed", err);
         const msg = await getErrorMessageAsync(err, "Failed to generate report.");
@@ -2120,7 +2065,7 @@ const loadGeneratedTemplateReports = async () => {
         const data = res.data || [];
         lots = data.filter(lot => lot.lotNo > 0).map(lot => ({
           ...lot,
-          hasZeroPages: isLotMissingPages(lot)
+          hasPages: lot.hasPages !== undefined ? lot.hasPages : true
         }));
       } catch (err) {
         // Fallback to by-project endpoint if GetByProjectId doesn't exist
@@ -2133,7 +2078,7 @@ const loadGeneratedTemplateReports = async () => {
         allData.forEach(item => {
           if (item.lotNo > 0) {
             if (!lotMap.has(item.lotNo)) {
-              lotMap.set(item.lotNo, { catches: new Set(), steps: [], hasZeroPages: false, pageValues: [] });
+              lotMap.set(item.lotNo, { catches: new Set(), steps: [], hasPages: true, pageValues: [] });
             }
             if (item.catchNo) {
               lotMap.get(item.lotNo).catches.add(item.catchNo);
@@ -2141,11 +2086,11 @@ const loadGeneratedTemplateReports = async () => {
             if (item.steps !== undefined) {
               lotMap.get(item.lotNo).steps.push(item.steps);
             }
-            // Check if pages is 0 or missing
-            const pages = item.pages ?? item.Pages ?? 0;
-            const hasZero = pages === 0 || pages === null || pages === undefined || pages === '' || pages === '-' || pages === 'null';
-            if (hasZero) {
-              lotMap.get(item.lotNo).hasZeroPages = true;
+            // Check if pages exist
+            const pages = item.pages ?? item.Pages ?? null;
+            const hasValidPages = pages !== 0 && pages !== null && pages !== undefined && pages !== '' && pages !== '-' && pages !== 'null';
+            if (!hasValidPages) {
+              lotMap.get(item.lotNo).hasPages = false;
             }
             lotMap.get(item.lotNo).pageValues.push(pages);
           }
@@ -2156,7 +2101,7 @@ const loadGeneratedTemplateReports = async () => {
           lotNo,
           catchCount: info.catches.size,
           minStep: info.steps.length > 0 ? Math.min(...info.steps) : 5,
-          hasZeroPages: info.hasZeroPages,
+          hasPages: info.hasPages,
           pageValues: info.pageValues
         })).sort((a, b) => a.lotNo - b.lotNo);
       }
@@ -2340,6 +2285,45 @@ const loadGeneratedTemplateReports = async () => {
         content: `Generated ${resolveTemplateName(template)} for Lot ${lotNo}`,
         key: messageKey,
       });
+
+      // Save the generated report to database
+      try {
+        const templateId = resolveTemplateId(template);
+        const reportData = {
+          projectId: Number(projectId),
+          templateId,
+          templateName: template?.templateName || template?.TemplateName || `Box Breaking Template ${templateId}`,
+          envLotNumbers: '0', // Always 0 for lot-based reports
+          fileName: buildReportFileName({
+            templateName: template?.templateName,
+            projectName: projectName || (projectId ? `Project ${projectId}` : undefined),
+            typeId: template?.typeId ?? typeId,
+            lotNumber: lotNo,
+          }),
+          generatedBy: 'Current User',
+          filePath: null,
+          lotNo: lotNo // Send the actual lot number
+        };
+
+        console.log('[handleGenerateLotTemplate] Saving report to database:', reportData);
+        console.log('[handleGenerateLotTemplate] Payload details:', {
+          projectId: reportData.projectId,
+          templateId: reportData.templateId,
+          templateName: reportData.templateName,
+          envLotNumbers: reportData.envLotNumbers,
+          lotNo: reportData.lotNo,
+          fileName: reportData.fileName
+        });
+        
+        const saveResponse = await API.post('/EnvelopeLotReports', reportData);
+        console.log('[handleGenerateLotTemplate] Report saved successfully:', saveResponse.data);
+      } catch (saveErr) {
+        console.error('[handleGenerateLotTemplate] Failed to save report to database', saveErr);
+        console.error("Error response status:", saveErr?.response?.status);
+        console.error("Error response data:", saveErr?.response?.data);
+        console.error("Error message:", saveErr?.message);
+        // Don't block the flow - report was generated successfully
+      }
     } catch (err) {
       console.error("Failed to generate lot template", err);
       const errorMsg = await getErrorMessageAsync(err, "Failed to generate template");
