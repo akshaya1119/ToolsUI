@@ -135,7 +135,7 @@ useEffect(() => {
 
   try {
     const response = await axios.get(
-      `https://localhost:7276/api/EnvelopeLotReports/ByProject/${projectId}`
+      `${apiBaseUrl}/EnvelopeLotReports/ByProject/${projectId}`
     );
 
     console.log(
@@ -578,7 +578,7 @@ useEffect(() => {
         }
 
         const existsResponse = await axios.get(
-          `${base}/api/report/generated-exists`,
+          `${apiBaseUrl}/EnvelopeLotReports/ByProject/${projectId}`,
           {
             params: {
               templateId: Number(templateId),
