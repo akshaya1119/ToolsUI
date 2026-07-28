@@ -2,6 +2,10 @@ import React, { useState, useRef, useEffect } from "react";
 import { Search, ChevronDown, Columns } from "lucide-react";
 
 const COLUMN_LABELS = {
+  a: 'A',
+  b: 'B',
+  c: 'C',
+  d: 'D',
   lotNo: 'Lot',
   date: 'Exam Date',
   time: 'Exam Time'
@@ -44,38 +48,6 @@ const SearchBarHV = ({
 
   return (
     <div className="flex items-center gap-3">
-      {/* Lot Selector */}
-      <div className="relative" ref={lotRef}>
-        <button
-          onClick={() => setLotDropdownOpen(!lotDropdownOpen)}
-          className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-700 hover:border-gray-400 transition-colors min-w-[120px]"
-        >
-          <span className="text-gray-400">📋</span>
-          <span>{selectedLot || "All Lots"}</span>
-          <ChevronDown className="w-4 h-4 text-gray-400 ml-auto" />
-        </button>
-        {lotDropdownOpen && (
-          <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-20 min-w-[160px] py-1 max-h-60 overflow-y-auto">
-            {uniqueLots.map((lot) => (
-              <button
-                key={lot}
-                onClick={() => {
-                  onLotChange?.(lot === "All Lots" ? "" : lot);
-                  setLotDropdownOpen(false);
-                }}
-                className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 transition-colors ${
-                  (lot === "All Lots" && !selectedLot) || lot === selectedLot
-                    ? "bg-amber-50 text-amber-800 font-medium"
-                    : "text-gray-700"
-                }`}
-              >
-                {lot}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-
       {/* Search Input */}
       <div className="flex-1 max-w-xs relative flex items-center gap-2">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
