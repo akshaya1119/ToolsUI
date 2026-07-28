@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import axios from 'axios';
 import { Filter, FileEdit, Check, X } from 'lucide-react';
 import { Table, Input, Space, Button } from 'antd';
 import { SearchOutlined } from '@ant-design/icons';
@@ -10,6 +11,12 @@ import SearchBarHV from './components/HeaderVerification/SearchBarHV';
 import StatusBadgeHV from './components/HeaderVerification/StatusBadgeHV';
 import PrintPreviewHV from './components/HeaderVerification/PrintPreviewHV';
 import { normalizeStatus, statusLabels, statusDropdownOptions } from './components/HeaderVerification/statusUtils';
+
+const customTableStyles = `
+  .header-verification-table tbody tr:hover td {
+    background-color: inherit !important;
+  }
+`;
 
 const HeaderVerification = () => {
   const projectId = useStore((state) => state.projectId);
@@ -36,18 +43,41 @@ const HeaderVerification = () => {
   const [tableSorter, setTableSorter] = useState({ field: null, order: null });
   const { showToast } = useToast();
   const [currentUser, setCurrentUser] = useState(null);
+  const [userMap, setUserMap] = useState({});
 
-  // Debounce key-in search for 2 seconds
+  // Fetch all users for mapping userId to firstName
   useEffect(() => {
-    const handler = setTimeout(() => {
-      setGlobalSearch(searchInput);
-    }, 2000);
-    return () => clearTimeout(handler);
-  }, [searchInput]);
+    const fetchUsers = async () => {
+      try {
+        // Use VITE_API_BASE_URL for user data
+        const baseUrl = import.meta.env.VITE_API_BASE_URL;
+        const token = localStorage.getItem('token');
+        const res = await axios.get(`${baseUrl}/User`, {
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token && { Authorization: `Bearer ${token}` })
+          }
+        });
+        console.log('[HeaderVerification] Fetched users from VITE_API_BASE_URL:', res.data);
+        const map = {};
+        (res.data || []).forEach(user => {
+          // Use only firstName
+          const displayName = user.firstName || user.userName || `User ${user.userId}`;
+          map[user.userId] = displayName;
+          console.log(`[HeaderVerification] Mapped userId ${user.userId} to "${displayName}"`);
+        });
+        console.log('[HeaderVerification] Final user map:', map);
+        setUserMap(map);
+      } catch (err) {
+        console.error('Failed to fetch users from VITE_API_BASE_URL:', err);
+      }
+    };
+    fetchUsers();
+  }, []);
 
-  // All toggleable columns; catchNo, a, b, c, d are always visible
-  const ALWAYS_VISIBLE = ['catchNo', 'a', 'b', 'c', 'd', 'status', 'actions'];
-  const ALL_TOGGLEABLE = ['lotNo', 'date', 'time'];
+  // All toggleable columns; catchNo and status are always visible
+  const ALWAYS_VISIBLE = ['catchNo', 'status', 'actions'];
+  const ALL_TOGGLEABLE = ['a', 'b', 'c', 'd', 'lotNo', 'date', 'time'];
   const [visibleColumns, setVisibleColumns] = useState(new Set([...ALWAYS_VISIBLE, ...ALL_TOGGLEABLE]));
 
   // useEffect(() => {
@@ -148,6 +178,20 @@ const HeaderVerification = () => {
   }, [showToast, projectId, selectedLot, pageSize, currentPage, globalSearch, selectedStatus, tableSorter, columnFilters]);
 
   useEffect(() => { fetchAllMeta(); }, [fetchAllMeta]);
+  
+  // Auto-select the first non-empty status category
+  useEffect(() => {
+    if (summaryStats.notVerified > 0) {
+      setSelectedStatus('NOT_VERIFIED');
+    } else if (summaryStats.unclear > 0) {
+      setSelectedStatus('UNCLEAR');
+    } else if (summaryStats.verified > 0) {
+      setSelectedStatus('VERIFIED');
+    } else {
+      setSelectedStatus('ALL');
+    }
+  }, [summaryStats]);
+  
   useEffect(() => { fetchRecords(); }, [fetchRecords]);
 
   const getNumericStatus = normalizeStatus;
@@ -234,10 +278,10 @@ const HeaderVerification = () => {
     setPreviewOpen(false);
   }, [selectedStatus]);
 
-  // Scroll table to top on data/page change
-  useEffect(() => {
-    document.getElementById('table-scroll-container')?.scrollTo(0, 0);
-  }, [currentPage, records, filteredRecords]);
+  // Helper function to get firstName from userId using fetched user data
+  const getUserFirstName = (userId) => {
+    return userMap[userId] || `User ${userId}`;
+  };
 
   const getColumnSearchProps = (dataIndex) => ({
     filterDropdown: ({
@@ -504,7 +548,15 @@ const HeaderVerification = () => {
             ))}
           </select>
         ) : (
-          <StatusBadgeHV status={value} />
+          <div className="flex flex-col gap-1">
+            <StatusBadgeHV status={value} />
+            {record.verifiedBy && record.verifiedBy !== 0 && record.verifiedOn && (
+              <div className="text-xs text-gray-600 whitespace-nowrap">
+                <div>Updated by: {getUserFirstName(record.verifiedBy)}</div>
+                <div>Updated at: {record.verifiedOn}</div>
+              </div>
+            )}
+          </div>
         )
       ),
     },
@@ -535,8 +587,13 @@ const HeaderVerification = () => {
           ) : (
             <button
               onClick={(e) => handleEditRowClick(e, record)}
-              className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
-              title="Edit row inline"
+              disabled={normalizeStatus(record.status) === 1}
+              className={`p-1.5 rounded-md transition-colors ${
+                normalizeStatus(record.status) === 1
+                  ? 'text-gray-300 cursor-not-allowed'
+                  : 'text-blue-600 hover:bg-blue-50'
+              }`}
+              title={normalizeStatus(record.status) === 1 ? 'Cannot edit verified records' : 'Edit row inline'}
             >
               <FileEdit className="w-4 h-4" />
             </button>
@@ -579,18 +636,23 @@ const HeaderVerification = () => {
     setTableSorter({ field: null, order: null });
   }, []);
 
-  const handleFieldUpdate = useCallback(async (recordId, fieldName, newValue) => {
+  const handleFieldUpdate = useCallback(async (recordId, fieldName, newValue, overrideValues = null) => {
     try {
       if (!projectId) throw new Error('No project selected');
       const updatedRecord = records.find(r => r.id === recordId);
       if (!updatedRecord) throw new Error('Record not found');
+      const userId = localStorage.getItem('userId');
+      
+      // If overrideValues is provided (for batch updates), use those instead of record values
       const payload = {
-        A: fieldName === 'a' ? newValue : updatedRecord.a,
-        B: fieldName === 'b' ? newValue : updatedRecord.b,
-        C: fieldName === 'c' ? newValue : updatedRecord.c,
-        D: fieldName === 'd' ? newValue : updatedRecord.d,
+        A: overrideValues?.A !== undefined ? overrideValues.A : (fieldName === 'a' ? newValue : updatedRecord.a),
+        B: overrideValues?.B !== undefined ? overrideValues.B : (fieldName === 'b' ? newValue : updatedRecord.b),
+        C: overrideValues?.C !== undefined ? overrideValues.C : (fieldName === 'c' ? newValue : updatedRecord.c),
+        D: overrideValues?.D !== undefined ? overrideValues.D : (fieldName === 'd' ? newValue : updatedRecord.d),
         status: normalizeStatus(updatedRecord.status),
+        verifiedBy: userId ? parseInt(userId) : null,
       };
+      console.log('[HeaderVerification] handleFieldUpdate payload:', payload, 'userId from localStorage:', userId);
       const res = await API.put(`/Correction/HeaderVerification/${recordId}?projectId=${projectId}`, payload);
       setRecords(prev => prev.map(r => r.id === recordId ? { ...res.data, date: updatedRecord.date, time: updatedRecord.time } : r));
       if (selectedRecord?.id === recordId) {
@@ -599,7 +661,9 @@ const HeaderVerification = () => {
       return { ...res.data, date: updatedRecord.date, time: updatedRecord.time };
     } catch (err) {
       console.error('Failed to update field:', err);
-      showToast('Failed to update field', 'error');
+      // Extract error message from API response
+      const errorMessage = err.response?.data || err.message || 'Failed to update field';
+      showToast(errorMessage, 'error');
       throw err;
     }
   }, [projectId, records, selectedRecord, showToast]);
@@ -611,13 +675,16 @@ const HeaderVerification = () => {
       if (!updatedRecord) throw new Error('Record not found');
 
       const normalizedStatus = normalizeStatus(newStatusValue);
+      const userId = localStorage.getItem('userId');
       const payload = {
         A: updatedRecord.a,
         B: updatedRecord.b,
         C: updatedRecord.c,
         D: updatedRecord.d,
         status: normalizedStatus,
+        verifiedBy: userId ? parseInt(userId) : null,
       };
+      console.log('[HeaderVerification] handleStatusChange payload:', payload, 'userId from localStorage:', userId);
       const res = await API.put(`/Correction/HeaderVerification/${recordId}?projectId=${projectId}`, payload);
       setRecords(prev => prev.map(r => r.id === recordId ? { ...res.data, date: updatedRecord.date, time: updatedRecord.time } : r));
       if (selectedRecord?.id === recordId) {
@@ -628,7 +695,9 @@ const HeaderVerification = () => {
       return { ...res.data, date: updatedRecord.date, time: updatedRecord.time };
     } catch (err) {
       console.error('Failed to update status:', err);
-      showToast('Failed to update status', 'error');
+      // Extract error message from API response
+      const errorMessage = err.response?.data || err.message || 'Failed to update status';
+      showToast(errorMessage, 'error');
       throw err;
     }
   }, [projectId, records, selectedRecord, showToast, fetchAllMeta]);
@@ -656,31 +725,42 @@ const HeaderVerification = () => {
     e.stopPropagation();
     try {
       if (!projectId) throw new Error('No project selected');
+      const updatedRecord = records.find(r => r.id === recordId);
+      if (!updatedRecord) throw new Error('Record not found');
+
+      const userId = localStorage.getItem('userId');
       const payload = {
         A: editFormData.a,
         B: editFormData.b,
         C: editFormData.c,
         D: editFormData.d,
         status: Number(editFormData.status),
+        verifiedBy: userId ? parseInt(userId) : null,
       };
+
+      console.log('[HeaderVerification] handleSaveRow payload:', payload, 'userId from localStorage:', userId);
       const res = await API.put(`/Correction/HeaderVerification/${recordId}?projectId=${projectId}`, payload);
-      const updatedRecord = { ...res.data, date: editFormData.date, time: editFormData.time };
-      setRecords(prev => prev.map(r => r.id === recordId ? updatedRecord : r));
+      const updatedRecordData = { ...res.data, date: editFormData.date, time: editFormData.time };
+      setRecords(prev => prev.map(r => r.id === recordId ? updatedRecordData : r));
       setEditingRowId(null);
       setEditFormData({});
       showToast('Record updated successfully', 'success');
       if (selectedRecord?.id === recordId) {
-        setSelectedRecord(updatedRecord);
+        setSelectedRecord(updatedRecordData);
       }
       fetchAllMeta(); // refresh card counts
+      fetchRecords(); // refresh table data to show updated records
     } catch (err) {
       console.error('Failed to update record:', err);
-      showToast('Failed to update record', 'error');
+      // Extract error message from API response
+      const errorMessage = err.response?.data || err.message || 'Failed to update record';
+      showToast(errorMessage, 'error');
     }
   };
 
   return (
     <div className="w-full h-full min-h-0 flex flex-col overflow-hidden">
+      <style>{customTableStyles}</style>
       <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 flex-shrink-0 px-6 pt-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Paper Header Verification</h1>
@@ -701,12 +781,12 @@ const HeaderVerification = () => {
       <div className="flex-1 min-h-0 mx-6 mb-6 bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden flex">
         <div
   className={`flex-1 min-h-0 min-w-0 overflow-hidden flex ${
-    previewOpen ? 'lg:flex-row' : 'flex-col'
+    previewOpen ? 'lg:flex-row flex-col' : 'flex-col'
   }`}
 >
           <div
   className={`min-w-0 min-h-0 ${
-    previewOpen ? 'lg:w-[60%]' : 'w-full'
+    previewOpen ? 'lg:w-2/3 w-full' : 'w-full'
   } flex flex-col overflow-hidden`}
 >
             <div className="p-4 border-b border-gray-200 bg-white flex-shrink-0">
@@ -751,6 +831,7 @@ const HeaderVerification = () => {
               ) : (
                 <div id="table-scroll-container" className="h-full overflow-auto">
                   <Table
+                    className="header-verification-table"
                     dataSource={displayedRows}
                     columns={visibleTableColumns}
                     rowKey="id"
@@ -768,13 +849,31 @@ const HeaderVerification = () => {
                         </div>
                       ),
                     }}
-                    onRow={(record) => ({
-                      onClick: () => {
-                        if (editingRowId !== record.id) {
-                          handleOpenPreview(record);
-                        }
-                      },
-                    })}
+                    onRow={(record) => {
+                      const isSelected = previewOpen && selectedRecord?.id === record.id;
+                      const status = normalizeStatus(record.status);
+                      let rowStyle = { cursor: 'pointer' };
+                      
+                      // Highlight selected row with blue background ONLY when preview is open
+                      if (isSelected) {
+                        rowStyle.backgroundColor = '#dbeafe';
+                      }
+                      // Add status-based row coloring for non-selected rows
+                      else if (status === 1) {
+                        rowStyle.backgroundColor = '#f0fdf4'; // light green for verified
+                      } else if (status === 2) {
+                        rowStyle.backgroundColor = '#fef3c7'; // medium orange for needs review
+                      }
+                      
+                      return {
+                        onClick: () => {
+                          if (editingRowId !== record.id) {
+                            handleOpenPreview(record);
+                          }
+                        },
+                        style: rowStyle,
+                      };
+                    }}
                   />
                 </div>
               )}
@@ -839,7 +938,7 @@ const HeaderVerification = () => {
           </div>
 
           {previewOpen && selectedRecord && (
-            <div className="lg:w-2/5 min-h-0 h-full flex-shrink-0 border-l border-gray-200 overflow-hidden">
+            <div className="lg:w-1/3 w-full min-h-0 h-full flex-shrink-0 border-l border-gray-200 overflow-hidden">
               <PrintPreviewHV
                 record={selectedRecord}
                 allRecords={filteredRecords}
@@ -847,6 +946,7 @@ const HeaderVerification = () => {
                 onStatusChange={handleStatusChange}
                 onFieldUpdate={handleFieldUpdate}
                 currentUser={currentUser}
+                userMap={userMap}
               />
             </div>
           )}
