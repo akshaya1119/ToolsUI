@@ -457,7 +457,8 @@ const ProcessingPipeline = () => {
         lotNumber: report.lotNo || report.lotNumber, // Use lotNo from database (the new field we added)
         fileName: report.fileName,
         generatedAt: report.generatedAt,
-        generatedBy: report.generatedBy,
+        generatedByUserId: report.generatedByUserId || report.GeneratedByUserId,
+        downloadedByUserId: report.downloadedByUserId || report.DownloadedByUserId,
         filePath: report.filePath, // Include the server file path
         url: null, // Will be set when downloading
         dbId: report.id // Store the database ID for deletion
@@ -3963,8 +3964,7 @@ Object.keys(groupedTpl).forEach((templateKey) => {
   }
 
   if (!resolvedModuleName) {
-    return;
-    // resolvedModuleName = "-";
+    resolvedModuleName = "-";
   }
 
   /*
@@ -4010,6 +4010,9 @@ Object.keys(groupedTpl).forEach((templateKey) => {
           generatedBy:
             r.generatedBy ||
             "-",
+
+          generatedByUserId: r.generatedByUserId || r.GeneratedByUserId || null,
+          downloadedByUserId: r.downloadedByUserId || r.DownloadedByUserId || null,
 
           status:
             idx === 0

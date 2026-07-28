@@ -256,7 +256,7 @@ const Project = () => {
             ? proj.userAssigned
                 .map(userId => {
                     const user = users.find(u => u.userId === userId);
-                    return user ? user.firstName : 'Unknown User';
+                    return user ? user.firstName : '-';
                 })
                 .join(', ') // Combine user names into a single string
             : 'No Users Assigned'; // Fallback if userAssigned is not an array or empty
