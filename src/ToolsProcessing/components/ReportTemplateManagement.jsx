@@ -79,6 +79,9 @@ const ReportTemplateManagement = ({
   };
 
   const parseEnvLotNumbers = (envLotStr) => {
+    if (Array.isArray(envLotStr)) {
+      return envLotStr;
+    }
     if (
       envLotStr === null ||
       envLotStr === undefined ||
@@ -273,7 +276,7 @@ const handleDeselectAll = () => {
 
   useEffect(() => {
     fetchEnvLotReports();
-  }, [projectId]);
+  }, [projectId, envLotReports]);
 
   const fetchEnvLotReports = async () => {
     if (!projectId || !apiBaseUrl) return;
@@ -982,104 +985,73 @@ const paginatedReports = useMemo(() => {
       return;
     }
 
+try {
+  const base = (
+    rptApiUrl ||
+    import.meta.env.VITE_RPT_API_URL ||
+    ''
+  ).replace(/\/api\/?$/i, '');
+
+  if (!base) {
+    message.error('RPT API URL not configured.');
+    return;
+  }
+
+  const existsUrl =
+    `${base}/api/report/generated-exists` +
+    `?templateId=${templateId}` +
+    `&projectId=${projectId}` 
+
+  const existsResponse = await axios.get(existsUrl);
+
+  if (
+    !existsResponse.data?.exists &&
+    existsResponse.data !== true
+  ) {
+    message.error('No generated PDF found for this template.');
+    return;
+  }
+
+  const downloadUrl =
+    `${base}/api/report/generated-download` +
+    `?templateId=${templateId}` +
+    `&projectId=${projectId}` +
+    `&lotNumber=${lotNumber}`;
+
+  window.open(downloadUrl, '_blank');
+
+  // Track download for EnvelopeLotReports
+  if (report?.envLotReport?.id) {
     try {
-      const base = (
-        rptApiUrl ||
-        import.meta.env
-          .VITE_RPT_API_URL ||
-        ''
-      ).replace(
-        /\/api\/?$/i,
-        ''
-      );
-
-      if (!base) {
-        message.error(
-          'RPT API URL not configured.'
-        );
-
-        return;
-      }
-
-      const existsUrl =
-        `${base}/api/report/generated-exists` +
-        `?templateId=${templateId}` +
-        `&projectId=${projectId}` +
-        `&lotNumber=${lotNumber}`;
-
-      const existsResponse =
-        await axios.get(
-          existsUrl
-        );
-
-      if (
-        !existsResponse.data
-          ?.exists &&
-        existsResponse.data !==
-          true
-      ) {
-        message.error(
-          'No generated PDF found for this template.'
-        );
-
-        return;
-      }
-
-      const downloadUrl =
-        `${base}/api/report/generated-download` +
-        `?templateId=${templateId}` +
-        `&projectId=${projectId}` +
-        `&lotNumber=${lotNumber}`;
-
-      window.open(
-        downloadUrl,
-        '_blank'
-      );
-
-      // Track download for EnvelopeLotReports
-      if (report?.envLotReport?.id) {
+      let currentUserId = localStorage.getItem('userData');
+      if (currentUserId) {
         try {
-          let currentUserId = localStorage.getItem('userData');
-          if (currentUserId) {
-            try {
-              const parsed = JSON.parse(currentUserId);
-              if (parsed && typeof parsed === 'object' && parsed.userId) {
-                currentUserId = parsed.userId;
-              }
-            } catch (e) {
-              // it's a plain string, leave it as is
-            }
+          const parsed = JSON.parse(currentUserId);
+          if (parsed && typeof parsed === 'object' && parsed.userId) {
+            currentUserId = parsed.userId;
           }
-          
-          console.log('[handleDownload] Tracking download for report:', report.envLotReport.id, 'with resolved userId:', currentUserId);
-          
-          await axios.put(
-            `${apiBaseUrl}/EnvelopeLotReports/${report.envLotReport.id}/track-download`,
-            { 
-              downloadedByUserId: currentUserId ? Number(currentUserId) : null,
-              DownloadedByUserId: currentUserId ? Number(currentUserId) : null
-            }
-          );
-          console.log('[handleDownload] Download tracked for report:', report.envLotReport.id);
-        } catch (trackingError) {
-          console.warn('[handleDownload] Failed to track download:', trackingError);
-          // Don't fail the download if tracking fails
+        } catch (e) {
+          // it's a plain string
         }
       }
 
-      message.success(
-        'Download started.'
+      await axios.put(
+        `${apiBaseUrl}/EnvelopeLotReports/${report.envLotReport.id}/track-download`,
+        {
+          downloadedByUserId: currentUserId ? Number(currentUserId) : null,
+          DownloadedByUserId: currentUserId ? Number(currentUserId) : null,
+        }
       );
-    } catch (error) {
-      console.error(
-        'Template download failed:',
-        error
-      );
-
-      message.error(
-        'Failed to download generated PDF.'
-      );
+    } catch (trackingError) {
+      console.warn('Failed to track download:', trackingError);
     }
+  }
+
+  message.success('Download started.');
+} catch (error) {
+  console.error('Template download failed:', error);
+  message.error('Failed to download generated PDF.');
+} 
   };
 
   const handleDownloadAll = async () => {

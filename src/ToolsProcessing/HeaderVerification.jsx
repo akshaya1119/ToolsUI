@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 import { Filter, FileEdit, Check, X } from 'lucide-react';
 import { Table, Input, Space, Button } from 'antd';
@@ -29,10 +30,30 @@ const HeaderVerification = () => {
   const [serverPaging, setServerPaging] = useState(false);
   const [selectedRecord, setSelectedRecord] = useState(null);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [searchParams] = useSearchParams();
+  // Must be declared before useState calls that reference them
+  const initCatch = searchParams.get('catch') || '';
+  const initVerificationStatus = searchParams.get('status');
+
+  // Pre-fill search input from ?catch= param, but don't restrict the API — let user see all records
   const [globalSearch, setGlobalSearch] = useState('');
-  const [searchInput, setSearchInput] = useState('');
+  const [searchInput, setSearchInput] = useState(initCatch);
   const [selectedLot, setSelectedLot] = useState('');
-  const [selectedStatus, setSelectedStatus] = useState('NOT_VERIFIED');
+  // If navigated with a catch param, jump directly to the correct status tab
+  const [selectedStatus, setSelectedStatus] = useState(() => {
+    if (!initCatch) return 'NOT_VERIFIED';
+
+    switch (String(initVerificationStatus)) {
+      case '0':
+        return 'NOT_VERIFIED';
+      case '2':
+        return 'UNCLEAR';
+      case '1':
+        return 'VERIFIED';
+      default:
+        return 'ALL';
+    }
+  });
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [editingRowId, setEditingRowId] = useState(null);
@@ -180,7 +201,9 @@ const HeaderVerification = () => {
   useEffect(() => { fetchAllMeta(); }, [fetchAllMeta]);
   
   // Auto-select the first non-empty status category
+  // Skip when navigated with a ?catch= param — the correct tab is already set from the URL
   useEffect(() => {
+    if (initCatch) return;
     if (summaryStats.notVerified > 0) {
       setSelectedStatus('NOT_VERIFIED');
     } else if (summaryStats.unclear > 0) {
