@@ -7,8 +7,31 @@ const BatchComparisonTable = ({ comparisonData, onPaginationChange, onSearch, on
   const [searchText, setSearchText] = useState('');
   const [sortField, setSortField] = useState(null);
   const [sortOrder, setSortOrder] = useState(null);
-  const [activeTab, setActiveTab] = useState('all');
+  const [activeTab, setActiveTab] = useState('allChanges');
   const debounceTimer = useRef(null);
+
+  // Categorize fields into unique and non-unique
+  const { fieldsToShowUnique, fieldsToShowNonUnique } = useMemo(() => {
+    if (!comparisonData || !comparisonData.data) return { fieldsToShowUnique: [], fieldsToShowNonUnique: [] };
+    
+    const unique = new Set();
+    const nonUnique = new Set();
+    
+    comparisonData.data.forEach(item => {
+      item.changes.forEach(change => {
+        if (change.isUniqueField) {
+          unique.add(change.field);
+        } else {
+          nonUnique.add(change.field);
+        }
+      });
+    });
+    
+    return {
+      fieldsToShowUnique: Array.from(unique),
+      fieldsToShowNonUnique: Array.from(nonUnique)
+    };
+  }, [comparisonData?.data]);
 
   // Debounce search - only search when 2+ characters or when cleared
   useEffect(() => {
@@ -21,7 +44,7 @@ const BatchComparisonTable = ({ comparisonData, onPaginationChange, onSearch, on
     if (searchText.length >= 2 || searchText.length === 0) {
       debounceTimer.current = setTimeout(() => {
         if (onSearch) {
-          onSearch(searchText, sortField, sortOrder, activeTab === 'all' ? null : getStatusForTab(activeTab));
+          onSearch(searchText, sortField, sortOrder, activeTab === 'allChanges' ? null : getStatusForTab(activeTab));
         }
       }, 2000);
     }
@@ -36,7 +59,8 @@ const BatchComparisonTable = ({ comparisonData, onPaginationChange, onSearch, on
   // Map tab key to status filter
   const getStatusForTab = (tabKey) => {
     const statusMap = {
-      'all': null,
+      'allChanges': null,
+      'catchLevel': null,
       'added': 'Centre Catch Added',
       'removed': 'Centre Catch Removed',
       'modified': 'Updated',
@@ -74,18 +98,40 @@ const BatchComparisonTable = ({ comparisonData, onPaginationChange, onSearch, on
   // Transform data - each record from backend becomes a row (must be before early return)
   const tableData = useMemo(() => {
     if (!comparisonData || !comparisonData.data) return [];
-    return comparisonData.data.map((item, index) => ({
-      id: `${item.catchNo}-${item.centerCode}-${index}`,
-      key: `${item.catchNo}-${item.centerCode}-${index}`,
-      catchNo: item.catchNo,
-      centerCode: item.centerCode,
-      status: item.status,
-      changes: item.changes.reduce((acc, change) => {
-        acc[change.field] = change;
-        return acc;
-      }, {})
-    }));
-  }, [comparisonData?.data]);
+    
+    // Filter changes and records based on active tab
+    return comparisonData.data.map((item, index) => {
+      let filteredChanges = item.changes;
+      
+      if (activeTab === 'catchLevel') {
+        // Show ONLY unique fields (IsUniqueField = true)
+        filteredChanges = item.changes.filter(c => c.isUniqueField);
+      } else if (activeTab === 'allChanges') {
+        // Show ONLY non-unique fields (IsUniqueField = false)
+        filteredChanges = item.changes.filter(c => !c.isUniqueField);
+      }
+      
+      // If no changes after filtering, skip this record for this tab
+      if (filteredChanges.length === 0) {
+        return null;
+      }
+      
+      return {
+        id: `${item.catchNo}-${item.centerCode}-${index}`,
+        key: `${item.catchNo}-${item.centerCode}-${index}`,
+        catchNo: item.catchNo,
+        centerCode: item.centerCode,
+        status: item.status,
+        changes: filteredChanges.reduce((acc, change) => {
+          acc[change.field] = change;
+          return acc;
+        }, {})
+      };
+    }).filter(row => row !== null); // Remove empty rows
+  }, [comparisonData?.data, activeTab]);
+
+  // Get fields to display based on tab
+  const displayFields = activeTab === 'catchLevel' ? fieldsToShowUnique : fieldsToShowNonUnique;
 
   // Build columns dynamically
   const columns = [
@@ -136,7 +182,7 @@ const BatchComparisonTable = ({ comparisonData, onPaginationChange, onSearch, on
         );
       }
     },
-    ...uniqueFields.filter(field => field !== 'Record').map(field => ({
+    ...displayFields.filter(field => field !== 'Record').map(field => ({
       title: field,
       key: field,
       width: 200,
@@ -203,11 +249,19 @@ const BatchComparisonTable = ({ comparisonData, onPaginationChange, onSearch, on
     // The useEffect will handle the search call when activeTab changes
   };
 
+  const allChangesCount = comparisonData?.data?.reduce((sum, item) => sum + item.changes.filter(c => !c.isUniqueField).length, 0) || 0;
+  const catchLevelCount = comparisonData?.data?.reduce((sum, item) => sum + item.changes.filter(c => c.isUniqueField).length, 0) || 0;
+
   const tabs = [
     {
-      key: 'all',
-      label: `All (${summary.totalDifferences || comparisonData.totalCount})`,
-      count: summary.totalDifferences || comparisonData.totalCount
+      key: 'allChanges',
+      label: `All Changes (${allChangesCount})`,
+      count: allChangesCount
+    },
+    {
+      key: 'catchLevel',
+      label: `Catch-Level Changes (${catchLevelCount})`,
+      count: catchLevelCount
     },
     {
       key: 'added',
@@ -245,6 +299,15 @@ const BatchComparisonTable = ({ comparisonData, onPaginationChange, onSearch, on
     <>
       {comparisonData ? (
         <>
+          {/* Lot Date Range Information */}
+          {comparisonData?.lotDateRange && (
+            <div style={{ marginBottom: 16, padding: 12, background: '#e6f7ff', borderRadius: 4, borderLeft: '3px solid #1890ff' }}>
+              <div style={{ fontSize: 13, color: '#0050b3' }}>
+                <strong>Lot {comparisonData.lotDateRange.lotNo} Date Range:</strong> {comparisonData.lotDateRange.startDate} to {comparisonData.lotDateRange.endDate}
+              </div>
+            </div>
+          )}
+
           {/* Search Bar */}
           <div style={{ marginBottom: 16 }}>
             <Input.Search
