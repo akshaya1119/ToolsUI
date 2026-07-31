@@ -157,6 +157,7 @@ const mergeRows = (base, patch) => ({
 
 const LotsBifurcation = forwardRef(({ onCatchDeleted }, ref) => {
   const projectId = useStore((state) => state.projectId);
+  const selectedLot = useStore((state) => state.selectedLot);
   const setHasDeactivatedCatches = useStore((state) => state.setHasDeactivatedCatches);
   const addStaleEnvLotIds = useStore((state) => state.addStaleEnvLotIds);
   const { showToast } = useToast();
@@ -238,6 +239,10 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted }, ref) => {
         } else if (lotFilter === "unassigned") {
           params.assigned = false;
         }
+      }
+
+      if (selectedLot) {
+        params.lotNo = selectedLot;
       }
 
       if (sField && sOrder) {
@@ -351,11 +356,15 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted }, ref) => {
 
   useEffect(() => {
     loadRows(currentPage, pageSize, sortField, sortOrder, searchKey, searchVal, activeLotTab, lotAssignmentFilter);
-  }, [projectId, currentPage, pageSize, sortField, sortOrder, searchKey, searchVal, activeLotTab, lotAssignmentFilter]);
+  }, [projectId, currentPage, pageSize, sortField, sortOrder, searchKey, searchVal, activeLotTab, lotAssignmentFilter, selectedLot]);
 
   useEffect(() => {
     loadProjectLots();
   }, [projectId]);
+
+  useEffect(() => {
+    setActiveLotTab(selectedLot ? String(selectedLot) : "all");
+  }, [selectedLot]);
 
   useEffect(() => {
     if (activeLotTab !== "0") {
@@ -390,7 +399,8 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted }, ref) => {
     if (!projectId) return false;
     if (!updates?.length) return true;
     try {
-      await API.put("/NRDataLots/assign", {
+      const lotParam = selectedLot ? `?lotNo=${selectedLot}` : '';
+      await API.put(`/NRDataLots/assign${lotParam}`, {
         projectId,
         updates: updates.map((item) => ({
           catchNo: item.catchNo,
@@ -441,7 +451,8 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted }, ref) => {
         fieldName,
         value: String(value).trim(),
       };
-      await API.put(`/NRDatas/UpdateCatchField/${projectId}`, payload);
+      const lotParam = selectedLot ? `?lotNo=${selectedLot}` : '';
+      await API.put(`/NRDatas/UpdateCatchField/${projectId}${lotParam}`, payload);
       showToast(`${fieldName} updated successfully`, "success");
       return true;
     } catch (error) {
@@ -457,7 +468,7 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted }, ref) => {
       // Find out which EnvLot this catch belongs to *before* deleting
       let staleEnvLotNo = null;
       try {
-        const envLotsRes = await API.get(`/NRDataLots/GetAssignedEnvLotCatches/${projectId}`);
+        const envLotsRes = await API.get(`/NRDataLots/GetAssignedEnvLotCatches/${projectId}`, selectedLot ? { params: { lotNo: selectedLot } } : {});
         if (envLotsRes?.data) {
           const assignedLot = envLotsRes.data.find(lot => lot.catches?.includes(catchNo));
           if (assignedLot) {
@@ -784,7 +795,11 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted }, ref) => {
       if (!projectId) return;
       try {
         const res = await API.get(`/NRDatas/GetUniqueByProjectId/${projectId}`, { 
-          params: { pageSize: 100000, pageNo: 1 } 
+          params: {
+            pageSize: 100000,
+            pageNo: 1,
+            ...(selectedLot ? { lotNo: selectedLot } : {})
+          } 
         });
         const items = Array.isArray(res.data?.items) ? res.data.items : [];
         const allRows = items.map(item => ({
@@ -1063,7 +1078,8 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted }, ref) => {
                       setEditingRowValues({});
                       return;
                     }
-                    await API.put(`/NRDatas/UpdateCatchwise/${record.CatchNo}`, payload);
+                     const lotParam = selectedLot ? `?lotNo=${selectedLot}` : '';
+                    await API.put(`/NRDatas/UpdateCatchwise/${record.CatchNo}${lotParam}`, payload);
                     showToast("Catch fields updated successfully", "success");
 
                     // Update rows state in UI

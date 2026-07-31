@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { FiMenu, FiChevronDown } from "react-icons/fi";
-import { Search, Folder, Box, FileText, ChevronRight, Target } from "lucide-react";
+import { Search, Folder, Box, FileText, ChevronRight, Package } from "lucide-react";
 import { useToast } from "./../hooks/useToast";
 import useStore from "../stores/ProjectData";
 import axios from "axios";
@@ -240,9 +240,9 @@ export default function Navbar({ onToggleSidebar, onLogout, searchQuery, onSearc
           <div className="relative" ref={lotFilterRef}>
             <button
               onClick={() => setLotFilterOpen(!lotFilterOpen)}
-              className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-xl hover:border-blue-300 hover:bg-blue-50 transition-all text-slate-700 text-sm font-medium"
+              className="flex items-center gap-2 px-3 py-2.5 bg-white border border-slate-200 rounded-xl hover:border-blue-300 hover:bg-blue-50 transition-all text-slate-700 text-base font-medium"
             >
-              <Target size={16} className="text-blue-600" />
+              <Package size={16} className="text-blue-600" />
               <span>Lot: {selectedLot ? selectedLot : 'All'}</span>
               <FiChevronDown className={`text-lg transition-transform ${lotFilterOpen ? 'rotate-180' : ''}`} />
             </button>

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 import { Filter, FileEdit, Check, X } from 'lucide-react';
 import { Table, Input, Space, Button } from 'antd';
@@ -29,10 +30,39 @@ const HeaderVerification = () => {
   const [serverPaging, setServerPaging] = useState(false);
   const [selectedRecord, setSelectedRecord] = useState(null);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [searchParams] = useSearchParams();
+  // Must be declared before useState calls that reference them
+  const initCatch = searchParams.get('catch') || '';
+  const initVerificationStatus = searchParams.get('status');
+
+  // Pre-fill search input from ?catch= param, but don't restrict the API — let user see all records
   const [globalSearch, setGlobalSearch] = useState('');
-  const [searchInput, setSearchInput] = useState('');
-  const [selectedLot, setSelectedLot] = useState('');
-  const [selectedStatus, setSelectedStatus] = useState('NOT_VERIFIED');
+  const [searchInput, setSearchInput] = useState(initCatch);
+  const globalSelectedLot = useStore((state) => state.selectedLot);
+  const globalSetSelectedLot = useStore((state) => state.setSelectedLot);
+  const selectedLot = globalSelectedLot ? String(globalSelectedLot) : '';
+  const setSelectedLot = (lotVal) => {
+    if (lotVal === '' || lotVal === null || lotVal === undefined) {
+      globalSetSelectedLot(null);
+    } else {
+      globalSetSelectedLot(parseInt(lotVal, 10));
+    }
+  };
+  // If navigated with a catch param, jump directly to the correct status tab
+  const [selectedStatus, setSelectedStatus] = useState(() => {
+    if (!initCatch) return 'NOT_VERIFIED';
+
+    switch (String(initVerificationStatus)) {
+      case '0':
+        return 'NOT_VERIFIED';
+      case '2':
+        return 'UNCLEAR';
+      case '1':
+        return 'VERIFIED';
+      default:
+        return 'ALL';
+    }
+  });
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [editingRowId, setEditingRowId] = useState(null);
@@ -102,6 +132,7 @@ const HeaderVerification = () => {
       if (!projectId) return;
       // Hardcode an arbitrarily large page size to ensure all lots are loaded for the filter dropdown
       const params = new URLSearchParams({ pageSize: '100000', page: '1' });
+      if (selectedLot) params.set('lotNo', selectedLot);
       const res = await API.get(`/Correction/HeaderVerification/${projectId}?${params}`);
       const data = Array.isArray(res.data) ? res.data : res.data?.data || [];
       const total = res.data?.summary?.totalRecords ?? res.data?.pagination?.totalRecords ?? data.length;
@@ -119,7 +150,7 @@ const HeaderVerification = () => {
     } catch (err) {
       console.error('Failed to fetch meta:', err);
     }
-  }, [projectId]);
+  }, [projectId, selectedLot]);
 
   // Fetch filtered table records whenever lot changes
   const fetchRecords = useCallback(async () => {
@@ -180,7 +211,9 @@ const HeaderVerification = () => {
   useEffect(() => { fetchAllMeta(); }, [fetchAllMeta]);
   
   // Auto-select the first non-empty status category
+  // Skip when navigated with a ?catch= param — the correct tab is already set from the URL
   useEffect(() => {
+    if (initCatch) return;
     if (summaryStats.notVerified > 0) {
       setSelectedStatus('NOT_VERIFIED');
     } else if (summaryStats.unclear > 0) {
@@ -653,7 +686,8 @@ const HeaderVerification = () => {
         verifiedBy: userId ? parseInt(userId) : null,
       };
       console.log('[HeaderVerification] handleFieldUpdate payload:', payload, 'userId from localStorage:', userId);
-      const res = await API.put(`/Correction/HeaderVerification/${recordId}?projectId=${projectId}`, payload);
+      const lotParam = selectedLot ? `&lotNo=${selectedLot}` : '';
+      const res = await API.put(`/Correction/HeaderVerification/${recordId}?projectId=${projectId}${lotParam}`, payload);
       setRecords(prev => prev.map(r => r.id === recordId ? { ...res.data, date: updatedRecord.date, time: updatedRecord.time } : r));
       if (selectedRecord?.id === recordId) {
         setSelectedRecord({ ...res.data, date: updatedRecord.date, time: updatedRecord.time });
@@ -666,7 +700,7 @@ const HeaderVerification = () => {
       showToast(errorMessage, 'error');
       throw err;
     }
-  }, [projectId, records, selectedRecord, showToast]);
+  }, [projectId, records, selectedRecord, showToast, selectedLot]);
 
   const handleStatusChange = useCallback(async (recordId, newStatusValue) => {
     try {
@@ -685,7 +719,8 @@ const HeaderVerification = () => {
         verifiedBy: userId ? parseInt(userId) : null,
       };
       console.log('[HeaderVerification] handleStatusChange payload:', payload, 'userId from localStorage:', userId);
-      const res = await API.put(`/Correction/HeaderVerification/${recordId}?projectId=${projectId}`, payload);
+      const lotParam = selectedLot ? `&lotNo=${selectedLot}` : '';
+      const res = await API.put(`/Correction/HeaderVerification/${recordId}?projectId=${projectId}${lotParam}`, payload);
       setRecords(prev => prev.map(r => r.id === recordId ? { ...res.data, date: updatedRecord.date, time: updatedRecord.time } : r));
       if (selectedRecord?.id === recordId) {
         setSelectedRecord({ ...res.data, date: updatedRecord.date, time: updatedRecord.time });
@@ -700,7 +735,7 @@ const HeaderVerification = () => {
       showToast(errorMessage, 'error');
       throw err;
     }
-  }, [projectId, records, selectedRecord, showToast, fetchAllMeta]);
+  }, [projectId, records, selectedRecord, showToast, fetchAllMeta, selectedLot]);
 
   const handleEditRowClick = (e, record) => {
     e.stopPropagation();
@@ -739,7 +774,8 @@ const HeaderVerification = () => {
       };
 
       console.log('[HeaderVerification] handleSaveRow payload:', payload, 'userId from localStorage:', userId);
-      const res = await API.put(`/Correction/HeaderVerification/${recordId}?projectId=${projectId}`, payload);
+      const lotParam = selectedLot ? `&lotNo=${selectedLot}` : '';
+      const res = await API.put(`/Correction/HeaderVerification/${recordId}?projectId=${projectId}${lotParam}`, payload);
       const updatedRecordData = { ...res.data, date: editFormData.date, time: editFormData.time };
       setRecords(prev => prev.map(r => r.id === recordId ? updatedRecordData : r));
       setEditingRowId(null);
