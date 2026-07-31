@@ -263,15 +263,6 @@ const ChangedNRUpload = () => {
   const handleSort = async (sortField, sortOrder, searchText) => {
     setLoading(true);
     try {
-      let field = sortField;
-      let order = sortOrder;
-      
-      if (sortField?.includes('-')) {
-        const parts = sortField.split('-');
-        field = parts[0];
-        order = parts[1];
-      }
-
       const params = {
         projectId: projectId,
         compareBatch: comparedBatch,
@@ -279,8 +270,8 @@ const ChangedNRUpload = () => {
         pageNo: 1,
         pageSize: 20,
         search: searchText || null,
-        sortField: field || null,
-        sortOrder: order || null,
+        sortField: sortField || null,
+        sortOrder: sortOrder || null,
       };
 
       if (additionalFields.length > 0) {
@@ -318,23 +309,22 @@ const ChangedNRUpload = () => {
             <Col xs={24} sm={12} md={4}>
               <label className="batch-label">Select Lot</label>
               <Select
-                placeholder="Select lot"
+                placeholder="Select lot (optional)"
                 value={selectedLot}
                 onChange={setSelectedLot}
                 loading={loadingLots}
-                disabled={loadingLots || (lots.length === 1 && lots[0] === 0)}
+                disabled={loadingLots}
                 style={{ width: "100%" }}
+                allowClear
               >
+                <Select.Option value={0}>
+                  All Records (No Lot)
+                </Select.Option>
                 {lots.filter(lot => lot !== 0).map((lot) => (
                   <Select.Option key={lot} value={lot}>
                     Lot {lot}
                   </Select.Option>
                 ))}
-                {lots.length === 1 && lots[0] === 0 && (
-                  <Select.Option value={0} disabled>
-                    No lots available
-                  </Select.Option>
-                )}
               </Select>
             </Col>
 
@@ -430,14 +420,13 @@ const ChangedNRUpload = () => {
       {/* Comparison Table */}
       {comparisonData && (
         <Card className="comparison-results-card" style={{ marginBottom: 24 }}>
-          <Spin spinning={loading}>
-            <BatchComparisonTable 
-              comparisonData={comparisonData}
-              onPaginationChange={handlePaginationChange}
-              onSearch={handleSearch}
-              onSort={handleSort}
-            />
-          </Spin>
+          <BatchComparisonTable 
+            comparisonData={comparisonData}
+            onPaginationChange={handlePaginationChange}
+            onSearch={handleSearch}
+            onSort={handleSort}
+            loading={loading}
+          />
         </Card>
       )}
 
