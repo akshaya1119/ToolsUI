@@ -38,7 +38,16 @@ const HeaderVerification = () => {
   // Pre-fill search input from ?catch= param, but don't restrict the API — let user see all records
   const [globalSearch, setGlobalSearch] = useState('');
   const [searchInput, setSearchInput] = useState(initCatch);
-  const [selectedLot, setSelectedLot] = useState('');
+  const globalSelectedLot = useStore((state) => state.selectedLot);
+  const globalSetSelectedLot = useStore((state) => state.setSelectedLot);
+  const selectedLot = globalSelectedLot ? String(globalSelectedLot) : '';
+  const setSelectedLot = (lotVal) => {
+    if (lotVal === '' || lotVal === null || lotVal === undefined) {
+      globalSetSelectedLot(null);
+    } else {
+      globalSetSelectedLot(parseInt(lotVal, 10));
+    }
+  };
   // If navigated with a catch param, jump directly to the correct status tab
   const [selectedStatus, setSelectedStatus] = useState(() => {
     if (!initCatch) return 'NOT_VERIFIED';
@@ -123,6 +132,7 @@ const HeaderVerification = () => {
       if (!projectId) return;
       // Hardcode an arbitrarily large page size to ensure all lots are loaded for the filter dropdown
       const params = new URLSearchParams({ pageSize: '100000', page: '1' });
+      if (selectedLot) params.set('lotNo', selectedLot);
       const res = await API.get(`/Correction/HeaderVerification/${projectId}?${params}`);
       const data = Array.isArray(res.data) ? res.data : res.data?.data || [];
       const total = res.data?.summary?.totalRecords ?? res.data?.pagination?.totalRecords ?? data.length;
@@ -140,7 +150,7 @@ const HeaderVerification = () => {
     } catch (err) {
       console.error('Failed to fetch meta:', err);
     }
-  }, [projectId]);
+  }, [projectId, selectedLot]);
 
   // Fetch filtered table records whenever lot changes
   const fetchRecords = useCallback(async () => {
@@ -676,7 +686,8 @@ const HeaderVerification = () => {
         verifiedBy: userId ? parseInt(userId) : null,
       };
       console.log('[HeaderVerification] handleFieldUpdate payload:', payload, 'userId from localStorage:', userId);
-      const res = await API.put(`/Correction/HeaderVerification/${recordId}?projectId=${projectId}`, payload);
+      const lotParam = selectedLot ? `&lotNo=${selectedLot}` : '';
+      const res = await API.put(`/Correction/HeaderVerification/${recordId}?projectId=${projectId}${lotParam}`, payload);
       setRecords(prev => prev.map(r => r.id === recordId ? { ...res.data, date: updatedRecord.date, time: updatedRecord.time } : r));
       if (selectedRecord?.id === recordId) {
         setSelectedRecord({ ...res.data, date: updatedRecord.date, time: updatedRecord.time });
@@ -689,7 +700,7 @@ const HeaderVerification = () => {
       showToast(errorMessage, 'error');
       throw err;
     }
-  }, [projectId, records, selectedRecord, showToast]);
+  }, [projectId, records, selectedRecord, showToast, selectedLot]);
 
   const handleStatusChange = useCallback(async (recordId, newStatusValue) => {
     try {
@@ -708,7 +719,8 @@ const HeaderVerification = () => {
         verifiedBy: userId ? parseInt(userId) : null,
       };
       console.log('[HeaderVerification] handleStatusChange payload:', payload, 'userId from localStorage:', userId);
-      const res = await API.put(`/Correction/HeaderVerification/${recordId}?projectId=${projectId}`, payload);
+      const lotParam = selectedLot ? `&lotNo=${selectedLot}` : '';
+      const res = await API.put(`/Correction/HeaderVerification/${recordId}?projectId=${projectId}${lotParam}`, payload);
       setRecords(prev => prev.map(r => r.id === recordId ? { ...res.data, date: updatedRecord.date, time: updatedRecord.time } : r));
       if (selectedRecord?.id === recordId) {
         setSelectedRecord({ ...res.data, date: updatedRecord.date, time: updatedRecord.time });
@@ -723,7 +735,7 @@ const HeaderVerification = () => {
       showToast(errorMessage, 'error');
       throw err;
     }
-  }, [projectId, records, selectedRecord, showToast, fetchAllMeta]);
+  }, [projectId, records, selectedRecord, showToast, fetchAllMeta, selectedLot]);
 
   const handleEditRowClick = (e, record) => {
     e.stopPropagation();
@@ -762,7 +774,8 @@ const HeaderVerification = () => {
       };
 
       console.log('[HeaderVerification] handleSaveRow payload:', payload, 'userId from localStorage:', userId);
-      const res = await API.put(`/Correction/HeaderVerification/${recordId}?projectId=${projectId}`, payload);
+      const lotParam = selectedLot ? `&lotNo=${selectedLot}` : '';
+      const res = await API.put(`/Correction/HeaderVerification/${recordId}?projectId=${projectId}${lotParam}`, payload);
       const updatedRecordData = { ...res.data, date: editFormData.date, time: editFormData.time };
       setRecords(prev => prev.map(r => r.id === recordId ? updatedRecordData : r));
       setEditingRowId(null);
