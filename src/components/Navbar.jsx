@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { FiMenu, FiChevronDown } from "react-icons/fi";
-import { Search, Folder, Box, FileText, ChevronRight } from "lucide-react";
+import { Search, Folder, Box, FileText, ChevronRight, Target } from "lucide-react";
 import { useToast } from "./../hooks/useToast";
 import useStore from "../stores/ProjectData";
 import axios from "axios";
@@ -12,11 +12,16 @@ const API_URL = import.meta.env.VITE_API_URL; // Using Tools API for project dat
 
 export default function Navbar({ onToggleSidebar, onLogout, searchQuery, onSearchChange, searchPlaceholder = "Search..." }) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [lotFilterOpen, setLotFilterOpen] = useState(false);
+  const [lots, setLots] = useState([]);
+  const [loadingLots, setLoadingLots] = useState(false);
   const { showToast } = useToast();
   const navigate = useNavigate();
   const location = useLocation();
   
   const projectId = useStore((state) => state.projectId);
+  const selectedLot = useStore((state) => state.selectedLot);
+  const setSelectedLot = useStore((state) => state.setSelectedLot);
   const setProject = useStore((state) => state.setProject);
   const allProjects = useStore((state) => state.allProjects);
   const allGroups = useStore((state) => state.allGroups);
@@ -30,6 +35,7 @@ export default function Navbar({ onToggleSidebar, onLogout, searchQuery, onSearc
   const [showSearchDropdown, setShowSearchDropdown] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const searchRef = useRef(null);
+  const lotFilterRef = useRef(null);
   
   const token = localStorage.getItem("token");
 
@@ -75,11 +81,23 @@ export default function Navbar({ onToggleSidebar, onLogout, searchQuery, onSearc
     if (token) fetchData();
   }, [allProjects.length, allGroups.length, token]);
 
+  // Fetch lots when projectId changes
+  useEffect(() => {
+    if (projectId && token) {
+      fetchLots();
+    } else {
+      setLots([]);
+    }
+  }, [projectId, token]);
+
   // Close search dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (searchRef.current && !searchRef.current.contains(event.target)) {
         setShowSearchDropdown(false);
+      }
+      if (lotFilterRef.current && !lotFilterRef.current.contains(event.target)) {
+        setLotFilterOpen(false);
       }
     };
 
@@ -88,6 +106,34 @@ export default function Navbar({ onToggleSidebar, onLogout, searchQuery, onSearc
   }, []);
 
   // Search within project when user types
+  const fetchLots = async () => {
+    if (!projectId) return;
+    
+    setLoadingLots(true);
+    try {
+      const response = await axios.get(`${API_URL}/NRDataLots/GetByProjectId/${projectId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      if (response.data && Array.isArray(response.data)) {
+        setLots(response.data);
+      } else {
+        setLots([]);
+      }
+    } catch (error) {
+      console.error("Failed to fetch lots:", error);
+      setLots([]);
+      showToast("Failed to load lots", "error");
+    } finally {
+      setLoadingLots(false);
+    }
+  };
+
+  const handleLotSelect = (lot) => {
+    setSelectedLot(lot.lotNo);
+    setLotFilterOpen(false);
+  };
+
   const handleSearchChange = async (e) => {
     const value = e.target.value;
     onSearchChange(value);
@@ -187,8 +233,64 @@ export default function Navbar({ onToggleSidebar, onLogout, searchQuery, onSearc
         <span className="font-bold text-xl text-gray-800 hidden md:inline">ERP Tools</span>
       </div>
 
-      {/* Right: Search + Profile */}
+      {/* Right: Lot Filter + Search + Profile */}
       <div className="flex items-center gap-4">
+        {/* Lot Filter Dropdown - Only show when in project */}
+        {projectId && (
+          <div className="relative" ref={lotFilterRef}>
+            <button
+              onClick={() => setLotFilterOpen(!lotFilterOpen)}
+              className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-xl hover:border-blue-300 hover:bg-blue-50 transition-all text-slate-700 text-sm font-medium"
+            >
+              <Target size={16} className="text-blue-600" />
+              <span>Lot: {selectedLot ? selectedLot : 'All'}</span>
+              <FiChevronDown className={`text-lg transition-transform ${lotFilterOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            {lotFilterOpen && (
+              <div className="absolute top-full left-0 mt-2 bg-white border border-slate-200 rounded-xl shadow-2xl z-[100] min-w-max">
+                <div className="p-2">
+                  {loadingLots ? (
+                    <div className="px-3 py-2 text-xs text-slate-500 animate-pulse">Loading lots...</div>
+                  ) : lots.length === 0 ? (
+                    <div className="px-3 py-2 text-xs text-slate-500">No lots available</div>
+                  ) : (
+                    <div className="space-y-1 max-h-48 overflow-y-auto">
+                      <button
+                        onClick={() => {
+                          setSelectedLot(null);
+                          setLotFilterOpen(false);
+                        }}
+                        className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                          selectedLot === null 
+                            ? 'bg-blue-100 text-blue-700' 
+                            : 'text-slate-700 hover:bg-slate-100'
+                        }`}
+                      >
+                        All Lots
+                      </button>
+                      {lots.map((lot) => (
+                        <button
+                          key={lot.lotNo}
+                          onClick={() => handleLotSelect(lot)}
+                          className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-all flex items-center justify-between ${
+                            selectedLot === lot.lotNo
+                              ? 'bg-blue-100 text-blue-700'
+                              : 'text-slate-700 hover:bg-slate-100'
+                          }`}
+                        >
+                          <span>Lot {lot.lotNo}</span>
+                          <span className="text-xs text-slate-500">({lot.catchCount} catches)</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Search Bar with Dropdown for Project Search */}
         <div className="relative" ref={searchRef}>
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5 pointer-events-none" />

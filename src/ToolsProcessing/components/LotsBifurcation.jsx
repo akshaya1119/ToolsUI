@@ -409,6 +409,30 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted }, ref) => {
     }
   };
 
+  const saveProjectLotRange = async (startDate, endDate, lotNo) => {
+    if (!projectId || !startDate || !endDate || !lotNo) {
+      console.warn("Missing required parameters for ProjectLotRange", { projectId, startDate, endDate, lotNo });
+      return false;
+    }
+    try {
+      const payload = {
+        projectId: parseInt(projectId, 10),
+        startDate: startDate.format("DD-MM-YYYY"),
+        endDate: endDate.format("DD-MM-YYYY"),
+        lotNo: coerceNumber(lotNo, 0),
+      };
+      console.log("Posting ProjectLotRange:", payload);
+      await API.post("/ProjectLotRange", payload);
+      console.log("ProjectLotRange saved successfully");
+      return true;
+    } catch (error) {
+      console.error("Failed to save ProjectLotRange", error);
+      showToast("Warning: Lot range saved to database but failed to save range metadata", "warning");
+      // Don't fail the entire bifurcation process if this fails
+      return true;
+    }
+  };
+
   const saveCatchFieldValue = async (catchNo, fieldName, value) => {
     if (!projectId) return false;
     try {
@@ -571,6 +595,9 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted }, ref) => {
         `Assigned ${inRangeCatchNos.length} catch numbers to lot ${lotNumber}`
       );
       if (ok) {
+        // Save the lot range to ProjectLotRange table
+        const rangeOk = await saveProjectLotRange(dateRange[0], dateRange[1], lotNumber);
+        
         if (targetLot > 0) {
           setActiveLotTab(String(targetLot));
         }
