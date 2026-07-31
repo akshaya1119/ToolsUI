@@ -6,6 +6,7 @@ const useStore = create((set) => ({
   projectId: localStorage.getItem("selectedProjectId") || "",
   groupId: localStorage.getItem("selectedGroup") || "",
   typeId: localStorage.getItem("selectedType") || "",
+  selectedLot: localStorage.getItem("selectedLot") ? parseInt(localStorage.getItem("selectedLot")) : null,
   allProjects: [],
   allGroups: [],
   nrDataCount: 0,
@@ -29,7 +30,18 @@ const useStore = create((set) => ({
     localStorage.removeItem("selectedProjectId");
     localStorage.removeItem("selectedGroup");
     localStorage.removeItem("selectedType");
-    set({ projectName: "", projectId: "", groupId: "", typeId: "", nrDataCount: 0, isConfigured: false });
+    localStorage.removeItem("selectedLot");
+    set({ projectName: "", projectId: "", groupId: "", typeId: "", selectedLot: null, nrDataCount: 0, isConfigured: false });
+  },
+
+  // Action to set selected lot
+  setSelectedLot: (lotNo) => {
+    if (lotNo === null) {
+      localStorage.removeItem("selectedLot");
+    } else {
+      localStorage.setItem("selectedLot", lotNo);
+    }
+    set({ selectedLot: lotNo });
   },
 
   setAllProjects: (projects) => set({ allProjects: projects }),

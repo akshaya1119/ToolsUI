@@ -21,6 +21,9 @@ const ChangedNRUpload = () => {
   const [processes, setProcesses] = useState([]);
   const [selectedProcess, setSelectedProcess] = useState(null);
   const [loadingProcesses, setLoadingProcesses] = useState(false);
+  const [additionalFields, setAdditionalFields] = useState([]);
+  const [availableFields, setAvailableFields] = useState([]);
+  const [loadingFields, setLoadingFields] = useState(false);
 
   useEffect(() => {
     if (projectId) {
@@ -62,19 +65,44 @@ const ChangedNRUpload = () => {
       const res = await API.get(`/NRDatas/unique-lots/${projectId}`);
       const lotList = Array.isArray(res.data) ? res.data : (res.data?.data || []);
       setLots(lotList);
-      
-      // Set selected lot to first non-zero lot, or 0 if only 0 exists
-      const nonZeroLot = lotList.find(lot => lot !== 0);
-      if (nonZeroLot !== undefined) {
-        setSelectedLot(nonZeroLot);
-      } else {
-        setSelectedLot(null);
-      }
+      // Don't auto-fill selected lot
+      setSelectedLot(null);
     } catch (error) {
       console.error("Failed to load lots:", error);
       setLots([]);
     } finally {
       setLoadingLots(false);
+    }
+  };
+
+  // Load available comparison fields from NRDatas JSON
+  const loadComparisonFields = async () => {
+    if (!projectId) {
+      console.log("No projectId, skipping loadComparisonFields");
+      return;
+    }
+
+    setLoadingFields(true);
+    try {
+      console.log(`[loadComparisonFields] Fetching fields for projectId: ${projectId}`);
+      const res = await API.get(`/NRDatas/get-comparison-fields/${projectId}`);
+      console.log("[loadComparisonFields] Response:", res.data);
+      
+      const fields = res.data?.fields || [];
+      console.log("[loadComparisonFields] Fields extracted:", fields);
+      
+      setAvailableFields(fields);
+      
+      if (fields.length === 0) {
+        console.warn("[loadComparisonFields] No fields found for comparison");
+      }
+    } catch (error) {
+      console.error("Failed to load comparison fields:", error);
+      console.error("Error response:", error?.response?.data);
+      showToast("Failed to load additional comparison fields", "warning");
+      setAvailableFields([]);
+    } finally {
+      setLoadingFields(false);
     }
   };
 
@@ -85,16 +113,8 @@ const ChangedNRUpload = () => {
       const res = await API.get("/ProcessSteps");
       const processList = res.data?.data || [];
       setProcesses(processList);
-      
-      if (processList.length > 0) {
-        const saved = localStorage.getItem("selectedProcess");
-        if (saved) {
-          const parsedProcess = JSON.parse(saved);
-          setSelectedProcess(parsedProcess.processId);
-        } else {
-          setSelectedProcess(processList[0].processId);
-        }
-      }
+      // Don't auto-fill selected process
+      setSelectedProcess(null);
     } catch (error) {
       console.error("Failed to load processes:", error);
       setProcesses([]);
@@ -118,6 +138,7 @@ const ChangedNRUpload = () => {
       loadLots();
       loadProcesses();
       loadBatches();
+      loadComparisonFields();
     }
   }, [projectId]);
 
@@ -129,22 +150,44 @@ const ChangedNRUpload = () => {
 
     setLoading(true);
     try {
+      const params = {
+        projectId: projectId,
+        compareBatch: comparedBatch,
+        lotNo: selectedLot || 0,
+        pageNo: 1,
+        pageSize: 20,
+      };
+
+      // Add additional fields if selected
+      if (additionalFields.length > 0) {
+        params.additionalFields = additionalFields.join(",");
+      }
+
       const res = await API.get(`/NRDatas/compare-batches`, {
-        params: {
-          projectId: projectId,
-          compareBatch: comparedBatch,
-          lotNo: selectedLot || 0,
-          pageNo: 1,
-          pageSize: 20,
-        },
+        params: params,
       });
 
       setComparisonData(res.data);
       showToast("Batches compared successfully", "success");
     } catch (error) {
       console.error("Failed to compare batches:", error);
-      const errorMsg = error?.response?.data?.message || "Failed to compare batches";
-      showToast(errorMsg, "error");
+      const errorData = error?.response?.data;
+      
+      // Handle exam date validation errors
+      if (errorData?.details && Array.isArray(errorData.details)) {
+        // Show detailed error messages for exam date mismatches
+        const detailsMessage = errorData.details
+          .slice(0, 5) // Show first 5 errors
+          .map((detail, idx) => `${idx + 1}. ${detail}`)
+          .join("\n");
+        
+        const fullMessage = `${errorData.message}\n\n${detailsMessage}${errorData.details.length > 5 ? `\n... and ${errorData.details.length - 5} more errors` : ""}`;
+        showToast(fullMessage, "error");
+      } else {
+        const errorMsg = errorData?.message || "Failed to compare batches";
+        showToast(errorMsg, "error");
+      }
+      
       setComparisonData(null);
     } finally {
       setLoading(false);
@@ -154,19 +197,26 @@ const ChangedNRUpload = () => {
   const handleReset = () => {
     setComparisonData(null);
     setComparedBatch(null);
+    setAdditionalFields([]);
   };
 
   const handlePaginationChange = async (pageNo, pageSize) => {
     setLoading(true);
     try {
+      const params = {
+        projectId: projectId,
+        compareBatch: comparedBatch,
+        lotNo: selectedLot || 0,
+        pageNo: pageNo,
+        pageSize: pageSize,
+      };
+
+      if (additionalFields.length > 0) {
+        params.additionalFields = additionalFields.join(",");
+      }
+
       const res = await API.get(`/NRDatas/compare-batches`, {
-        params: {
-          projectId: projectId,
-          compareBatch: comparedBatch,
-          lotNo: selectedLot || 0,
-          pageNo: pageNo,
-          pageSize: pageSize,
-        },
+        params: params,
       });
 
       setComparisonData(res.data);
@@ -181,18 +231,24 @@ const ChangedNRUpload = () => {
   const handleSearch = async (searchText, sortField, sortOrder, status) => {
     setLoading(true);
     try {
+      const params = {
+        projectId: projectId,
+        compareBatch: comparedBatch,
+        lotNo: selectedLot || 0,
+        pageNo: 1,
+        pageSize: 20,
+        search: searchText || null,
+        sortField: sortField || null,
+        sortOrder: sortOrder || null,
+        status: status || null,
+      };
+
+      if (additionalFields.length > 0) {
+        params.additionalFields = additionalFields.join(",");
+      }
+
       const res = await API.get(`/NRDatas/compare-batches`, {
-        params: {
-          projectId: projectId,
-          compareBatch: comparedBatch,
-          lotNo: selectedLot || 0,
-          pageNo: 1,
-          pageSize: 20,
-          search: searchText || null,
-          sortField: sortField || null,
-          sortOrder: sortOrder || null,
-          status: status || null,
-        },
+        params: params,
       });
 
       setComparisonData(res.data);
@@ -216,17 +272,23 @@ const ChangedNRUpload = () => {
         order = parts[1];
       }
 
+      const params = {
+        projectId: projectId,
+        compareBatch: comparedBatch,
+        lotNo: selectedLot || 0,
+        pageNo: 1,
+        pageSize: 20,
+        search: searchText || null,
+        sortField: field || null,
+        sortOrder: order || null,
+      };
+
+      if (additionalFields.length > 0) {
+        params.additionalFields = additionalFields.join(",");
+      }
+
       const res = await API.get(`/NRDatas/compare-batches`, {
-        params: {
-          projectId: projectId,
-          compareBatch: comparedBatch,
-          lotNo: selectedLot || 0,
-          pageNo: 1,
-          pageSize: 20,
-          search: searchText || null,
-          sortField: field || null,
-          sortOrder: order || null,
-        },
+        params: params,
       });
 
       setComparisonData(res.data);
@@ -251,9 +313,9 @@ const ChangedNRUpload = () => {
 
       {/* Batch Selection Section */}
       <Card className="batch-selection-card" style={{ marginBottom: 24 }}>
-        <Spin spinning={loadingBatches || loadingLots || loadingProcesses}>
-          <Row gutter={[16, 16]} align="middle">
-            <Col xs={24} sm={8} md={4}>
+        <Spin spinning={loadingBatches || loadingLots || loadingProcesses || loadingFields}>
+          <Row gutter={[12, 12]} align="bottom">
+            <Col xs={24} sm={12} md={4}>
               <label className="batch-label">Select Lot</label>
               <Select
                 placeholder="Select lot"
@@ -270,13 +332,13 @@ const ChangedNRUpload = () => {
                 ))}
                 {lots.length === 1 && lots[0] === 0 && (
                   <Select.Option value={0} disabled>
-                    No additional lots available
+                    No lots available
                   </Select.Option>
                 )}
               </Select>
             </Col>
 
-            <Col xs={24} sm={8} md={4}>
+            <Col xs={24} sm={12} md={4}>
               <label className="batch-label">Select Process</label>
               <Select
                 placeholder="Select process"
@@ -294,7 +356,7 @@ const ChangedNRUpload = () => {
               </Select>
             </Col>
 
-            <Col xs={24} sm={8} md={4}>
+            <Col xs={24} sm={12} md={3}>
               <label className="batch-label">Select Batch</label>
               <Select
                 placeholder="Select batch"
@@ -306,28 +368,57 @@ const ChangedNRUpload = () => {
                 {batches.map((batch) => (
                   batch !== 1 && (
                     <Select.Option key={batch} value={batch}>
-                      Batch - {batch}
+                      Batch {batch}
                     </Select.Option>
                   )
                 ))}
               </Select>
             </Col>
 
-            <Col xs={24} sm={24} md={12}>
-              <Space style={{ width: "100%", justifyContent: "flex-end", marginTop: "24px" }}>
+            <Col xs={24} sm={12} md={6}>
+              <label className="batch-label">Additional Fields</label>
+              <Select
+                mode="multiple"
+                placeholder="Select fields"
+                value={additionalFields}
+                onChange={setAdditionalFields}
+                style={{ width: "100%" }}
+                maxTagCount={1}
+                notFoundContent={availableFields.length === 0 ? "Loading fields..." : "No fields available"}
+              >
+                {availableFields.map((field) => (
+                  <Select.Option key={field} value={field}>
+                    {field}
+                  </Select.Option>
+                ))}
+              </Select>
+            </Col>
+
+            <Col xs={24} sm={24} md={7}>
+              <Space style={{ width: "100%", justifyContent: "flex-end" }}>
                 <Button
                   type="primary"
                   icon={<RedoOutlined />}
                   onClick={handleCompareBatches}
                   loading={loading}
                   disabled={!comparedBatch}
+                  size="middle"
                 >
-                  Compare Batches
+                  Compare
                 </Button>
-                <Button icon={<DeleteOutlined />} onClick={handleReset}>
+                <Button 
+                  icon={<DeleteOutlined />} 
+                  onClick={handleReset}
+                  size="middle"
+                >
                   Reset
                 </Button>
-                <Button icon={<ReloadOutlined />} onClick={loadBatches} loading={loadingBatches}>
+                <Button 
+                  icon={<ReloadOutlined />} 
+                  onClick={loadBatches} 
+                  loading={loadingBatches}
+                  size="middle"
+                >
                   Reload
                 </Button>
               </Space>
