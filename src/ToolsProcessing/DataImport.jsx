@@ -4,7 +4,7 @@ import { Row, Col, Card, Select, Upload, Button, Typography, Space, Table, Tabs,
 import dayjs from 'dayjs';
 import { MessageService } from "../services/MessageService";
 import { useToast } from '../hooks/useToast';
-import { CheckCircleOutlined, UploadOutlined, ToolOutlined, SearchOutlined, PlusOutlined, EditOutlined,CloseCircleOutlined, DeleteOutlined } from '@ant-design/icons';
+import { CheckCircleOutlined, UploadOutlined, ToolOutlined, SearchOutlined, PlusOutlined, EditOutlined, CloseCircleOutlined, DeleteOutlined } from '@ant-design/icons';
 import * as XLSX from 'xlsx-js-style';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -59,6 +59,7 @@ const DataImport = () => {
   const [skipItems, setSkipItems] = useState(false);
   const [quantity, setQuantity] = useState(0);
   const [isCorrectedNrdataReport, setIsCorrectedNrdataReport] = useState(false);
+  const [isChangedNR, setIsChangedNR] = useState(false);
   const [fileList, setFileList] = useState([]);
   const [requiredFieldNames, setRequiredFieldNames] = useState([]);
   const [pagination, setPagination] = useState({
@@ -240,9 +241,9 @@ const DataImport = () => {
 
       setExistingData(processedItems);
 
-      const baseColumns = (res.data.columns || []).filter((column) => 
-        column !== "NRDatas" && 
-        column !== "Id" && 
+      const baseColumns = (res.data.columns || []).filter((column) =>
+        column !== "NRDatas" &&
+        column !== "Id" &&
         column !== "ImportRowNo"
       );
 
@@ -531,7 +532,7 @@ const DataImport = () => {
   };
 
 
- 
+
   const renderConflicts = () => {
     if (!conflicts) return <Text type="secondary">Click "Load Conflict Report" to see conflicts.</Text>;
 
@@ -541,7 +542,7 @@ const DataImport = () => {
     }
     return (
       <div>
-        
+
         <DataImportConflictReport
           conflicts={{ errors }}
           conflictSelections={conflictSelections}
@@ -1116,6 +1117,7 @@ const DataImport = () => {
     setQuantity(0);
     setKeepZeroQuantity(false);
     setIsCorrectedNrdataReport(false);
+    setIsChangedNR(false);
     setSkippedRows([]);
     setEditableSkippedRows([]);
   };
@@ -1156,23 +1158,63 @@ const DataImport = () => {
     };
 
     try {
+      let batchId = null;
+      
       if (isCorrectedNrdataReport) {
         const changedRes = await API.post(`/ChangedNr`, payload, {
           headers: { Authorization: `Bearer ${token}` }
         });
-        console.log('Changed NRData result:', changedRes.data);
+        console.log('Changed NRData full response:', JSON.stringify(changedRes.data, null, 2));
+        batchId = changedRes?.data?.Batch || changedRes?.data?.batch;
+        console.log('Extracted batchId from ChangedNr:', batchId);
         showToast(`Corrected NRData report uploaded (${mappedData.length} rows).`, "success");
       } else {
         const res = await API.post(`/NRDatas`, payload, {
           headers: { Authorization: `Bearer ${token}` }
         });
-        console.log('Validation result:', res.data);
+        console.log('NRDatas full response:', JSON.stringify(res.data, null, 2));
+        batchId = res?.data?.Batch || res?.data?.batch;
+        console.log('Extracted batchId from NRDatas:', batchId);
         showToast(`Validation successful! ${mappedData.length} rows uploaded.`, "success");
       }
 
+      // If it's a Changed NR upload, run duplicate processing
+      if (isChangedNR) {
+        try {
+          console.log('Captured batchId from response:', batchId);
+          console.log('Running duplicate processing for project:', projectId, 'batch:', batchId);
+          
+          if (!batchId || batchId <= 0) {
+            showToast("Warning: Could not determine batch ID, processing entire project", "warning");
+            console.warn('Batch ID is invalid, will process entire project');
+          }
+          
+          showToast("Processing duplicates...", "info");
+          
+          // Call duplicate endpoint with batchId parameter
+          const duplicateEndpoint = batchId && batchId > 0 
+            ? `/Duplicate?ProjectId=${projectId}&batchId=${batchId}`
+            : `/Duplicate?ProjectId=${projectId}`;
+          
+          console.log('Calling duplicate endpoint:', duplicateEndpoint);
+          
+          const duplicateRes = await API.post(duplicateEndpoint, {}, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          
+          console.log('Duplicate response:', duplicateRes.data);
+          const duplicatesRemoved = duplicateRes?.data?.mergedRows ?? 0;
+          showToast(`Duplicate processing completed for batch ${batchId || 'project'}. Duplicates removed: ${duplicatesRemoved}`, "success");
+        } catch (dupErr) {
+          console.error("Error running duplicate processing:", dupErr);
+          const dupErrorMessage = dupErr?.response?.data?.message || dupErr?.response?.data || dupErr?.message || "Failed to run duplicate processing";
+          showToast(dupErrorMessage, "error");
+        }
+      }
+
       resetForm();
+      setIsChangedNR(false);
       fetchExistingData(projectId);
-      // await rerunDuplicateTool();
     } catch (err) {
       console.error("Validation failed", err);
 
@@ -1336,7 +1378,9 @@ const DataImport = () => {
 
   const parseDateValue = (val) => {
     if (!val) return null;
-    const d = dayjs(val, "DD-MM-YYYY");
+
+    const d = dayjs(val, "DD-MM-YYYY", true); // <-- true enables strict parsing
+
     return d.isValid() ? d : null;
   };
 
@@ -1503,443 +1547,444 @@ const DataImport = () => {
     }
   };
 
-const [masterFields, setMasterFields] = useState([]);
-const [loadingFields, setLoadingFields] = useState(false);
-const [addRowOpen, setAddRowOpen] = useState(false);
-const [newRow, setNewRow] = useState({
-  catchNo: "",
-  fields: {},
-  extraFields: [],
-});
-const [configuredFields, setConfiguredFields] = useState([]);
-const [editingRowId, setEditingRowId] = useState(null);
-const [editFormData, setEditFormData] = useState({});
-const [originalEditFormData, setOriginalEditFormData] = useState({});
+  const [masterFields, setMasterFields] = useState([]);
+  const [loadingFields, setLoadingFields] = useState(false);
+  const [addRowOpen, setAddRowOpen] = useState(false);
+  const [newRow, setNewRow] = useState({
+    catchNo: "",
+    fields: {},
+    extraFields: [],
+  });
+  const [configuredFields, setConfiguredFields] = useState([]);
+  const [editingRowId, setEditingRowId] = useState(null);
+  const [editFormData, setEditFormData] = useState({});
+  const [originalEditFormData, setOriginalEditFormData] = useState({});
 
-// const rerunDuplicateTool = async () => {
-//   try {
-//     await API.post(`/Duplicate?ProjectId=${projectId}`, null, {
-//       headers: { Authorization: `Bearer ${token}` },
-//     });
-//   } catch (err) {
-//     console.error("Duplicate tool rerun failed:", err);
-//     showToast("Data saved, but duplicate tool rerun failed", "warning");
-//   }
-// };
+  // const rerunDuplicateTool = async () => {
+  //   try {
+  //     await API.post(`/Duplicate?ProjectId=${projectId}`, null, {
+  //       headers: { Authorization: `Bearer ${token}` },
+  //     });
+  //   } catch (err) {
+  //     console.error("Duplicate tool rerun failed:", err);
+  //     showToast("Data saved, but duplicate tool rerun failed", "warning");
+  //   }
+  // };
 
-// Runs envelope breaking + box breaking for a single lot only.
-// skipReset=true ensures global ReportStatus is NOT wiped for other lots.
-// const runTargetedPipelineForLot = async (lotNo, catchNo = null) => {
-//   if (!lotNo) return;
+  // Runs envelope breaking + box breaking for a single lot only.
+  // skipReset=true ensures global ReportStatus is NOT wiped for other lots.
+  // const runTargetedPipelineForLot = async (lotNo, catchNo = null) => {
+  //   if (!lotNo) return;
 
-//   try {
-//     // Envelope breaking for this lot only (picks up eligible-step rows naturally)
-//     // Now passing catchNo to support incremental sequence continuity
-//     const queryParams = new URLSearchParams({
-//         ProjectId: projectId,
-//         skipReset: 'true',
-//         lotNo: lotNo
-//     });
-//     if (catchNo) queryParams.append('catchNo', catchNo);
+  //   try {
+  //     // Envelope breaking for this lot only (picks up eligible-step rows naturally)
+  //     // Now passing catchNo to support incremental sequence continuity
+  //     const queryParams = new URLSearchParams({
+  //         ProjectId: projectId,
+  //         skipReset: 'true',
+  //         lotNo: lotNo
+  //     });
+  //     if (catchNo) queryParams.append('catchNo', catchNo);
 
-//     await API.post(
-//       `/EnvelopeBreakageProcessing/ProcessEnvelopeBreaking?${queryParams.toString()}`,
-//       null,
-//       { headers: { Authorization: `Bearer ${token}` } }
-//     );
-//   } catch (err) {
-//     // Envelope breaking may not be configured for every project — log and continue
-//     console.warn("Targeted envelope breaking skipped or failed (may be expected):", err?.response?.data || err);
-//   }
+  //     await API.post(
+  //       `/EnvelopeBreakageProcessing/ProcessEnvelopeBreaking?${queryParams.toString()}`,
+  //       null,
+  //       { headers: { Authorization: `Bearer ${token}` } }
+  //     );
+  //   } catch (err) {
+  //     // Envelope breaking may not be configured for every project — log and continue
+  //     console.warn("Targeted envelope breaking skipped or failed (may be expected):", err?.response?.data || err);
+  //   }
 
-//   try {
-//     // Box breaking for this specific lot only (skip global reset)
-//     await API.post(
-//       `/BoxBreakingProcessing/ProcessBoxBreaking?ProjectId=${projectId}&LotNo=${lotNo}&skipReset=true`,
-//       null,
-//       { headers: { Authorization: `Bearer ${token}` } }
-//     );
-//     showToast(`Pipeline updated for lot ${lotNo}`, "success");
-    
-//     // Trigger "Outer" template regeneration if a specific catch was added
-//     if (catchNo) {
-//         await triggerOuterTemplateRegeneration(catchNo);
-//     }
-//   } catch (err) {
-//     console.error("Targeted box breaking failed:", err?.response?.data || err);
-//     showToast("Catch added, but pipeline run for this lot failed. Please re-run manually.", "warning");
-//   }
-// };
+  //   try {
+  //     // Box breaking for this specific lot only (skip global reset)
+  //     await API.post(
+  //       `/BoxBreakingProcessing/ProcessBoxBreaking?ProjectId=${projectId}&LotNo=${lotNo}&skipReset=true`,
+  //       null,
+  //       { headers: { Authorization: `Bearer ${token}` } }
+  //     );
+  //     showToast(`Pipeline updated for lot ${lotNo}`, "success");
 
-const triggerOuterTemplateRegeneration = async (catchNo) => {
+  //     // Trigger "Outer" template regeneration if a specific catch was added
+  //     if (catchNo) {
+  //         await triggerOuterTemplateRegeneration(catchNo);
+  //     }
+  //   } catch (err) {
+  //     console.error("Targeted box breaking failed:", err?.response?.data || err);
+  //     showToast("Catch added, but pipeline run for this lot failed. Please re-run manually.", "warning");
+  //   }
+  // };
+
+  const triggerOuterTemplateRegeneration = async (catchNo) => {
     try {
-        const groupId = localStorage.getItem("selectedGroup");
-        const typeId = localStorage.getItem("selectedType");
-        const rptApiUrl = import.meta.env.VITE_RPT_API_URL;
-        const projectName = useStore.getState().projectName;
+      const groupId = localStorage.getItem("selectedGroup");
+      const typeId = localStorage.getItem("selectedType");
+      const rptApiUrl = import.meta.env.VITE_RPT_API_URL;
+      const projectName = useStore.getState().projectName;
 
-        if (!rptApiUrl) {
-            console.warn("RPT API URL not configured, skipping auto-regeneration.");
-            return;
-        }
-
-        // 1. Fetch templates to find "Outer" envelope template
-        const templatesRes = await API.get("/RPTTemplates/by-group", {
-            params: { groupId, typeId, projectId }
-        });
-        
-        const templates = templatesRes.data || [];
-        // Look for template with "Outer" and "Envelope" in name
-        const outerTemplate = templates.find(t => {
-            const name = (t.templateName || "").toLowerCase();
-            return name.includes("outer") && name.includes("envelope");
-        });
-        
-        if (!outerTemplate) {
-            console.warn("Outer envelope template not found for auto-regeneration.");
-            return;
-        }
-
-        const templateId = resolveTemplateId(outerTemplate);
-
-        // 2. Trigger generation via RPT Microservice
-        const payload = {
-            projectId: Number(projectId),
-            templateId: Number(templateId),
-            CatchNos: catchNo // Map single catch to CatchNos filter
-        };
-        
-        const res = await axios.post(`${rptApiUrl}/report/generate-dynamic`, payload, { responseType: 'blob' });
-        
-        // Extract file path from response headers
-        const filePath = res.headers['x-generated-file-path'] || 
-                        res.headers['X-Generated-File-Path'] || 
-                        res.headers['X-GENERATED-FILE-PATH'] || null;
-
-        const fileName = buildReportFileName({
-            templateName: outerTemplate.templateName,
-            projectName: projectName || (projectId ? `Project ${projectId}` : undefined),
-            typeId: outerTemplate.typeId || typeId,
-            envLotNumbers: [parseInt(catchNo)], // Store as single-item array for utility compatibility
-        });
-
-        // 3. Save the generated report info to database (EnvelopeLotReports table)
-        const reportData = {
-            projectId: Number(projectId),
-            templateId,
-            templateName: outerTemplate.templateName,
-            envLotNumbers: catchNo,
-            fileName,
-            generatedBy: 'System (Auto)',
-            filePath: filePath
-        };
-
-        await API.post('/EnvelopeLotReports', reportData);
-        showToast("Outer template regenerated for catch " + catchNo, "success");
-        
-    } catch (err) {
-        console.error("Failed to regenerate outer template:", err);
-        // Don't show error toast to user if auto-generation fails, as the catch was already added successfully.
-    }
-};
-
-const fetchMasterFields = async () => {
-  try {
-    setLoadingFields(true);
-
-    const [fieldsRes, configRes] = await Promise.all([
-      API.get("/Fields"),
-      API.get(`/ProjectConfigs/ByProject/${projectId}`)
-    ]);
-
-    const allFields = fieldsRes.data || [];
-    const config = configRes.data;
-
-    // Collect all field IDs referenced in the project configuration
-    const configuredFieldIds = new Set();
-    (config.envelopeMakingCriteria || []).forEach(id => configuredFieldIds.add(id));
-    (config.boxBreakingCriteria || []).forEach(id => configuredFieldIds.add(id));
-    (config.duplicateRemoveFields || []).forEach(id => configuredFieldIds.add(id));
-    (config.sortingBoxReport || []).forEach(id => configuredFieldIds.add(id));
-    (config.innerBundlingCriteria || []).forEach(id => configuredFieldIds.add(id));
-
-    const duplicateCriteria = Array.isArray(config.duplicateCriteria)
-      ? config.duplicateCriteria
-      : JSON.parse(config.duplicateCriteria || "[]");
-    duplicateCriteria.forEach(id => configuredFieldIds.add(id));
-
-    // Filter fields that are in the project configuration
-    // Exclude CatchNo, NRQuantity, LotNo, Pages as they are hardcoded in the form
-    const fieldsToShow = allFields.filter(f => 
-      configuredFieldIds.has(f.fieldId) && 
-      !["CatchNo", "NRQuantity", "LotNo", "Pages"].includes(f.name)
-    );
-
-    setMasterFields(allFields);
-    setConfiguredFields(fieldsToShow);
-
-  } catch (err) {
-    console.error("Failed to load fields:", err);
-    showToast("Failed to load fields", "error");
-  } finally {
-    setLoadingFields(false);
-  }
-};
-
-const handleInlineSave = async () => {
-  // Trim and validate CatchNo
-  const catchNo = newRow.catchNo?.trim();
-  
-  if (!catchNo) {
-    showToast("Catch No is required", "warning");
-    return;
-  }
-
-  // Validate mandatory fields: NRQuantity, LotNo, Pages
-  const mandatoryFields = ["NRQuantity", "LotNo", "Pages"];
-  const missingMandatory = mandatoryFields.filter(fieldName => {
-    const value = newRow.fields[fieldName];
-    return !value || String(value).trim() === "";
-  });
-
-  if (missingMandatory.length > 0) {
-    showToast(`Please fill mandatory fields: ${missingMandatory.join(", ")}`, "warning");
-    return;
-  }
-
-  // Check if all other required fields from configuration are filled
-  const missingRequired = requiredFieldNames.filter(fieldName => {
-    // Skip CatchNo (already validated) and mandatory fields (already validated)
-    if (fieldName === "CatchNo" || mandatoryFields.includes(fieldName)) {
-      return false;
-    }
-    const value = newRow.fields[fieldName];
-    return !value || String(value).trim() === "";
-  });
-
-  if (missingRequired.length > 0) {
-    showToast(`Please fill required fields: ${missingRequired.join(", ")}`, "warning");
-    return;
-  }
-
-  try {
-    // Build the data object for the new row
-    const rowData = {
-      CatchNo: catchNo,
-      ...newRow.fields
-    };
-    
-    // Add extra fields to the row data
-    (newRow.extraFields || []).forEach(f => {
-      if (f.key && f.key.trim() !== "") {
-        rowData[f.key] = f.value || "";
+      if (!rptApiUrl) {
+        console.warn("RPT API URL not configured, skipping auto-regeneration.");
+        return;
       }
-    });
 
-    // Verify if new values exist in the database (excluding catchno, quantity, nrquantity, lotno, pages)
-    const fieldsToVerify = Object.keys(rowData).filter(
-      (col) =>
-        col.toLowerCase() !== "catchno" &&
-        col.toLowerCase() !== "quantity" &&
-        col.toLowerCase() !== "nrquantity" &&
-        col.toLowerCase() !== "lotno" &&
-        col.toLowerCase() !== "pages" &&
-        rowData[col] !== null &&
-        rowData[col] !== undefined &&
-        String(rowData[col]).trim() !== ""
-    );
-
-    for (const col of fieldsToVerify) {
-      const newValue = rowData[col];
-      const checkRes = await API.get(`/NRDatas/CheckValueExists/${projectId}`, {
-        params: { fieldName: col, value: newValue }
+      // 1. Fetch templates to find "Outer" envelope template
+      const templatesRes = await API.get("/RPTTemplates/by-group", {
+        params: { groupId, typeId, projectId }
       });
-      if (checkRes.data && checkRes.data.exists === false) {
-        const confirmed = await MessageService.confirm(
-          <span>
-            Value <strong>{newValue}</strong> for field <strong>{col}</strong> does not exist in this project. Are you sure you want to add this row?
-          </span>,
-          {
-            title: "Value does not exist",
-            confirmText: "Yes, Add Row",
-            cancelText: "No, Cancel",
-            type: "warning"
-          }
-        );
-        if (!confirmed) {
-          return;
-        }
+
+      const templates = templatesRes.data || [];
+      // Look for template with "Outer" and "Envelope" in name
+      const outerTemplate = templates.find(t => {
+        const name = (t.templateName || "").toLowerCase();
+        return name.includes("outer") && name.includes("envelope");
+      });
+
+      if (!outerTemplate) {
+        console.warn("Outer envelope template not found for auto-regeneration.");
+        return;
       }
+
+      const templateId = resolveTemplateId(outerTemplate);
+
+      // 2. Trigger generation via RPT Microservice
+      const payload = {
+        projectId: Number(projectId),
+        templateId: Number(templateId),
+        CatchNos: catchNo // Map single catch to CatchNos filter
+      };
+
+      const res = await axios.post(`${rptApiUrl}/report/generate-dynamic`, payload, { responseType: 'blob' });
+
+      // Extract file path from response headers
+      const filePath = res.headers['x-generated-file-path'] ||
+        res.headers['X-Generated-File-Path'] ||
+        res.headers['X-GENERATED-FILE-PATH'] || null;
+
+      const fileName = buildReportFileName({
+        templateName: outerTemplate.templateName,
+        projectName: projectName || (projectId ? `Project ${projectId}` : undefined),
+        typeId: outerTemplate.typeId || typeId,
+        envLotNumbers: [parseInt(catchNo)], // Store as single-item array for utility compatibility
+      });
+
+      // 3. Save the generated report info to database (EnvelopeLotReports table)
+      const reportData = {
+        projectId: Number(projectId),
+        templateId,
+        templateName: outerTemplate.templateName,
+        envLotNumbers: catchNo,
+        fileName,
+        generatedBy: 'System (Auto)',
+        filePath: filePath,
+        lotNo: null // Auto-generated reports don't have a specific lot number
+      };
+
+      await API.post('/EnvelopeLotReports', reportData);
+      showToast("Outer template regenerated for catch " + catchNo, "success");
+
+    } catch (err) {
+      console.error("Failed to regenerate outer template:", err);
+      // Don't show error toast to user if auto-generation fails, as the catch was already added successfully.
     }
+  };
 
-    // Use the same endpoint as file upload
-    const payload = {
-      projectId: Number(projectId),
-      data: [rowData]
-    };
+  const fetchMasterFields = async () => {
+    try {
+      setLoadingFields(true);
 
-    console.log("Sending payload:", payload);
+      const [fieldsRes, configRes] = await Promise.all([
+        API.get("/Fields"),
+        API.get(`/ProjectConfigs/ByProject/${projectId}`)
+      ]);
 
-    const response = await API.post(`/NRDatas/single`, payload, {
-      headers: { 
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      }
-    });
+      const allFields = fieldsRes.data || [];
+      const config = configRes.data;
 
-    console.log("Response:", response.data);
+      // Collect all field IDs referenced in the project configuration
+      const configuredFieldIds = new Set();
+      (config.envelopeMakingCriteria || []).forEach(id => configuredFieldIds.add(id));
+      (config.boxBreakingCriteria || []).forEach(id => configuredFieldIds.add(id));
+      (config.duplicateRemoveFields || []).forEach(id => configuredFieldIds.add(id));
+      (config.sortingBoxReport || []).forEach(id => configuredFieldIds.add(id));
+      (config.innerBundlingCriteria || []).forEach(id => configuredFieldIds.add(id));
 
-    showToast("Data added successfully", "success");
+      const duplicateCriteria = Array.isArray(config.duplicateCriteria)
+        ? config.duplicateCriteria
+        : JSON.parse(config.duplicateCriteria || "[]");
+      duplicateCriteria.forEach(id => configuredFieldIds.add(id));
 
-    setAddRowOpen(false);
-    setNewRow({
-      catchNo: "",
-      fields: {},
-      extraFields: []
-    });
+      // Filter fields that are in the project configuration
+      // Exclude CatchNo, NRQuantity, LotNo, Pages as they are hardcoded in the form
+      const fieldsToShow = allFields.filter(f =>
+        configuredFieldIds.has(f.fieldId) &&
+        !["CatchNo", "NRQuantity", "LotNo", "Pages"].includes(f.name)
+      );
 
-    fetchExistingData(projectId);
-    // await rerunDuplicateTool();
+      setMasterFields(allFields);
+      setConfiguredFields(fieldsToShow);
 
-    // Targeted pipeline: run envelope + box breaking only for the new catch's lot
-    const newLotNo = response.data?.lotNo;
-    const addedCatchNo = response.data?.catchNo;
-    // if (newLotNo) {
-    //   await runTargetedPipelineForLot(newLotNo, addedCatchNo);
-    // }
-
-  } catch (err) {
-    console.error("Full error:", err);
-    console.error("Error response:", err?.response);
-    console.error("Error data:", err?.response?.data);
-    
-    let errorMsg = "Failed to add data";
-    
-    if (err?.response?.data) {
-      if (typeof err.response.data === 'string') {
-        errorMsg = err.response.data;
-      } else if (err.response.data.message) {
-        errorMsg = err.response.data.message;
-      } else if (err.response.data.title) {
-        errorMsg = err.response.data.title;
-      }
-    } else if (err?.message) {
-      errorMsg = err.message;
+    } catch (err) {
+      console.error("Failed to load fields:", err);
+      showToast("Failed to load fields", "error");
+    } finally {
+      setLoadingFields(false);
     }
-    
-    showToast(errorMsg, "error");
-  }
-};
+  };
 
-const handleEditRow = (record) => {
-  setEditingRowId(record.id);
-  setEditFormData({ ...record });
-  setOriginalEditFormData({ ...record });
-};
+  const handleInlineSave = async () => {
+    // Trim and validate CatchNo
+    const catchNo = newRow.catchNo?.trim();
 
-const handleCancelEdit = () => {
-  setEditingRowId(null);
-  setEditFormData({});
-  setOriginalEditFormData({});
-};
-
-const handleSaveEdit = async () => {
-  if (!editingRowId) return;
-
-  try {
-    setLoading(true);
-
-    const changedPayload = {};
-    columns.forEach((col) => {
-      const oldValue = originalEditFormData?.[col] ?? null;
-      const newValue = editFormData?.[col] ?? null;
-      if (String(oldValue ?? "") !== String(newValue ?? "")) {
-        changedPayload[col] = newValue;
-      }
-    });
-
-    if (Object.keys(changedPayload).length === 0) {
-      showToast("No changes to save", "info");
-      setEditingRowId(null);
-      setEditFormData({});
-      setOriginalEditFormData({});
+    if (!catchNo) {
+      showToast("Catch No is required", "warning");
       return;
     }
 
-    // Verify if new values exist in the database (excluding quantity & nrquantity)
-    const fieldsToVerify = Object.keys(changedPayload).filter(
-      (col) =>
-        col.toLowerCase() !== "quantity" &&
-        col.toLowerCase() !== "nrquantity" &&
-        changedPayload[col] !== null &&
-        changedPayload[col] !== undefined &&
-        String(changedPayload[col]).trim() !== ""
-    );
-
-    for (const col of fieldsToVerify) {
-      const newValue = changedPayload[col];
-      const checkRes = await API.get(`/NRDatas/CheckValueExists/${projectId}`, {
-        params: { fieldName: col, value: newValue }
-      });
-      if (checkRes.data && checkRes.data.exists === false) {
-        const confirmed = await MessageService.confirm(
-          <span>
-            Value <strong>{newValue}</strong> for field <strong>{col}</strong> does not exist in this project. Are you sure you want to save?
-          </span>,
-          {
-            title: "Value does not exist",
-            confirmText: "Yes, Save",
-            cancelText: "No, Cancel",
-            type: "warning"
-          }
-        );
-        if (!confirmed) {
-          setLoading(false);
-          return;
-        }
-      }
-    }
-
-    // Use the new UpdateSingle endpoint
-    await API.put(`/NRDatas/UpdateSingle/${editingRowId}`, changedPayload, {
-      headers: { Authorization: `Bearer ${token}` }
+    // Validate mandatory fields: NRQuantity, LotNo, Pages
+    const mandatoryFields = ["NRQuantity", "LotNo", "Pages"];
+    const missingMandatory = mandatoryFields.filter(fieldName => {
+      const value = newRow.fields[fieldName];
+      return !value || String(value).trim() === "";
     });
 
-    showToast("Data updated successfully", "success");
+    if (missingMandatory.length > 0) {
+      showToast(`Please fill mandatory fields: ${missingMandatory.join(", ")}`, "warning");
+      return;
+    }
+
+    // Check if all other required fields from configuration are filled
+    const missingRequired = requiredFieldNames.filter(fieldName => {
+      // Skip CatchNo (already validated) and mandatory fields (already validated)
+      if (fieldName === "CatchNo" || mandatoryFields.includes(fieldName)) {
+        return false;
+      }
+      const value = newRow.fields[fieldName];
+      return !value || String(value).trim() === "";
+    });
+
+    if (missingRequired.length > 0) {
+      showToast(`Please fill required fields: ${missingRequired.join(", ")}`, "warning");
+      return;
+    }
+
+    try {
+      // Build the data object for the new row
+      const rowData = {
+        CatchNo: catchNo,
+        ...newRow.fields
+      };
+
+      // Add extra fields to the row data
+      (newRow.extraFields || []).forEach(f => {
+        if (f.key && f.key.trim() !== "") {
+          rowData[f.key] = f.value || "";
+        }
+      });
+
+      // Verify if new values exist in the database (excluding catchno, quantity, nrquantity, lotno, pages)
+      const fieldsToVerify = Object.keys(rowData).filter(
+        (col) =>
+          col.toLowerCase() !== "catchno" &&
+          col.toLowerCase() !== "quantity" &&
+          col.toLowerCase() !== "nrquantity" &&
+          col.toLowerCase() !== "lotno" &&
+          col.toLowerCase() !== "pages" &&
+          rowData[col] !== null &&
+          rowData[col] !== undefined &&
+          String(rowData[col]).trim() !== ""
+      );
+
+      for (const col of fieldsToVerify) {
+        const newValue = rowData[col];
+        const checkRes = await API.get(`/NRDatas/CheckValueExists/${projectId}`, {
+          params: { fieldName: col, value: newValue }
+        });
+        if (checkRes.data && checkRes.data.exists === false) {
+          const confirmed = await MessageService.confirm(
+            <span>
+              Value <strong>{newValue}</strong> for field <strong>{col}</strong> does not exist in this project. Are you sure you want to add this row?
+            </span>,
+            {
+              title: "Value does not exist",
+              confirmText: "Yes, Add Row",
+              cancelText: "No, Cancel",
+              type: "warning"
+            }
+          );
+          if (!confirmed) {
+            return;
+          }
+        }
+      }
+
+      // Use the same endpoint as file upload
+      const payload = {
+        projectId: Number(projectId),
+        data: [rowData]
+      };
+
+      console.log("Sending payload:", payload);
+
+      const response = await API.post(`/NRDatas/single`, payload, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      console.log("Response:", response.data);
+
+      showToast("Data added successfully", "success");
+
+      setAddRowOpen(false);
+      setNewRow({
+        catchNo: "",
+        fields: {},
+        extraFields: []
+      });
+
+      fetchExistingData(projectId);
+      // await rerunDuplicateTool();
+
+      // Targeted pipeline: run envelope + box breaking only for the new catch's lot
+      const newLotNo = response.data?.lotNo;
+      const addedCatchNo = response.data?.catchNo;
+      // if (newLotNo) {
+      //   await runTargetedPipelineForLot(newLotNo, addedCatchNo);
+      // }
+
+    } catch (err) {
+      console.error("Full error:", err);
+      console.error("Error response:", err?.response);
+      console.error("Error data:", err?.response?.data);
+
+      let errorMsg = "Failed to add data";
+
+      if (err?.response?.data) {
+        if (typeof err.response.data === 'string') {
+          errorMsg = err.response.data;
+        } else if (err.response.data.message) {
+          errorMsg = err.response.data.message;
+        } else if (err.response.data.title) {
+          errorMsg = err.response.data.title;
+        }
+      } else if (err?.message) {
+        errorMsg = err.message;
+      }
+
+      showToast(errorMsg, "error");
+    }
+  };
+
+  const handleEditRow = (record) => {
+    setEditingRowId(record.id);
+    setEditFormData({ ...record });
+    setOriginalEditFormData({ ...record });
+  };
+
+  const handleCancelEdit = () => {
     setEditingRowId(null);
     setEditFormData({});
     setOriginalEditFormData({});
-    await fetchExistingData(projectId);
-    // await rerunDuplicateTool();
-    // Determine affected catch number(s) and mark their EnvLot(s) stale so users know to regenerate
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingRowId) return;
+
     try {
-      const catchNo = originalEditFormData?.CatchNo ?? originalEditFormData?.catchNo ?? editFormData?.CatchNo ?? editFormData?.catchNo ?? null;
-      if (catchNo && projectId) {
-        const envLotsRes = await API.get(`/NRDataLots/GetAssignedEnvLotCatches/${projectId}`);
-        const assignedLot = (envLotsRes?.data || []).find(l => Array.isArray(l.catches) && l.catches.includes(String(catchNo)));
-        if (assignedLot && assignedLot.envLotNo) {
-          addStaleEnvLotIds([Number(assignedLot.envLotNo)]);
-          setHasDeactivatedCatches(true);
+      setLoading(true);
+
+      const changedPayload = {};
+      columns.forEach((col) => {
+        const oldValue = originalEditFormData?.[col] ?? null;
+        const newValue = editFormData?.[col] ?? null;
+        if (String(oldValue ?? "") !== String(newValue ?? "")) {
+          changedPayload[col] = newValue;
+        }
+      });
+
+      if (Object.keys(changedPayload).length === 0) {
+        showToast("No changes to save", "info");
+        setEditingRowId(null);
+        setEditFormData({});
+        setOriginalEditFormData({});
+        return;
+      }
+
+      // Verify if new values exist in the database (excluding quantity & nrquantity)
+      const fieldsToVerify = Object.keys(changedPayload).filter(
+        (col) =>
+          col.toLowerCase() !== "quantity" &&
+          col.toLowerCase() !== "nrquantity" &&
+          changedPayload[col] !== null &&
+          changedPayload[col] !== undefined &&
+          String(changedPayload[col]).trim() !== ""
+      );
+
+      for (const col of fieldsToVerify) {
+        const newValue = changedPayload[col];
+        const checkRes = await API.get(`/NRDatas/CheckValueExists/${projectId}`, {
+          params: { fieldName: col, value: newValue }
+        });
+        if (checkRes.data && checkRes.data.exists === false) {
+          const confirmed = await MessageService.confirm(
+            <span>
+              Value <strong>{newValue}</strong> for field <strong>{col}</strong> does not exist in this project. Are you sure you want to save?
+            </span>,
+            {
+              title: "Value does not exist",
+              confirmText: "Yes, Save",
+              cancelText: "No, Cancel",
+              type: "warning"
+            }
+          );
+          if (!confirmed) {
+            setLoading(false);
+            return;
+          }
         }
       }
-    } catch (err) {
-      console.error("Failed to mark EnvLot stale after edit", err);
-    }
-  } catch (err) {
-    console.error("Error updating data:", err);
-    const errorMsg = err?.response?.data?.message || err?.response?.data || err?.message || "Failed to update data";
-    showToast(errorMsg, "error");
-  } finally {
-    setLoading(false);
-  }
-};
 
-const handleFieldChange = (fieldName, value) => {
-  setEditFormData(prev => ({
-    ...prev,
-    [fieldName]: value
-  }));
-};
+      // Use the new UpdateSingle endpoint
+      await API.put(`/NRDatas/UpdateSingle/${editingRowId}`, changedPayload, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      showToast("Data updated successfully", "success");
+      setEditingRowId(null);
+      setEditFormData({});
+      setOriginalEditFormData({});
+      await fetchExistingData(projectId);
+      // await rerunDuplicateTool();
+      // Determine affected catch number(s) and mark their EnvLot(s) stale so users know to regenerate
+      try {
+        const catchNo = originalEditFormData?.CatchNo ?? originalEditFormData?.catchNo ?? editFormData?.CatchNo ?? editFormData?.catchNo ?? null;
+        if (catchNo && projectId) {
+          const envLotsRes = await API.get(`/NRDataLots/GetAssignedEnvLotCatches/${projectId}`);
+          const assignedLot = (envLotsRes?.data || []).find(l => Array.isArray(l.catches) && l.catches.includes(String(catchNo)));
+          if (assignedLot && assignedLot.envLotNo) {
+            addStaleEnvLotIds([Number(assignedLot.envLotNo)]);
+            setHasDeactivatedCatches(true);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to mark EnvLot stale after edit", err);
+      }
+    } catch (err) {
+      console.error("Error updating data:", err);
+      const errorMsg = err?.response?.data?.message || err?.response?.data || err?.message || "Failed to update data";
+      showToast(errorMsg, "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleFieldChange = (fieldName, value) => {
+    setEditFormData(prev => ({
+      ...prev,
+      [fieldName]: value
+    }));
+  };
 
   const deleteNRData = async (closeModal) => {
     setLoading(true);
@@ -2061,10 +2106,10 @@ const handleFieldChange = (fieldName, value) => {
   };
 
   useEffect(() => {
-  if (addRowOpen) {
-    fetchMasterFields();
-  }
-}, [addRowOpen]);
+    if (addRowOpen) {
+      fetchMasterFields();
+    }
+  }, [addRowOpen]);
 
   const getMappedFieldsToDisplay = () => {
     return expectedFields.filter(f => {
@@ -2128,23 +2173,23 @@ const handleFieldChange = (fieldName, value) => {
                       Upload a corrected NRData report if you have already fixed your source file.
                     </Text>
                   </div>
-              <Upload.Dragger
-                name="file"
-                accept=".xls,.xlsx,.csv"
-                fileList={fileList}
-                beforeUpload={beforeUpload}
-                onRemove={handleRemove}
-                maxCount={1}
-              >
-                <p className="ant-upload-drag-icon">📤</p>
-                <p className="ant-upload-text">Upload Excel or CSV file</p>
-                <Text type="secondary" style={{ display: "block" }}>
-                  Drag and drop or click to choose a file.
-                </Text>
-                <Button icon={<UploadOutlined />}>Choose File</Button>
-              </Upload.Dragger>
+                  <Upload.Dragger
+                    name="file"
+                    accept=".xls,.xlsx,.csv"
+                    fileList={fileList}
+                    beforeUpload={beforeUpload}
+                    onRemove={handleRemove}
+                    maxCount={1}
+                  >
+                    <p className="ant-upload-drag-icon">📤</p>
+                    <p className="ant-upload-text">Upload Excel or CSV file</p>
+                    <Text type="secondary" style={{ display: "block" }}>
+                      Drag and drop or click to choose a file.
+                    </Text>
+                    <Button icon={<UploadOutlined />}>Choose File</Button>
+                  </Upload.Dragger>
 
-              
+
                 </Space>
               </div>
             </Col>
@@ -2152,22 +2197,21 @@ const handleFieldChange = (fieldName, value) => {
             <Col xs={24} md={12}>
               <div style={{ padding: 12, border: "1px solid #d9d9d9", borderRadius: 10, background: "#fff" }}>
                 <Space direction="vertical" size={10} style={{ width: "100%" }}>
-                  {/* <div>
+                  <div>
                     <Text strong>Changed NR Data</Text>
-                    <Text type="secondary" style={{ display: "block", fontSize: 12, lineHeight: 1.3}}>
-                    Enable this when the file is a Changed NRData.
-                  </Text>
+                    <Text type="secondary" style={{ display: "block", fontSize: 12, lineHeight: 1.3 }}>
+                      Enable this if you're uploading changed NR data to remove duplicates automatically.
+                    </Text>
                   </div>
                   <Checkbox
-                    checked={isCorrectedNrdataReport}
-                    onChange={(e) => setIsCorrectedNrdataReport(e.target.checked)}
+                    checked={isChangedNR}
+                    onChange={(e) => setIsChangedNR(e.target.checked)}
                   >
-                    Changed NR Data
-                  </Checkbox> */}
-                  
+                    This is a Changed NR upload
+                  </Checkbox>
                 </Space>
 
-                <Space direction="vertical" size={10} style={{ width: "100%" , marginTop: 3}}>
+                <Space direction="vertical" size={10} style={{ width: "100%", marginTop: 16 }}>
                   <div>
                     <Text strong>Zero Quantity Handling</Text>
                     <Text type="secondary" style={{ display: "block", fontSize: 12, lineHeight: 1.3 }}>
@@ -2199,7 +2243,7 @@ const handleFieldChange = (fieldName, value) => {
                     Skip items with 0 quantity
                   </Checkbox>
 
-                  
+
                 </Space>
               </div>
             </Col>
@@ -2386,12 +2430,12 @@ const handleFieldChange = (fieldName, value) => {
           {/* Right side: Buttons */}
           <div style={{ display: "flex", gap: 8 }}>
             <Button
-  type="primary"
-  icon={<PlusOutlined />}
-  onClick={() => setAddRowOpen((prev) => !prev)}
->
-  Add Data
-</Button>
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={() => setAddRowOpen((prev) => !prev)}
+            >
+              Add Data
+            </Button>
             <Button
               onClick={fetchConflictReport}
               style={{
@@ -2430,261 +2474,261 @@ const handleFieldChange = (fieldName, value) => {
           </div>
         </div>
 
-{addRowOpen && (
-  <Card
-    size="small"
-    style={{
-      marginBottom: 12,
-      border: "1px dashed #d9d9d9",
-      background: "#fafafa",
-    }}
-  >
-    {loadingFields ? (
-      <Text type="secondary">Loading fields...</Text>
-    ) : (
-      <>
-        {/* Configured Fields in Compact Grid */}
-        <Row gutter={[8, 8]}>
-          {/* Catch No - Always First */}
-          <Col xs={24} sm={12} md={8} lg={6}>
-            <Text strong style={{ fontSize: 12 }}>
-              Catch No <span style={{ color: "#ff4d4f" }}>*</span>
-            </Text>
-            <Input
-              size="small"
-              placeholder="Catch No"
-              value={newRow.catchNo}
-              onChange={(e) => setNewRow({ ...newRow, catchNo: e.target.value })}
-            />
-          </Col>
-
-          {/* NRQuantity - Always Required */}
-          <Col xs={24} sm={12} md={8} lg={6}>
-            <Text strong style={{ fontSize: 12 }}>
-              NRQuantity <span style={{ color: "#ff4d4f" }}>*</span>
-            </Text>
-            <Input
-              size="small"
-              type="number"
-              placeholder="NRQuantity"
-              value={newRow.fields.NRQuantity || ""}
-              onChange={(e) => {
-                setNewRow((prev) => ({
-                  ...prev,
-                  fields: {
-                    ...prev.fields,
-                    NRQuantity: e.target.value,
-                  },
-                }));
-              }}
-            />
-          </Col>
-
-          {/* LotNo - Always Required */}
-          <Col xs={24} sm={12} md={8} lg={6}>
-            <Text strong style={{ fontSize: 12 }}>
-              LotNo <span style={{ color: "#ff4d4f" }}>*</span>
-            </Text>
-            <Input
-              size="small"
-              type="number"
-              placeholder="LotNo"
-              value={newRow.fields.LotNo || ""}
-              onChange={(e) => {
-                setNewRow((prev) => ({
-                  ...prev,
-                  fields: {
-                    ...prev.fields,
-                    LotNo: e.target.value,
-                  },
-                }));
-              }}
-            />
-          </Col>
-
-          {/* Pages - Always Required */}
-          <Col xs={24} sm={12} md={8} lg={6}>
-            <Text strong style={{ fontSize: 12 }}>
-              Pages <span style={{ color: "#ff4d4f" }}>*</span>
-            </Text>
-            <Input
-              size="small"
-              type="number"
-              placeholder="Pages"
-              value={newRow.fields.Pages || ""}
-              onChange={(e) => {
-                setNewRow((prev) => ({
-                  ...prev,
-                  fields: {
-                    ...prev.fields,
-                    Pages: e.target.value,
-                  },
-                }));
-              }}
-            />
-          </Col>
-
-          {/* Dynamic Configured Fields */}
-          {configuredFields
-            .filter(field => !["CatchNo", "NRQuantity", "LotNo", "Pages"].includes(field.name)) // Exclude hardcoded fields
-            .map((field) => {
-              const isRequired = requiredFieldNames.includes(field.name);
-              return (
-                <Col key={field.fieldId} xs={24} sm={12} md={8} lg={6}>
-                  <Text strong style={{ fontSize: 12 }}>
-                    {field.name}
-                    {isRequired && <span style={{ color: "#ff4d4f", marginLeft: 2 }}>*</span>}
-                  </Text>
-                  {field.name === 'ExamDate' ? (
-                    <DatePicker
-                      size="small"
-                      format="DD-MM-YYYY"
-                      placeholder={field.name}
-                      value={parseDateValue(newRow.fields[field.name])}
-                      style={{ width: '100%' }}
-                      onChange={(date) => {
-                        setNewRow((prev) => ({
-                          ...prev,
-                          fields: {
-                            ...prev.fields,
-                            [field.name]: date ? date.format("DD-MM-YYYY") : "",
-                          },
-                        }));
-                      }}
-                    />
-                  ) : (
+        {addRowOpen && (
+          <Card
+            size="small"
+            style={{
+              marginBottom: 12,
+              border: "1px dashed #d9d9d9",
+              background: "#fafafa",
+            }}
+          >
+            {loadingFields ? (
+              <Text type="secondary">Loading fields...</Text>
+            ) : (
+              <>
+                {/* Configured Fields in Compact Grid */}
+                <Row gutter={[8, 8]}>
+                  {/* Catch No - Always First */}
+                  <Col xs={24} sm={12} md={8} lg={6}>
+                    <Text strong style={{ fontSize: 12 }}>
+                      Catch No <span style={{ color: "#ff4d4f" }}>*</span>
+                    </Text>
                     <Input
                       size="small"
-                      placeholder={field.name}
-                      value={newRow.fields[field.name] || ""}
+                      placeholder="Catch No"
+                      value={newRow.catchNo}
+                      onChange={(e) => setNewRow({ ...newRow, catchNo: e.target.value })}
+                    />
+                  </Col>
+
+                  {/* NRQuantity - Always Required */}
+                  <Col xs={24} sm={12} md={8} lg={6}>
+                    <Text strong style={{ fontSize: 12 }}>
+                      NRQuantity <span style={{ color: "#ff4d4f" }}>*</span>
+                    </Text>
+                    <Input
+                      size="small"
+                      type="number"
+                      placeholder="NRQuantity"
+                      value={newRow.fields.NRQuantity || ""}
                       onChange={(e) => {
                         setNewRow((prev) => ({
                           ...prev,
                           fields: {
                             ...prev.fields,
-                            [field.name]: e.target.value,
+                            NRQuantity: e.target.value,
                           },
                         }));
                       }}
                     />
-                  )}
-                </Col>
-              );
-            })}
-        </Row>
+                  </Col>
 
-        {/* Extra Fields Section - Compact Inline */}
-        {newRow.extraFields.length > 0 && (
-          <div style={{ marginTop: 6 }}>
-            {newRow.extraFields.map((field, index) => (
-              <Row key={index} gutter={4} style={{ marginBottom: 4 }}>
-                <Col span={7}>
-                  <Select
-                    size="small"
-                    placeholder="Field"
-                    value={field.key || undefined}
-                    style={{ width: "100%" }}
-                    onChange={(value) => {
-                      setNewRow((prev) => {
-                        const updated = [...prev.extraFields];
-                        updated[index].key = value;
-                        return { ...prev, extraFields: updated };
-                      });
-                    }}
-                    options={masterFields
-                      .filter(f => 
-                        !configuredFields.some(cf => cf.name === f.name) && // Not in configured fields
-                        !newRow.extraFields.some((ef, i) => i !== index && ef.key === f.name) // Not already selected
-                      )
-                      .map(f => ({
-                        value: f.name,
-                        label: f.name
-                      }))
-                    }
-                  />
-                </Col>
-                <Col span={15}>
-                  {field.key === 'ExamDate' ? (
-                    <DatePicker
-                      size="small"
-                      format="DD-MM-YYYY"
-                      placeholder="Value"
-                      value={parseDateValue(field.value)}
-                      style={{ width: "100%" }}
-                      onChange={(date) => {
-                        setNewRow((prev) => {
-                          const updated = [...prev.extraFields];
-                          updated[index].value = date ? date.format("DD-MM-YYYY") : "";
-                          return { ...prev, extraFields: updated };
-                        });
-                      }}
-                    />
-                  ) : (
+                  {/* LotNo - Always Required */}
+                  <Col xs={24} sm={12} md={8} lg={6}>
+                    <Text strong style={{ fontSize: 12 }}>
+                      LotNo <span style={{ color: "#ff4d4f" }}>*</span>
+                    </Text>
                     <Input
                       size="small"
-                      placeholder="Value"
-                      value={field.value}
+                      type="number"
+                      placeholder="LotNo"
+                      value={newRow.fields.LotNo || ""}
                       onChange={(e) => {
-                        setNewRow((prev) => {
-                          const updated = [...prev.extraFields];
-                          updated[index].value = e.target.value;
-                          return { ...prev, extraFields: updated };
-                        });
+                        setNewRow((prev) => ({
+                          ...prev,
+                          fields: {
+                            ...prev.fields,
+                            LotNo: e.target.value,
+                          },
+                        }));
                       }}
                     />
-                  )}
-                </Col>
-                <Col span={2}>
+                  </Col>
+
+                  {/* Pages - Always Required */}
+                  <Col xs={24} sm={12} md={8} lg={6}>
+                    <Text strong style={{ fontSize: 12 }}>
+                      Pages <span style={{ color: "#ff4d4f" }}>*</span>
+                    </Text>
+                    <Input
+                      size="small"
+                      type="number"
+                      placeholder="Pages"
+                      value={newRow.fields.Pages || ""}
+                      onChange={(e) => {
+                        setNewRow((prev) => ({
+                          ...prev,
+                          fields: {
+                            ...prev.fields,
+                            Pages: e.target.value,
+                          },
+                        }));
+                      }}
+                    />
+                  </Col>
+
+                  {/* Dynamic Configured Fields */}
+                  {configuredFields
+                    .filter(field => !["CatchNo", "NRQuantity", "LotNo", "Pages"].includes(field.name)) // Exclude hardcoded fields
+                    .map((field) => {
+                      const isRequired = requiredFieldNames.includes(field.name);
+                      return (
+                        <Col key={field.fieldId} xs={24} sm={12} md={8} lg={6}>
+                          <Text strong style={{ fontSize: 12 }}>
+                            {field.name}
+                            {isRequired && <span style={{ color: "#ff4d4f", marginLeft: 2 }}>*</span>}
+                          </Text>
+                          {field.name === 'ExamDate' ? (
+                            <DatePicker
+                              size="small"
+                              format="DD-MM-YYYY"
+                              placeholder={field.name}
+                              value={parseDateValue(newRow.fields[field.name])}
+                              style={{ width: '100%' }}
+                              onChange={(date) => {
+                                setNewRow((prev) => ({
+                                  ...prev,
+                                  fields: {
+                                    ...prev.fields,
+                                    [field.name]: date ? date.format("DD-MM-YYYY") : "",
+                                  },
+                                }));
+                              }}
+                            />
+                          ) : (
+                            <Input
+                              size="small"
+                              placeholder={field.name}
+                              value={newRow.fields[field.name] || ""}
+                              onChange={(e) => {
+                                setNewRow((prev) => ({
+                                  ...prev,
+                                  fields: {
+                                    ...prev.fields,
+                                    [field.name]: e.target.value,
+                                  },
+                                }));
+                              }}
+                            />
+                          )}
+                        </Col>
+                      );
+                    })}
+                </Row>
+
+                {/* Extra Fields Section - Compact Inline */}
+                {newRow.extraFields.length > 0 && (
+                  <div style={{ marginTop: 6 }}>
+                    {newRow.extraFields.map((field, index) => (
+                      <Row key={index} gutter={4} style={{ marginBottom: 4 }}>
+                        <Col span={7}>
+                          <Select
+                            size="small"
+                            placeholder="Field"
+                            value={field.key || undefined}
+                            style={{ width: "100%" }}
+                            onChange={(value) => {
+                              setNewRow((prev) => {
+                                const updated = [...prev.extraFields];
+                                updated[index].key = value;
+                                return { ...prev, extraFields: updated };
+                              });
+                            }}
+                            options={masterFields
+                              .filter(f =>
+                                !configuredFields.some(cf => cf.name === f.name) && // Not in configured fields
+                                !newRow.extraFields.some((ef, i) => i !== index && ef.key === f.name) // Not already selected
+                              )
+                              .map(f => ({
+                                value: f.name,
+                                label: f.name
+                              }))
+                            }
+                          />
+                        </Col>
+                        <Col span={15}>
+                          {field.key === 'ExamDate' ? (
+                            <DatePicker
+                              size="small"
+                              format="DD-MM-YYYY"
+                              placeholder="Value"
+                              value={parseDateValue(field.value)}
+                              style={{ width: "100%" }}
+                              onChange={(date) => {
+                                setNewRow((prev) => {
+                                  const updated = [...prev.extraFields];
+                                  updated[index].value = date ? date.format("DD-MM-YYYY") : "";
+                                  return { ...prev, extraFields: updated };
+                                });
+                              }}
+                            />
+                          ) : (
+                            <Input
+                              size="small"
+                              placeholder="Value"
+                              value={field.value}
+                              onChange={(e) => {
+                                setNewRow((prev) => {
+                                  const updated = [...prev.extraFields];
+                                  updated[index].value = e.target.value;
+                                  return { ...prev, extraFields: updated };
+                                });
+                              }}
+                            />
+                          )}
+                        </Col>
+                        <Col span={2}>
+                          <Button
+                            size="small"
+                            danger
+                            type="text"
+                            icon={<span style={{ fontSize: 14 }}>✕</span>}
+                            onClick={() => {
+                              setNewRow((prev) => ({
+                                ...prev,
+                                extraFields: prev.extraFields.filter((_, i) => i !== index),
+                              }));
+                            }}
+                            style={{ padding: "0 4px", height: 24 }}
+                          />
+                        </Col>
+                      </Row>
+                    ))}
+                  </div>
+                )}
+
+                {/* Action Buttons */}
+                <div style={{ display: "flex", gap: 6, justifyContent: "space-between", marginTop: 8 }}>
                   <Button
                     size="small"
-                    danger
-                    type="text"
-                    icon={<span style={{ fontSize: 14 }}>✕</span>}
-                    onClick={() => {
+                    type="dashed"
+                    onClick={() =>
                       setNewRow((prev) => ({
                         ...prev,
-                        extraFields: prev.extraFields.filter((_, i) => i !== index),
-                      }));
-                    }}
-                    style={{ padding: "0 4px", height: 24 }}
-                  />
-                </Col>
-              </Row>
-            ))}
-          </div>
+                        extraFields: [...prev.extraFields, { key: "", value: "" }],
+                      }))
+                    }
+                    style={{ height: 24, fontSize: 12 }}
+                  >
+                    + Field
+                  </Button>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <Button size="small" type="primary" onClick={handleInlineSave} loading={loading} style={{ height: 24 }}>
+                      Save
+                    </Button>
+                    <Button size="small" onClick={() => {
+                      setAddRowOpen(false);
+                      setNewRow({ catchNo: "", fields: {}, extraFields: [] });
+                    }} style={{ height: 24 }}>
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              </>
+            )}
+          </Card>
         )}
-
-        {/* Action Buttons */}
-        <div style={{ display: "flex", gap: 6, justifyContent: "space-between", marginTop: 8 }}>
-          <Button
-            size="small"
-            type="dashed"
-            onClick={() =>
-              setNewRow((prev) => ({
-                ...prev,
-                extraFields: [...prev.extraFields, { key: "", value: "" }],
-              }))
-            }
-            style={{ height: 24, fontSize: 12 }}
-          >
-            + Field
-          </Button>
-          <div style={{ display: "flex", gap: 6 }}>
-            <Button size="small" type="primary" onClick={handleInlineSave} loading={loading} style={{ height: 24 }}>
-              Save
-            </Button>
-            <Button size="small" onClick={() => {
-              setAddRowOpen(false);
-              setNewRow({ catchNo: "", fields: {}, extraFields: [] });
-            }} style={{ height: 24 }}>
-              Cancel
-            </Button>
-          </div>
-        </div>
-      </>
-    )}
-  </Card>
-)}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -2876,8 +2920,8 @@ const handleFieldChange = (fieldName, value) => {
                           disabled:
                             editingRowId !== null || // Disable selection when editing
                             (Boolean(record.CatchNo) &&
-                            selectedUploadedCatchNos.length >= 2 &&
-                            !selectedUploadedCatchNos.includes(record.CatchNo)),
+                              selectedUploadedCatchNos.length >= 2 &&
+                              !selectedUploadedCatchNos.includes(record.CatchNo)),
                         }),
                       }}
                       scroll={{ x: "max-content" }}
@@ -2910,7 +2954,7 @@ const handleFieldChange = (fieldName, value) => {
               </TabPane>
             </Tabs>
 
-            
+
           </Card>
         </motion.div>
 
