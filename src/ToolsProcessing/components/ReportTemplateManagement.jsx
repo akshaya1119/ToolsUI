@@ -107,19 +107,19 @@ const ReportTemplateManagement = ({
   };
 
   const getReportVersion = (report) => {
-  if (viewType === 'Template') {
+    if (viewType === 'Template') {
+      return (
+        report?.version ??
+        report?.Version ??
+        '-'
+      );
+    }
+
     return (
-      report?.version ??
-      report?.Version ??
+      report?.versions?.[0]?.version ??
       '-'
     );
-  }
-
-  return (
-    report?.versions?.[0]?.version ??
-    '-'
-  );
-};
+  };
 
   /**
    * Get catches for a specific envelope lot number.
@@ -130,36 +130,36 @@ const ReportTemplateManagement = ({
   };
 
   const handleSelectAll = () => {
-  if (viewType === "Report") {
-    const updated = {};
-    Object.keys(reportVisibleColumns).forEach((k) => {
-      updated[k] = true;
-    });
-    setReportVisibleColumns(updated);
-  } else {
-    const updated = {};
-    Object.keys(templateVisibleColumns).forEach((k) => {
-      updated[k] = true;
-    });
-    setTemplateVisibleColumns(updated);
-  }
-};
+    if (viewType === "Report") {
+      const updated = {};
+      Object.keys(reportVisibleColumns).forEach((k) => {
+        updated[k] = true;
+      });
+      setReportVisibleColumns(updated);
+    } else {
+      const updated = {};
+      Object.keys(templateVisibleColumns).forEach((k) => {
+        updated[k] = true;
+      });
+      setTemplateVisibleColumns(updated);
+    }
+  };
 
-const handleDeselectAll = () => {
-  if (viewType === "Report") {
-    const updated = { ...reportVisibleColumns };
-    Object.keys(updated).forEach((k) => {
-      if (k !== "action") updated[k] = false;
-    });
-    setReportVisibleColumns(updated);
-  } else {
-    const updated = { ...templateVisibleColumns };
-    Object.keys(updated).forEach((k) => {
-      if (k !== "action") updated[k] = false;
-    });
-    setTemplateVisibleColumns(updated);
-  }
-};
+  const handleDeselectAll = () => {
+    if (viewType === "Report") {
+      const updated = { ...reportVisibleColumns };
+      Object.keys(updated).forEach((k) => {
+        if (k !== "action") updated[k] = false;
+      });
+      setReportVisibleColumns(updated);
+    } else {
+      const updated = { ...templateVisibleColumns };
+      Object.keys(updated).forEach((k) => {
+        if (k !== "action") updated[k] = false;
+      });
+      setTemplateVisibleColumns(updated);
+    }
+  };
 
   // ============================================================================
   // ENV LOT REPORT LOOKUP
@@ -188,21 +188,21 @@ const handleDeselectAll = () => {
     (dataToUse || []).forEach((report) => {
       const templateId = Number(
         report.templateId ??
-          report.TemplateId
+        report.TemplateId
       );
 
       if (!templateId) return;
 
       const envLotNumbers = parseEnvLotNumbers(
         report.envLotNumbers ??
-          report.EnvLotNumbers
+        report.EnvLotNumbers
       );
 
       const lotNo = Number(
         report.lotNumber ??
-          report.lotNo ??
-          report.LotNo ??
-          0
+        report.lotNo ??
+        report.LotNo ??
+        0
       );
 
       if (!lookup[templateId]) {
@@ -243,33 +243,33 @@ const handleDeselectAll = () => {
   ]);
 
   const envLotReportsByTemplate = useMemo(() => {
-  const lookup = {};
+    const lookup = {};
 
-  const dataToUse =
-    envLotReportsLocal.length > 0
-      ? envLotReportsLocal
-      : envLotReports;
+    const dataToUse =
+      envLotReportsLocal.length > 0
+        ? envLotReportsLocal
+        : envLotReports;
 
-  (dataToUse || []).forEach((report) => {
-    const templateId = Number(
-      report.templateId ??
-      report.TemplateId
-    );
+    (dataToUse || []).forEach((report) => {
+      const templateId = Number(
+        report.templateId ??
+        report.TemplateId
+      );
 
-    if (!templateId) return;
+      if (!templateId) return;
 
-    if (!lookup[templateId]) {
-      lookup[templateId] = [];
-    }
+      if (!lookup[templateId]) {
+        lookup[templateId] = [];
+      }
 
-    lookup[templateId].push(report);
-  });
+      lookup[templateId].push(report);
+    });
 
-  return lookup;
-}, [
-  envLotReports,
-  envLotReportsLocal,
-]); 
+    return lookup;
+  }, [
+    envLotReports,
+    envLotReportsLocal,
+  ]);
   // ============================================================================
   // FETCH ENV LOT REPORTS
   // ============================================================================
@@ -419,8 +419,8 @@ const handleDeselectAll = () => {
         const envLotReportData =
           templateId
             ? envLotReportsLookup[
-                Number(templateId)
-              ]
+            Number(templateId)
+            ]
             : null;
 
         if (
@@ -501,36 +501,157 @@ const handleDeselectAll = () => {
   // FILTER DATA
   // ============================================================================
 
-const filteredReports = useMemo(() => {
-  const search = searchText.trim().toLowerCase();
+  const filteredReports = useMemo(() => {
+    const search = searchText.trim().toLowerCase();
 
-  // =========================
-  // REPORT VIEW
-  // =========================
-  if (viewType === 'Report') {
+    // =========================
+    // REPORT VIEW
+    // =========================
+    if (viewType === 'Report') {
+      return reports
+        .filter((report) => report.type === 'Report')
+        .filter((report) => {
+          const fileName =
+            report.reportName ||
+            report.fileName ||
+            '';
+
+          const lotNumber =
+            extractLotFromFilename(fileName);
+
+          const matchesSearch =
+            !search ||
+            report.module?.toLowerCase().includes(search) ||
+            report.reportName?.toLowerCase().includes(search);
+
+          const matchesModule =
+            selectedModule === 'ALL' ||
+            report.module === selectedModule;
+
+          const matchesLot =
+            selectedLot === 'ALL' ||
+            Number(lotNumber) === Number(selectedLot);
+
+          // Filter by Latest status if showLatestOnly is enabled
+          const matchesLatest =
+            !showLatestOnly ||
+            report.versions?.[0]?.status === 'Latest';
+
+          return (
+            matchesSearch &&
+            matchesModule &&
+            matchesLot &&
+            matchesLatest
+          );
+        })
+        .map((report) => {
+          const fileName =
+            report.reportName ||
+            report.fileName ||
+            '';
+
+          return {
+            ...report,
+
+            key:
+              report.id ||
+              report.reportId ||
+              fileName,
+
+            extractedLotNumber:
+              extractLotFromFilename(fileName),
+          };
+        });
+    }
+
+    // =========================
+    // TEMPLATE VIEW
+    // =========================
     return reports
-      .filter((report) => report.type === 'Report')
+      .filter((report) => report.type === 'Template')
+      .flatMap((report, index) => {
+        const templateId = Number(
+          report.templateId ??
+          report.TemplateId
+        );
+
+        const envLotRows = envLotReportsByTemplate[templateId] || [];
+
+        if (envLotRows.length === 0) {
+          return [{
+            ...report,
+            key: `template-${templateId}-none-${index}`,
+            templateId,
+            version: report.versions?.[0]?.version ?? 1,
+            extractedLotNumbers: [],
+            extractedLotNumber: 0,
+            extractedEnvLotNumbers: [],
+            generatedAt: null,
+            generatedBy: null,
+            generatedByUserId: null,
+            lastDownloadedBy: null,
+            lastDownloadedByUserId: null,
+            lastDownloadedAt: null,
+            envLotReport: null,
+            envLotReports: [],
+          }];
+        }
+
+        const rowsByBatch = {};
+        envLotRows.forEach((row) => {
+          const batchNums = parseEnvLotNumbers(row.envLotNumbers ?? row.EnvLotNumbers);
+          const batchKey = batchNums.length > 0 ? batchNums[0] : 0;
+          if (!rowsByBatch[batchKey]) rowsByBatch[batchKey] = [];
+          rowsByBatch[batchKey].push(row);
+        });
+
+        return Object.entries(rowsByBatch).map(([batchKey, rowsForBatch]) => {
+          const batchNum = Number(batchKey);
+          const latestEnvLotReport = [...rowsForBatch].sort((a, b) =>
+            new Date(b.generatedAt ?? b.GeneratedAt ?? 0) - new Date(a.generatedAt ?? a.GeneratedAt ?? 0)
+          )[0] || null;
+
+          const lotNumbers = [...new Set(rowsForBatch.map(r => Number(r.lotNumber ?? r.lotNo ?? r.LotNo ?? 0)).filter(l => l > 0))];
+          const envLotNumbers = batchNum > 0 ? [batchNum] : [];
+
+          return {
+            ...report,
+            key: `template-${templateId}-b${batchNum}-${index}`,
+            templateId,
+            version: latestEnvLotReport?.version ?? latestEnvLotReport?.Version ?? report.versions?.[0]?.version ?? 1,
+            extractedLotNumbers: lotNumbers,
+            extractedLotNumber: lotNumbers[0] || 0,
+            extractedEnvLotNumbers: envLotNumbers,
+            generatedAt: latestEnvLotReport?.generatedAt ?? latestEnvLotReport?.GeneratedAt,
+            generatedBy: latestEnvLotReport?.generatedBy ?? latestEnvLotReport?.GeneratedBy,
+            generatedByUserId: latestEnvLotReport?.generatedByUserId ?? latestEnvLotReport?.GeneratedByUserId,
+            lastDownloadedBy: latestEnvLotReport?.downloadedBy ?? latestEnvLotReport?.DownloadedBy,
+            lastDownloadedByUserId: latestEnvLotReport?.downloadedByUserId ?? latestEnvLotReport?.DownloadedByUserId,
+            lastDownloadedAt: latestEnvLotReport?.downloadedAt ?? latestEnvLotReport?.DownloadedAt,
+            envLotReport: latestEnvLotReport,
+            envLotReports: rowsForBatch,
+          };
+        });
+      })
       .filter((report) => {
-        const fileName =
-          report.reportName ||
-          report.fileName ||
-          '';
-
-        const lotNumber =
-          extractLotFromFilename(fileName);
-
         const matchesSearch =
           !search ||
           report.module?.toLowerCase().includes(search) ||
-          report.reportName?.toLowerCase().includes(search);
+          report.templateName?.toLowerCase().includes(search);
 
         const matchesModule =
           selectedModule === 'ALL' ||
           report.module === selectedModule;
 
+        const matchesTemplate =
+          selectedTemplate === 'ALL' ||
+          report.templateName === selectedTemplate;
+
         const matchesLot =
           selectedLot === 'ALL' ||
-          Number(lotNumber) === Number(selectedLot);
+          report.extractedLotNumbers?.includes(
+            Number(selectedLot)
+          );
 
         // Filter by Latest status if showLatestOnly is enabled
         const matchesLatest =
@@ -540,351 +661,230 @@ const filteredReports = useMemo(() => {
         return (
           matchesSearch &&
           matchesModule &&
+          matchesTemplate &&
           matchesLot &&
           matchesLatest
         );
-      })
+      });
+  }, [
+    reports,
+    searchText,
+    selectedModule,
+    selectedTemplate,
+    selectedLot,
+    viewType,
+    envLotReportsByTemplate,
+    showLatestOnly,
+  ]);
+
+  // Total count (without showLatestOnly filter) - for display badge only
+  const totalReportsCount = useMemo(() => {
+    const search = searchText.trim().toLowerCase();
+
+    if (viewType === 'Report') {
+      return reports
+        .filter((report) => report.type === 'Report')
+        .filter((report) => {
+          const fileName =
+            report.reportName ||
+            report.fileName ||
+            '';
+
+          const lotNumber =
+            extractLotFromFilename(fileName);
+
+          const matchesSearch =
+            !search ||
+            report.module?.toLowerCase().includes(search) ||
+            report.reportName?.toLowerCase().includes(search);
+
+          const matchesModule =
+            selectedModule === 'ALL' ||
+            report.module === selectedModule;
+
+          const matchesLot =
+            selectedLot === 'ALL' ||
+            Number(lotNumber) === Number(selectedLot);
+
+          return (
+            matchesSearch &&
+            matchesModule &&
+            matchesLot
+          );
+        }).length;
+    }
+
+    // TEMPLATE VIEW
+    return reports
+      .filter((report) => report.type === 'Template')
       .map((report) => {
-        const fileName =
-          report.reportName ||
-          report.fileName ||
-          '';
+        const templateId = Number(
+          report.templateId ??
+          report.TemplateId
+        );
+
+        const envLotRows =
+          envLotReportsByTemplate[templateId] || [];
+
+        const lotNumbers = [
+          ...new Set(
+            envLotRows
+              .map((row) =>
+                Number(
+                  row.lotNumber ??
+                  row.lotNo ??
+                  row.LotNo ??
+                  0
+                )
+              )
+              .filter((lot) => lot > 0)
+          ),
+        ];
+
+        const envLotNumbers = [
+          ...new Set(
+            envLotRows.flatMap((row) =>
+              parseEnvLotNumbers(
+                row.envLotNumbers ??
+                row.EnvLotNumbers
+              )
+            )
+          ),
+        ];
+
+        const latestEnvLotReport =
+          [...envLotRows].sort(
+            (a, b) =>
+              new Date(
+                b.generatedAt ??
+                b.GeneratedAt ??
+                0
+              ) -
+              new Date(
+                a.generatedAt ??
+                a.GeneratedAt ??
+                0
+              )
+          )[0] || null;
 
         return {
           ...report,
 
-          key:
-            report.id ||
-            report.reportId ||
-            fileName,
+          key: `template-${templateId}`,
+
+          templateId,
+
+          version:
+            latestEnvLotReport?.version ??
+            latestEnvLotReport?.Version ??
+            report.versions?.[0]?.version ??
+            1,
+
+          extractedLotNumbers: lotNumbers,
 
           extractedLotNumber:
-            extractLotFromFilename(fileName),
+            lotNumbers[0] || 0,
+
+          extractedEnvLotNumbers:
+            envLotNumbers,
+
+          generatedAt:
+            latestEnvLotReport?.generatedAt ??
+            latestEnvLotReport?.GeneratedAt,
+
+          generatedBy:
+            latestEnvLotReport?.generatedBy ??
+            latestEnvLotReport?.GeneratedBy,
+
+          generatedByUserId:
+            latestEnvLotReport?.generatedByUserId ??
+            latestEnvLotReport?.GeneratedByUserId,
+
+          lastDownloadedBy:
+            latestEnvLotReport?.downloadedBy ??
+            latestEnvLotReport?.DownloadedBy,
+
+          lastDownloadedByUserId:
+            latestEnvLotReport?.downloadedByUserId ??
+            latestEnvLotReport?.DownloadedByUserId,
+
+          lastDownloadedAt:
+            latestEnvLotReport?.downloadedAt ??
+            latestEnvLotReport?.DownloadedAt,
+
+          envLotReport:
+            latestEnvLotReport,
+
+          envLotReports:
+            envLotRows,
         };
-      });
-  }
-
-  // =========================
-  // TEMPLATE VIEW
-  // =========================
-  return reports
-    .filter((report) => report.type === 'Template')
-    .flatMap((report, index) => {
-      const templateId = Number(
-        report.templateId ??
-        report.TemplateId
-      );
-
-      const envLotRows = envLotReportsByTemplate[templateId] || [];
-
-      if (envLotRows.length === 0) {
-        return [{
-          ...report,
-          key: `template-${templateId}-none-${index}`,
-          templateId,
-          version: report.versions?.[0]?.version ?? 1,
-          extractedLotNumbers: [],
-          extractedLotNumber: 0,
-          extractedEnvLotNumbers: [],
-          generatedAt: null,
-          generatedBy: null,
-          generatedByUserId: null,
-          lastDownloadedBy: null,
-          lastDownloadedByUserId: null,
-          lastDownloadedAt: null,
-          envLotReport: null,
-          envLotReports: [],
-        }];
-      }
-
-      const rowsByBatch = {};
-      envLotRows.forEach((row) => {
-        const batchNums = parseEnvLotNumbers(row.envLotNumbers ?? row.EnvLotNumbers);
-        const batchKey = batchNums.length > 0 ? batchNums[0] : 0;
-        if (!rowsByBatch[batchKey]) rowsByBatch[batchKey] = [];
-        rowsByBatch[batchKey].push(row);
-      });
-
-      return Object.entries(rowsByBatch).map(([batchKey, rowsForBatch]) => {
-        const batchNum = Number(batchKey);
-        const latestEnvLotReport = [...rowsForBatch].sort((a, b) => 
-          new Date(b.generatedAt ?? b.GeneratedAt ?? 0) - new Date(a.generatedAt ?? a.GeneratedAt ?? 0)
-        )[0] || null;
-
-        const lotNumbers = [...new Set(rowsForBatch.map(r => Number(r.lotNumber ?? r.lotNo ?? r.LotNo ?? 0)).filter(l => l > 0))];
-        const envLotNumbers = batchNum > 0 ? [batchNum] : [];
-
-        return {
-          ...report,
-          key: `template-${templateId}-b${batchNum}-${index}`,
-          templateId,
-          version: latestEnvLotReport?.version ?? latestEnvLotReport?.Version ?? report.versions?.[0]?.version ?? 1,
-          extractedLotNumbers: lotNumbers,
-          extractedLotNumber: lotNumbers[0] || 0,
-          extractedEnvLotNumbers: envLotNumbers,
-          generatedAt: latestEnvLotReport?.generatedAt ?? latestEnvLotReport?.GeneratedAt,
-          generatedBy: latestEnvLotReport?.generatedBy ?? latestEnvLotReport?.GeneratedBy,
-          generatedByUserId: latestEnvLotReport?.generatedByUserId ?? latestEnvLotReport?.GeneratedByUserId,
-          lastDownloadedBy: latestEnvLotReport?.downloadedBy ?? latestEnvLotReport?.DownloadedBy,
-          lastDownloadedByUserId: latestEnvLotReport?.downloadedByUserId ?? latestEnvLotReport?.DownloadedByUserId,
-          lastDownloadedAt: latestEnvLotReport?.downloadedAt ?? latestEnvLotReport?.DownloadedAt,
-          envLotReport: latestEnvLotReport,
-          envLotReports: rowsForBatch,
-        };
-      });
-    })
-    .filter((report) => {
-      const matchesSearch =
-        !search ||
-        report.module?.toLowerCase().includes(search) ||
-        report.templateName?.toLowerCase().includes(search);
-
-      const matchesModule =
-        selectedModule === 'ALL' ||
-        report.module === selectedModule;
-
-      const matchesTemplate =
-        selectedTemplate === 'ALL' ||
-        report.templateName === selectedTemplate;
-
-      const matchesLot =
-  selectedLot === 'ALL' ||
-  report.extractedLotNumbers?.includes(
-    Number(selectedLot)
-  );
-
-      // Filter by Latest status if showLatestOnly is enabled
-      const matchesLatest =
-        !showLatestOnly ||
-        report.versions?.[0]?.status === 'Latest';
-
-      return (
-        matchesSearch &&
-        matchesModule &&
-        matchesTemplate &&
-        matchesLot &&
-        matchesLatest
-      );
-    });
-}, [
-  reports,
-  searchText,
-  selectedModule,
-  selectedTemplate,
-  selectedLot,
-  viewType,
-  envLotReportsByTemplate,
-  showLatestOnly,
-]);
-
-// Total count (without showLatestOnly filter) - for display badge only
-const totalReportsCount = useMemo(() => {
-  const search = searchText.trim().toLowerCase();
-
-  if (viewType === 'Report') {
-    return reports
-      .filter((report) => report.type === 'Report')
+      })
       .filter((report) => {
-        const fileName =
-          report.reportName ||
-          report.fileName ||
-          '';
-
-        const lotNumber =
-          extractLotFromFilename(fileName);
-
         const matchesSearch =
           !search ||
           report.module?.toLowerCase().includes(search) ||
-          report.reportName?.toLowerCase().includes(search);
+          report.templateName?.toLowerCase().includes(search);
 
         const matchesModule =
           selectedModule === 'ALL' ||
           report.module === selectedModule;
 
+        const matchesTemplate =
+          selectedTemplate === 'ALL' ||
+          report.templateName === selectedTemplate;
+
         const matchesLot =
           selectedLot === 'ALL' ||
-          Number(lotNumber) === Number(selectedLot);
+          report.extractedLotNumbers?.includes(
+            Number(selectedLot)
+          );
 
         return (
           matchesSearch &&
           matchesModule &&
+          matchesTemplate &&
           matchesLot
         );
       }).length;
-  }
+  }, [
+    reports,
+    searchText,
+    selectedModule,
+    selectedTemplate,
+    selectedLot,
+    viewType,
+    envLotReportsByTemplate,
+  ]);
 
-  // TEMPLATE VIEW
-  return reports
-    .filter((report) => report.type === 'Template')
-    .map((report) => {
-      const templateId = Number(
-        report.templateId ??
-        report.TemplateId
-      );
+  const paginatedReports = useMemo(() => {
+    const page =
+      viewType === 'Report'
+        ? reportPage
+        : templatePage;
 
-      const envLotRows =
-  envLotReportsByTemplate[templateId] || [];
+    const pageSize =
+      viewType === 'Report'
+        ? reportPageSize
+        : templatePageSize;
 
-const lotNumbers = [
-  ...new Set(
-    envLotRows
-      .map((row) =>
-        Number(
-          row.lotNumber ??
-          row.lotNo ??
-          row.LotNo ??
-          0
-        )
-      )
-      .filter((lot) => lot > 0)
-  ),
-];
+    const startIndex =
+      (page - 1) * pageSize;
 
-const envLotNumbers = [
-  ...new Set(
-    envLotRows.flatMap((row) =>
-      parseEnvLotNumbers(
-        row.envLotNumbers ??
-        row.EnvLotNumbers
-      )
-    )
-  ),
-];
+    const endIndex =
+      startIndex + pageSize;
 
-const latestEnvLotReport =
-  [...envLotRows].sort(
-    (a, b) =>
-      new Date(
-        b.generatedAt ??
-        b.GeneratedAt ??
-        0
-      ) -
-      new Date(
-        a.generatedAt ??
-        a.GeneratedAt ??
-        0
-      )
-  )[0] || null;
-
-      return {
-  ...report,
-
-  key: `template-${templateId}`,
-
-  templateId,
-
-  version:
-    latestEnvLotReport?.version ??
-    latestEnvLotReport?.Version ??
-    report.versions?.[0]?.version ??
-    1,
-
-  extractedLotNumbers: lotNumbers,
-
-  extractedLotNumber:
-    lotNumbers[0] || 0,
-
-  extractedEnvLotNumbers:
-    envLotNumbers,
-
-  generatedAt:
-    latestEnvLotReport?.generatedAt ??
-    latestEnvLotReport?.GeneratedAt,
-
-  generatedBy:
-    latestEnvLotReport?.generatedBy ??
-    latestEnvLotReport?.GeneratedBy,
-
-  generatedByUserId:
-    latestEnvLotReport?.generatedByUserId ??
-    latestEnvLotReport?.GeneratedByUserId,
-
-  lastDownloadedBy:
-    latestEnvLotReport?.downloadedBy ??
-    latestEnvLotReport?.DownloadedBy,
-
-  lastDownloadedByUserId:
-    latestEnvLotReport?.downloadedByUserId ??
-    latestEnvLotReport?.DownloadedByUserId,
-
-  lastDownloadedAt:
-    latestEnvLotReport?.downloadedAt ??
-    latestEnvLotReport?.DownloadedAt,  
-
-  envLotReport:
-    latestEnvLotReport,
-
-  envLotReports:
-    envLotRows,
-};
-    })
-    .filter((report) => {
-      const matchesSearch =
-        !search ||
-        report.module?.toLowerCase().includes(search) ||
-        report.templateName?.toLowerCase().includes(search);
-
-      const matchesModule =
-        selectedModule === 'ALL' ||
-        report.module === selectedModule;
-
-      const matchesTemplate =
-        selectedTemplate === 'ALL' ||
-        report.templateName === selectedTemplate;
-
-      const matchesLot =
-  selectedLot === 'ALL' ||
-  report.extractedLotNumbers?.includes(
-    Number(selectedLot)
-  );
-
-      return (
-        matchesSearch &&
-        matchesModule &&
-        matchesTemplate &&
-        matchesLot
-      );
-    }).length;
-}, [
-  reports,
-  searchText,
-  selectedModule,
-  selectedTemplate,
-  selectedLot,
-  viewType,
-  envLotReportsByTemplate,
-]);
-
-const paginatedReports = useMemo(() => {
-  const page =
-    viewType === 'Report'
-      ? reportPage
-      : templatePage;
-
-  const pageSize =
-    viewType === 'Report'
-      ? reportPageSize
-      : templatePageSize;
-
-  const startIndex =
-    (page - 1) * pageSize;
-
-  const endIndex =
-    startIndex + pageSize;
-
-  return filteredReports.slice(
-    startIndex,
-    endIndex
-  );
-}, [
-  filteredReports,
-  viewType,
-  reportPage,
-  reportPageSize,
-  templatePage,
-  templatePageSize,
-]);
+    return filteredReports.slice(
+      startIndex,
+      endIndex
+    );
+  }, [
+    filteredReports,
+    viewType,
+    reportPage,
+    reportPageSize,
+    templatePage,
+    templatePageSize,
+  ]);
 
   // ============================================================================
   // DOWNLOAD HANDLERS
@@ -959,7 +959,7 @@ const paginatedReports = useMemo(() => {
       !lotNumber &&
       templateId &&
       envLotReportsLookup[
-        Number(templateId)
+      Number(templateId)
       ]
     ) {
       const lotNumbers =
@@ -985,73 +985,73 @@ const paginatedReports = useMemo(() => {
       return;
     }
 
-try {
-  const base = (
-    rptApiUrl ||
-    import.meta.env.VITE_RPT_API_URL ||
-    ''
-  ).replace(/\/api\/?$/i, '');
-
-  if (!base) {
-    message.error('RPT API URL not configured.');
-    return;
-  }
-
-  const existsUrl =
-    `${base}/api/report/generated-exists` +
-    `?templateId=${templateId}` +
-    `&projectId=${projectId}` 
-
-  const existsResponse = await axios.get(existsUrl);
-
-  if (
-    !existsResponse.data?.exists &&
-    existsResponse.data !== true
-  ) {
-    message.error('No generated PDF found for this template.');
-    return;
-  }
-
-  const downloadUrl =
-    `${base}/api/report/generated-download` +
-    `?templateId=${templateId}` +
-    `&projectId=${projectId}` +
-    `&lotNumber=${lotNumber}`;
-
-  window.open(downloadUrl, '_blank');
-
-  // Track download for EnvelopeLotReports
-  if (report?.envLotReport?.id) {
     try {
-      let currentUserId = localStorage.getItem('userData');
-      if (currentUserId) {
+      const base = (
+        rptApiUrl ||
+        import.meta.env.VITE_RPT_API_URL ||
+        ''
+      ).replace(/\/api\/?$/i, '');
+
+      if (!base) {
+        message.error('RPT API URL not configured.');
+        return;
+      }
+
+      const existsUrl =
+        `${base}/api/report/generated-exists` +
+        `?templateId=${templateId}` +
+        `&projectId=${projectId}`
+
+      const existsResponse = await axios.get(existsUrl);
+
+      if (
+        !existsResponse.data?.exists &&
+        existsResponse.data !== true
+      ) {
+        message.error('No generated PDF found for this template.');
+        return;
+      }
+
+      const downloadUrl =
+        `${base}/api/report/generated-download` +
+        `?templateId=${templateId}` +
+        `&projectId=${projectId}` +
+        `&lotNumber=${lotNumber}`;
+
+      window.open(downloadUrl, '_blank');
+
+      // Track download for EnvelopeLotReports
+      if (report?.envLotReport?.id) {
         try {
-          const parsed = JSON.parse(currentUserId);
-          if (parsed && typeof parsed === 'object' && parsed.userId) {
-            currentUserId = parsed.userId;
+          let currentUserId = localStorage.getItem('userData');
+          if (currentUserId) {
+            try {
+              const parsed = JSON.parse(currentUserId);
+              if (parsed && typeof parsed === 'object' && parsed.userId) {
+                currentUserId = parsed.userId;
+              }
+            } catch (e) {
+              // it's a plain string
+            }
           }
-        } catch (e) {
-          // it's a plain string
+
+          await axios.put(
+            `${apiBaseUrl}/EnvelopeLotReports/${report.envLotReport.id}/track-download`,
+            {
+              downloadedByUserId: currentUserId ? Number(currentUserId) : null,
+              DownloadedByUserId: currentUserId ? Number(currentUserId) : null,
+            }
+          );
+        } catch (trackingError) {
+          console.warn('Failed to track download:', trackingError);
         }
       }
 
-      await axios.put(
-        `${apiBaseUrl}/EnvelopeLotReports/${report.envLotReport.id}/track-download`,
-        {
-          downloadedByUserId: currentUserId ? Number(currentUserId) : null,
-          DownloadedByUserId: currentUserId ? Number(currentUserId) : null,
-        }
-      );
-    } catch (trackingError) {
-      console.warn('Failed to track download:', trackingError);
+      message.success('Download started.');
+    } catch (error) {
+      console.error('Template download failed:', error);
+      message.error('Failed to download generated PDF.');
     }
-  }
-
-  message.success('Download started.');
-} catch (error) {
-  console.error('Template download failed:', error);
-  message.error('Failed to download generated PDF.');
-} 
   };
 
   const handleDownloadAll = async () => {
@@ -1066,10 +1066,9 @@ try {
       !latestItems.length
     ) {
       message.warning(
-        `No latest ${
-          viewType === 'Report'
-            ? 'reports'
-            : 'templates'
+        `No latest ${viewType === 'Report'
+          ? 'reports'
+          : 'templates'
         } available for download.`
       );
 
@@ -1106,7 +1105,7 @@ try {
               {
                 type:
                   response.headers[
-                    'content-type'
+                  'content-type'
                   ] ||
                   'application/zip',
               }
@@ -1203,7 +1202,7 @@ try {
           !lotNumber &&
           templateId &&
           envLotReportsLookup[
-            Number(templateId)
+          Number(templateId)
           ]
         ) {
           const lotNumbers =
@@ -1244,15 +1243,15 @@ try {
                 Number(
                   itemTemplateId
                 ) ===
-                  Number(
-                    templateId
-                  ) &&
+                Number(
+                  templateId
+                ) &&
                 Number(
                   itemLotNumber
                 ) ===
-                  Number(
-                    lotNumber
-                  )
+                Number(
+                  lotNumber
+                )
               );
             }
           );
@@ -1467,7 +1466,7 @@ try {
                   }}
                 >
                   {catches.length >
-                  0 ? (
+                    0 ? (
                     catches.map(
                       (
                         catchNo,
@@ -1536,19 +1535,19 @@ try {
 
                   {catches.length >
                     0 && (
-                    <span
-                      style={{
-                        marginLeft: 4,
-                        fontSize: 11,
-                      }}
-                    >
-                      (
-                      {
-                        catches.length
-                      }
-                      )
-                    </span>
-                  )}
+                      <span
+                        style={{
+                          marginLeft: 4,
+                          fontSize: 11,
+                        }}
+                      >
+                        (
+                        {
+                          catches.length
+                        }
+                        )
+                      </span>
+                    )}
                 </Tag>
               </Tooltip>
             );
@@ -1658,11 +1657,11 @@ try {
       sorter: (a, b) => {
         const aEnv =
           a.extractedEnvLotNumbers
-            ?. [0] || 0;
+          ?.[0] || 0;
 
         const bEnv =
           b.extractedEnvLotNumbers
-            ?. [0] || 0;
+          ?.[0] || 0;
 
         return (
           aEnv - bEnv
@@ -1676,7 +1675,7 @@ try {
         renderEnvLotTags(
           record.extractedEnvLotNumbers,
           record.templateId ||
-            record.TemplateId
+          record.TemplateId
         ),
     },
 
@@ -1707,63 +1706,63 @@ try {
       ),
     },
 
-{
-  title: 'Version',
-  key: 'version',
+    {
+      title: 'Version',
+      key: 'version',
 
-  sorter: (a, b) =>
-    Number(a.version || 0) -
-    Number(b.version || 0),
+      sorter: (a, b) =>
+        Number(a.version || 0) -
+        Number(b.version || 0),
 
-  render: (_, record) => (
-    <span className="text-sm font-semibold text-slate-700">
-      {record.version ?? '-'}
-    </span>
-  ),
-},
+      render: (_, record) => (
+        <span className="text-sm font-semibold text-slate-700">
+          {record.version ?? '-'}
+        </span>
+      ),
+    },
 
     {
-  title: 'Generated On',
-  key: 'generatedOn',
+      title: 'Generated On',
+      key: 'generatedOn',
 
-  sorter: (a, b) =>
-    new Date(
-      a.versions?.[0]?.generatedOn || 0
-    ) -
-    new Date(
-      b.versions?.[0]?.generatedOn || 0
-    ),
+      sorter: (a, b) =>
+        new Date(
+          a.versions?.[0]?.generatedOn || 0
+        ) -
+        new Date(
+          b.versions?.[0]?.generatedOn || 0
+        ),
 
-  render: (_, record) => {
-    const generatedOn =
-      record.versions?.[0]?.generatedOn;
+      render: (_, record) => {
+        const generatedOn =
+          record.versions?.[0]?.generatedOn;
 
-    if (!generatedOn) {
-      return (
-        <span className="text-sm text-slate-600">
-          -
-        </span>
-      );
-    }
+        if (!generatedOn) {
+          return (
+            <span className="text-sm text-slate-600">
+              -
+            </span>
+          );
+        }
 
-    return (
-      <span className="text-sm text-slate-600">
-        {new Date(generatedOn).toLocaleString(
-          'en-IN',
-          {
-            day: '2-digit',
-            month: '2-digit',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit',
-            hour12: true,
-          }
-        )}
-      </span>
-    );
-  },
-},
+        return (
+          <span className="text-sm text-slate-600">
+            {new Date(generatedOn).toLocaleString(
+              'en-IN',
+              {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: true,
+              }
+            )}
+          </span>
+        );
+      },
+    },
 
     {
       title: 'Generated By',
@@ -1788,18 +1787,19 @@ try {
         let fallbackName = '-';
 
         if (record.envLotReport) {
-           generatedById = record.generatedByUserId || record.GeneratedByUserId;
-           fallbackName = record.generatedBy || record.GeneratedBy || '-';
+          generatedById = record.generatedByUserId || record.GeneratedByUserId;
+          fallbackName = record.generatedBy || record.GeneratedBy || '-';
         } else {
-           generatedById = record.versions?.[0]?.generatedByUserId || record.versions?.[0]?.GeneratedByUserId || record.generatedByUserId || record.GeneratedByUserId;
-           fallbackName = record.versions?.[0]?.generatedBy || record.versions?.[0]?.GeneratedBy || record.generatedBy || record.GeneratedBy || '-';
+          generatedById = record.versions?.[0]?.generatedByUserId || record.versions?.[0]?.GeneratedByUserId || record.generatedByUserId || record.GeneratedByUserId;
+          fallbackName = record.versions?.[0]?.generatedBy || record.versions?.[0]?.GeneratedBy || record.generatedBy || record.GeneratedBy || '-';
         }
 
         return (
-        <span className="text-sm text-slate-600">
-          {generatedById ? getFirstNameFromUserId(generatedById, userMap) : fallbackName}
-        </span>
-      )},
+          <span className="text-sm text-slate-600">
+            {generatedById ? getFirstNameFromUserId(generatedById, userMap) : fallbackName}
+          </span>
+        )
+      },
     },
 
     {
@@ -1816,18 +1816,19 @@ try {
         let fallbackName = '-';
 
         if (record.envLotReport) {
-           downloadedById = record.lastDownloadedByUserId || record.envLotReport?.downloadedByUserId || record.envLotReport?.DownloadedByUserId;
-           fallbackName = record.lastDownloadedBy || record.envLotReport?.lastDownloadedBy || '-';
+          downloadedById = record.lastDownloadedByUserId || record.envLotReport?.downloadedByUserId || record.envLotReport?.DownloadedByUserId;
+          fallbackName = record.lastDownloadedBy || record.envLotReport?.lastDownloadedBy || '-';
         } else {
-           downloadedById = record.lastDownloadedByUserId || record.versions?.[0]?.downloadedByUserId || record.versions?.[0]?.DownloadedByUserId;
-           fallbackName = record.lastDownloadedBy || record.versions?.[0]?.lastDownloadedBy || '-';
+          downloadedById = record.lastDownloadedByUserId || record.versions?.[0]?.downloadedByUserId || record.versions?.[0]?.DownloadedByUserId;
+          fallbackName = record.lastDownloadedBy || record.versions?.[0]?.lastDownloadedBy || '-';
         }
 
         return (
-        <span className="text-sm text-slate-600">
-          {downloadedById ? getFirstNameFromUserId(downloadedById, userMap) : fallbackName}
-        </span>
-      )},
+          <span className="text-sm text-slate-600">
+            {downloadedById ? getFirstNameFromUserId(downloadedById, userMap) : fallbackName}
+          </span>
+        )
+      },
     },
 
     {
@@ -1952,16 +1953,16 @@ try {
         // Filter based on view type
         if (
           viewType ===
-            'Report' &&
+          'Report' &&
           (
             col.key ===
-              'templateName' ||
+            'templateName' ||
             col.key ===
-              'envLot' ||
+            'envLot' ||
             col.key ===
-              'downloadedBy' ||
+            'downloadedBy' ||
             col.key ===
-              'downloadedAt'
+            'downloadedAt'
           )
         ) {
           return false;
@@ -1969,9 +1970,9 @@ try {
 
         if (
           viewType ===
-            'Template' &&
+          'Template' &&
           col.key ===
-            'reportName'
+          'reportName'
         ) {
           return false;
         }
@@ -2010,31 +2011,31 @@ try {
           </p>
         </div>
 
-                
+
         <div className="flex flex-col items-end gap-2">
-  <div className="rounded-full bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-700">
-    {totalReportsCount}{' '}
-    {viewType === 'Report' ? 'Reports' : 'Templates'}
-  </div>
+          <div className="rounded-full bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-700">
+            {totalReportsCount}{' '}
+            {viewType === 'Report' ? 'Reports' : 'Templates'}
+          </div>
 
-  <div className="flex items-center gap-3">
-    <Checkbox
-      checked={showLatestOnly}
-      onChange={(e) => setShowLatestOnly(e.target.checked)}
-    >
-      <span className="text-sm font-medium text-slate-700">
-        Show Latest Only
-      </span>
-    </Checkbox>
+          <div className="flex items-center gap-3">
+            <Checkbox
+              checked={showLatestOnly}
+              onChange={(e) => setShowLatestOnly(e.target.checked)}
+            >
+              <span className="text-sm font-medium text-slate-700">
+                Show Latest Only
+              </span>
+            </Checkbox>
 
-    <Button
-      size="small"
-      onClick={() => setColumnVisibilityModalOpen(true)}
-    >
-      Column Settings
-    </Button>
-  </div>
-</div>
+            <Button
+              size="small"
+              onClick={() => setColumnVisibilityModalOpen(true)}
+            >
+              Column Settings
+            </Button>
+          </div>
+        </div>
       </div>
 
       <div className="flex items-center gap-3 border-b border-slate-200 bg-slate-50/50 px-6 py-4">
@@ -2047,7 +2048,7 @@ try {
           }
           placeholder={
             viewType ===
-            'Template'
+              'Template'
               ? 'Search by module or template...'
               : 'Search by module or report...'
           }
@@ -2095,39 +2096,39 @@ try {
 
         {viewType ===
           'Template' && (
-          <Select
-            value={
-              selectedTemplate
-            }
-            onChange={
-              setSelectedTemplate
-            }
-            className="w-[170px]"
-          >
-            <Select.Option value="ALL">
-              All Templates
-            </Select.Option>
+            <Select
+              value={
+                selectedTemplate
+              }
+              onChange={
+                setSelectedTemplate
+              }
+              className="w-[170px]"
+            >
+              <Select.Option value="ALL">
+                All Templates
+              </Select.Option>
 
-            {templateOptions.map(
-              (
-                template
-              ) => (
-                <Select.Option
-                  key={
-                    template
-                  }
-                  value={
-                    template
-                  }
-                >
-                  {
-                    template
-                  }
-                </Select.Option>
-              )
-            )}
-          </Select>
-        )}
+              {templateOptions.map(
+                (
+                  template
+                ) => (
+                  <Select.Option
+                    key={
+                      template
+                    }
+                    value={
+                      template
+                    }
+                  >
+                    {
+                      template
+                    }
+                  </Select.Option>
+                )
+              )}
+            </Select>
+          )}
 
         <Select
           value={
@@ -2169,7 +2170,7 @@ try {
           disabled={
             bulkDownloading ||
             filteredReports.length ===
-              0
+            0
           }
           icon={
             <Download
@@ -2189,7 +2190,7 @@ try {
           <Button
             type={
               viewType ===
-              'Report'
+                'Report'
                 ? 'primary'
                 : 'default'
             }
@@ -2206,7 +2207,7 @@ try {
           <Button
             type={
               viewType ===
-              'Template'
+                'Template'
                 ? 'primary'
                 : 'default'
             }
@@ -2224,45 +2225,45 @@ try {
 
       {/* Column Visibility Modal */}
       <Modal
-  title={`Column Settings - ${viewType} View`}
-  open={columnVisibilityModalOpen}
-  onCancel={() => setColumnVisibilityModalOpen(false)}
-  width={400}
-  footer={
-    <div
-      style={{
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center"
-      }}
-    >
-      {/* Left side */}
-      <div style={{ display: "flex", gap: 8 }}>
-        <Button onClick={handleSelectAll}>
-          Select All
-        </Button>
+        title={`Column Settings - ${viewType} View`}
+        open={columnVisibilityModalOpen}
+        onCancel={() => setColumnVisibilityModalOpen(false)}
+        width={400}
+        footer={
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center"
+            }}
+          >
+            {/* Left side */}
+            <div style={{ display: "flex", gap: 8 }}>
+              <Button onClick={handleSelectAll}>
+                Select All
+              </Button>
 
-        <Button onClick={handleDeselectAll}>
-          Deselect All
-        </Button>
-      </div>
+              <Button onClick={handleDeselectAll}>
+                Deselect All
+              </Button>
+            </div>
 
-      {/* Right side */}
-      <div style={{ display: "flex", gap: 8 }}>
-        <Button onClick={() => setColumnVisibilityModalOpen(false)}>
-          Cancel
-        </Button>
+            {/* Right side */}
+            <div style={{ display: "flex", gap: 8 }}>
+              <Button onClick={() => setColumnVisibilityModalOpen(false)}>
+                Cancel
+              </Button>
 
-        <Button
-          type="primary"
-          onClick={() => setColumnVisibilityModalOpen(false)}
-        >
-          OK
-        </Button>
-      </div>
-    </div>
-  }
->
+              <Button
+                type="primary"
+                onClick={() => setColumnVisibilityModalOpen(false)}
+              >
+                OK
+              </Button>
+            </div>
+          </div>
+        }
+      >
 
         <div className="space-y-3">
           {viewType === 'Report' ? (
@@ -2325,49 +2326,49 @@ try {
             x: 1200,
           }}
           pagination={{
-  current:
-    viewType === 'Report'
-      ? reportPage
-      : templatePage,
+            current:
+              viewType === 'Report'
+                ? reportPage
+                : templatePage,
 
-  pageSize:
-    viewType === 'Report'
-      ? reportPageSize
-      : templatePageSize,
+            pageSize:
+              viewType === 'Report'
+                ? reportPageSize
+                : templatePageSize,
 
-  total:
-    filteredReports.length,
+            total:
+              filteredReports.length,
 
-  showSizeChanger: true,
+            showSizeChanger: true,
 
-  pageSizeOptions: [
-    '10',
-    '20',
-    '50',
-    '100',
-  ],
+            pageSizeOptions: [
+              '10',
+              '20',
+              '50',
+              '100',
+            ],
 
-  onChange: (
-    page,
-    size
-  ) => {
-    if (
-      viewType === 'Report'
-    ) {
-      setReportPage(page);
-      setReportPageSize(size);
-    } else {
-      setTemplatePage(page);
-      setTemplatePageSize(size);
-    }
-  },
+            onChange: (
+              page,
+              size
+            ) => {
+              if (
+                viewType === 'Report'
+              ) {
+                setReportPage(page);
+                setReportPageSize(size);
+              } else {
+                setTemplatePage(page);
+                setTemplatePageSize(size);
+              }
+            },
 
-  showTotal: (
-    total,
-    range
-  ) =>
-    `${range[0]}-${range[1]} of ${total} entries`,
-}}
+            showTotal: (
+              total,
+              range
+            ) =>
+              `${range[0]}-${range[1]} of ${total} entries`,
+          }}
           locale={{
             emptyText: (
               <div className="py-10">
@@ -2380,7 +2381,7 @@ try {
                   No{' '}
                   {
                     viewType ===
-                    'Report'
+                      'Report'
                       ? 'reports'
                       : 'templates'
                   }{' '}
