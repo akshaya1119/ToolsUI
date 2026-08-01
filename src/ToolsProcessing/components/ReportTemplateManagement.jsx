@@ -18,6 +18,40 @@ import {
 } from 'lucide-react';
 import { useUserMap, getFirstNameFromUserId } from '../../hooks/useUserMap';
 
+// Helper to format ISO date-time to Indian Standard Time (IST)
+const formatDateTimeToIST = (dateVal) => {
+  if (!dateVal) return '-';
+  try {
+    let dateStr = String(dateVal);
+    // If it doesn't end with Z and doesn't contain a timezone offset, and is in ISO-like format, append 'Z'
+    if (
+      !dateStr.endsWith('Z') &&
+      !dateStr.includes('+') &&
+      !dateStr.match(/-\d{2}:\d{2}$/)
+    ) {
+      if (dateStr.includes(' ') && !dateStr.includes('T')) {
+        dateStr = dateStr.replace(' ', 'T');
+      }
+      dateStr = `${dateStr}Z`;
+    }
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return '-';
+    
+    return d.toLocaleString('en-IN', {
+      timeZone: 'Asia/Kolkata',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: true,
+    });
+  } catch (e) {
+    return '-';
+  }
+};
+
 const ReportTemplateManagement = ({
   reports = [],
   onDownload,
@@ -378,6 +412,9 @@ const handleDeselectAll = () => {
       // Switch to Template pagination state
       setTemplatePage(1);
     }
+
+    // Refresh data from API on tab toggle
+    fetchEnvLotReports();
   };
 
   // Reset pagination when filters change (only for current view)
@@ -597,41 +634,35 @@ const filteredReports = useMemo(() => {
         }];
       }
 
-      const rowsByBatch = {};
-      envLotRows.forEach((row) => {
-        const batchNums = parseEnvLotNumbers(row.envLotNumbers ?? row.EnvLotNumbers);
-        const batchKey = batchNums.length > 0 ? batchNums[0] : 0;
-        if (!rowsByBatch[batchKey]) rowsByBatch[batchKey] = [];
-        rowsByBatch[batchKey].push(row);
-      });
+      // Find the specific database record for this version row
+      const dbId = report.versions?.[0]?.dbId;
+      const specificEnvLotReport = envLotRows.find(
+        (row) => Number(row.id ?? row.Id) === Number(dbId)
+      ) || envLotRows[0]; // fallback to first record if not found
 
-      return Object.entries(rowsByBatch).map(([batchKey, rowsForBatch]) => {
-        const batchNum = Number(batchKey);
-        const latestEnvLotReport = [...rowsForBatch].sort((a, b) => 
-          new Date(b.generatedAt ?? b.GeneratedAt ?? 0) - new Date(a.generatedAt ?? a.GeneratedAt ?? 0)
-        )[0] || null;
+      const batchNums = parseEnvLotNumbers(specificEnvLotReport?.envLotNumbers ?? specificEnvLotReport?.EnvLotNumbers);
+      const batchKey = batchNums.length > 0 ? batchNums[0] : 0;
+      const envLotNumbers = batchKey > 0 ? [batchKey] : [];
 
-        const lotNumbers = [...new Set(rowsForBatch.map(r => Number(r.lotNumber ?? r.lotNo ?? r.LotNo ?? 0)).filter(l => l > 0))];
-        const envLotNumbers = batchNum > 0 ? [batchNum] : [];
+      const lotNumbers = [Number(specificEnvLotReport?.lotNumber ?? specificEnvLotReport?.lotNo ?? specificEnvLotReport?.LotNo ?? 0)].filter(l => l > 0);
 
-        return {
-          ...report,
-          key: `template-${templateId}-b${batchNum}-${index}`,
-          templateId,
-          version: latestEnvLotReport?.version ?? latestEnvLotReport?.Version ?? report.versions?.[0]?.version ?? 1,
-          extractedLotNumbers: lotNumbers,
-          extractedLotNumber: lotNumbers[0] || 0,
-          extractedEnvLotNumbers: envLotNumbers,
-          generatedAt: latestEnvLotReport?.generatedAt ?? latestEnvLotReport?.GeneratedAt,
-          generatedBy: latestEnvLotReport?.generatedBy ?? latestEnvLotReport?.GeneratedBy,
-          generatedByUserId: latestEnvLotReport?.generatedByUserId ?? latestEnvLotReport?.GeneratedByUserId,
-          lastDownloadedBy: latestEnvLotReport?.downloadedBy ?? latestEnvLotReport?.DownloadedBy,
-          lastDownloadedByUserId: latestEnvLotReport?.downloadedByUserId ?? latestEnvLotReport?.DownloadedByUserId,
-          lastDownloadedAt: latestEnvLotReport?.downloadedAt ?? latestEnvLotReport?.DownloadedAt,
-          envLotReport: latestEnvLotReport,
-          envLotReports: rowsForBatch,
-        };
-      });
+      return [{
+        ...report,
+        key: `template-${templateId}-v-${dbId}-${index}`,
+        templateId,
+        version: report.versions?.[0]?.version ?? specificEnvLotReport?.version ?? specificEnvLotReport?.Version ?? 1,
+        extractedLotNumbers: lotNumbers,
+        extractedLotNumber: lotNumbers[0] || 0,
+        extractedEnvLotNumbers: envLotNumbers,
+        generatedAt: specificEnvLotReport?.generatedAt ?? specificEnvLotReport?.GeneratedAt,
+        generatedBy: specificEnvLotReport?.generatedBy ?? specificEnvLotReport?.GeneratedBy,
+        generatedByUserId: specificEnvLotReport?.generatedByUserId ?? specificEnvLotReport?.GeneratedByUserId,
+        lastDownloadedBy: specificEnvLotReport?.downloadedBy ?? specificEnvLotReport?.DownloadedBy,
+        lastDownloadedByUserId: specificEnvLotReport?.downloadedByUserId ?? specificEnvLotReport?.DownloadedByUserId,
+        lastDownloadedAt: specificEnvLotReport?.downloadedAt ?? specificEnvLotReport?.DownloadedAt,
+        envLotReport: specificEnvLotReport,
+        envLotReports: envLotRows,
+      }];
     })
     .filter((report) => {
       const matchesSearch =
@@ -1023,16 +1054,25 @@ try {
   // Track download for EnvelopeLotReports
   if (report?.envLotReport?.id) {
     try {
-      let currentUserId = localStorage.getItem('userData');
-      if (currentUserId) {
-        try {
-          const parsed = JSON.parse(currentUserId);
-          if (parsed && typeof parsed === 'object' && parsed.userId) {
-            currentUserId = parsed.userId;
+      let currentUserId = localStorage.getItem('userId');
+      if (!currentUserId || currentUserId === 'undefined') {
+        const userData = localStorage.getItem('userData');
+        if (userData) {
+          try {
+            const parsed = JSON.parse(userData);
+            currentUserId = parsed.userId ?? parsed.UserId ?? parsed.id ?? parsed.Id ?? null;
+          } catch (e) {
+            // ignore
           }
-        } catch (e) {
-          // it's a plain string
         }
+      }
+      if (currentUserId && currentUserId !== 'undefined') {
+        currentUserId = Number(currentUserId);
+        if (isNaN(currentUserId)) {
+          currentUserId = null;
+        }
+      } else {
+        currentUserId = null;
       }
 
       await axios.put(
@@ -1042,6 +1082,8 @@ try {
           DownloadedByUserId: currentUserId ? Number(currentUserId) : null,
         }
       );
+      // Fetch API after track-download so the UI data is updated immediately
+      await fetchEnvLotReports();
     } catch (trackingError) {
       console.warn('Failed to track download:', trackingError);
     }
@@ -1738,28 +1780,9 @@ try {
     const generatedOn =
       record.versions?.[0]?.generatedOn;
 
-    if (!generatedOn) {
-      return (
-        <span className="text-sm text-slate-600">
-          -
-        </span>
-      );
-    }
-
     return (
       <span className="text-sm text-slate-600">
-        {new Date(generatedOn).toLocaleString(
-          'en-IN',
-          {
-            day: '2-digit',
-            month: '2-digit',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit',
-            hour12: true,
-          }
-        )}
+        {formatDateTimeToIST(generatedOn)}
       </span>
     );
   },
@@ -1795,9 +1818,11 @@ try {
            fallbackName = record.versions?.[0]?.generatedBy || record.versions?.[0]?.GeneratedBy || record.generatedBy || record.GeneratedBy || '-';
         }
 
+        const displayName = (generatedById ? getFirstNameFromUserId(generatedById, userMap) : null) || fallbackName;
+
         return (
         <span className="text-sm text-slate-600">
-          {generatedById ? getFirstNameFromUserId(generatedById, userMap) : fallbackName}
+          {displayName}
         </span>
       )},
     },
@@ -1823,9 +1848,11 @@ try {
            fallbackName = record.lastDownloadedBy || record.versions?.[0]?.lastDownloadedBy || '-';
         }
 
+        const displayName = (downloadedById ? getFirstNameFromUserId(downloadedById, userMap) : null) || fallbackName;
+
         return (
         <span className="text-sm text-slate-600">
-          {downloadedById ? getFirstNameFromUserId(downloadedById, userMap) : fallbackName}
+          {displayName}
         </span>
       )},
     },
@@ -1844,28 +1871,9 @@ try {
           record.envLotReport?.lastDownloadedAt ||
           record.lastDownloadedAt;
 
-        if (!lastDownloadedAt) {
-          return (
-            <span className="text-sm text-slate-600">
-              -
-            </span>
-          );
-        }
-
         return (
           <span className="text-sm text-slate-600">
-            {new Date(lastDownloadedAt).toLocaleString(
-              'en-IN',
-              {
-                day: '2-digit',
-                month: '2-digit',
-                year: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit',
-                hour12: true,
-              }
-            )}
+            {formatDateTimeToIST(lastDownloadedAt)}
           </span>
         );
       },

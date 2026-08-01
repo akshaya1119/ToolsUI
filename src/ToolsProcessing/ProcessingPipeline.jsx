@@ -1728,16 +1728,25 @@ const loadGeneratedTemplateReports = async () => {
 
         // Save generated report to database (so that it's stored in history & available to download)
         try {
-          let currentUserId = localStorage.getItem('userData');
-          if (currentUserId) {
-            try {
-              const parsed = JSON.parse(currentUserId);
-              if (parsed && typeof parsed === 'object' && parsed.userId) {
-                currentUserId = parsed.userId;
+          let currentUserId = localStorage.getItem('userId');
+          if (!currentUserId || currentUserId === 'undefined') {
+            const userData = localStorage.getItem('userData');
+            if (userData) {
+              try {
+                const parsed = JSON.parse(userData);
+                currentUserId = parsed.userId ?? parsed.UserId ?? parsed.id ?? parsed.Id ?? null;
+              } catch (e) {
+                // ignore
               }
-            } catch (e) {
-              // it's a plain string, leave it as is
             }
+          }
+          if (currentUserId && currentUserId !== 'undefined') {
+            currentUserId = Number(currentUserId);
+            if (isNaN(currentUserId)) {
+              currentUserId = null;
+            }
+          } else {
+            currentUserId = null;
           }
           const reportData = {
             projectId: Number(projectId),
@@ -1828,14 +1837,25 @@ const loadGeneratedTemplateReports = async () => {
         const dbId = report.dbId || report.id;
         if (dbId && !isNaN(Number(dbId))) {
           try {
-            let currentUserId = localStorage.getItem('userData');
-            if (currentUserId) {
-              try {
-                const parsed = JSON.parse(currentUserId);
-                if (parsed && typeof parsed === "object" && parsed.userId) {
-                  currentUserId = parsed.userId;
+            let currentUserId = localStorage.getItem('userId');
+            if (!currentUserId || currentUserId === 'undefined') {
+              const userData = localStorage.getItem('userData');
+              if (userData) {
+                try {
+                  const parsed = JSON.parse(userData);
+                  currentUserId = parsed.userId ?? parsed.UserId ?? parsed.id ?? parsed.Id ?? null;
+                } catch (e) {
+                  // ignore
                 }
-              } catch (e) {}
+              }
+            }
+            if (currentUserId && currentUserId !== 'undefined') {
+              currentUserId = Number(currentUserId);
+              if (isNaN(currentUserId)) {
+                currentUserId = null;
+              }
+            } else {
+              currentUserId = null;
             }
             await API.put(`/EnvelopeLotReports/${dbId}/track-download`, {
               downloadedByUserId: currentUserId ? Number(currentUserId) : null
@@ -2347,6 +2367,27 @@ const loadGeneratedTemplateReports = async () => {
 
       // Save the generated report to database
       try {
+        let currentUserId = localStorage.getItem('userId');
+        if (!currentUserId || currentUserId === 'undefined') {
+          const userData = localStorage.getItem('userData');
+          if (userData) {
+            try {
+              const parsed = JSON.parse(userData);
+              currentUserId = parsed.userId ?? parsed.UserId ?? parsed.id ?? parsed.Id ?? null;
+            } catch (e) {
+              // ignore
+            }
+          }
+        }
+        if (currentUserId && currentUserId !== 'undefined') {
+          currentUserId = Number(currentUserId);
+          if (isNaN(currentUserId)) {
+            currentUserId = null;
+          }
+        } else {
+          currentUserId = null;
+        }
+
         const templateId = resolveTemplateId(template);
         const reportData = {
           projectId: Number(projectId),
@@ -2360,6 +2401,7 @@ const loadGeneratedTemplateReports = async () => {
             lotNumber: lotNo,
           }),
           generatedBy: 'Current User',
+          generatedByUserId: currentUserId,
           filePath: generatedFilePath,
           lotNo: lotNo // Send the actual lot number
         };
@@ -2457,6 +2499,41 @@ const loadGeneratedTemplateReports = async () => {
       window.URL.revokeObjectURL(url);
 
       message.success(`Downloaded ${resolveTemplateName(template)} for Lot ${lotNo}`);
+
+      // Track download in database
+      const matchingReport = envLotReports.find(r => r.templateId === templateId && Number(r.lotNumber) === Number(lotNo));
+      const dbId = matchingReport?.dbId || matchingReport?.id;
+      if (dbId && !isNaN(Number(dbId))) {
+        try {
+          let currentUserId = localStorage.getItem('userId');
+          if (!currentUserId || currentUserId === 'undefined') {
+            const userData = localStorage.getItem('userData');
+            if (userData) {
+              try {
+                const parsed = JSON.parse(userData);
+                currentUserId = parsed.userId ?? parsed.UserId ?? parsed.id ?? parsed.Id ?? null;
+              } catch (e) {
+                // ignore
+              }
+            }
+          }
+          if (currentUserId && currentUserId !== 'undefined') {
+            currentUserId = Number(currentUserId);
+            if (isNaN(currentUserId)) {
+              currentUserId = null;
+            }
+          } else {
+            currentUserId = null;
+          }
+          await API.put(`/EnvelopeLotReports/${dbId}/track-download`, {
+            downloadedByUserId: currentUserId ? Number(currentUserId) : null,
+            DownloadedByUserId: currentUserId ? Number(currentUserId) : null,
+          });
+          loadEnvLotReports();
+        } catch (trackErr) {
+          console.warn("[handleDownloadLotTemplate] Failed to track download:", trackErr);
+        }
+      }
     } catch (err) {
       console.error("Failed to download lot template", err);
       const msg = await getErrorMessageAsync(err, "Please generate the template first.");
@@ -3962,8 +4039,8 @@ allTemplateReports.forEach((rep) => {
 Object.keys(groupedTpl).forEach((templateKey) => {
   const reps = groupedTpl[templateKey].sort(
     (a, b) =>
-      new Date(b.generatedAt || 0) -
-      new Date(a.generatedAt || 0)
+      new Date(b.generatedAt || b.GeneratedAt || 0) -
+      new Date(a.generatedAt || a.GeneratedAt || 0)
   );
 
   const firstRep = reps[0];
@@ -4072,6 +4149,7 @@ Object.keys(groupedTpl).forEach((templateKey) => {
 
           generatedByUserId: r.generatedByUserId || r.GeneratedByUserId || null,
           downloadedByUserId: r.downloadedByUserId || r.DownloadedByUserId || null,
+          downloadedAt: r.downloadedAt || r.DownloadedAt || null,
 
           status:
             idx === 0

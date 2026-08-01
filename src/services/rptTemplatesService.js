@@ -100,6 +100,7 @@ export const uploadTemplate = async (
     groupId,
     typeId,
     templateName,
+    subName,
     file,
     projectId,
     moduleIds,
@@ -109,6 +110,9 @@ export const uploadTemplate = async (
   const formData = new FormData();
   formData.append("typeId", typeId);
   formData.append("templateName", templateName);
+  if (subName) {
+    formData.append("subName", subName);
+  }
   formData.append("file", file);
   if (groupId !== null && groupId !== undefined) {
     formData.append("groupId", groupId);
