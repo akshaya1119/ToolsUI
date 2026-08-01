@@ -574,6 +574,7 @@ const ProjectTemplates = () => {
       groupId,
       typeId,
       templateName,
+      subName,
       templateId,
       file,
       projectId,
@@ -584,6 +585,9 @@ const ProjectTemplates = () => {
     const formData = new FormData();
     formData.append("typeId", typeId);
     formData.append("templateName", templateName);
+    if (subName) {
+      formData.append("subName", subName);
+    }
     if (templateId) {
       formData.append("templateId", templateId);
     }
@@ -659,6 +663,7 @@ const ProjectTemplates = () => {
         typeId: projectTypeId,
         projectId: normalizeId(projectId),
         templateName: values.templateName,
+        subName: values.subName,
         file,
         moduleIds: values.moduleIds
       });
@@ -1030,7 +1035,7 @@ const ProjectTemplates = () => {
       });
       const options = list.map((item) => ({
         value: resolveTemplateId(item),
-        label: `v${item?.version}${item?.isActive ? " (Active)" : ""}`,
+        label: `v${item?.version}${item?.subName || item?.SubName ? ` (${item?.subName || item?.SubName})` : ""}${item?.isActive ? " (Active)" : ""}`,
       }));
       setEditingVersionOptions(options);
       const active = list.find((item) => item?.isActive);

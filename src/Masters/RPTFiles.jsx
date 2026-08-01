@@ -507,6 +507,7 @@ const RPTFiles = () => {
     groupId,
     typeId,
     templateName,
+    subName,
     file,
     projectId,
     moduleIds,
@@ -518,6 +519,7 @@ const RPTFiles = () => {
       groupId,
       typeId,
       templateName,
+      subName,
       file,
       projectId,
       moduleIds,
@@ -540,6 +542,7 @@ const RPTFiles = () => {
           groupId: templateScope === "group" ? values.groupId : null,
           typeId: values.typeId,
           templateName: values.templateName,
+          subName: values.subName,
           file,
           moduleIds: values.moduleIds || [],
           forceUpload,
@@ -549,7 +552,7 @@ const RPTFiles = () => {
         message.success("Template uploaded successfully.");
         setAddModalOpen(false);
         setAddFileList([]);
-        addForm.resetFields(["templateName", "moduleIds"]);
+        addForm.resetFields(["templateName", "moduleIds", "subName"]);
         if (selectionReady) fetchAvailableRPTFiles();
 
         const uploadedTemplate = {
@@ -958,7 +961,7 @@ setUseBoxLabelSP(parsed.useBoxLabelSP || false);
       });
       const options = list.map((item) => ({
         value: resolveTemplateId(item),
-        label: `v${item?.version}${item?.isActive ? " (Active)" : ""}`,
+        label: `v${item?.version}${item?.subName || item?.SubName ? ` (${item?.subName || item?.SubName})` : ""}${item?.isActive ? " (Active)" : ""}`,
       }));
       setEditingVersionOptions(options);
       const active = list.find((item) => item?.isActive);
