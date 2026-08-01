@@ -32,6 +32,7 @@ const DataImport = () => {
   const isConfigured = useStore((state) => state.isConfigured);
   const isLoadingData = useStore((state) => state.isLoadingData);
   const projectId = useStore((state) => state.projectId);
+  const selectedLot = useStore((state) => state.selectedLot);
   const addStaleEnvLotIds = useStore((state) => state.addStaleEnvLotIds);
   const setHasDeactivatedCatches = useStore((state) => state.setHasDeactivatedCatches);
 
@@ -87,6 +88,7 @@ const DataImport = () => {
   const [showUploadedDisplayFieldsModal, setShowUploadedDisplayFieldsModal] = useState(false);
   const [uploadedDisplayFields, setUploadedDisplayFields] = useState([]);
   const [addedFieldIds, setAddedFieldIds] = useState([]);
+  const [uploadSectionCollapsed, setUploadSectionCollapsed] = useState(false);
 
   // 👉 Initialize activeTab from localStorage on mount
   useEffect(() => {
@@ -197,6 +199,7 @@ const DataImport = () => {
     columnFilters,
     uploadedTableSorter.field,
     uploadedTableSorter.order,
+    selectedLot,
   ]);
 
   const fetchExistingData = async (projectId) => {
@@ -204,6 +207,7 @@ const DataImport = () => {
 
     setLoading(true);
     try {
+      const lotParam = selectedLot ? { lotNo: selectedLot } : {};
       const res = await API.get(`/NRDatas/GetByProjectId/${projectId}`, {
         params: {
           pageSize: pagination.pageSize,
@@ -212,6 +216,7 @@ const DataImport = () => {
           filters: Object.keys(columnFilters).length ? JSON.stringify(columnFilters) : null,
           sortField: uploadedTableSorter.field || null,
           sortOrder: uploadedTableSorter.order || null,
+          ...lotParam,
         },
       });
 
@@ -290,9 +295,11 @@ const DataImport = () => {
     setActiveTab("2");
     setLoading(true);
     try {
+      const lotParam = selectedLot ? { lotNo: selectedLot } : {};
       const res = await API.get(`/NRDatas/ErrorReport`, {
         params: {
           ProjectId: projectId,
+          ...lotParam,
         },
       });
       const report = {
@@ -314,6 +321,12 @@ const DataImport = () => {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (projectId && activeTab === "2") {
+      fetchConflictReport();
+    }
+  }, [projectId, activeTab, selectedLot]);
 
   const handleSave = async (record, selectedValue) => {
     const normalizedValue =
@@ -374,7 +387,8 @@ const DataImport = () => {
         centerCodes: record.centerCodes || [],
       };
 
-      await API.put(`/NRDatas?ProjectId=${projectId}`, payload, {
+      const lotParam = selectedLot ? `&lotNo=${selectedLot}` : '';
+      await API.put(`/NRDatas?ProjectId=${projectId}${lotParam}`, payload, {
         headers: { Authorization: `Bearer ${token}` }
       });
 
@@ -396,7 +410,8 @@ const DataImport = () => {
 
   const handleIgnoreConflict = async (conflict) => {
     try {
-      await API.put(`/NRDatas/conflicts/status?ProjectId=${projectId}`, {
+      const lotParam = selectedLot ? `&lotNo=${selectedLot}` : '';
+      await API.put(`/NRDatas/conflicts/status?ProjectId=${projectId}${lotParam}`, {
         conflictType: conflict.conflictType,
         catchNo: conflict.catchNo,
         catchNos: conflict.catchNos || [],
@@ -446,7 +461,8 @@ const DataImport = () => {
         moduleId: selectedModule?.id ?? null,
       });
 
-      const res = await API.post(`/NRDatas/merge-catchnos?ProjectId=${projectId}`, {
+      const lotParam = selectedLot ? `&lotNo=${selectedLot}` : '';
+      const res = await API.post(`/NRDatas/merge-catchnos?ProjectId=${projectId}${lotParam}`, {
         catchNos: selectedUploadedCatchNos,
         separator: separator || "/",
         moduleId: selectedModule?.id ?? null
@@ -1169,7 +1185,8 @@ const DataImport = () => {
         console.log('Extracted batchId from ChangedNr:', batchId);
         showToast(`Corrected NRData report uploaded (${mappedData.length} rows).`, "success");
       } else {
-        const res = await API.post(`/NRDatas`, payload, {
+        const lotParam = selectedLot ? `?lotNo=${selectedLot}` : '';
+        const res = await API.post(`/NRDatas${lotParam}`, payload, {
           headers: { Authorization: `Bearer ${token}` }
         });
         console.log('NRDatas full response:', JSON.stringify(res.data, null, 2));
@@ -1518,7 +1535,7 @@ const DataImport = () => {
       const catchNo = record?.CatchNo ?? record?.catchNo ?? null;
       try {
         if (catchNo && projectId) {
-          const envLotsRes = await API.get(`/NRDataLots/GetAssignedEnvLotCatches/${projectId}`);
+          const envLotsRes = await API.get(`/NRDataLots/GetAssignedEnvLotCatches/${projectId}`, selectedLot ? { params: { lotNo: selectedLot } } : {});
           const assignedLot = (envLotsRes?.data || []).find(l => Array.isArray(l.catches) && l.catches.includes(String(catchNo)));
           if (assignedLot && assignedLot.envLotNo) {
             addStaleEnvLotIds([Number(assignedLot.envLotNo)]);
@@ -1528,7 +1545,8 @@ const DataImport = () => {
         console.error("Failed to determine EnvLot before deletion", err);
       }
 
-      await API.put(`/NRDatas/UpdateSingle/${record.id}`, { Status: false }, {
+      const lotParam = selectedLot ? `?lotNo=${selectedLot}` : '';
+      await API.put(`/NRDatas/UpdateSingle/${record.id}${lotParam}`, { Status: false }, {
         headers: { Authorization: `Bearer ${token}` }
       });
 
@@ -1797,7 +1815,11 @@ const DataImport = () => {
       for (const col of fieldsToVerify) {
         const newValue = rowData[col];
         const checkRes = await API.get(`/NRDatas/CheckValueExists/${projectId}`, {
-          params: { fieldName: col, value: newValue }
+          params: {
+            fieldName: col,
+            value: newValue,
+            ...(selectedLot ? { lotNo: selectedLot } : {})
+          }
         });
         if (checkRes.data && checkRes.data.exists === false) {
           const confirmed = await MessageService.confirm(
@@ -1825,7 +1847,8 @@ const DataImport = () => {
 
       console.log("Sending payload:", payload);
 
-      const response = await API.post(`/NRDatas/single`, payload, {
+      const lotParam = selectedLot ? `?lotNo=${selectedLot}` : '';
+      const response = await API.post(`/NRDatas/single${lotParam}`, payload, {
         headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -1924,7 +1947,11 @@ const DataImport = () => {
       for (const col of fieldsToVerify) {
         const newValue = changedPayload[col];
         const checkRes = await API.get(`/NRDatas/CheckValueExists/${projectId}`, {
-          params: { fieldName: col, value: newValue }
+          params: {
+            fieldName: col,
+            value: newValue,
+            ...(selectedLot ? { lotNo: selectedLot } : {})
+          }
         });
         if (checkRes.data && checkRes.data.exists === false) {
           const confirmed = await MessageService.confirm(
@@ -1946,7 +1973,8 @@ const DataImport = () => {
       }
 
       // Use the new UpdateSingle endpoint
-      await API.put(`/NRDatas/UpdateSingle/${editingRowId}`, changedPayload, {
+      const lotParam = selectedLot ? `?lotNo=${selectedLot}` : '';
+      await API.put(`/NRDatas/UpdateSingle/${editingRowId}${lotParam}`, changedPayload, {
         headers: { Authorization: `Bearer ${token}` }
       });
 
@@ -1994,6 +2022,7 @@ const DataImport = () => {
       // Await the delete call
       await API.delete(`/NRDatas/DeleteByProject/${projectId}`, {
         headers: { Authorization: `Bearer ${token}` },
+        params: selectedLot ? { lotNo: selectedLot } : {}
       });
 
       // Success message only
@@ -2133,28 +2162,86 @@ const DataImport = () => {
         Data Import
       </Typography.Title>
 
-      {/* === DATA IMPORT SECTION === */}
+      {/* === DATA IMPORT SECTION (collapsible) === */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        whileHover={{
-          scale: 1.01,
-          boxShadow: "0 10px 20px rgba(0, 0, 0, 0.1)",
-        }}
         transition={{ duration: 0.3 }}
       >
         <Card
           title={
-            <div>
-              <span>
-                <ToolOutlined style={iconStyle} /> Data Import
-              </span>
-              <br />
-              <Text type="secondary">Upload and map your data files here</Text>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <ToolOutlined style={iconStyle} />
+              <span>Data Import</span>
+              {!uploadSectionCollapsed && (
+                <Text type="secondary" style={{ fontWeight: 400, fontSize: 13, marginLeft: 4 }}>
+                  — Upload and map your data files here
+                </Text>
+              )}
             </div>
           }
+          extra={
+            <Space size={6} onClick={e => e.stopPropagation()}>
+              <Button
+                type="primary"
+                size="small"
+                icon={<PlusOutlined />}
+                onClick={() => {
+                  if (uploadSectionCollapsed) setUploadSectionCollapsed(false);
+                  setAddRowOpen((prev) => !prev);
+                }}
+              >
+                Add Data
+              </Button>
+              <Button
+                size="small"
+                onClick={fetchConflictReport}
+                style={{
+                  backgroundColor: "#f0dc24ff",
+                  borderColor: "#d4bc00",
+                  color: "#000",
+                }}
+              >
+                ⚠️ Load Conflict
+              </Button>
+              <Button
+                danger
+                size="small"
+                style={{
+                  backgroundColor: "#ff4d4f",
+                  borderColor: "#ff4d4f",
+                  color: "#fff",
+                }}
+                onClick={async () => {
+                  const confirmed = await MessageService.confirm(
+                    "Are you sure you want to delete NR data for this project?",
+                    {
+                      title: "Confirm Deletion",
+                      confirmText: "Yes, Delete",
+                      cancelText: "Cancel",
+                      type: 'error'
+                    }
+                  );
+                  if (confirmed) {
+                    await deleteNRData();
+                  }
+                }}
+              >
+                🗑️ Delete NR Data
+              </Button>
+              <Button
+                size="small"
+                type="text"
+                onClick={() => setUploadSectionCollapsed(prev => !prev)}
+                style={{ color: '#595959', fontSize: 16, lineHeight: 1, padding: '0 4px' }}
+                title={uploadSectionCollapsed ? "Expand upload section" : "Collapse upload section"}
+              >
+                {uploadSectionCollapsed ? '▼' : '▲'}
+              </Button>
+            </Space>
+          }
           bordered={true}
-          styles={{ body: { paddingTop: 12, paddingBottom: 12 } }}
+          styles={{ body: { paddingTop: uploadSectionCollapsed ? 0 : 12, paddingBottom: uploadSectionCollapsed ? 0 : 12, overflow: 'hidden', transition: 'all 0.3s ease' } }}
           style={{
             width: "100%",
             boxShadow: "0 4px 8px rgba(0,0,0,0.1)",
@@ -2163,250 +2250,250 @@ const DataImport = () => {
             backgroundColor: "#f5f5f5"
           }}
         >
-          <Row gutter={[16, 16]}>
-            <Col xs={24} md={12}>
-              <div style={{ padding: 12, border: "1px solid #d9d9d9", borderRadius: 10, background: "#fff" }}>
-                <Space direction="vertical" size={10} style={{ width: "100%" }}>
-                  <div>
-                    <Text strong>File Upload</Text>
-                    <Text type="secondary" style={{ display: "block", fontSize: 12, lineHeight: 1.3 }}>
-                      Upload a corrected NRData report if you have already fixed your source file.
-                    </Text>
-                  </div>
-                  <Upload.Dragger
-                    name="file"
-                    accept=".xls,.xlsx,.csv"
-                    fileList={fileList}
-                    beforeUpload={beforeUpload}
-                    onRemove={handleRemove}
-                    maxCount={1}
-                  >
-                    <p className="ant-upload-drag-icon">📤</p>
-                    <p className="ant-upload-text">Upload Excel or CSV file</p>
-                    <Text type="secondary" style={{ display: "block" }}>
-                      Drag and drop or click to choose a file.
-                    </Text>
-                    <Button icon={<UploadOutlined />}>Choose File</Button>
-                  </Upload.Dragger>
-
-
-                </Space>
-              </div>
-            </Col>
-
-            <Col xs={24} md={12}>
-              <div style={{ padding: 12, border: "1px solid #d9d9d9", borderRadius: 10, background: "#fff" }}>
-                <Space direction="vertical" size={10} style={{ width: "100%" }}>
-                  <div>
-                    <Text strong>Changed NR Data</Text>
-                    <Text type="secondary" style={{ display: "block", fontSize: 12, lineHeight: 1.3 }}>
-                      Enable this if you're uploading changed NR data to remove duplicates automatically.
-                    </Text>
-                  </div>
-                  <Checkbox
-                    checked={isChangedNR}
-                    onChange={(e) => setIsChangedNR(e.target.checked)}
-                  >
-                    This is a Changed NR upload
-                  </Checkbox>
-                </Space>
-
-                <Space direction="vertical" size={10} style={{ width: "100%", marginTop: 16 }}>
-                  <div>
-                    <Text strong>Zero Quantity Handling</Text>
-                    <Text type="secondary" style={{ display: "block", fontSize: 12, lineHeight: 1.3 }}>
-                      Choose how to handle rows where NRQuantity is 0 before upload.
-                    </Text>
-                  </div>
-
-                  <Checkbox
-                    checked={keepZeroQuantity}
-                    onChange={handleKeepZeroQuantityChange}
-                  >
-                    Keep items with 0 quantity and change their quantity
-                  </Checkbox>
-
-                  {keepZeroQuantity && (
-                    <Input
-                      type="number"
-                      value={quantity}
-                      onChange={handleQuantityChange}
-                      placeholder="Enter quantity to replace 0"
-                      min={0}
-                    />
-                  )}
-
-                  <Checkbox
-                    checked={skipItems}
-                    onChange={handleSkipItemsChange}
-                  >
-                    Skip items with 0 quantity
-                  </Checkbox>
-
-
-                </Space>
-              </div>
-            </Col>
-          </Row>
-
-          {/* === FIELD MAPPING SECTION === */}
-          {fileHeaders.length > 0 && (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              whileHover={{
-                scale: 1.01,
-                boxShadow: "0 10px 20px rgba(0, 0, 0, 0.1)",
-              }}
-              transition={{ duration: 0.3 }}
-            >
-              <Card
-                title="Field Mapping"
-                extra={
-                  getRemainingFields().length > 0 && (
-                    <Select
-                      style={{ width: 200 }}
-                      placeholder="+ Add Field to Map"
-                      value={null}
-                      showSearch
-                      filterOption={(input, option) =>
-                        (option?.children ?? '').toLowerCase().includes(input.toLowerCase())
-                      }
-                      onChange={(value) => {
-                        if (value) {
-                          setAddedFieldIds(prev => [...prev, value]);
-                        }
-                      }}
-                    >
-                      {getRemainingFields().map(f => (
-                        <Select.Option key={f.fieldId} value={f.fieldId}>
-                          {f.name}
-                        </Select.Option>
-                      ))}
-                    </Select>
-                  )
-                }
-                styles={{ body: { paddingTop: 12, paddingBottom: 12 } }}
-                style={{
-                  border: "1px solid #d9d9d9",
-                  boxShadow: "0 4px 8px rgba(0,0,0,0.1)",
-                }}
-              >
-                <Text
-                  type="secondary"
-                  style={{ display: "block", marginBottom: 16 }}
-                >
-                  Map fields from your file to expected fields (Required fields are shown by default)
-                </Text>
-
-                <Row gutter={[16, 16]}>
-                  {[...getMappedFieldsToDisplay()]
-                    .sort((a, b) => {
-                      const aReq = requiredFieldNames.includes(a.name);
-                      const bReq = requiredFieldNames.includes(b.name);
-                      if (aReq && !bReq) return -1;
-                      if (!aReq && bReq) return 1;
-                      return 0;
-                    })
-                    .map((expectedField) => {
-                      return (
-                        <Col key={expectedField.fieldId} xs={24} md={8}>
-                          <div style={{ marginBottom: 12 }}>
-                            <div style={{ display: "flex", alignItems: "center" }}>
-                              <Text
-                                style={{
-                                  marginRight: 8,
-                                  color: fieldMappings[expectedField.fieldId]
-                                    ? "#006400"
-                                    : "inherit",
-                                }}
-                              >
-                                {expectedField.name}
-                                {requiredFieldNames.includes(expectedField.name) && (
-                                  <span style={{ color: "#ff4d4f", marginLeft: 2 }}>*</span>
-                                )}
-                              </Text>
-                              {fieldMappings[expectedField.fieldId] && (
-                                <CheckCircleOutlined
-                                  style={{ color: "#006400", fontSize: 16 }}
-                                />
-                              )}
-                            </div>
-                            <Select
-                              style={{
-                                width: "100%",
-                                borderColor: fieldMappings[expectedField.fieldId]
-                                  ? "#006400"
-                                  : undefined,
-                                boxShadow: fieldMappings[expectedField.fieldId]
-                                  ? "0 0 5px #006400"
-                                  : undefined,
-                              }}
-                              placeholder="Select matching column from file"
-                              value={
-                                fieldMappings[expectedField.fieldId]
-                              }
-                              onChange={(value) => {
-                                setFieldMappings((prev) => ({
-                                  ...prev,
-                                  [expectedField.fieldId]: value,
-                                }));
-                              }}
-                              allowClear
-                              onClear={() => {
-                                setFieldMappings((prev) => {
-                                  const updated = { ...prev };
-                                  delete updated[expectedField.fieldId];
-                                  return updated;
-                                });
-                                if (!requiredFieldNames.includes(expectedField.name)) {
-                                  setAddedFieldIds(prev => prev.filter(id => id !== expectedField.fieldId));
-                                }
-                              }}
-                            >
-                              {fileHeaders
-                                .filter(
-                                  (header) =>
-                                    !Object.values(fieldMappings).includes(header) ||
-                                    fieldMappings[expectedField.fieldId] === header
-                                )
-                                .map((header, index) => (
-                                  <Select.Option
-                                    key={`${header}-${index}`}
-                                    value={header}
-                                  >
-                                    {header}
-                                  </Select.Option>
-                                ))}
-                            </Select>
-                          </div>
-                        </Col>
-                      );
-                    })}
-                </Row>
-
-                {isAnyFieldMapped() && (
-                  <Space style={{ marginTop: 16, width: "100%", justifyContent: "space-between" }}>
-                    <Button
-                      type="primary"
-                      onClick={handleUpload}
-                      loading={uploading}
-                      disabled={uploading}
-                    >
-                      Upload Data
-                    </Button>
-                    {skippedRows.length > 0 && (
-                      <Button
-                        onClick={downloadSkippedRowsReport}
-                        style={{ backgroundColor: "#faad14", borderColor: "#faad14", color: "#000" }}
+          {!uploadSectionCollapsed && (
+            <>
+              <Row gutter={[16, 16]}>
+                <Col xs={24} md={12}>
+                  <div style={{ padding: 12, border: "1px solid #d9d9d9", borderRadius: 10, background: "#fff" }}>
+                    <Space direction="vertical" size={10} style={{ width: "100%" }}>
+                      <div>
+                        <Text strong>File Upload</Text>
+                        <Text type="secondary" style={{ display: "block", fontSize: 12, lineHeight: 1.3 }}>
+                          Upload a corrected NRData report if you have already fixed your source file.
+                        </Text>
+                      </div>
+                      <Upload.Dragger
+                        name="file"
+                        accept=".xls,.xlsx,.csv"
+                        fileList={fileList}
+                        beforeUpload={beforeUpload}
+                        onRemove={handleRemove}
+                        maxCount={1}
                       >
-                        📥 Download Missing Data Report ({skippedRows.length})
-                      </Button>
+                        <p className="ant-upload-drag-icon">📤</p>
+                        <p className="ant-upload-text">Upload Excel or CSV file</p>
+                        <Text type="secondary" style={{ display: "block" }}>
+                          Drag and drop or click to choose a file.
+                        </Text>
+                        <Button icon={<UploadOutlined />}>Choose File</Button>
+                      </Upload.Dragger>
+                    </Space>
+                  </div>
+                </Col>
+
+                <Col xs={24} md={12}>
+                  <div style={{ padding: 12, border: "1px solid #d9d9d9", borderRadius: 10, background: "#fff" }}>
+                    <Space direction="vertical" size={10} style={{ width: "100%" }}>
+                      <div>
+                        <Text strong>Changed NR Data</Text>
+                        <Text type="secondary" style={{ display: "block", fontSize: 12, lineHeight: 1.3 }}>
+                          Enable this if you're uploading changed NR data to remove duplicates automatically.
+                        </Text>
+                      </div>
+                      <Checkbox
+                        checked={isChangedNR}
+                        onChange={(e) => setIsChangedNR(e.target.checked)}
+                      >
+                        This is a Changed NR upload
+                      </Checkbox>
+                    </Space>
+
+                    <Space direction="vertical" size={10} style={{ width: "100%", marginTop: 16 }}>
+                      <div>
+                        <Text strong>Zero Quantity Handling</Text>
+                        <Text type="secondary" style={{ display: "block", fontSize: 12, lineHeight: 1.3 }}>
+                          Choose how to handle rows where NRQuantity is 0 before upload.
+                        </Text>
+                      </div>
+
+                      <Checkbox
+                        checked={keepZeroQuantity}
+                        onChange={handleKeepZeroQuantityChange}
+                      >
+                        Keep items with 0 quantity and change their quantity
+                      </Checkbox>
+
+                      {keepZeroQuantity && (
+                        <Input
+                          type="number"
+                          value={quantity}
+                          onChange={handleQuantityChange}
+                          placeholder="Enter quantity to replace 0"
+                          min={0}
+                        />
+                      )}
+
+                      <Checkbox
+                        checked={skipItems}
+                        onChange={handleSkipItemsChange}
+                      >
+                        Skip items with 0 quantity
+                      </Checkbox>
+                    </Space>
+                  </div>
+                </Col>
+              </Row>
+
+              {/* === FIELD MAPPING SECTION === */}
+              {fileHeaders.length > 0 && (
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  whileHover={{
+                    scale: 1.01,
+                    boxShadow: "0 10px 20px rgba(0, 0, 0, 0.1)",
+                  }}
+                  transition={{ duration: 0.3 }}
+                >
+                  <Card
+                    title="Field Mapping"
+                    extra={
+                      getRemainingFields().length > 0 && (
+                        <Select
+                          style={{ width: 200 }}
+                          placeholder="+ Add Field to Map"
+                          value={null}
+                          showSearch
+                          filterOption={(input, option) =>
+                            (option?.children ?? '').toLowerCase().includes(input.toLowerCase())
+                          }
+                          onChange={(value) => {
+                            if (value) {
+                              setAddedFieldIds(prev => [...prev, value]);
+                            }
+                          }}
+                        >
+                          {getRemainingFields().map(f => (
+                            <Select.Option key={f.fieldId} value={f.fieldId}>
+                              {f.name}
+                            </Select.Option>
+                          ))}
+                        </Select>
+                      )
+                    }
+                    styles={{ body: { paddingTop: 12, paddingBottom: 12 } }}
+                    style={{
+                      border: "1px solid #d9d9d9",
+                      boxShadow: "0 4px 8px rgba(0,0,0,0.1)",
+                    }}
+                  >
+                    <Text
+                      type="secondary"
+                      style={{ display: "block", marginBottom: 16 }}
+                    >
+                      Map fields from your file to expected fields (Required fields are shown by default)
+                    </Text>
+
+                    <Row gutter={[16, 16]}>
+                      {[...getMappedFieldsToDisplay()]
+                        .sort((a, b) => {
+                          const aReq = requiredFieldNames.includes(a.name);
+                          const bReq = requiredFieldNames.includes(b.name);
+                          if (aReq && !bReq) return -1;
+                          if (!aReq && bReq) return 1;
+                          return 0;
+                        })
+                        .map((expectedField) => {
+                          return (
+                            <Col key={expectedField.fieldId} xs={24} md={8}>
+                              <div style={{ marginBottom: 12 }}>
+                                <div style={{ display: "flex", alignItems: "center" }}>
+                                  <Text
+                                    style={{
+                                      marginRight: 8,
+                                      color: fieldMappings[expectedField.fieldId]
+                                        ? "#006400"
+                                        : "inherit",
+                                    }}
+                                  >
+                                    {expectedField.name}
+                                    {requiredFieldNames.includes(expectedField.name) && (
+                                      <span style={{ color: "#ff4d4f", marginLeft: 2 }}>*</span>
+                                    )}
+                                  </Text>
+                                  {fieldMappings[expectedField.fieldId] && (
+                                    <CheckCircleOutlined
+                                      style={{ color: "#006400", fontSize: 16 }}
+                                    />
+                                  )}
+                                </div>
+                                <Select
+                                  style={{
+                                    width: "100%",
+                                    borderColor: fieldMappings[expectedField.fieldId]
+                                      ? "#006400"
+                                      : undefined,
+                                    boxShadow: fieldMappings[expectedField.fieldId]
+                                      ? "0 0 5px #006400"
+                                      : undefined,
+                                  }}
+                                  placeholder="Select matching column from file"
+                                  value={
+                                    fieldMappings[expectedField.fieldId]
+                                  }
+                                  onChange={(value) => {
+                                    setFieldMappings((prev) => ({
+                                      ...prev,
+                                      [expectedField.fieldId]: value,
+                                    }));
+                                  }}
+                                  allowClear
+                                  onClear={() => {
+                                    setFieldMappings((prev) => {
+                                      const updated = { ...prev };
+                                      delete updated[expectedField.fieldId];
+                                      return updated;
+                                    });
+                                    if (!requiredFieldNames.includes(expectedField.name)) {
+                                      setAddedFieldIds(prev => prev.filter(id => id !== expectedField.fieldId));
+                                    }
+                                  }}
+                                >
+                                  {fileHeaders
+                                    .filter(
+                                      (header) =>
+                                        !Object.values(fieldMappings).includes(header) ||
+                                        fieldMappings[expectedField.fieldId] === header
+                                    )
+                                    .map((header, index) => (
+                                      <Select.Option
+                                        key={`${header}-${index}`}
+                                        value={header}
+                                      >
+                                        {header}
+                                      </Select.Option>
+                                    ))}
+                                </Select>
+                              </div>
+                            </Col>
+                          );
+                        })}
+                    </Row>
+
+                    {isAnyFieldMapped() && (
+                      <Space style={{ marginTop: 16, width: "100%", justifyContent: "space-between" }}>
+                        <Button
+                          type="primary"
+                          onClick={handleUpload}
+                          loading={uploading}
+                          disabled={uploading}
+                        >
+                          Upload Data
+                        </Button>
+                        {skippedRows.length > 0 && (
+                          <Button
+                            onClick={downloadSkippedRowsReport}
+                            style={{ backgroundColor: "#faad14", borderColor: "#faad14", color: "#000" }}
+                          >
+                            📥 Download Missing Data Report ({skippedRows.length})
+                          </Button>
+                        )}
+                      </Space>
                     )}
-                  </Space>
-                )}
-              </Card>
-            </motion.div>
+                  </Card>
+                </motion.div>
+              )}
+            </>
           )}
         </Card>
       </motion.div>
@@ -2418,7 +2505,7 @@ const DataImport = () => {
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
-            marginTop: 32,
+            marginTop: 24,
             marginBottom: 16,
           }}
         >
@@ -2426,52 +2513,6 @@ const DataImport = () => {
           <Typography.Title level={4} style={{ margin: 0 }}>
             Data & Conflicts
           </Typography.Title>
-
-          {/* Right side: Buttons */}
-          <div style={{ display: "flex", gap: 8 }}>
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={() => setAddRowOpen((prev) => !prev)}
-            >
-              Add Data
-            </Button>
-            <Button
-              onClick={fetchConflictReport}
-              style={{
-                backgroundColor: "#f0dc24ff",
-                borderColor: "#FFEB3B",
-                color: "#000",
-              }}
-            >
-              ⚠️ Load Conflict
-            </Button>
-
-            <Button
-              danger
-              style={{
-                backgroundColor: "#ff4d4f", // full red background
-                borderColor: "#ff4d4f",
-                color: "#fff",
-              }}
-              onClick={async () => {
-                const confirmed = await MessageService.confirm(
-                  "Are you sure you want to delete NR data for this project?",
-                  {
-                    title: "Confirm Deletion",
-                    confirmText: "Yes, Delete",
-                    cancelText: "Cancel",
-                    type: 'error'
-                  }
-                );
-                if (confirmed) {
-                  await deleteNRData();
-                }
-              }}
-            >
-              🗑️ Delete NR Data
-            </Button>
-          </div>
         </div>
 
         {addRowOpen && (

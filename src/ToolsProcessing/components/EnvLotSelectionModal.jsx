@@ -1,4 +1,6 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import axios from "axios";
 import {
   Modal,
   Alert,
@@ -6,7 +8,9 @@ import {
   Card,
   Typography,
   Input,
-  Tag
+  Tag,
+  Spin,
+  message
 } from "antd";
 import useStore from "../../stores/ProjectData";
 
@@ -25,13 +29,101 @@ const EnvLotSelectionModal = ({
   generatedEnvLots = [],
   templateIsOutdated = false,
   staleEnvLotIds = [],
-  showAssigned = false
+  showAssigned = false,
+  projectId
 }) => {
+  const navigate = useNavigate();
+  const apiBaseUrl = (import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || '').replace(/\/api\/?$/i, '');
   const storeStaleEnvLotIds = useStore(
     (state) => state.staleEnvLotIds || []
   );
 
   const [envLotSearch, setEnvLotSearch] = useState("");
+  const [unverifiedCatch, setUnverifiedCatch] = useState(null);
+  const [isVerifying, setIsVerifying] = useState(false);
+  const debounceTimer = useRef(null);
+
+  // Run debounced verification check when user stops typing for 3 seconds
+  const checkCatchVerification = async (catchNo) => {
+    if (!catchNo || showAssigned || !projectId) {
+      setUnverifiedCatch(null);
+      setIsVerifying(false);
+      return;
+    }
+
+    // 1. If catch is already in the verified/unassigned list, just filter — no API needed
+    const verifiedCatch = unassignedCatches.find(
+      c => c.catchNo?.toString().toLowerCase() === catchNo.toLowerCase()
+    );
+    if (verifiedCatch) {
+      setUnverifiedCatch(null);
+      setIsVerifying(false);
+      return;
+    }
+
+    // 2. Check verification status from API
+    try {
+      const { data } = await axios.get(
+        `${apiBaseUrl}/api/NRDataLots/GetCatchVerificationStatus/${projectId}/${catchNo}`
+      );
+
+      if (data.verificationStatus === 0 || data.verificationStatus === 2) {
+        setUnverifiedCatch({
+    catchNo,
+    verificationStatus: data.verificationStatus,
+  });;
+      } else {
+        // Verified but not in unassigned list — show info
+        message.info("Catch is already verified.");
+        setUnverifiedCatch(null);
+      }
+    } catch (err) {
+      setUnverifiedCatch(null);
+      if (err.response?.status === 404) {
+        message.error("Catch not found.");
+      } else {
+        message.error("Failed to check catch status.");
+      }
+    } finally {
+      setIsVerifying(false);
+    }
+  };
+
+  const handleInputChange = (e) => {
+    const value = e.target.value;
+    setEnvLotSearch(value);
+
+    // Clear unverified state immediately when input changes
+    setUnverifiedCatch(null);
+
+    // Cancel any pending debounce
+    if (debounceTimer.current) clearTimeout(debounceTimer.current);
+
+    if (!value.trim()) {
+      setIsVerifying(false);
+      return;
+    }
+
+    // Only show verifying spinner for catches not already in the local list
+    const alreadyInList = unassignedCatches.some(
+      c => c.catchNo?.toString().toLowerCase().includes(value.trim().toLowerCase())
+    );
+    if (!alreadyInList && !showAssigned && projectId) {
+      setIsVerifying(true);
+    }
+
+    // Debounce: fire verification check 1.5 seconds after user stops typing
+    debounceTimer.current = setTimeout(() => {
+      checkCatchVerification(value.trim());
+    }, 2000);
+  };
+
+  // Cleanup debounce timer on unmount
+  useEffect(() => {
+    return () => {
+      if (debounceTimer.current) clearTimeout(debounceTimer.current);
+    };
+  }, []);
 
   // Assigned Env Lots OR Unassigned Catches
   const sourceItems = showAssigned
@@ -79,12 +171,12 @@ console.log("unassignedCatches:", unassignedCatches);
     <Modal
       title="Select Catches For Processing"
       open={visible}
-      onOk={onConfirm}
+      onOk={unverifiedCatch? () =>navigate( `/headerverification?catch=${unverifiedCatch.catchNo}&status=${unverifiedCatch.verificationStatus}`): onConfirm}
       onCancel={onCancel}
       width={600}
-      okText="Generate"
+      okText={unverifiedCatch ? "Verify Catch" : "Generate"}
       cancelText="Cancel"
-      okButtonProps={{ disabled: sourceItems.length === 0 }}
+      okButtonProps={{ disabled: !unverifiedCatch && (sourceItems.length === 0 || selectedEnvLots.length === 0) }}
     >
       <div style={{ marginBottom: 16 }}>
         <Alert
@@ -106,7 +198,8 @@ console.log("unassignedCatches:", unassignedCatches);
           }
           value={envLotSearch}
           allowClear
-          onChange={(e) => setEnvLotSearch(e.target.value)}
+          onChange={handleInputChange}
+          onClear={() => { setEnvLotSearch(""); setUnverifiedCatch(null); if (debounceTimer.current) clearTimeout(debounceTimer.current); }}
           style={{ marginBottom: 12 }}
         />
 
@@ -140,14 +233,19 @@ console.log("unassignedCatches:", unassignedCatches);
         </Checkbox>
       </div>
 
-      {sourceItems.length === 0 ? (
+      {sourceItems.length === 0 && !unverifiedCatch && !isVerifying ? (
         <Alert
           message={showAssigned ? "No envelope lots to process" : "No catches to process"}
           type="warning"
           showIcon
           style={{ marginBottom: 16 }}
         />
-      ) : filteredItems.length === 0 ? (
+      ) : filteredItems.length === 0 && !unverifiedCatch && isVerifying ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 0", marginBottom: 16, color: "#595959" }}>
+          <Spin size="small" />
+          <span>Checking catch verification status...</span>
+        </div>
+      ) : filteredItems.length === 0 && !unverifiedCatch && !isVerifying ? (
         <Alert
           message="No results found"
           description="Try adjusting your search criteria"
@@ -166,6 +264,28 @@ console.log("unassignedCatches:", unassignedCatches);
           overflowY: "auto"
         }}
       >
+        {unverifiedCatch && (
+          <Card
+            size="small"
+            style={{
+              backgroundColor: "#fff2e8",
+              border: "1px solid #ffbb96",
+              marginBottom: 8
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <Text strong style={{ fontSize: "14px", color: "#d4380d" }}>
+                  Catch No {unverifiedCatch.catchNo}
+                </Text>
+                <Tag color="error">Not Verified</Tag>
+              </div>
+              <Text type="secondary" style={{ fontSize: "12px" }}>
+                This catch requires header verification.
+              </Text>
+            </div>
+          </Card>
+        )}
         {filteredItems.map((item) => {
           const itemId = showAssigned
             ? item.envLotNo

@@ -137,6 +137,7 @@ const summaryItems = (loadingTemplateData, templateRows, reviewRows, completedCo
 
 const MissingData = () => {
     const projectId = useStore((state) => state.projectId);
+    const selectedLot = useStore((state) => state.selectedLot);
     const { showToast } = useToast();
     const [loadingTemplateData, setLoadingTemplateData] = useState(false);
     const [templateRows, setTemplateRows] = useState([]);
@@ -186,10 +187,12 @@ const MissingData = () => {
 
         setLoadingTemplateData(true);
         try {
+            const lotParam = selectedLot ? { lotNo: selectedLot } : {};
             const res = await API.get(`/NRDatas/GetByProjectId/${projectId}`, {
                 params: {
                     pageSize: 100000,
                     pageNo: 1,
+                    ...lotParam,
                 },
             });
             console.log("Raw catch data from backend:", res.data);
@@ -293,7 +296,7 @@ const MissingData = () => {
 
     useEffect(() => {
         loadCatchTemplateData();
-    }, [projectId]);
+    }, [projectId, selectedLot]);
 
     useEffect(() => {
         if (selectedRowKeys.length) {
@@ -636,8 +639,8 @@ setModifiedRows(newModifiedRows);
                 return;
             }
 
-            // Call the API to save
-            await API.post("/NRDatas/missing-data", {
+            const lotParam = selectedLot ? `?lotNo=${selectedLot}` : '';
+            await API.post(`/NRDatas/missing-data${lotParam}`, {
                 projectId,
                 data: [{
                     id: rowToSave.id,
@@ -766,8 +769,8 @@ for (const row of missingDataRows) {
             const chunkSize = 100;
 
             for (let i = 0; i < payload.length; i += chunkSize) {
-                const chunk = payload.slice(i, i + chunkSize);
-                await API.post("/NRDatas/missing-data", {
+                const lotParam = selectedLot ? `?lotNo=${selectedLot}` : '';
+                await API.post(`/NRDatas/missing-data${lotParam}`, {
                     projectId,
                     data: chunk,
                 });

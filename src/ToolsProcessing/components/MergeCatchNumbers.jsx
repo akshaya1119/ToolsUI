@@ -87,6 +87,7 @@ const mergeRows = (base, patch) => ({
 
 const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
   const projectId = useStore((state) => state.projectId);
+  const selectedLot = useStore((state) => state.selectedLot);
   const { showToast } = useToast();
   const token = localStorage.getItem("token");
   const [loading, setLoading] = useState(false);
@@ -150,6 +151,9 @@ const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
         pageSize: limit,
         pageNo: page,
       };
+      if (selectedLot) {
+        params.lotNo = selectedLot;
+      }
       if (sField && sOrder) {
         const backendFieldMap = {
           catchNo: "CatchNo",
@@ -257,7 +261,7 @@ const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
 
   useEffect(() => {
     loadRows(currentPage, pageSize, sortField, sortOrder, searchKey, searchVal);
-  }, [projectId, currentPage, pageSize, sortField, sortOrder, searchKey, searchVal]);
+  }, [projectId, currentPage, pageSize, sortField, sortOrder, searchKey, searchVal, selectedLot]);
 
   useEffect(() => {
     loadMergeHistory();
@@ -328,8 +332,9 @@ const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
 
     try {
       setLoading(true);
+      const lotParam = selectedLot ? `&lotNo=${selectedLot}` : '';
       const res = await API.post(
-        `/NRDatas/merge-catchnos?ProjectId=${projectId}`,
+        `/NRDatas/merge-catchnos?ProjectId=${projectId}${lotParam}`,
         {
           catchNos: selectedCatchNos,
           separator: mergeSeparator || "/",

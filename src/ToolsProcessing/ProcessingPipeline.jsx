@@ -1726,6 +1726,36 @@ const loadGeneratedTemplateReports = async () => {
           return next;
         });
 
+        // Save generated report to database (so that it's stored in history & available to download)
+        try {
+          let currentUserId = localStorage.getItem('userData');
+          if (currentUserId) {
+            try {
+              const parsed = JSON.parse(currentUserId);
+              if (parsed && typeof parsed === 'object' && parsed.userId) {
+                currentUserId = parsed.userId;
+              }
+            } catch (e) {
+              // it's a plain string, leave it as is
+            }
+          }
+          const reportData = {
+            projectId: Number(projectId),
+            templateId: Number(templateId),
+            templateName: template?.templateName || template?.TemplateName || "Template Report",
+            envLotNumbers: isQS ? String(currentLot) : (envLotNumbers.length > 0 ? envLotNumbers.join(',') : "0"),
+            lotNo: isQS ? Number(currentLot) : (isBoxBreakingDependent && currentLot ? Number(currentLot) : 0),
+            fileName: fileName,
+            generatedByUserId: currentUserId ? Number(currentUserId) : null,
+            filePath: filePath
+          };
+          console.log('[handleGenerateTemplate] Saving report to database:', reportData);
+          await API.post('/EnvelopeLotReports', reportData);
+          console.log('[handleGenerateTemplate] Report metadata saved to database.');
+        } catch (dbErr) {
+          console.error('[handleGenerateTemplate] Failed to save report metadata to database:', dbErr);
+        }
+
         message.success({ content: isQS ? `Report generated for Lot ${currentLot}.` : "Report generated.", key: messageKey });
       } catch (err) {
         console.error("Generate report failed", err);
@@ -1755,6 +1785,8 @@ const loadGeneratedTemplateReports = async () => {
         }
       } finally {
         setGeneratingTemplates((prev) => ({ ...prev, [templateId]: false }));
+        // Refresh the envelope lot reports list, ensuring the newly generated report is present in state
+        await loadEnvLotReports();
       }
     } // End of for loop for quantity sheet lots
   };
@@ -1783,7 +1815,7 @@ const loadGeneratedTemplateReports = async () => {
         message.loading({ content: "Downloading report from server...", key: `download-${report.id}` });
 
         // Create a download link to the server file
-        const serverFileUrl = `${import.meta.env.VITE_API_BASE_URL}/files/${encodeURIComponent(report.filePath)}`;
+        const serverFileUrl = `${import.meta.env.VITE_RPT_API_URL}/files/${encodeURIComponent(report.filePath)}&fileName=${encodeURIComponent(fileName)}`;
         const link = document.createElement("a");
         link.href = serverFileUrl;
         link.download = fileName; // Use the filename with envelope lot numbers
@@ -1791,6 +1823,28 @@ const loadGeneratedTemplateReports = async () => {
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+
+        // Track download in database
+        const dbId = report.dbId || report.id;
+        if (dbId && !isNaN(Number(dbId))) {
+          try {
+            let currentUserId = localStorage.getItem('userData');
+            if (currentUserId) {
+              try {
+                const parsed = JSON.parse(currentUserId);
+                if (parsed && typeof parsed === "object" && parsed.userId) {
+                  currentUserId = parsed.userId;
+                }
+              } catch (e) {}
+            }
+            await API.put(`/EnvelopeLotReports/${dbId}/track-download`, {
+              downloadedByUserId: currentUserId ? Number(currentUserId) : null
+            });
+            loadEnvLotReports();
+          } catch (trackErr) {
+            console.warn("Failed to track download:", trackErr);
+          }
+        }
 
         message.success({ content: "Download started.", key: `download-${report.id}` });
       } catch (err) {
@@ -1820,12 +1874,9 @@ const loadGeneratedTemplateReports = async () => {
       const params = {
         templateId: report.templateId,
         projectId: Number(projectId),
+        lotNumber: report.lotNumber || report.lotNo || report.extractedLotNumber || null,
+        lotNos: (!isQS && report.envLotNumbers && report.envLotNumbers.length > 0) ? report.envLotNumbers.join(',') : null
       };
-
-      // Only include LotNos if NOT a quantity sheet template
-      if (!isQS && report.envLotNumbers && report.envLotNumbers.length > 0) {
-        params.LotNos = report.envLotNumbers.join(',');
-      }
 
       const res = await axios.get(`${rptApiUrl}/report/generated-download`, {
         params,
@@ -2250,12 +2301,19 @@ const loadGeneratedTemplateReports = async () => {
         lotNumber: lotNo,
       };
 
+      let generatedFilePath = null;
       await retryAsync(
-        () => axios.post(
-          `${rptApiUrl}/report/generate-dynamic`,
-          payload,
-          { responseType: "blob" }
-        ),
+        async () => {
+          const res = await axios.post(
+            `${rptApiUrl}/report/generate-dynamic`,
+            payload,
+            { responseType: "blob" }
+          );
+          generatedFilePath = res.headers['x-generated-file-path'] || 
+                              res.headers['X-Generated-File-Path'] || 
+                              null;
+          return res;
+        },
         3, // max 3 attempts
         1000 // initial delay 1 second
       );
@@ -2302,7 +2360,7 @@ const loadGeneratedTemplateReports = async () => {
             lotNumber: lotNo,
           }),
           generatedBy: 'Current User',
-          filePath: null,
+          filePath: generatedFilePath,
           lotNo: lotNo // Send the actual lot number
         };
 
@@ -2318,6 +2376,7 @@ const loadGeneratedTemplateReports = async () => {
         
         const saveResponse = await API.post('/EnvelopeLotReports', reportData);
         console.log('[handleGenerateLotTemplate] Report saved successfully:', saveResponse.data);
+        await loadEnvLotReports(); // Refresh history immediately
       } catch (saveErr) {
         console.error('[handleGenerateLotTemplate] Failed to save report to database', saveErr);
         console.error("Error response status:", saveErr?.response?.status);
@@ -4402,6 +4461,7 @@ Object.keys(groupedTpl).forEach((templateKey) => {
 
       <EnvLotSelectionModal
         visible={envLotSelectionModal.visible}
+        projectId={projectId}
         availableEnvLots={envLotSelectionModal.availableEnvLots}
         selectedEnvLots={envLotSelectionModal.selectedEnvLots}
         onToggle={handleEnvLotToggle}
