@@ -18,6 +18,8 @@ const ImportTemplatesForm = ({
   onSubmit,
   showTargetProject = false,
   targetProjectLabel = "",
+  importableTemplates = [],
+  importableTemplatesLoading = false,
 }) => {
   const showTypeSelect = importScope !== "project";
   const showMissingTypesMessage =
@@ -191,6 +193,25 @@ const ImportTemplatesForm = ({
           )}
         </Form.Item>
       )}
+
+      <Form.Item
+        label="Specific Templates (Optional)"
+        name="selectedTemplateIds"
+        style={{ marginBottom: 8 }}
+      >
+        <Select
+          mode="multiple"
+          placeholder="Select specific versions (leave blank for all active)"
+          loading={importableTemplatesLoading}
+          options={(importableTemplates || []).map(t => ({
+            label: `${t.templateName} (v${t.version}${t.subName ? ` - ${t.subName}` : ""})`,
+            value: t.templateId,
+          }))}
+          showSearch
+          optionFilterProp="label"
+          allowClear
+        />
+      </Form.Item>
 
       <div
         style={{

@@ -71,8 +71,9 @@ import {
   saveTemplateMapping,
   softDeleteTemplate,
   updateTemplate,
-
   uploadTemplate as uploadTemplateService,
+  promoteTemplatesToMaster,
+  fetchImportableTemplates,
 } from "../services/rptTemplatesService";
 import ProjectTemplatesHeader from "./components/ProjectTemplates/ProjectTemplatesHeader";
 import TemplatesCard from "../components/rpt/TemplatesCard";
@@ -148,6 +149,9 @@ const ProjectTemplates = () => {
   const [editingVersionOptions, setEditingVersionOptions] = useState([]);
   const [editingVersionsLoading, setEditingVersionsLoading] = useState(false);
 
+  const [savingMaster, setSavingMaster] = useState(false);
+  const [selectedRowKeys, setSelectedRowKeys] = useState([]);
+
   const [useBoxLabelSP, setUseBoxLabelSP] = useState(false);
   const [addForm] = Form.useForm();
   const [importForm] = Form.useForm();
@@ -155,6 +159,47 @@ const ProjectTemplates = () => {
   const importGroupId = Form.useWatch("sourceGroupId", importForm);
   const importProjectId = Form.useWatch("sourceProjectId", importForm);
   const importTypeId = Form.useWatch("sourceTypeId", importForm);
+  const [importableTemplates, setImportableTemplates] = useState([]);
+  const [importableTemplatesLoading, setImportableTemplatesLoading] = useState(false);
+
+  useEffect(() => {
+    if (!importModalOpen) {
+      setImportableTemplates([]);
+      return;
+    }
+    const fetchTemplates = async () => {
+      if (!importScope) {
+        setImportableTemplates([]);
+        return;
+      }
+      if (importScope === "group" && !importGroupId) {
+        setImportableTemplates([]);
+        return;
+      }
+      if (importScope === "project" && (!importProjectId || !importTypeId)) {
+        setImportableTemplates([]);
+        return;
+      }
+      
+      setImportableTemplatesLoading(true);
+      try {
+        const payload = { sourceScope: importScope };
+        if (importScope === "group") payload.sourceGroupId = importGroupId;
+        if (importScope === "project") payload.sourceProjectId = importProjectId;
+        if (importTypeId) payload.sourceTypeId = importTypeId;
+        
+        const data = await fetchImportableTemplates(APIURL, payload);
+        setImportableTemplates(data || []);
+      } catch (err) {
+        console.error("Failed to fetch importable templates", err);
+        setImportableTemplates([]);
+      } finally {
+        setImportableTemplatesLoading(false);
+      }
+    };
+    
+    fetchTemplates();
+  }, [importModalOpen, importScope, importGroupId, importProjectId, importTypeId, APIURL]);
 
   const selectionReady = Boolean(projectId && projectGroupId && projectTypeId);
 
@@ -648,6 +693,25 @@ const ProjectTemplates = () => {
     return data;
   };
 
+  const handleSaveAsMaster = async () => {
+    if (!selectedRowKeys.length) return;
+    setSavingMaster(true);
+    try {
+      const res = await promoteTemplatesToMaster(APIURL, {
+        templateIds: selectedRowKeys,
+        targetGroupId: projectGroupId
+      });
+      message.success(`Successfully promoted ${res.promoted?.length || selectedRowKeys.length} template(s) to Group Master.`);
+      setSelectedRowKeys([]);
+      fetchAvailableRPTFiles();
+    } catch (err) {
+      console.error("Failed to save as master", err);
+      showError(err, "Failed to promote templates to group master");
+    } finally {
+      setSavingMaster(false);
+    }
+  };
+
   const handleAddSubmit = async () => {
     try {
       const values = await addForm.validateFields();
@@ -658,7 +722,7 @@ const ProjectTemplates = () => {
       setAddSubmitting(true);
       const file = addFileList[0].originFileObj || addFileList[0];
 
-      const result = await uploadTemplate({
+      const result = await uploadTemplateService({
         groupId: projectGroupId,
         typeId: projectTypeId,
         projectId: normalizeId(projectId),
@@ -710,6 +774,9 @@ const ProjectTemplates = () => {
         targetTypeId: projectTypeId,
         copyMappings: values.copyMappings ?? true,
       };
+      if (values.selectedTemplateIds && values.selectedTemplateIds.length > 0) {
+        payload.selectedTemplateIds = values.selectedTemplateIds;
+      }
       if (sourceScope === "group") {
         payload.sourceGroupId = values.sourceGroupId;
         payload.includeStandard = true;
@@ -1509,7 +1576,6 @@ const ProjectTemplates = () => {
           tags={["Project", groupLabel, typeLabel]}
           data={availableRPTFiles}
           columns={columns}
-          loading={loadingTemplates}
           selectionEmptyText="Select a project with group and type to view templates."
           noTemplatesTitle="No templates found for this project."
           noTemplatesSubtitle="Uploading here creates a project-only version."
@@ -1532,7 +1598,37 @@ const ProjectTemplates = () => {
           }}
           disableAdd={!selectionReady}
           disableImport={!selectionReady}
+          loading={loadingTemplates}
+          rowSelection={{ 
+            selectedRowKeys, 
+            onChange: (newSelectedRowKeys, selectedRows, info) => {
+              if (info && info.type === 'all') {
+                if (newSelectedRowKeys.length > selectedRowKeys.length) {
+                  const nonDeletedKeys = availableRPTFiles.filter(r => !r.isDeleted).map(r => r.templateId);
+                  const finalKeys = new Set([...selectedRowKeys, ...nonDeletedKeys]);
+                  setSelectedRowKeys(Array.from(finalKeys));
+                } else {
+                  setSelectedRowKeys([]);
+                }
+              } else if (!info) {
+                // Fallback for older antd versions where info is not available
+                if (newSelectedRowKeys.length === availableRPTFiles.length && availableRPTFiles.length > selectedRowKeys.length) {
+                  const nonDeletedKeys = availableRPTFiles.filter(r => !r.isDeleted).map(r => r.templateId);
+                  const finalKeys = new Set([...selectedRowKeys, ...nonDeletedKeys]);
+                  setSelectedRowKeys(Array.from(finalKeys));
+                } else {
+                  setSelectedRowKeys(newSelectedRowKeys);
+                }
+              } else {
+                setSelectedRowKeys(newSelectedRowKeys);
+              }
+            } 
+          }}
+          onSaveAsMaster={() => handleSaveAsMaster(projectGroupId)}
+          isSavingMaster={savingMaster}
         />
+
+        <Modal />
 
         {showSidePanel && (
           <TemplatesSidePanel
@@ -1587,6 +1683,8 @@ const ProjectTemplates = () => {
               )?.label,
               importSubmitting,
               onSubmit: handleImportTemplates,
+              importableTemplates,
+              importableTemplatesLoading,
               showTargetProject: true,
               targetProjectLabel:
                 projectLabel ||
@@ -1720,6 +1818,25 @@ const ProjectTemplates = () => {
                         ...typeOptions,
                       ]}
                       placeholder="All types (optional)"
+                      showSearch
+                      optionFilterProp="label"
+                      allowClear
+                    />
+                  </Form.Item>
+
+                  <Form.Item
+                    label="Specific Templates (Optional)"
+                    name="selectedTemplateIds"
+                    style={{ marginBottom: 8 }}
+                  >
+                    <Select
+                      mode="multiple"
+                      placeholder="Select specific versions (leave blank for all active)"
+                      loading={importableTemplatesLoading}
+                      options={importableTemplates.map(t => ({
+                        label: `${t.templateName} (v${t.version}${t.subName ? ` - ${t.subName}` : ""})`,
+                        value: t.templateId,
+                      }))}
                       showSearch
                       optionFilterProp="label"
                       allowClear
