@@ -19,6 +19,7 @@ import MissingData from '../components/MissingData';
 import DataImportConflictReport from '../components/DataImportConflictReport';
 import LotsBifurcation from "./components/LotsBifurcation";
 import MergeCatchNumbers from "./components/MergeCatchNumbers";
+import { getCurrentUserId } from "../hooks/useUserMap";
 
 const { Text } = Typography;
 const { Option } = Select;
