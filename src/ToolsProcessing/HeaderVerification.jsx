@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 import { Filter, FileEdit, Check, X } from 'lucide-react';
-import { Table, Input, Space, Button } from 'antd';
+import { Table, Input, Space, Button, Tag } from 'antd';
 import { SearchOutlined } from '@ant-design/icons';
 import API from '../hooks/api';
 import { useToast } from '../hooks/useToast';
@@ -12,6 +12,7 @@ import SearchBarHV from './components/HeaderVerification/SearchBarHV';
 import StatusBadgeHV from './components/HeaderVerification/StatusBadgeHV';
 import PrintPreviewHV from './components/HeaderVerification/PrintPreviewHV';
 import { normalizeStatus, statusLabels, statusDropdownOptions } from './components/HeaderVerification/statusUtils';
+import { getCurrentUserId } from '../hooks/useUserMap';
 
 const customTableStyles = `
   .header-verification-table tbody tr:hover td {
@@ -74,6 +75,8 @@ const HeaderVerification = () => {
   const { showToast } = useToast();
   const [currentUser, setCurrentUser] = useState(null);
   const [userMap, setUserMap] = useState({});
+  // catchNo → envLotNo map for the Batch column
+  const [catchEnvLotMap, setCatchEnvLotMap] = useState({});
 
   // Fetch all users for mapping userId to firstName
   useEffect(() => {
@@ -107,8 +110,27 @@ const HeaderVerification = () => {
 
   // All toggleable columns; catchNo and status are always visible
   const ALWAYS_VISIBLE = ['catchNo', 'status', 'actions'];
-  const ALL_TOGGLEABLE = ['a', 'b', 'c', 'd', 'lotNo', 'date', 'time'];
+  const ALL_TOGGLEABLE = ['a', 'b', 'c', 'd', 'lotNo', 'date', 'time', 'batch'];
   const [visibleColumns, setVisibleColumns] = useState(new Set([...ALWAYS_VISIBLE, ...ALL_TOGGLEABLE]));
+
+  // Fetch envLot assignments to build catchNo → envLotNo map for the Batch column
+  const fetchCatchEnvLotMap = useCallback(async () => {
+    if (!projectId) return;
+    try {
+      const res = await API.get(`/NRDataLots/GetAssignedEnvLotCatches/${projectId}`);
+      const map = {};
+      (res.data || []).forEach((item) => {
+        const catchNo = (item.catchNo ?? item.CatchNo ?? '').toString().trim();
+        const envLotNo = item.envLotNo ?? item.EnvLotNo;
+        if (catchNo && envLotNo) map[catchNo] = Number(envLotNo);
+      });
+      setCatchEnvLotMap(map);
+    } catch (err) {
+      console.error('Failed to fetch env lot assignments:', err);
+    }
+  }, [projectId]);
+
+  useEffect(() => { fetchCatchEnvLotMap(); }, [fetchCatchEnvLotMap]);
 
   // useEffect(() => {
   //   const fetchCurrentUser = async () => {
@@ -412,6 +434,23 @@ const HeaderVerification = () => {
       render: (value) => <span className="text-sm text-gray-600">{value}</span>,
     },
     {
+      title: 'Batch',
+      key: 'batch',
+      width: 110,
+      sorter: (a, b) => {
+        const ea = catchEnvLotMap[(a.catchNo ?? '').toString().trim()] ?? 0;
+        const eb = catchEnvLotMap[(b.catchNo ?? '').toString().trim()] ?? 0;
+        return ea - eb;
+      },
+      sortOrder: tableSorter.field === 'batch' ? tableSorter.order : null,
+      render: (_, record) => {
+        const envLotNo = catchEnvLotMap[(record.catchNo ?? '').toString().trim()];
+        return envLotNo
+          ? <Tag color="blue" style={{ fontWeight: 500 }}>Batch {envLotNo}</Tag>
+          : <span style={{ color: '#94a3b8', fontSize: 12, fontStyle: 'italic' }}>Not allotted</span>;
+      },
+    },
+    {
       title: 'A',
       dataIndex: 'a',
       key: 'a',
@@ -634,7 +673,7 @@ const HeaderVerification = () => {
         </div>
       ),
     },
-  ], [columnFilters, editFormData, editingRowId, tableSorter, selectedStatus]);
+  ], [columnFilters, editFormData, editingRowId, tableSorter, selectedStatus, catchEnvLotMap]);
 
   const handleColumnToggle = useCallback((colKey) => {
     if (ALWAYS_VISIBLE.includes(colKey)) return;
@@ -674,7 +713,7 @@ const HeaderVerification = () => {
       if (!projectId) throw new Error('No project selected');
       const updatedRecord = records.find(r => r.id === recordId);
       if (!updatedRecord) throw new Error('Record not found');
-      const userId = localStorage.getItem('userId');
+      const userId = getCurrentUserId();
       
       // If overrideValues is provided (for batch updates), use those instead of record values
       const payload = {
@@ -683,9 +722,9 @@ const HeaderVerification = () => {
         C: overrideValues?.C !== undefined ? overrideValues.C : (fieldName === 'c' ? newValue : updatedRecord.c),
         D: overrideValues?.D !== undefined ? overrideValues.D : (fieldName === 'd' ? newValue : updatedRecord.d),
         status: normalizeStatus(updatedRecord.status),
-        verifiedBy: userId ? parseInt(userId) : null,
+        verifiedBy: userId ?? null,
       };
-      console.log('[HeaderVerification] handleFieldUpdate payload:', payload, 'userId from localStorage:', userId);
+      console.log('[HeaderVerification] handleFieldUpdate payload:', payload, 'userId from token:', userId);
       const lotParam = selectedLot ? `&lotNo=${selectedLot}` : '';
       const res = await API.put(`/Correction/HeaderVerification/${recordId}?projectId=${projectId}${lotParam}`, payload);
       setRecords(prev => prev.map(r => r.id === recordId ? { ...res.data, date: updatedRecord.date, time: updatedRecord.time } : r));
@@ -709,16 +748,16 @@ const HeaderVerification = () => {
       if (!updatedRecord) throw new Error('Record not found');
 
       const normalizedStatus = normalizeStatus(newStatusValue);
-      const userId = localStorage.getItem('userId');
+      const userId = getCurrentUserId();
       const payload = {
         A: updatedRecord.a,
         B: updatedRecord.b,
         C: updatedRecord.c,
         D: updatedRecord.d,
         status: normalizedStatus,
-        verifiedBy: userId ? parseInt(userId) : null,
+        verifiedBy: userId ?? null,
       };
-      console.log('[HeaderVerification] handleStatusChange payload:', payload, 'userId from localStorage:', userId);
+      console.log('[HeaderVerification] handleStatusChange payload:', payload, 'userId from token:', userId);
       const lotParam = selectedLot ? `&lotNo=${selectedLot}` : '';
       const res = await API.put(`/Correction/HeaderVerification/${recordId}?projectId=${projectId}${lotParam}`, payload);
       setRecords(prev => prev.map(r => r.id === recordId ? { ...res.data, date: updatedRecord.date, time: updatedRecord.time } : r));
@@ -763,17 +802,17 @@ const HeaderVerification = () => {
       const updatedRecord = records.find(r => r.id === recordId);
       if (!updatedRecord) throw new Error('Record not found');
 
-      const userId = localStorage.getItem('userId');
+      const userId = getCurrentUserId();
       const payload = {
         A: editFormData.a,
         B: editFormData.b,
         C: editFormData.c,
         D: editFormData.d,
         status: Number(editFormData.status),
-        verifiedBy: userId ? parseInt(userId) : null,
+        verifiedBy: userId ?? null,
       };
 
-      console.log('[HeaderVerification] handleSaveRow payload:', payload, 'userId from localStorage:', userId);
+      console.log('[HeaderVerification] handleSaveRow payload:', payload, 'userId from token:', userId);
       const lotParam = selectedLot ? `&lotNo=${selectedLot}` : '';
       const res = await API.put(`/Correction/HeaderVerification/${recordId}?projectId=${projectId}${lotParam}`, payload);
       const updatedRecordData = { ...res.data, date: editFormData.date, time: editFormData.time };

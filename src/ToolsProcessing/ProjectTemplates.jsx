@@ -1035,7 +1035,7 @@ const ProjectTemplates = () => {
       });
       const options = list.map((item) => ({
         value: resolveTemplateId(item),
-        label: `v${item?.version}${item?.subName || item?.SubName ? ` (${item?.subName || item?.SubName})` : ""}${item?.isActive ? " (Active)" : ""}`,
+        label: `v${item?.version}${item?.isActive ? " (Active)" : ""}`
       }));
       setEditingVersionOptions(options);
       const active = list.find((item) => item?.isActive);

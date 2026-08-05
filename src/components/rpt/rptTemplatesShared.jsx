@@ -169,7 +169,7 @@ export const buildTemplateColumns = ({
   title: "Sub Name",
   dataIndex: "subName",
   key: "subName",
-  width: 180,
+  width: 150,
   render: (value, record) => (
     <Typography.Text>
       {value ?? record?.SubName ?? "-"}
@@ -195,16 +195,7 @@ export const buildTemplateColumns = ({
           />
         );
       }
-      return (
-        <Space size={4}>
-          <Tag color="blue">v{value}</Tag>
-          {(record?.subName ?? record?.SubName) && (
-            <Typography.Text type="secondary" style={{ fontSize: "12px" }}>
-              ({record.subName ?? record.SubName})
-            </Typography.Text>
-          )}
-        </Space>
-      );
+      return <Tag color="blue">v{value}</Tag>;
     },
   },
   {
