@@ -276,7 +276,7 @@ const EnvLotSelectionModal = ({
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                 <Text strong style={{ fontSize: "14px", color: "#d4380d" }}>
-                  Catch No : {unverifiedCatch.catchNo}
+                  Catch No {unverifiedCatch.catchNo}
                 </Text>
                 <Tag color="error">Not Verified</Tag>
               </div>

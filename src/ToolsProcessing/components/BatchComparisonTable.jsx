@@ -1,7 +1,6 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react';
-import { Table, Empty, Pagination, Row, Col, Input, Tabs, Tag, Space, Spin, Button, Tooltip } from 'antd';
+import { Table, Empty, Pagination, Row, Col, Input, Tabs, Tag, Space, Spin } from 'antd';
 import { SearchOutlined } from '@ant-design/icons';
-import { ChevronUp, ChevronDown } from 'lucide-react';
 import './BatchComparisonTable.css';
 
 const BatchComparisonTable = ({ comparisonData, onPaginationChange, onSearch, onSort, loading = false }) => {
@@ -10,52 +9,6 @@ const BatchComparisonTable = ({ comparisonData, onPaginationChange, onSearch, on
   const [sortOrder, setSortOrder] = useState(null);
   const [activeTab, setActiveTab] = useState('allChanges');
   const debounceTimer = useRef(null);
-  
-  const [headerFilters, setHeaderFilters] = useState({
-    catchNo: null,
-    centerCode: null,
-    status: null,
-  });
-
-  const getColumnSearchProps = (dataIndex, title) => ({
-    filterDropdown: ({ setSelectedKeys, selectedKeys, confirm, clearFilters }) => (
-      <div style={{ padding: 8 }} onKeyDown={(e) => e.stopPropagation()}>
-        <Input
-          placeholder={`Search ${title}`}
-          value={selectedKeys[0]}
-          onChange={(e) => setSelectedKeys(e.target.value ? [e.target.value] : [])}
-          onPressEnter={() => confirm()}
-          style={{ marginBottom: 8, display: 'block' }}
-        />
-        <Space>
-          <Button
-            type="primary"
-            onClick={() => confirm()}
-            icon={<SearchOutlined />}
-            size="small"
-            style={{ width: 90 }}
-          >
-            Search
-          </Button>
-          <Button
-            onClick={() => {
-              if (clearFilters) {
-                clearFilters();
-                confirm();
-              }
-            }}
-            size="small"
-            style={{ width: 90 }}
-          >
-            Reset
-          </Button>
-        </Space>
-      </div>
-    ),
-    filterIcon: (filtered) => (
-      <SearchOutlined style={{ color: filtered ? '#1677ff' : undefined }} />
-    ),
-  });
 
   // Categorize fields into unique and non-unique
   const { fieldsToShowUnique, fieldsToShowNonUnique, catchLevelFields } = useMemo(() => {
@@ -79,8 +32,8 @@ const BatchComparisonTable = ({ comparisonData, onPaginationChange, onSearch, on
     
     return {
       fieldsToShowUnique: Array.from(unique),
-      fieldsToShowNonUnique: Array.from(nonUnique).sort((a, b) => a === 'Difference' ? 1 : b === 'Difference' ? -1 : 0),
-      catchLevelFields: Array.from(catchLevel).sort((a, b) => a === 'Difference' ? 1 : b === 'Difference' ? -1 : 0)
+      fieldsToShowNonUnique: Array.from(nonUnique),
+      catchLevelFields: Array.from(catchLevel)
     };
   }, [comparisonData?.data]);
 
@@ -96,7 +49,7 @@ const BatchComparisonTable = ({ comparisonData, onPaginationChange, onSearch, on
       debounceTimer.current = setTimeout(() => {
         if (onSearch) {
           // Always send null status - let backend return all data, frontend filters by tab locally
-          onSearch(searchText, sortField, sortOrder, headerFilters);
+          onSearch(searchText, sortField, sortOrder, null);
         }
       }, 2000);
     }
@@ -132,7 +85,8 @@ const BatchComparisonTable = ({ comparisonData, onPaginationChange, onSearch, on
     otherUpdated: 0
   };
 
-  const { allChangesData, catchLevelData, addedData, removedData, centreQtyData, nodalData, centerCodeData, otherData } = useMemo(() => {
+  // Transform data - each record from backend becomes a row (must be before early return)
+  const { allChangesData, catchLevelData, addedData, removedData, centreQtyData, nodalData, otherData } = useMemo(() => {
     if (!comparisonData || !comparisonData.data) {
       return {
         allChangesData: [],
@@ -141,7 +95,6 @@ const BatchComparisonTable = ({ comparisonData, onPaginationChange, onSearch, on
         removedData: [],
         centreQtyData: [],
         nodalData: [],
-        centerCodeData: [],
         otherData: []
       };
     }
@@ -201,7 +154,6 @@ const BatchComparisonTable = ({ comparisonData, onPaginationChange, onSearch, on
     const removed = allData.filter(item => item.status === "Centre Catch Removed");
     const centreQty = allData.filter(item => item.status === "Centre Catch Quantity Changed");
     const nodal = allData.filter(item => item.status === "Nodal Changed");
-    const centerCodeData = allData.filter(item => item.status === "Center Code Changed");
     const other = allData.filter(item => item.status === "Updated");
     
     return {
@@ -211,7 +163,6 @@ const BatchComparisonTable = ({ comparisonData, onPaginationChange, onSearch, on
       removedData: removed,
       centreQtyData: centreQty,
       nodalData: nodal,
-      centerCodeData: centerCodeData,
       otherData: other
     };
   }, [comparisonData?.data]);
@@ -231,8 +182,6 @@ const BatchComparisonTable = ({ comparisonData, onPaginationChange, onSearch, on
         return centreQtyData;
       case 'nodal':
         return nodalData;
-      case 'centerCode':
-        return centerCodeData;
       case 'modified':
         return otherData;
       default:
@@ -258,7 +207,6 @@ const BatchComparisonTable = ({ comparisonData, onPaginationChange, onSearch, on
       fixed: 'left',
       render: (text) => <span className="font-semibold">{text}</span>,
       sorter: true,
-      ...getColumnSearchProps('catchNo', 'Catch No'),
     },
   ];
   
@@ -285,40 +233,8 @@ const BatchComparisonTable = ({ comparisonData, onPaginationChange, onSearch, on
       key: 'centerCode',
       width: 120,
       fixed: 'left',
-      render: (text, record) => {
-        const centerChange = record.changes?.CenterCode || record.changes?.centerCode;
-        if (centerChange && centerChange.previousValue && centerChange.newValue) {
-          return (
-            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              <span style={{ 
-                background: "#fff2f0", 
-                color: "#cf1322",
-                padding: "2px 6px",
-                borderRadius: "4px",
-                fontSize: "12px",
-                fontWeight: 500,
-                width: "fit-content"
-              }}>
-                - {centerChange.previousValue}
-              </span>
-              <span style={{ 
-                background: "#f6ffed", 
-                color: "#274e0a",
-                padding: "2px 6px",
-                borderRadius: "4px",
-                fontSize: "12px",
-                fontWeight: 500,
-                width: "fit-content"
-              }}>
-                + {centerChange.newValue}
-              </span>
-            </div>
-          );
-        }
-        return <span className="font-semibold">{text}</span>;
-      },
+      render: (text) => <span className="font-semibold">{text}</span>,
       sorter: true,
-      ...getColumnSearchProps('centerCode', 'Centre Code'),
     });
   }
   
@@ -330,15 +246,6 @@ const BatchComparisonTable = ({ comparisonData, onPaginationChange, onSearch, on
       key: 'status',
       width: 180,
       sorter: true,
-      filters: [
-        { text: 'Centre Catch Added', value: 'Centre Catch Added' },
-        { text: 'Centre Catch Removed', value: 'Centre Catch Removed' },
-        { text: 'Centre Catch Quantity Changed', value: 'Centre Catch Quantity Changed' },
-        { text: 'Nodal Changed', value: 'Nodal Changed' },
-        { text: 'Center Code Changed', value: 'Center Code Changed' },
-        { text: 'Updated', value: 'Updated' },
-      ],
-      filterMultiple: false,
       render: (status) => {
         // Map status to color
         let color = '#faad14'; // default orange
@@ -351,8 +258,6 @@ const BatchComparisonTable = ({ comparisonData, onPaginationChange, onSearch, on
             color = '#ff4d4f'; // red for removed
           } else if (statusLower.includes('nodal')) {
             color = '#722ed1'; // purple for nodal
-          } else if (statusLower.includes('center code changed')) {
-            color = '#eb2f96'; // pink for center code changed
           } else if (statusLower.includes('catch-level')) {
             color = '#13c2c2'; // cyan for catch-level changes
           } else if (statusLower.includes('centre') && statusLower.includes('changed') && !statusLower.includes('quantity')) {
@@ -380,104 +285,6 @@ const BatchComparisonTable = ({ comparisonData, onPaginationChange, onSearch, on
           return <span style={{ color: "#d9d9d9" }}>—</span>;
         }
         
-        if (field === 'Difference') {
-          try {
-            const data = JSON.parse(change.newValue);
-            
-            // Compare revised to baseQty
-            const targetQty = data.baseQty ?? data.baseNR;
-            const revisedIsLower = data.revised < targetQty;
-            const revisedIsUpper = data.revised > targetQty;
-            
-            const RevisedIcon = revisedIsLower ? <ChevronDown size={14} /> : (revisedIsUpper ? <ChevronUp size={14} /> : null);
-
-            const baseIsLower = targetQty < data.revised;
-            const baseIsUpper = targetQty > data.revised;
-            const BaseIcon = baseIsLower ? <ChevronDown size={14} /> : (baseIsUpper ? <ChevronUp size={14} /> : null);
-
-            const lowerStyle = {
-              background: "#fff2f0", 
-              color: "#cf1322",
-              padding: "2px 8px",
-              borderRadius: "4px",
-              fontSize: "13px",
-              fontWeight: 500,
-              display: "flex",
-              alignItems: "center",
-              gap: "4px"
-            };
-            
-            const upperStyle = {
-              background: "#f6ffed", 
-              color: "#274e0a",
-              padding: "2px 8px",
-              borderRadius: "4px",
-              fontSize: "13px",
-              fontWeight: 500,
-              display: "flex",
-              alignItems: "center",
-              gap: "4px"
-            };
-            
-            const equalStyle = {
-              background: "#e6f4ff", 
-              color: "#0958d9",
-              padding: "2px 8px",
-              borderRadius: "4px",
-              fontSize: "13px",
-              fontWeight: 500,
-              display: "flex",
-              alignItems: "center",
-              gap: "4px"
-            };
-
-            const revisedStyle = revisedIsLower ? lowerStyle : (revisedIsUpper ? upperStyle : equalStyle);
-            const baseStyle = baseIsLower ? lowerStyle : (baseIsUpper ? upperStyle : equalStyle);
-            const fulfilmentColor = data.fulfilment === 'Not Fulfilled' ? '#cf1322' : '#389e0d';
-            
-            let tooltipText = '';
-            if (targetQty === data.revised) {
-              tooltipText = 'Equal';
-            } else if (data.fulfilment === 'Not Fulfilled') {
-              tooltipText = `Enhanced Quantity (${targetQty}) less than Revised NrQuantity (${data.revised}) Hence Not Satisfied. Remaining: ${data.remaining}`;
-            } else {
-              tooltipText = `Enhanced Quantity (${targetQty}) greater than Revised NrQuantity (${data.revised}) Hence Satisfied`;
-            }
-
-            return (
-              <Tooltip title={tooltipText} placement="top">
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '13px', cursor: 'pointer', width: 'fit-content' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                    <span style={baseStyle}>
-                      {BaseIcon} {targetQty}
-                    </span>
-                    
-                    <span style={revisedStyle}>
-                      {RevisedIcon} {data.revised}
-                    </span>
-                    
-                    <span style={{ color: fulfilmentColor, fontWeight: 500 }}>
-                      {data.fulfilment}
-                    </span>
-                  </div>
-                  
-                  {data.remaining !== null && (
-                    <div style={{ color: '#333', fontWeight: 500 }}>
-                      Remaining: {data.remaining}
-                    </div>
-                  )}
-                </div>
-              </Tooltip>
-            );
-          } catch (e) {
-            return (
-              <span style={{ fontSize: "13px", fontWeight: 500, color: "#333" }}>
-                {change.newValue}
-              </span>
-            );
-          }
-        }
-        
         return (
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <span style={{ 
@@ -503,60 +310,27 @@ const BatchComparisonTable = ({ comparisonData, onPaginationChange, onSearch, on
           </div>
         );
       }
-    })),
-    {
-      title: 'Recommendation',
-      key: 'recommendation',
-      width: 220,
-      render: (_, record) => {
-        const recommendation = record.originalItem?.recommendation;
-        return (
-          <span style={{ fontWeight: 500, color: '#333' }}>
-            {recommendation || '—'}
-          </span>
-        );
-      }
-    }
+    }))
   ];
 
   const handleTableChange = (pagination, filters, sorter) => {
     // Handle column sorter
-    let field = sortField;
-    let order = sortOrder;
-    
     if (sorter && sorter.column) {
-      field = sorter.field?.toLowerCase();
-      order = sorter.order ? (sorter.order === 'ascend' ? 'asc' : 'desc') : null;
+      const field = sorter.field?.toLowerCase();
+      const order = sorter.order ? (sorter.order === 'ascend' ? 'asc' : 'desc') : null;
+      
       setSortField(field);
       setSortOrder(order);
-    } else if (sorter && !sorter.column) {
-      field = null;
-      order = null;
-      setSortField(null);
-      setSortOrder(null);
-    }
-
-    const newHeaderFilters = {
-      catchNo: filters.catchNo ? filters.catchNo[0] : null,
-      centerCode: filters.centerCode ? filters.centerCode[0] : null,
-      status: filters.status ? filters.status[0] : null,
-    };
-    setHeaderFilters(newHeaderFilters);
-
-    if (sorter && sorter.column) {
+      
       if (onSort) {
-        onSort(field, order, searchText, newHeaderFilters);
-      }
-    } else {
-      if (onSearch) {
-        onSearch(searchText, field, order, newHeaderFilters);
+        onSort(field, order, searchText);
       }
     }
   };
 
   const handlePaginationChange = (pageNo, pageSize) => {
     if (onPaginationChange) {
-      onPaginationChange(pageNo, pageSize, searchText, sortField, sortOrder, headerFilters);
+      onPaginationChange(pageNo, pageSize);
     }
   };
 
@@ -564,7 +338,7 @@ const BatchComparisonTable = ({ comparisonData, onPaginationChange, onSearch, on
     setActiveTab(key);
     // Don't send status filter - let backend return all data and frontend filters by tab
     if (onSearch) {
-      onSearch(searchText, sortField, sortOrder, headerFilters);
+      onSearch(searchText, sortField, sortOrder, null);
     }
   };
 
@@ -574,7 +348,6 @@ const BatchComparisonTable = ({ comparisonData, onPaginationChange, onSearch, on
   const removedCount = removedData.length;
   const centreQtyCount = centreQtyData.length;
   const nodalCount = nodalData.length;
-  const centerCodeCount = centerCodeData?.length || 0;
   const otherCount = otherData.length;
 
   const tabs = [
@@ -614,12 +387,6 @@ const BatchComparisonTable = ({ comparisonData, onPaginationChange, onSearch, on
       label: `Nodal Change (${nodalCount})`,
       count: nodalCount,
       color: '#722ed1'
-    },
-    {
-      key: 'centerCode',
-      label: `Center Code Changed (${centerCodeCount})`,
-      count: centerCodeCount,
-      color: '#eb2f96'
     }
     // {
     //   key: 'modified',
@@ -696,7 +463,7 @@ const BatchComparisonTable = ({ comparisonData, onPaginationChange, onSearch, on
           <Row justify="space-between" align="middle" style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid #f0f0f0' }}>
             <Col>
               <span style={{ color: '#666' }}>
-                Total {currentTableData.length} records {activeTab === 'allChanges' ? 'with changes' : `with ${activeTab === 'catchLevel' ? 'catch-level changes' : activeTab === 'added' ? 'added status' : activeTab === 'removed' ? 'removed status' : activeTab === 'centre' ? 'quantity changed' : activeTab === 'nodal' ? 'nodal changes' : activeTab === 'centerCode' ? 'center code changes' : 'changes'}`}
+                Total {currentTableData.length} records {activeTab === 'allChanges' ? 'with changes' : `with ${activeTab === 'catchLevel' ? 'catch-level changes' : activeTab === 'added' ? 'added status' : activeTab === 'removed' ? 'removed status' : activeTab === 'centre' ? 'quantity changed' : activeTab === 'nodal' ? 'nodal changes' : 'changes'}`}
               </span>
             </Col>
             <Col>
