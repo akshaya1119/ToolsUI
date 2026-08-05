@@ -10,6 +10,7 @@ const useStore = create((set) => ({
   allProjects: [],
   allGroups: [],
   nrDataCount: 0,
+  headerCorrectionCount: 0,
   isConfigured: false,
   isLoadingData: true, // Keep guards from redirecting before initial fetch
   hasDeactivatedCatches: false,  
@@ -31,7 +32,7 @@ const useStore = create((set) => ({
     localStorage.removeItem("selectedGroup");
     localStorage.removeItem("selectedType");
     localStorage.removeItem("selectedLot");
-    set({ projectName: "", projectId: "", groupId: "", typeId: "", selectedLot: null, nrDataCount: 0, isConfigured: false });
+    set({ projectName: "", projectId: "", groupId: "", typeId: "", selectedLot: null, nrDataCount: 0, headerCorrectionCount: 0, isConfigured: false });
   },
 
   // Action to set selected lot
@@ -47,6 +48,7 @@ const useStore = create((set) => ({
   setAllProjects: (projects) => set({ allProjects: projects }),
   setAllGroups: (groups) => set({ allGroups: groups }),
   setNrDataCount: (count) => set({ nrDataCount: count }),
+  setHeaderCorrectionCount: (count) => set({ headerCorrectionCount: count }),
   setIsConfigured: (status) => set({ isConfigured: status }),
   setIsLoadingData: (status) => set({ isLoadingData: status }), // ✅ Action to set loading status
   setHasDeactivatedCatches: (status) => set({ hasDeactivatedCatches: status }),  // ✅ Set deactivated catches flag

@@ -26,6 +26,43 @@ export const getCurrentUserId = () => {
 };
 
 /**
+ * Decode the stored JWT and return the numeric roleId from token claims.
+ * Returns null if not found.
+ */
+export const getCurrentUserRoleId = () => {
+  try {
+    const rawRoleId = localStorage.getItem('roleId') || localStorage.getItem('role');
+    if (rawRoleId && !isNaN(Number(rawRoleId))) {
+      return Number(rawRoleId);
+    }
+    const userDataStr = localStorage.getItem('userData') || localStorage.getItem('user');
+    if (userDataStr) {
+      try {
+        const parsed = JSON.parse(userDataStr);
+        const rId = parsed.roleId ?? parsed.roleid ?? parsed.RoleId ?? parsed.role;
+        if (rId !== undefined && rId !== null && !isNaN(Number(rId))) return Number(rId);
+      } catch {}
+    }
+    const token = localStorage.getItem('token');
+    if (!token) return null;
+    const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+    const roleId =
+      payload['roleId'] ??
+      payload['roleid'] ??
+      payload['RoleId'] ??
+      payload['role'] ??
+      payload['Role'] ??
+      payload['http://schemas.microsoft.com/ws/2008/06/identity/claims/role'] ??
+      payload['http://schemas.xmlsoap.org/ws/2005/05/identity/claims/role'] ??
+      null;
+    const num = roleId !== null ? Number(roleId) : null;
+    return num && !isNaN(num) ? num : null;
+  } catch {
+    return null;
+  }
+};
+
+/**
  * Hook to fetch all users from the ERP User API and build a userId → firstName map.
  */
 export const useUserMap = () => {

@@ -6,6 +6,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { MdGroups } from "react-icons/md";
 import { motion, AnimatePresence } from 'framer-motion';
 import { getRecentProjects, addRecentProject, formatTimeAgo } from './utils/recentProjects';
+import { getCurrentUserRoleId } from './hooks/useUserMap';
 import { 
   LayoutGrid, 
   Folder, 
@@ -24,7 +25,8 @@ import {
   Pin,
   ChevronDown,
   ChevronUp,
-  Archive
+  Archive,
+  AlertCircle
 } from 'lucide-react';
 
 const url = import.meta.env.VITE_API_BASE_URL;
@@ -49,6 +51,7 @@ const useDebounce = (value, delay) => {
 export default function Dashboard({ externalSearchQuery, onSearchQueryChange }) {
   const [projects, setProjects] = useState([]);
   const [groups, setGroups] = useState([]);
+  const [correctionProjects, setCorrectionProjects] = useState([]);
   const [view, setView] = useState("groups");
   const [selectedGroupId, setSelectedGroupId] = useState(null);
   const [searchQuery, setSearchQuery] = useState(externalSearchQuery || "");
@@ -56,7 +59,10 @@ export default function Dashboard({ externalSearchQuery, onSearchQueryChange }) 
   const [loading, setLoading] = useState(true);
   const [pinnedGroups, setPinnedGroups] = useState(() => JSON.parse(localStorage.getItem("pinned_groups") || "[]"));
   const [pinnedProjects, setPinnedProjects] = useState(() => JSON.parse(localStorage.getItem("pinned_projects") || "[]"));
-  const [isGroupsExpanded, setIsGroupsExpanded] = useState(false);
+  const [isGroupsExpanded, setIsGroupsExpanded] = useState(true);
+
+  const roleId = getCurrentUserRoleId();
+  const isRoleAuthorized = roleId === null || (Number(roleId) <= 4 && Number(roleId) > 0);
   const [isProjectsExpanded, setIsProjectsExpanded] = useState(false);
 
   const setProject = useStore((state) => state.setProject);
@@ -136,6 +142,32 @@ export default function Dashboard({ externalSearchQuery, onSearchQueryChange }) 
       setProjects(combinedProjects);
       setAllProjects(combinedProjects);
 
+      // 4. For roleId <= 4, fetch projects that have correction or review catches
+      if (isRoleAuthorized) {
+        try {
+          const pendingRes = await API.get('/Correction/PendingProjects');
+          console.log("[Dashboard] Pending correction projects from API:", pendingRes?.data);
+          const pendingList = (pendingRes.data || []).map((item) => {
+            const p = combinedProjects.find(cp => Number(cp.id) === Number(item.projectId)) ||
+                      allProjects.find(ap => Number(ap.projectId ?? ap.id) === Number(item.projectId)) || {};
+            return {
+              id: item.projectId,
+              name: p.name || p.projectName || `Project #${item.projectId}`,
+              groupId: p.groupId || '',
+              typeId: p.typeId || '',
+              timeAgo: p.timeAgo || '',
+              correctionCount: item.correctionCount || 0,
+              reviewCount: item.reviewCount || 0,
+            };
+          }).filter(p => p.name);
+          setCorrectionProjects(pendingList);
+        } catch (err) {
+          console.error("Failed to fetch pending correction projects", err);
+        }
+      } else {
+        setCorrectionProjects([]);
+      }
+
     } catch (err) {
       console.error("Failed to fetch projects", err);
     } finally {
@@ -212,13 +244,25 @@ export default function Dashboard({ externalSearchQuery, onSearchQueryChange }) 
   // Debounce search query
   const debouncedSearchQuery = useDebounce(searchQuery, 500);
 
-  // Get recent projects from localStorage instead of API
+  // Get recent projects from localStorage, attaching pending correction/review counts if any
   const recentProjects = useMemo(() => {
-    return getRecentProjects().map(rp => ({
-      ...rp,
-      timeAgo: formatTimeAgo(rp.lastVisited)
-    }));
-  }, []);
+    const correctionMap = new Map(correctionProjects.map(cp => [Number(cp.id), cp]));
+    return getRecentProjects().map(rp => {
+      const stat = correctionMap.get(Number(rp.id));
+      return {
+        ...rp,
+        timeAgo: formatTimeAgo(rp.lastVisited),
+        correctionCount: stat?.correctionCount || 0,
+        reviewCount: stat?.reviewCount || 0,
+      };
+    });
+  }, [correctionProjects]);
+
+  // Projects with pending corrections/reviews that are NOT in Recent Work
+  const unopenedCorrectionProjects = useMemo(() => {
+    const recentIdSet = new Set(recentProjects.map(rp => Number(rp.id)));
+    return correctionProjects.filter(cp => !recentIdSet.has(Number(cp.id)));
+  }, [correctionProjects, recentProjects]);
 
   const handleGroupClick = (groupId) => {
     setSelectedGroupId(groupId);
@@ -537,6 +581,64 @@ export default function Dashboard({ externalSearchQuery, onSearchQueryChange }) 
                 </section>
               )}
 
+              {/* Correction & Review Projects (Only for roleId <= 4 and NOT already in Recent Work) */}
+              {isRoleAuthorized && unopenedCorrectionProjects.length > 0 && !searchQuery && (
+                <section>
+                  <div className="flex items-center gap-2 mb-4">
+                    <span className="relative flex h-2.5 w-2.5">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500"></span>
+                    </span>
+                    <h2 className="text-xs font-bold text-slate-700 tracking-tight uppercase">Correction & Review Projects</h2>
+                    <span className="text-[10px] bg-rose-50 text-rose-600 px-2 py-0.5 rounded-full font-bold border border-rose-200">
+                      {unopenedCorrectionProjects.length}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-5 gap-4 lg:gap-6">
+                    {unopenedCorrectionProjects.map((project) => (
+                      <motion.div
+                        key={`correction-proj-${project.id}`}
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        onClick={() => handleCardClick(project.id, project.name, project.groupId, project.typeId)}
+                        className="group bg-white p-4 lg:p-5 rounded-xl border border-slate-100 hover:border-blue-200 hover:shadow-md transition-all cursor-pointer flex items-center gap-4 relative"
+                      >
+                        <div className="w-11 h-11 lg:w-12 lg:h-12 rounded-lg bg-blue-50 flex items-center justify-center text-blue-600 group-hover:bg-blue-600 group-hover:text-white transition-colors flex-shrink-0">
+                          <Clock size={22} className="lg:w-6 lg:h-6" />
+                        </div>
+                        <div className="flex-1 min-w-0 text-left">
+                          <h3 className="font-semibold text-slate-900 truncate text-sm lg:text-base">{project.name}</h3>
+                          <div className="flex items-center flex-wrap gap-x-2 gap-y-1 mt-0.5 text-xs lg:text-sm font-medium">
+                            <span className="text-slate-400">
+                              {project.timeAgo || 'Requires Attention'}
+                            </span>
+                            {isRoleAuthorized && ((project.correctionCount > 0) || (project.reviewCount > 0)) && (
+                              <span className="text-slate-300 px-0.5">•</span>
+                            )}
+                            {isRoleAuthorized && project.correctionCount > 0 && (
+                              <span 
+                                title="Corrections"
+                                className="inline-flex items-center justify-center px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-red-600 text-white shadow-sm min-w-[18px]"
+                              >
+                                {project.correctionCount}
+                              </span>
+                            )}
+                            {isRoleAuthorized && project.reviewCount > 0 && (
+                              <span 
+                                title="Reviews"
+                                className="inline-flex items-center justify-center px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-amber-500 text-white shadow-sm min-w-[18px]"
+                              >
+                                {project.reviewCount}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </motion.div>
+                    ))}
+                  </div>
+                </section>
+              )}
+
               {/* Recently Accessed */}
               {recentProjects.length > 0 && !searchQuery && (
                 <section>
@@ -551,14 +653,37 @@ export default function Dashboard({ externalSearchQuery, onSearchQueryChange }) 
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         onClick={() => handleCardClick(project.id, project.name, project.groupId, project.typeId)}
-                        className="group bg-white p-4 lg:p-5 rounded-xl border border-slate-100 hover:border-blue-200 hover:shadow-md transition-all cursor-pointer flex items-center gap-4"
+                        className="group bg-white p-4 lg:p-5 rounded-xl border border-slate-100 hover:border-blue-200 hover:shadow-md transition-all cursor-pointer flex items-center gap-4 relative"
                       >
-                        <div className="w-11 h-11 lg:w-12 lg:h-12 rounded-lg bg-blue-50 flex items-center justify-center text-blue-600 group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                        <div className="w-11 h-11 lg:w-12 lg:h-12 rounded-lg bg-blue-50 flex items-center justify-center text-blue-600 group-hover:bg-blue-600 group-hover:text-white transition-colors flex-shrink-0">
                           <Clock size={22} className="lg:w-6 lg:h-6" />
                         </div>
                         <div className="flex-1 min-w-0 text-left">
                           <h3 className="font-semibold text-slate-900 truncate text-sm lg:text-base">{project.name}</h3>
-                          <p className="text-xs lg:text-sm text-slate-400 font-medium">{project.timeAgo}</p>
+                          <div className="flex items-center flex-wrap gap-x-2 gap-y-1 mt-0.5 text-xs lg:text-sm font-medium">
+                            <span className="text-slate-400">
+                              {project.timeAgo || 'Requires Attention'}
+                            </span>
+                            {isRoleAuthorized && ((project.correctionCount > 0) || (project.reviewCount > 0)) && (
+                              <span className="text-slate-300 px-0.5">•</span>
+                            )}
+                            {isRoleAuthorized && project.correctionCount > 0 && (
+                              <span 
+                                title="Corrections"
+                                className="inline-flex items-center justify-center px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-red-600 text-white shadow-sm min-w-[18px]"
+                              >
+                                {project.correctionCount}
+                              </span>
+                            )}
+                            {isRoleAuthorized && project.reviewCount > 0 && (
+                              <span 
+                                title="Reviews"
+                                className="inline-flex items-center justify-center px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-amber-500 text-white shadow-sm min-w-[18px]"
+                              >
+                                {project.reviewCount}
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </motion.div>
                     ))}
