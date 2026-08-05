@@ -166,6 +166,17 @@ export const buildTemplateColumns = ({
     },
   },
   {
+  title: "Sub Name",
+  dataIndex: "subName",
+  key: "subName",
+  width: 180,
+  render: (value, record) => (
+    <Typography.Text>
+      {value ?? record?.SubName ?? "-"}
+    </Typography.Text>
+  ),
+},
+  {
     title: "Version",
     dataIndex: "version",
     key: "version",
@@ -184,7 +195,16 @@ export const buildTemplateColumns = ({
           />
         );
       }
-      return <Tag color="blue">v{value}</Tag>;
+      return (
+        <Space size={4}>
+          <Tag color="blue">v{value}</Tag>
+          {(record?.subName ?? record?.SubName) && (
+            <Typography.Text type="secondary" style={{ fontSize: "12px" }}>
+              ({record.subName ?? record.SubName})
+            </Typography.Text>
+          )}
+        </Space>
+      );
     },
   },
   {
@@ -370,12 +390,25 @@ export const buildVersionsColumns = ({
     title: "Version",
     dataIndex: "version",
     key: "version",
-    width: 140,
+    width: 100,
     render: (value) => (
       <Space size={4}>
         <Tag color="blue">v{value}</Tag>
       </Space>
     ),
+  },
+  {
+    title: "Sub Name",
+    key: "subName",
+    width: 150,
+    render: (_, record) => {
+      const val = record?.subName ?? record?.SubName;
+      return val ? (
+        <Typography.Text>{val}</Typography.Text>
+      ) : (
+        <Typography.Text type="secondary">-</Typography.Text>
+      );
+    },
   },
   {
     title: "Scope",

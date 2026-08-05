@@ -18,6 +18,40 @@ import {
 } from 'lucide-react';
 import { useUserMap, getFirstNameFromUserId } from '../../hooks/useUserMap';
 
+// Helper to format ISO date-time to Indian Standard Time (IST)
+const formatDateTimeToIST = (dateVal) => {
+  if (!dateVal) return '-';
+  try {
+    let dateStr = String(dateVal);
+    // If it doesn't end with Z and doesn't contain a timezone offset, and is in ISO-like format, append 'Z'
+    if (
+      !dateStr.endsWith('Z') &&
+      !dateStr.includes('+') &&
+      !dateStr.match(/-\d{2}:\d{2}$/)
+    ) {
+      if (dateStr.includes(' ') && !dateStr.includes('T')) {
+        dateStr = dateStr.replace(' ', 'T');
+      }
+      dateStr = `${dateStr}Z`;
+    }
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return '-';
+    
+    return d.toLocaleString('en-IN', {
+      timeZone: 'Asia/Kolkata',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: true,
+    });
+  } catch (e) {
+    return '-';
+  }
+};
+
 const ReportTemplateManagement = ({
   reports = [],
   onDownload,
@@ -378,6 +412,9 @@ const ReportTemplateManagement = ({
       // Switch to Template pagination state
       setTemplatePage(1);
     }
+
+    // Refresh data from API on tab toggle
+    fetchEnvLotReports();
   };
 
   // Reset pagination when filters change (only for current view)
@@ -1023,16 +1060,25 @@ const ReportTemplateManagement = ({
       // Track download for EnvelopeLotReports
       if (report?.envLotReport?.id) {
         try {
-          let currentUserId = localStorage.getItem('userData');
-          if (currentUserId) {
-            try {
-              const parsed = JSON.parse(currentUserId);
-              if (parsed && typeof parsed === 'object' && parsed.userId) {
-                currentUserId = parsed.userId;
+          let currentUserId = localStorage.getItem('userId');
+          if (!currentUserId || currentUserId === 'undefined') {
+            const userData = localStorage.getItem('userData');
+            if (userData) {
+              try {
+                const parsed = JSON.parse(userData);
+                currentUserId = parsed.userId ?? parsed.UserId ?? parsed.id ?? parsed.Id ?? null;
+              } catch (e) {
+                // ignore
               }
-            } catch (e) {
-              // it's a plain string
             }
+          }
+          if (currentUserId && currentUserId !== 'undefined') {
+            currentUserId = Number(currentUserId);
+            if (isNaN(currentUserId)) {
+              currentUserId = null;
+            }
+          } else {
+            currentUserId = null;
           }
 
           await axios.put(
@@ -1042,6 +1088,8 @@ const ReportTemplateManagement = ({
               DownloadedByUserId: currentUserId ? Number(currentUserId) : null,
             }
           );
+          // Fetch API after track-download so the UI data is updated immediately
+          await fetchEnvLotReports();
         } catch (trackingError) {
           console.warn('Failed to track download:', trackingError);
         }
@@ -1737,28 +1785,9 @@ const ReportTemplateManagement = ({
         const generatedOn =
           record.versions?.[0]?.generatedOn;
 
-        if (!generatedOn) {
-          return (
-            <span className="text-sm text-slate-600">
-              -
-            </span>
-          );
-        }
-
         return (
           <span className="text-sm text-slate-600">
-            {new Date(generatedOn).toLocaleString(
-              'en-IN',
-              {
-                day: '2-digit',
-                month: '2-digit',
-                year: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit',
-                hour12: true,
-              }
-            )}
+            {formatDateTimeToIST(generatedOn)}
           </span>
         );
       },
@@ -1796,9 +1825,9 @@ const ReportTemplateManagement = ({
 
         return (
           <span className="text-sm text-slate-600">
-            {generatedById ? getFirstNameFromUserId(generatedById, userMap) : fallbackName}
+            {displayName}
           </span>
-        )
+        );
       },
     },
 
@@ -1825,9 +1854,9 @@ const ReportTemplateManagement = ({
 
         return (
           <span className="text-sm text-slate-600">
-            {downloadedById ? getFirstNameFromUserId(downloadedById, userMap) : fallbackName}
+            {displayName}
           </span>
-        )
+        );
       },
     },
 
@@ -1845,28 +1874,9 @@ const ReportTemplateManagement = ({
           record.envLotReport?.lastDownloadedAt ||
           record.lastDownloadedAt;
 
-        if (!lastDownloadedAt) {
-          return (
-            <span className="text-sm text-slate-600">
-              -
-            </span>
-          );
-        }
-
         return (
           <span className="text-sm text-slate-600">
-            {new Date(lastDownloadedAt).toLocaleString(
-              'en-IN',
-              {
-                day: '2-digit',
-                month: '2-digit',
-                year: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit',
-                hour12: true,
-              }
-            )}
+            {formatDateTimeToIST(lastDownloadedAt)}
           </span>
         );
       },

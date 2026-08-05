@@ -25,11 +25,12 @@ export const useUserMap = () => {
         });
         const users = response.data || [];
         
-        // Create a map of userId -> firstName
+        // Create a map of userId -> firstName/displayName
         const map = {};
         users.forEach(user => {
-          if (user.userId && user.firstName) {
-            map[user.userId] = user.firstName;
+          const userIdKey = user.userId ?? user.UserId;
+          if (userIdKey) {
+            map[userIdKey] = user.firstName || user.userName || user.Username || `User ${userIdKey}`;
           }
         });
         
@@ -52,6 +53,6 @@ export const useUserMap = () => {
  * Helper function to get firstName from userId
  */
 export const getFirstNameFromUserId = (userId, userMap) => {
-  if (!userId || !userMap) return '-';
-  return userMap[userId] || '-';
+  if (!userId || !userMap) return null;
+  return userMap[userId] || userMap[String(userId)] || userMap[Number(userId)] || null;
 };
