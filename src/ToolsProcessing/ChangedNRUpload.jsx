@@ -87,12 +87,12 @@ const ChangedNRUpload = () => {
       console.log(`[loadComparisonFields] Fetching fields for projectId: ${projectId}`);
       const res = await API.get(`/NRDatas/get-comparison-fields/${projectId}`);
       console.log("[loadComparisonFields] Response:", res.data);
-      
+
       const fields = res.data?.fields || [];
       console.log("[loadComparisonFields] Fields extracted:", fields);
-      
+
       setAvailableFields(fields);
-      
+
       if (fields.length === 0) {
         console.warn("[loadComparisonFields] No fields found for comparison");
       }
@@ -148,6 +148,13 @@ const ChangedNRUpload = () => {
       return;
     }
 
+    if (!selectedProcess) {
+      showToast("Please select a Process before comparing.", "warning");
+      return;
+    }
+    const process = processes.find(p => p.processId === selectedProcess);
+    const step = process ? process.steps : 0;
+
     setLoading(true);
     try {
       const params = {
@@ -156,6 +163,7 @@ const ChangedNRUpload = () => {
         lotNo: selectedLot || 0,
         pageNo: 1,
         pageSize: 20,
+        processStep: step,
       };
 
       // Add additional fields if selected
@@ -172,7 +180,7 @@ const ChangedNRUpload = () => {
     } catch (error) {
       console.error("Failed to compare batches:", error);
       const errorData = error?.response?.data;
-      
+
       // Handle exam date validation errors
       if (errorData?.details && Array.isArray(errorData.details)) {
         // Show detailed error messages for exam date mismatches
@@ -180,14 +188,14 @@ const ChangedNRUpload = () => {
           .slice(0, 5) // Show first 5 errors
           .map((detail, idx) => `${idx + 1}. ${detail}`)
           .join("\n");
-        
+
         const fullMessage = `${errorData.message}\n\n${detailsMessage}${errorData.details.length > 5 ? `\n... and ${errorData.details.length - 5} more errors` : ""}`;
         showToast(fullMessage, "error");
       } else {
         const errorMsg = errorData?.message || "Failed to compare batches";
         showToast(errorMsg, "error");
       }
-      
+
       setComparisonData(null);
     } finally {
       setLoading(false);
@@ -200,7 +208,10 @@ const ChangedNRUpload = () => {
     setAdditionalFields([]);
   };
 
-  const handlePaginationChange = async (pageNo, pageSize) => {
+  const handlePaginationChange = async (pageNo, pageSize, searchText, sortField, sortOrder, headerFilters) => {
+    const process = processes.find(p => p.processId === selectedProcess);
+    const step = process ? process.steps : 0;
+
     setLoading(true);
     try {
       const params = {
@@ -209,6 +220,13 @@ const ChangedNRUpload = () => {
         lotNo: selectedLot || 0,
         pageNo: pageNo,
         pageSize: pageSize,
+        search: searchText || null,
+        sortField: sortField || null,
+        sortOrder: sortOrder || null,
+        status: headerFilters?.status || null,
+        catchNo: headerFilters?.catchNo || null,
+        centerCode: headerFilters?.centerCode || null,
+        processStep: step,
       };
 
       if (additionalFields.length > 0) {
@@ -228,7 +246,10 @@ const ChangedNRUpload = () => {
     }
   };
 
-  const handleSearch = async (searchText, sortField, sortOrder, status) => {
+  const handleSearch = async (searchText, sortField, sortOrder, headerFilters) => {
+    const process = processes.find(p => p.processId === selectedProcess);
+    const step = process ? process.steps : 0;
+
     setLoading(true);
     try {
       const params = {
@@ -240,7 +261,10 @@ const ChangedNRUpload = () => {
         search: searchText || null,
         sortField: sortField || null,
         sortOrder: sortOrder || null,
-        status: status || null,
+        status: headerFilters?.status || null,
+        catchNo: headerFilters?.catchNo || null,
+        centerCode: headerFilters?.centerCode || null,
+        processStep: step,
       };
 
       if (additionalFields.length > 0) {
@@ -260,7 +284,10 @@ const ChangedNRUpload = () => {
     }
   };
 
-  const handleSort = async (sortField, sortOrder, searchText) => {
+  const handleSort = async (sortField, sortOrder, searchText, headerFilters) => {
+    const process = processes.find(p => p.processId === selectedProcess);
+    const step = process ? process.steps : 0;
+
     setLoading(true);
     try {
       const params = {
@@ -272,6 +299,10 @@ const ChangedNRUpload = () => {
         search: searchText || null,
         sortField: sortField || null,
         sortOrder: sortOrder || null,
+        status: headerFilters?.status || null,
+        catchNo: headerFilters?.catchNo || null,
+        centerCode: headerFilters?.centerCode || null,
+        processStep: step,
       };
 
       if (additionalFields.length > 0) {
@@ -396,16 +427,16 @@ const ChangedNRUpload = () => {
                 >
                   Compare
                 </Button>
-                <Button 
-                  icon={<DeleteOutlined />} 
+                <Button
+                  icon={<DeleteOutlined />}
                   onClick={handleReset}
                   size="middle"
                 >
                   Reset
                 </Button>
-                <Button 
-                  icon={<ReloadOutlined />} 
-                  onClick={loadBatches} 
+                <Button
+                  icon={<ReloadOutlined />}
+                  onClick={loadBatches}
                   loading={loadingBatches}
                   size="middle"
                 >
@@ -420,7 +451,7 @@ const ChangedNRUpload = () => {
       {/* Comparison Table */}
       {comparisonData && (
         <Card className="comparison-results-card" style={{ marginBottom: 24 }}>
-          <BatchComparisonTable 
+          <BatchComparisonTable
             comparisonData={comparisonData}
             onPaginationChange={handlePaginationChange}
             onSearch={handleSearch}

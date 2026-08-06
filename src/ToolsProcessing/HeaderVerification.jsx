@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 import { Filter, FileEdit, Check, X } from 'lucide-react';
@@ -12,7 +12,7 @@ import SearchBarHV from './components/HeaderVerification/SearchBarHV';
 import StatusBadgeHV from './components/HeaderVerification/StatusBadgeHV';
 import PrintPreviewHV from './components/HeaderVerification/PrintPreviewHV';
 import { normalizeStatus, statusLabels, statusDropdownOptions } from './components/HeaderVerification/statusUtils';
-import { getCurrentUserId } from '../hooks/useUserMap';
+import { getCurrentUserId, getCurrentUserRoleId } from '../hooks/useUserMap';
 
 const customTableStyles = `
   .header-verification-table tbody tr:hover td {
@@ -22,10 +22,11 @@ const customTableStyles = `
 
 const HeaderVerification = () => {
   const projectId = useStore((state) => state.projectId);
+  const setHeaderCorrectionCount = useStore((state) => state.setHeaderCorrectionCount);
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(false);
   const [allLots, setAllLots] = useState([]);
-  const [summaryStats, setSummaryStats] = useState({ total: 0, verified: 0, unclear: 0, notVerified: 0 });
+  const [summaryStats, setSummaryStats] = useState({ total: 0, verified: 0, unclear: 0, notVerified: 0, correctionCount: 0 });
   const [totalRecordsCount, setTotalRecordsCount] = useState(0);
   const [serverTotalPages, setServerTotalPages] = useState(1);
   const [serverPaging, setServerPaging] = useState(false);
@@ -35,6 +36,11 @@ const HeaderVerification = () => {
   // Must be declared before useState calls that reference them
   const initCatch = searchParams.get('catch') || '';
   const initVerificationStatus = searchParams.get('status');
+
+  const [correctionFilter, setCorrectionFilter] = useState(false);
+  const currentUserRoleId = getCurrentUserRoleId();
+  const isRoleAuthorized = currentUserRoleId !== null && Number(currentUserRoleId) <= 4 && Number(currentUserRoleId) > 0;
+  const canShowCorrection = isRoleAuthorized && ((summaryStats.correctionCount ?? 0) > 0 || correctionFilter);
 
   // Pre-fill search input from ?catch= param, but don't restrict the API — let user see all records
   const [globalSearch, setGlobalSearch] = useState('');
@@ -69,7 +75,7 @@ const HeaderVerification = () => {
   const [editingRowId, setEditingRowId] = useState(null);
   const [editFormData, setEditFormData] = useState({});
   const [columnFilters, setColumnFilters] = useState({
-    catchNo: '', lotNo: '', a: '', b: '', c: '', d: '', date: '', time: '', status: ''
+    catchNo: '', lotNo: '', a: '', b: '', c: '', d: '', remark: '', date: '', time: '', status: ''
   });
   const [tableSorter, setTableSorter] = useState({ field: null, order: null });
   const { showToast } = useToast();
@@ -110,7 +116,7 @@ const HeaderVerification = () => {
 
   // All toggleable columns; catchNo and status are always visible
   const ALWAYS_VISIBLE = ['catchNo', 'status', 'actions'];
-  const ALL_TOGGLEABLE = ['a', 'b', 'c', 'd', 'lotNo', 'date', 'time', 'batch'];
+  const ALL_TOGGLEABLE = ['a', 'b', 'c', 'd', 'remark', 'lotNo', 'date', 'time', 'batch'];
   const [visibleColumns, setVisibleColumns] = useState(new Set([...ALWAYS_VISIBLE, ...ALL_TOGGLEABLE]));
 
   // Fetch envLot assignments to build catchNo → envLotNo map for the Batch column
@@ -161,6 +167,7 @@ const HeaderVerification = () => {
       const verified = res.data?.summary?.verified ?? data.filter(d => normalizeStatus(d.status) === 1).length;
       const unclear = res.data?.summary?.unclear ?? data.filter(d => normalizeStatus(d.status) === 2).length;
       const notVerified = res.data?.summary?.notVerified ?? data.filter(d => normalizeStatus(d.status) === 0).length;
+      const correctionCount = res.data?.summary?.correctionCount ?? res.data?.summary?.hasRemarkCount ?? data.filter(d => !!d.remark && d.remark.trim() !== '').length;
       const lots = [...new Set(data.map(d => d.lotNo).filter(Boolean))].sort();
       setAllLots(lots);
       setSummaryStats({
@@ -168,11 +175,15 @@ const HeaderVerification = () => {
         verified,
         unclear,
         notVerified,
+        correctionCount,
       });
+      if (setHeaderCorrectionCount) {
+        setHeaderCorrectionCount(correctionCount);
+      }
     } catch (err) {
       console.error('Failed to fetch meta:', err);
     }
-  }, [projectId, selectedLot]);
+  }, [projectId, selectedLot, setHeaderCorrectionCount]);
 
   // Fetch filtered table records whenever lot changes
   const fetchRecords = useCallback(async () => {
@@ -184,23 +195,30 @@ const HeaderVerification = () => {
       }
       // Send current page, pageSize, search and status to backend so server pagination and filtering is used.
       const params = new URLSearchParams({ pageSize: String(pageSize), page: String(currentPage) });
-      if (selectedLot) params.set('lotNo', selectedLot);
-      if (globalSearch) params.set('search', globalSearch);
-      // Map card key → API status param string
-      const statusApiMap = {
-        VERIFIED: 'Verified',
-        UNCLEAR: 'Unclear',
-        NOT_VERIFIED: 'NotVerified',
-      };
-      const apiStatus = statusApiMap[selectedStatus];
-      if (apiStatus) params.set('status', apiStatus);
 
-      // Append column filters (skip 'status' — handled by selectedStatus param)
-      Object.keys(columnFilters).forEach((key) => {
-        if (key !== 'status' && columnFilters[key]) {
-          params.set(key, columnFilters[key].trim());
-        }
-      });
+      // When Correction filter is active, ignore all other filters (status, lot, column filters, search)
+      if (correctionFilter) {
+        params.set('hasRemark', 'true');
+      } else {
+        if (selectedLot) params.set('lotNo', selectedLot);
+        if (globalSearch) params.set('search', globalSearch);
+
+        // Map card key → API status param string
+        const statusApiMap = {
+          VERIFIED: 'Verified',
+          UNCLEAR: 'Unclear',
+          NOT_VERIFIED: 'NotVerified',
+        };
+        const apiStatus = statusApiMap[selectedStatus];
+        if (apiStatus) params.set('status', apiStatus);
+
+        // Append column filters (skip 'status' — handled by selectedStatus param)
+        Object.keys(columnFilters).forEach((key) => {
+          if (key !== 'status' && columnFilters[key]) {
+            params.set(key, columnFilters[key].trim());
+          }
+        });
+      }
 
       if (tableSorter.field) {
         params.set('sortBy', tableSorter.field);
@@ -221,6 +239,16 @@ const HeaderVerification = () => {
         setServerTotalPages(Math.ceil(data.length / pageSize) || 1);
       }
 
+      if (res.data?.summary?.correctionCount !== undefined) {
+        setSummaryStats(prev => ({
+          ...prev,
+          correctionCount: res.data.summary.correctionCount
+        }));
+        if (setHeaderCorrectionCount) {
+          setHeaderCorrectionCount(res.data.summary.correctionCount);
+        }
+      }
+
       setRecords(data.map(d => ({ ...d, date: d.date, time: d.time })));
     } catch (err) {
       console.error('Failed to fetch records:', err);
@@ -228,15 +256,25 @@ const HeaderVerification = () => {
     } finally {
       setLoading(false);
     }
-  }, [showToast, projectId, selectedLot, pageSize, currentPage, globalSearch, selectedStatus, tableSorter, columnFilters]);
+  }, [showToast, projectId, selectedLot, pageSize, currentPage, globalSearch, selectedStatus, tableSorter, columnFilters, correctionFilter, setHeaderCorrectionCount]);
+
+  const hasAutoSelectedRef = useRef(false);
+
+  useEffect(() => {
+    hasAutoSelectedRef.current = false;
+  }, [projectId]);
 
   useEffect(() => { fetchAllMeta(); }, [fetchAllMeta]);
   
-  // Auto-select the first non-empty status category
-  // Skip when navigated with a ?catch= param — the correct tab is already set from the URL
+  // Auto-select category or Correction filter ONCE on initial project load
+  // If user has roleId <= 4 and there are corrections (correctionCount > 0), show filtered correction data first!
   useEffect(() => {
-    if (initCatch) return;
-    if (summaryStats.notVerified > 0) {
+    if (initCatch || hasAutoSelectedRef.current || (!summaryStats.total && !summaryStats.notVerified && !summaryStats.unclear && !summaryStats.verified && !summaryStats.correctionCount)) return;
+    hasAutoSelectedRef.current = true;
+
+    if (isRoleAuthorized && (summaryStats.correctionCount ?? 0) > 0) {
+      setCorrectionFilter(true);
+    } else if (summaryStats.notVerified > 0) {
       setSelectedStatus('NOT_VERIFIED');
     } else if (summaryStats.unclear > 0) {
       setSelectedStatus('UNCLEAR');
@@ -245,7 +283,7 @@ const HeaderVerification = () => {
     } else {
       setSelectedStatus('ALL');
     }
-  }, [summaryStats]);
+  }, [summaryStats, initCatch, isRoleAuthorized]);
   
   useEffect(() => { fetchRecords(); }, [fetchRecords]);
 
@@ -458,19 +496,21 @@ const HeaderVerification = () => {
       ...getColumnSearchProps('a'),
       sorter: (a, b) => String(a.a || '').localeCompare(String(b.a || '')),
       sortOrder: tableSorter.field === 'a' ? tableSorter.order : null,
-      render: (value, record) => (
-        editingRowId === record.id ? (
-          <textarea
-            className="w-full px-2 py-1 text-sm border border-amber-400 rounded focus:outline-none resize-none overflow-hidden"
-            value={editFormData.a || ''}
-            rows={Math.max(2, Math.ceil((editFormData.a || '').length / 30))}
-            onChange={(e) => setEditFormData({ ...editFormData, a: e.target.value })}
-            onClick={(e) => e.stopPropagation()}
-          />
-        ) : (
-          <span className="text-sm text-gray-800">{value || '-'}</span>
-        )
-      ),
+      render: (value, record) => {
+        const isFieldLocked = normalizeStatus(record.status) === 1 && !isRoleAuthorized;
+        if (editingRowId === record.id && !isFieldLocked) {
+          return (
+            <textarea
+              className="w-full px-2 py-1 text-sm border border-amber-400 rounded focus:outline-none resize-none overflow-hidden"
+              value={editFormData.a || ''}
+              rows={Math.max(2, Math.ceil((editFormData.a || '').length / 30))}
+              onChange={(e) => setEditFormData({ ...editFormData, a: e.target.value })}
+              onClick={(e) => e.stopPropagation()}
+            />
+          );
+        }
+        return <span className="text-sm text-gray-800">{value || '-'}</span>;
+      },
     },
     {
       title: 'B',
@@ -480,19 +520,21 @@ const HeaderVerification = () => {
       ...getColumnSearchProps('b'),
       sorter: (a, b) => String(a.b || '').localeCompare(String(b.b || '')),
       sortOrder: tableSorter.field === 'b' ? tableSorter.order : null,
-      render: (value, record) => (
-        editingRowId === record.id ? (
-          <textarea
-            className="w-full px-2 py-1 text-sm border border-amber-400 rounded focus:outline-none resize-none overflow-hidden"
-            value={editFormData.b || ''}
-            rows={Math.max(2, Math.ceil((editFormData.b || '').length / 30))}
-            onChange={(e) => setEditFormData({ ...editFormData, b: e.target.value })}
-            onClick={(e) => e.stopPropagation()}
-          />
-        ) : (
-          <span className="text-sm text-gray-800">{value || '-'}</span>
-        )
-      ),
+      render: (value, record) => {
+        const isFieldLocked = normalizeStatus(record.status) === 1 && !isRoleAuthorized;
+        if (editingRowId === record.id && !isFieldLocked) {
+          return (
+            <textarea
+              className="w-full px-2 py-1 text-sm border border-amber-400 rounded focus:outline-none resize-none overflow-hidden"
+              value={editFormData.b || ''}
+              rows={Math.max(2, Math.ceil((editFormData.b || '').length / 30))}
+              onChange={(e) => setEditFormData({ ...editFormData, b: e.target.value })}
+              onClick={(e) => e.stopPropagation()}
+            />
+          );
+        }
+        return <span className="text-sm text-gray-800">{value || '-'}</span>;
+      },
     },
     {
       title: 'C',
@@ -502,19 +544,21 @@ const HeaderVerification = () => {
       ...getColumnSearchProps('c'),
       sorter: (a, b) => String(a.c || '').localeCompare(String(b.c || '')),
       sortOrder: tableSorter.field === 'c' ? tableSorter.order : null,
-      render: (value, record) => (
-        editingRowId === record.id ? (
-          <textarea
-            className="w-full px-2 py-1 text-sm border border-amber-400 rounded focus:outline-none resize-none overflow-hidden"
-            value={editFormData.c || ''}
-            rows={Math.max(2, Math.ceil((editFormData.c || '').length / 30))}
-            onChange={(e) => setEditFormData({ ...editFormData, c: e.target.value })}
-            onClick={(e) => e.stopPropagation()}
-          />
-        ) : (
-          <span className="text-sm text-gray-800">{value || '-'}</span>
-        )
-      ),
+      render: (value, record) => {
+        const isFieldLocked = normalizeStatus(record.status) === 1 && !isRoleAuthorized;
+        if (editingRowId === record.id && !isFieldLocked) {
+          return (
+            <textarea
+              className="w-full px-2 py-1 text-sm border border-amber-400 rounded focus:outline-none resize-none overflow-hidden"
+              value={editFormData.c || ''}
+              rows={Math.max(2, Math.ceil((editFormData.c || '').length / 30))}
+              onChange={(e) => setEditFormData({ ...editFormData, c: e.target.value })}
+              onClick={(e) => e.stopPropagation()}
+            />
+          );
+        }
+        return <span className="text-sm text-gray-800">{value || '-'}</span>;
+      },
     },
     {
       title: 'D',
@@ -524,13 +568,38 @@ const HeaderVerification = () => {
       ...getColumnSearchProps('d'),
       sorter: (a, b) => String(a.d || '').localeCompare(String(b.d || '')),
       sortOrder: tableSorter.field === 'd' ? tableSorter.order : null,
+      render: (value, record) => {
+        const isFieldLocked = normalizeStatus(record.status) === 1 && !isRoleAuthorized;
+        if (editingRowId === record.id && !isFieldLocked) {
+          return (
+            <textarea
+              className="w-full px-2 py-1 text-sm border border-amber-400 rounded focus:outline-none resize-none overflow-hidden"
+              value={editFormData.d || ''}
+              rows={Math.max(2, Math.ceil((editFormData.d || '').length / 30))}
+              onChange={(e) => setEditFormData({ ...editFormData, d: e.target.value })}
+              onClick={(e) => e.stopPropagation()}
+            />
+          );
+        }
+        return <span className="text-sm text-gray-800">{value || '-'}</span>;
+      },
+    },
+    {
+      title: 'Remark',
+      dataIndex: 'remark',
+      key: 'remark',
+      width: 140,
+      ...getColumnSearchProps('remark'),
+      sorter: (a, b) => String(a.remark || '').localeCompare(String(b.remark || '')),
+      sortOrder: tableSorter.field === 'remark' ? tableSorter.order : null,
       render: (value, record) => (
         editingRowId === record.id ? (
           <textarea
             className="w-full px-2 py-1 text-sm border border-amber-400 rounded focus:outline-none resize-none overflow-hidden"
-            value={editFormData.d || ''}
-            rows={Math.max(2, Math.ceil((editFormData.d || '').length / 30))}
-            onChange={(e) => setEditFormData({ ...editFormData, d: e.target.value })}
+            value={editFormData.remark || ''}
+            placeholder="Enter remark..."
+            rows={Math.max(2, Math.ceil((editFormData.remark || '').length / 30))}
+            onChange={(e) => setEditFormData({ ...editFormData, remark: e.target.value })}
             onClick={(e) => e.stopPropagation()}
           />
         ) : (
@@ -607,19 +676,23 @@ const HeaderVerification = () => {
       filteredValue: selectedStatus !== 'ALL' ? [selectedStatus] : null,
       sorter: (a, b) => String(a.status || '').localeCompare(String(b.status || '')),
       sortOrder: tableSorter.field === 'status' ? tableSorter.order : null,
-      render: (value, record) => (
-        editingRowId === record.id ? (
-          <select
-            className="w-full px-2 py-1 text-sm border border-amber-400 rounded focus:outline-none bg-white"
-            value={editFormData.status ?? 0}
-            onChange={(e) => setEditFormData({ ...editFormData, status: Number(e.target.value) })}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {statusDropdownOptions.map((option) => (
-              <option key={option.value} value={option.value}>{option.label}</option>
-            ))}
-          </select>
-        ) : (
+      render: (value, record) => {
+        const isStatusLocked = normalizeStatus(record.status) === 1 && !isRoleAuthorized;
+        if (editingRowId === record.id && !isStatusLocked) {
+          return (
+            <select
+              className="w-full px-2 py-1 text-sm border border-amber-400 rounded focus:outline-none bg-white"
+              value={editFormData.status ?? 0}
+              onChange={(e) => setEditFormData({ ...editFormData, status: Number(e.target.value) })}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {statusDropdownOptions.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          );
+        }
+        return (
           <div className="flex flex-col gap-1">
             <StatusBadgeHV status={value} />
             {record.verifiedBy && record.verifiedBy !== 0 && record.verifiedOn && (
@@ -629,8 +702,8 @@ const HeaderVerification = () => {
               </div>
             )}
           </div>
-        )
-      ),
+        );
+      },
     },
     {
       title: 'Actions',
@@ -659,13 +732,8 @@ const HeaderVerification = () => {
           ) : (
             <button
               onClick={(e) => handleEditRowClick(e, record)}
-              disabled={normalizeStatus(record.status) === 1}
-              className={`p-1.5 rounded-md transition-colors ${
-                normalizeStatus(record.status) === 1
-                  ? 'text-gray-300 cursor-not-allowed'
-                  : 'text-blue-600 hover:bg-blue-50'
-              }`}
-              title={normalizeStatus(record.status) === 1 ? 'Cannot edit verified records' : 'Edit row inline'}
+              className="p-1.5 rounded-md transition-colors text-blue-600 hover:bg-blue-50"
+              title="Edit row inline"
             >
               <FileEdit className="w-4 h-4" />
             </button>
@@ -673,7 +741,7 @@ const HeaderVerification = () => {
         </div>
       ),
     },
-  ], [columnFilters, editFormData, editingRowId, tableSorter, selectedStatus, catchEnvLotMap]);
+  ], [columnFilters, editFormData, editingRowId, tableSorter, selectedStatus, catchEnvLotMap, isRoleAuthorized]);
 
   const handleColumnToggle = useCallback((colKey) => {
     if (ALWAYS_VISIBLE.includes(colKey)) return;
@@ -703,9 +771,33 @@ const HeaderVerification = () => {
     setGlobalSearch('');
     setSelectedLot('');
     setSelectedStatus('ALL');
+    setCorrectionFilter(false);
     setCurrentPage(1);
-    setColumnFilters({ catchNo: '', lotNo: '', a: '', b: '', c: '', d: '', date: '', time: '', status: '' });
+    setColumnFilters({ catchNo: '', lotNo: '', a: '', b: '', c: '', d: '', remark: '', date: '', time: '', status: '' });
     setTableSorter({ field: null, order: null });
+  }, []);
+
+  const handleToggleCorrectionFilter = useCallback(() => {
+    setCorrectionFilter((prev) => {
+      const nextVal = !prev;
+      if (nextVal) {
+        // Clear all other filters when activating Correction filter
+        setSearchInput('');
+        setGlobalSearch('');
+        setSelectedLot('');
+        setSelectedStatus('ALL');
+        setColumnFilters({ catchNo: '', lotNo: '', a: '', b: '', c: '', d: '', remark: '', date: '', time: '', status: '' });
+        setTableSorter({ field: null, order: null });
+      }
+      setCurrentPage(1);
+      return nextVal;
+    });
+  }, [setSelectedLot]);
+
+  const handleSelectStatusCard = useCallback((statusKey) => {
+    setCorrectionFilter(false);
+    setSelectedStatus(statusKey);
+    setCurrentPage(1);
   }, []);
 
   const handleFieldUpdate = useCallback(async (recordId, fieldName, newValue, overrideValues = null) => {
@@ -721,17 +813,20 @@ const HeaderVerification = () => {
         B: overrideValues?.B !== undefined ? overrideValues.B : (fieldName === 'b' ? newValue : updatedRecord.b),
         C: overrideValues?.C !== undefined ? overrideValues.C : (fieldName === 'c' ? newValue : updatedRecord.c),
         D: overrideValues?.D !== undefined ? overrideValues.D : (fieldName === 'd' ? newValue : updatedRecord.d),
-        status: normalizeStatus(updatedRecord.status),
+        remark: overrideValues?.remark !== undefined ? overrideValues.remark : (fieldName === 'remark' ? newValue : (updatedRecord.remark || '')),
+        status: overrideValues?.status !== undefined ? overrideValues.status : (fieldName === 'status' ? normalizeStatus(newValue) : normalizeStatus(updatedRecord.status)),
         verifiedBy: userId ?? null,
       };
       console.log('[HeaderVerification] handleFieldUpdate payload:', payload, 'userId from token:', userId);
       const lotParam = selectedLot ? `&lotNo=${selectedLot}` : '';
       const res = await API.put(`/Correction/HeaderVerification/${recordId}?projectId=${projectId}${lotParam}`, payload);
-      setRecords(prev => prev.map(r => r.id === recordId ? { ...res.data, date: updatedRecord.date, time: updatedRecord.time } : r));
+      const updatedRecordData = { ...res.data, date: updatedRecord.date, time: updatedRecord.time, remark: res.data.remark ?? '' };
+      setRecords(prev => prev.map(r => r.id === recordId ? updatedRecordData : r));
       if (selectedRecord?.id === recordId) {
-        setSelectedRecord({ ...res.data, date: updatedRecord.date, time: updatedRecord.time });
+        setSelectedRecord(updatedRecordData);
       }
-      return { ...res.data, date: updatedRecord.date, time: updatedRecord.time };
+      fetchAllMeta();
+      return updatedRecordData;
     } catch (err) {
       console.error('Failed to update field:', err);
       // Extract error message from API response
@@ -739,7 +834,7 @@ const HeaderVerification = () => {
       showToast(errorMessage, 'error');
       throw err;
     }
-  }, [projectId, records, selectedRecord, showToast, selectedLot]);
+  }, [projectId, records, selectedRecord, showToast, fetchAllMeta, selectedLot]);
 
   const handleStatusChange = useCallback(async (recordId, newStatusValue) => {
     try {
@@ -754,19 +849,21 @@ const HeaderVerification = () => {
         B: updatedRecord.b,
         C: updatedRecord.c,
         D: updatedRecord.d,
+        remark: null, // Only status is updating -> make remark null
         status: normalizedStatus,
         verifiedBy: userId ?? null,
       };
       console.log('[HeaderVerification] handleStatusChange payload:', payload, 'userId from token:', userId);
       const lotParam = selectedLot ? `&lotNo=${selectedLot}` : '';
       const res = await API.put(`/Correction/HeaderVerification/${recordId}?projectId=${projectId}${lotParam}`, payload);
-      setRecords(prev => prev.map(r => r.id === recordId ? { ...res.data, date: updatedRecord.date, time: updatedRecord.time } : r));
+      const updatedRecordData = { ...res.data, date: updatedRecord.date, time: updatedRecord.time, remark: res.data.remark ?? '' };
+      setRecords(prev => prev.map(r => r.id === recordId ? updatedRecordData : r));
       if (selectedRecord?.id === recordId) {
-        setSelectedRecord({ ...res.data, date: updatedRecord.date, time: updatedRecord.time });
+        setSelectedRecord(updatedRecordData);
       }
       showToast(`Status updated to ${statusLabels[normalizedStatus]}`, 'success');
       fetchAllMeta(); // refresh card counts
-      return { ...res.data, date: updatedRecord.date, time: updatedRecord.time };
+      return updatedRecordData;
     } catch (err) {
       console.error('Failed to update status:', err);
       // Extract error message from API response
@@ -784,6 +881,7 @@ const HeaderVerification = () => {
       b: record.b,
       c: record.c,
       d: record.d,
+      remark: record.remark || '',
       // date: record.date,
       // time: record.time,
       status: normalizeStatus(record.status),
@@ -802,20 +900,36 @@ const HeaderVerification = () => {
       const updatedRecord = records.find(r => r.id === recordId);
       if (!updatedRecord) throw new Error('Record not found');
 
+      const isFieldLocked = normalizeStatus(updatedRecord.status) === 1 && !isRoleAuthorized;
       const userId = getCurrentUserId();
+
+      const newStatus = isFieldLocked ? 1 : Number(editFormData.status);
+      const statusChanged = normalizeStatus(updatedRecord.status) !== newStatus;
+      const originalRemark = (updatedRecord.remark || '').trim();
+      const editedRemark = (editFormData.remark || '').trim();
+      const remarkChanged = editedRemark !== originalRemark;
+
+      // If status changed and remark was NOT modified, clear remark.
+      // If both changed together (or remark was modified), save the new remark.
+      let finalRemark = editedRemark;
+      if (statusChanged && !remarkChanged) {
+        finalRemark = null;
+      }
+
       const payload = {
-        A: editFormData.a,
-        B: editFormData.b,
-        C: editFormData.c,
-        D: editFormData.d,
-        status: Number(editFormData.status),
+        A: isFieldLocked ? (updatedRecord.a || '') : (editFormData.a || ''),
+        B: isFieldLocked ? (updatedRecord.b || '') : (editFormData.b || ''),
+        C: isFieldLocked ? (updatedRecord.c || '') : (editFormData.c || ''),
+        D: isFieldLocked ? (updatedRecord.d || '') : (editFormData.d || ''),
+        remark: finalRemark,
+        status: newStatus,
         verifiedBy: userId ?? null,
       };
 
       console.log('[HeaderVerification] handleSaveRow payload:', payload, 'userId from token:', userId);
       const lotParam = selectedLot ? `&lotNo=${selectedLot}` : '';
       const res = await API.put(`/Correction/HeaderVerification/${recordId}?projectId=${projectId}${lotParam}`, payload);
-      const updatedRecordData = { ...res.data, date: editFormData.date, time: editFormData.time };
+      const updatedRecordData = { ...res.data, date: updatedRecord.date, time: updatedRecord.time, remark: res.data.remark ?? '' };
       setRecords(prev => prev.map(r => r.id === recordId ? updatedRecordData : r));
       setEditingRowId(null);
       setEditFormData({});
@@ -848,8 +962,8 @@ const HeaderVerification = () => {
         <SummaryCardsHV
           records={records}
           summaryStats={summaryStats}
-          selectedCardKey={selectedStatus}
-          onSelectCard={setSelectedStatus}
+          selectedCardKey={correctionFilter ? null : selectedStatus}
+          onSelectCard={handleSelectStatusCard}
         />
       </div>
 
@@ -889,6 +1003,11 @@ const HeaderVerification = () => {
                 visibleColumns={visibleColumns}
                 toggleableColumns={ALL_TOGGLEABLE}
                 onColumnToggle={handleColumnToggle}
+                showCorrection={canShowCorrection}
+                userRoleId={currentUserRoleId}
+                isCorrectionFilter={correctionFilter}
+                onCorrectionFilterToggle={handleToggleCorrectionFilter}
+                correctionCount={summaryStats.correctionCount ?? 0}
               />
             </div>
 
