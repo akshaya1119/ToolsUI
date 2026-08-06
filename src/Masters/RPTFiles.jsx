@@ -692,7 +692,7 @@ const RPTFiles = () => {
         copyMappings: values.copyMappings ?? true,
       };
       if (values.selectedTemplateIds && values.selectedTemplateIds.length > 0) {
-        payload.selectedTemplateIds = values.selectedTemplateIds;
+        payload.SelectedTemplateIds = values.selectedTemplateIds;
       }
       if (sourceScope === "group") {
         payload.sourceGroupId = values.sourceGroupId;
