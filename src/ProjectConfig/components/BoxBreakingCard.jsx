@@ -13,6 +13,13 @@ const BoxBreakingCard = ({
   fields,
   selectedBoxFields,
   setSelectedBoxFields,
+  selectedUniversityExtraBoxFields,
+  setSelectedUniversityExtraBoxFields,
+  selectedOfficeExtraBoxFields,
+  setSelectedOfficeExtraBoxFields,
+  selectedNodalExtraBoxFields,
+  setSelectedNodalExtraBoxFields,
+  extraProcessingConfig,
   selectedCapacity,
   setSelectedCapacity,
   boxCapacities,
@@ -46,6 +53,31 @@ const BoxBreakingCard = ({
     } else {
       setBoxBreakingCriteria(prev => prev.filter(i => i !== "boxFields"));
     }
+
+    if (selectedUniversityExtraBoxFields.length === 0 || JSON.stringify(selectedUniversityExtraBoxFields) === JSON.stringify(selectedBoxFields)) {
+      setSelectedUniversityExtraBoxFields(selectedFields);
+    }
+    if (selectedOfficeExtraBoxFields.length === 0 || JSON.stringify(selectedOfficeExtraBoxFields) === JSON.stringify(selectedBoxFields)) {
+      setSelectedOfficeExtraBoxFields(selectedFields);
+    }
+    if (selectedNodalExtraBoxFields.length === 0 || JSON.stringify(selectedNodalExtraBoxFields) === JSON.stringify(selectedBoxFields)) {
+      setSelectedNodalExtraBoxFields(selectedFields);
+    }
+  };
+
+  const handleUniversityExtraBoxBreakingFields = (selectedFields) => {
+    setSelectedUniversityExtraBoxFields(selectedFields);
+    // You can add specific criteria mapping if needed
+  };
+
+  const handleOfficeExtraBoxBreakingFields = (selectedFields) => {
+    setSelectedOfficeExtraBoxFields(selectedFields);
+    // You can add specific criteria mapping if needed
+  };
+
+  const handleNodalExtraBoxBreakingFields = (selectedFields) => {
+    setSelectedNodalExtraBoxFields(selectedFields);
+    // You can add specific criteria mapping if needed
   };
 
   const handleSorting = (selectedFields) => {
@@ -80,6 +112,22 @@ const BoxBreakingCard = ({
     });
     return `Sort by ${names.join(" then by ")}`;
   };
+
+  const isExtraConfigured = (keyword) => {
+    if (!extraProcessingConfig) return false;
+    const key = Object.keys(extraProcessingConfig).find(k => k.toLowerCase().includes(keyword.toLowerCase()));
+    if (!key) return false;
+    const config = extraProcessingConfig[key];
+    const hasFixed = config.fixedQty > 0;
+    const hasPercentage = config.percentage > 0;
+    const hasRange = Array.isArray(config.range) && config.range.some(r => r.value > 0);
+    const hasNodal = config.isPerNodal && Array.isArray(config.nodalConfigs) && config.nodalConfigs.some(nc => nc.value > 0);
+    return hasFixed || hasPercentage || hasRange || hasNodal;
+  };
+
+  const isUniversityEnabled = isEnabled("Box Breaking") && isExtraConfigured("university");
+  const isOfficeEnabled = isEnabled("Box Breaking") && isExtraConfigured("office");
+  const isNodalEnabled = isEnabled("Box Breaking") && isExtraConfigured("nodal");
 
   return (
     <AnimatedCard>
@@ -279,6 +327,66 @@ const BoxBreakingCard = ({
               ))}
             </Select>
 
+          </div>
+          <div style={isDirty(selectedUniversityExtraBoxFields, importedSnapshot?.selectedUniversityExtraBoxFields) ? DIRTY_STYLE : {}}>
+            <Text strong>Select Box Breaking field for University Extra</Text>
+            <Select
+              mode="multiple"
+              disabled={!isUniversityEnabled}
+              allowClear
+              showSearch
+              style={{ width: "100%", marginTop: 4 }}
+              placeholder="Select one or more fields"
+              value={selectedUniversityExtraBoxFields}
+              onChange={handleUniversityExtraBoxBreakingFields}
+              optionFilterProp="children"
+            >
+              {fields.map((f) => (
+                <Option key={f.fieldId} value={f.fieldId}>
+                  {f.name}
+                </Option>
+              ))}
+            </Select>
+          </div>
+          <div style={isDirty(selectedOfficeExtraBoxFields, importedSnapshot?.selectedOfficeExtraBoxFields) ? DIRTY_STYLE : {}}>
+            <Text strong>Select Box Breaking field for Office Extra</Text>
+            <Select
+              mode="multiple"
+              disabled={!isOfficeEnabled}
+              allowClear
+              showSearch
+              style={{ width: "100%", marginTop: 4 }}
+              placeholder="Select one or more fields"
+              value={selectedOfficeExtraBoxFields}
+              onChange={handleOfficeExtraBoxBreakingFields}
+              optionFilterProp="children"
+            >
+              {fields.map((f) => (
+                <Option key={f.fieldId} value={f.fieldId}>
+                  {f.name}
+                </Option>
+              ))}
+            </Select>
+          </div>
+          <div style={isDirty(selectedNodalExtraBoxFields, importedSnapshot?.selectedNodalExtraBoxFields) ? DIRTY_STYLE : {}}>
+            <Text strong>Select Box Breaking field for Nodal Extra</Text>
+            <Select
+              mode="multiple"
+              disabled={!isNodalEnabled}
+              allowClear
+              showSearch
+              style={{ width: "100%", marginTop: 4 }}
+              placeholder="Select one or more fields"
+              value={selectedNodalExtraBoxFields}
+              onChange={handleNodalExtraBoxBreakingFields}
+              optionFilterProp="children"
+            >
+              {fields.map((f) => (
+                <Option key={f.fieldId} value={f.fieldId}>
+                  {f.name}
+                </Option>
+              ))}
+            </Select>
           </div>
         </div>
       </Card>
