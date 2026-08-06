@@ -17,6 +17,9 @@ const TemplatesCard = ({
   columns,
   loading,
   showImportAction = true,
+  onSaveAsMaster,
+  isSavingMaster,
+  rowSelection,
 }) => {
   const visibleTags = tags.filter(Boolean);
   return (
@@ -35,6 +38,16 @@ const TemplatesCard = ({
       extra={
         <Space>
           <Button title=" Refresh" icon={<ReloadOutlined />} onClick={onRefresh} disabled={!selectionReady} />
+          {onSaveAsMaster && (
+            <Button
+              icon={<CopyOutlined />}
+              onClick={onSaveAsMaster}
+              disabled={!rowSelection || !rowSelection.selectedRowKeys || rowSelection.selectedRowKeys.length === 0}
+              loading={isSavingMaster}
+            >
+              Save as Master
+            </Button>
+          )}
           <Button type="primary" icon={<PlusOutlined />} onClick={onAdd} disabled={disableAdd}>
             Add
           </Button>
@@ -74,6 +87,7 @@ const TemplatesCard = ({
         </Empty>
       ) : (
         <Table
+          rowSelection={rowSelection}
           rowKey="templateId"
           dataSource={data}
           columns={columns}
