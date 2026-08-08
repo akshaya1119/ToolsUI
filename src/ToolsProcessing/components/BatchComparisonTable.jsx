@@ -1,15 +1,200 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react';
-import { Table, Empty, Pagination, Row, Col, Input, Tabs, Tag, Space, Spin, Button, Tooltip } from 'antd';
-import { SearchOutlined } from '@ant-design/icons';
+import { Table, Empty, Pagination, Row, Col, Input, Tabs, Tag, Space, Spin, Button, Tooltip, Dropdown } from 'antd';
+import { SearchOutlined, CloudUploadOutlined, CheckCircleOutlined, ClearOutlined, DownloadOutlined, FileExcelOutlined, FilePdfOutlined } from '@ant-design/icons';
 import { ChevronUp, ChevronDown } from 'lucide-react';
+import API from '../../hooks/api';
+import { useToast } from '../../hooks/useToast';
+import { exportBatchComparisonExcel, categorizeComparisonRecords } from '../utils/batchComparisonExcelExport';
+import { exportBatchComparisonPDF } from '../utils/batchComparisonPdfExport';
 import './BatchComparisonTable.css';
 
-const BatchComparisonTable = ({ comparisonData, onPaginationChange, onSearch, onSort, loading = false }) => {
+const BatchComparisonTable = ({
+  comparisonData,
+  onPaginationChange,
+  onSearch,
+  onSort,
+  onPushChanges,
+  pushLoading = false,
+  loading = false,
+  projectId,
+  comparedBatch,
+  selectedLot,
+  selectedProcess,
+  processes = [],
+  additionalFields = []
+}) => {
+  const { showToast } = useToast();
   const [searchText, setSearchText] = useState('');
   const [sortField, setSortField] = useState(null);
   const [sortOrder, setSortOrder] = useState(null);
   const [activeTab, setActiveTab] = useState('allChanges');
+  const [selectedRowKeys, setSelectedRowKeys] = useState([]);
+  const [selectedRowsData, setSelectedRowsData] = useState([]);
+  const [exportLoading, setExportLoading] = useState(false);
   const debounceTimer = useRef(null);
+
+  // Reset selection when tab or data changes
+  useEffect(() => {
+    setSelectedRowKeys([]);
+    setSelectedRowsData([]);
+  }, [activeTab, comparisonData?.data]);
+
+  const onSelectChange = (newSelectedRowKeys, newSelectedRows) => {
+    setSelectedRowKeys(newSelectedRowKeys);
+    setSelectedRowsData(newSelectedRows);
+  };
+
+  const rowSelection = {
+    selectedRowKeys,
+    onChange: onSelectChange,
+    preserveSelectedRowKeys: true,
+  };
+
+  const handlePushSelected = () => {
+    if (selectedRowsData.length === 0) return;
+    const items = selectedRowsData.map(r => ({
+      catchNo: r.catchNo ? String(r.catchNo) : "",
+      centerCode: r.centerCode ? String(r.centerCode) : ""
+    }));
+    if (onPushChanges) {
+      onPushChanges(items);
+    }
+  };
+
+  const handlePushAll = () => {
+    if (onPushChanges) {
+      onPushChanges(null);
+    }
+  };
+
+  const handleDownload = async (format = 'excel') => {
+    if (!comparisonData) {
+      showToast('No comparison data available to export', 'warning');
+      return;
+    }
+
+    setExportLoading(true);
+    try {
+      let rawRecords = [];
+
+      if (selectedRowsData && selectedRowsData.length > 0) {
+        // User selected specific rows via checkboxes
+        const selectedItems = [];
+        const selectedCatchNos = new Set();
+
+        selectedRowsData.forEach(row => {
+          if (row.originalItem) {
+            selectedItems.push(row.originalItem);
+          } else if (row.catchNo) {
+            selectedCatchNos.add(String(row.catchNo));
+          }
+        });
+
+        // For catch-level rows, find all matching records in comparisonData
+        if (selectedCatchNos.size > 0 && comparisonData?.data) {
+          comparisonData.data.forEach(item => {
+            if (selectedCatchNos.has(String(item.catchNo)) && !selectedItems.includes(item)) {
+              selectedItems.push(item);
+            }
+          });
+        }
+
+        rawRecords = selectedItems.length > 0 ? selectedItems : selectedRowsData.map(r => r.originalItem || r);
+      } else {
+        // If comparisonData already contains all records (or unpaginated)
+        if (
+          comparisonData.data &&
+          comparisonData.totalCount &&
+          comparisonData.data.length >= comparisonData.totalCount
+        ) {
+          rawRecords = comparisonData.data;
+        } else if (projectId && (comparedBatch || comparisonData.comparedBatch)) {
+          // Fetch all comparison records unpaginated (pageSize: 0)
+          const batchToCompare = comparedBatch || comparisonData.comparedBatch;
+          const process = (processes || []).find(p => p.processId === selectedProcess);
+          const step = process ? process.steps : 0;
+
+          const params = {
+            projectId: projectId,
+            compareBatch: batchToCompare,
+            lotNo: selectedLot ?? comparisonData.lotNo ?? 0,
+            pageNo: 1,
+            pageSize: 0,
+            processStep: step,
+          };
+
+          if (additionalFields && additionalFields.length > 0) {
+            params.additionalFields = additionalFields.join(',');
+          }
+
+          const res = await API.get('/NRDatas/compare-batches', { params });
+          rawRecords = res.data?.data || comparisonData.data || [];
+        } else {
+          rawRecords = comparisonData.data || [];
+        }
+      }
+
+      if (!rawRecords || rawRecords.length === 0) {
+        showToast('No comparison records found to export', 'info');
+        return;
+      }
+
+      const selectedCountText = selectedRowsData && selectedRowsData.length > 0
+        ? ` (${selectedRowsData.length} selected)`
+        : '';
+
+      if (format === 'pdf') {
+        exportBatchComparisonPDF({
+          rawItems: rawRecords,
+          comparedBatch: comparedBatch || comparisonData.comparedBatch,
+          lotNo: selectedLot ?? comparisonData.lotNo,
+        });
+        showToast(`PDF report downloaded successfully!${selectedCountText}`, 'success');
+      } else {
+        exportBatchComparisonExcel({
+          rawItems: rawRecords,
+          comparedBatch: comparedBatch || comparisonData.comparedBatch,
+          lotNo: selectedLot ?? comparisonData.lotNo,
+        });
+        showToast(`Excel report downloaded successfully!${selectedCountText}`, 'success');
+      }
+    } catch (error) {
+      console.error(`Failed to export comparison ${format}:`, error);
+      showToast(`Failed to download ${format.toUpperCase()} report`, 'error');
+    } finally {
+      setExportLoading(false);
+    }
+  };
+
+  const selectedCount = selectedRowKeys.length;
+
+  const downloadMenuItems = [
+    {
+      key: 'excel',
+      label: selectedCount > 0 ? `Download in Excel (${selectedCount} selected)` : 'Download in Excel',
+      icon: <FileExcelOutlined style={{ color: '#52c41a' }} />,
+      onClick: () => handleDownload('excel')
+    },
+    {
+      key: 'pdf',
+      label: selectedCount > 0 ? `Download in PDF (${selectedCount} selected)` : 'Download in PDF',
+      icon: <FilePdfOutlined style={{ color: '#ff4d4f' }} />,
+      onClick: () => handleDownload('pdf')
+    }
+  ];
+
+  const handlePush = () => {
+    if (!onPushChanges) return;
+    if (selectedCount > 0) {
+      const itemsToPush = selectedRowsData.map(r => ({
+        catchNo: r.catchNo,
+        centerCode: r.centerCode
+      }));
+      onPushChanges(itemsToPush);
+    } else {
+      onPushChanges(null);
+    }
+  };
 
   const [headerFilters, setHeaderFilters] = useState({
     catchNo: null,
@@ -145,75 +330,7 @@ const BatchComparisonTable = ({ comparisonData, onPaginationChange, onSearch, on
         otherData: []
       };
     }
-
-    const allData = comparisonData.data.map((item, index) => ({
-      id: `${item.catchNo}-${item.centerCode}-${index}`,
-      key: `${item.catchNo}-${item.centerCode}-${index}`,
-      catchNo: item.catchNo,
-      centerCode: item.centerCode,
-      status: item.status,
-      changes: item.changes.reduce((acc, change) => {
-        acc[change.field] = change;
-        return acc;
-      }, {}),
-      originalItem: item
-    }));
-
-    // Filter for All Changes: include records that have non-unique field changes or are Added/Removed
-    const allChanges = allData.filter(item => {
-      const hasNonUniqueChanges = Object.values(item.originalItem.changes || []).some(
-        change => !change.isUniqueField || (change.isUniqueField && !change.isConsistentCatchLevelChange)
-      );
-      const isAddedOrRemoved = item.status === "Centre Catch Added" || item.status === "Centre Catch Removed";
-      return hasNonUniqueChanges || isAddedOrRemoved;
-    });
-
-    // Filter for Catch-Level Changes: ONE row per catch with all centers aggregated
-    const catchLevelMap = new Map();
-    allData.forEach(item => {
-      const hasCatchLevelChange = Object.values(item.originalItem.changes || []).some(
-        change => change.isConsistentCatchLevelChange
-      );
-      if (hasCatchLevelChange) {
-        if (!catchLevelMap.has(item.catchNo)) {
-          catchLevelMap.set(item.catchNo, {
-            id: item.catchNo,
-            key: item.catchNo,
-            catchNo: item.catchNo,
-            centerCode: '', // Empty for aggregated view
-            status: item.originalItem.catchLevelStatus || 'Catch-Level Change', // Use catchLevelStatus from backend
-            centers: [],
-            centerCount: 0,
-            // Merge changes from all centers - use the first occurrence
-            changes: item.changes,
-            originalItem: item.originalItem
-          });
-        }
-        const catchData = catchLevelMap.get(item.catchNo);
-        catchData.centers.push(item.centerCode);
-        catchData.centerCount = catchData.centers.length;
-      }
-    });
-    const catchLevel = Array.from(catchLevelMap.values());
-
-    // Filter by status for other tabs
-    const added = allData.filter(item => item.status === "Centre Catch Added");
-    const removed = allData.filter(item => item.status === "Centre Catch Removed");
-    const centreQty = allData.filter(item => item.status === "Centre Catch Quantity Changed");
-    const nodal = allData.filter(item => item.status === "Nodal Changed");
-    const centerCodeData = allData.filter(item => item.status === "Center Code Changed");
-    const other = allData.filter(item => item.status === "Updated");
-
-    return {
-      allChangesData: allChanges,
-      catchLevelData: catchLevel,
-      addedData: added,
-      removedData: removed,
-      centreQtyData: centreQty,
-      nodalData: nodal,
-      centerCodeData: centerCodeData,
-      otherData: other
-    };
+    return categorizeComparisonRecords(comparisonData.data);
   }, [comparisonData?.data]);
 
   // Select appropriate data based on active tab
@@ -339,31 +456,38 @@ const BatchComparisonTable = ({ comparisonData, onPaginationChange, onSearch, on
         { text: 'Updated', value: 'Updated' },
       ],
       filterMultiple: false,
-      render: (status) => {
-        // Map status to color
-        let color = '#faad14'; // default orange
-
-        if (status) {
-          const statusLower = status.toLowerCase();
-          if (statusLower.includes('added')) {
-            color = '#52c41a'; // green for added
-          } else if (statusLower.includes('removed')) {
-            color = '#ff4d4f'; // red for removed
-          } else if (statusLower.includes('nodal')) {
-            color = '#722ed1'; // purple for nodal
-          } else if (statusLower.includes('center code changed')) {
-            color = '#eb2f96'; // pink for center code changed
-          } else if (statusLower.includes('catch-level')) {
-            color = '#13c2c2'; // cyan for catch-level changes
-          } else if (statusLower.includes('centre') && statusLower.includes('changed') && !statusLower.includes('quantity')) {
-            color = '#1890ff'; // blue for centre changed
-          }
+      render: (status, record) => {
+        let statusList = [];
+        if (Array.isArray(record.statuses) && record.statuses.length > 0) {
+          statusList = record.statuses;
+        } else if (typeof status === 'string') {
+          statusList = status.split(',').map(s => s.trim()).filter(Boolean);
         }
 
+        if (statusList.length === 0) {
+          statusList = ['—'];
+        }
+
+        const getStatusColor = (st) => {
+          if (!st) return '#faad14';
+          const statusLower = st.toLowerCase();
+          if (statusLower.includes('added')) return '#52c41a';
+          if (statusLower.includes('removed')) return '#ff4d4f';
+          if (statusLower.includes('nodal')) return '#722ed1';
+          if (statusLower.includes('center code changed') || statusLower.includes('center changed')) return '#eb2f96';
+          if (statusLower.includes('catch-level')) return '#13c2c2';
+          if (statusLower.includes('quantity')) return '#faad14';
+          return '#1890ff';
+        };
+
         return (
-          <span style={{ color: color, fontWeight: 500 }}>
-            {status || '—'}
-          </span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-start' }}>
+            {statusList.map((st, idx) => (
+              <span key={idx} style={{ color: getStatusColor(st), fontWeight: 500, lineHeight: 1.3 }}>
+                {st}
+              </span>
+            ))}
+          </div>
         );
       }
     },
@@ -507,9 +631,16 @@ const BatchComparisonTable = ({ comparisonData, onPaginationChange, onSearch, on
     {
       title: 'Recommendation',
       key: 'recommendation',
-      width: 220,
+      width: 320,
       render: (_, record) => {
-        const recommendation = record.originalItem?.recommendation;
+        let recommendation = record.originalItem?.recommendation;
+        if (activeTab === 'catchLevel') {
+          recommendation = record.catchLevelRecommendation
+            || record.originalItem?.catchLevelRecommendation
+            || (record.changes && Object.values(record.changes).filter(c => c.isConsistentCatchLevelChange).length > 0
+              ? "Update " + Object.values(record.changes).filter(c => c.isConsistentCatchLevelChange).map(c => (c.field || '').replace(/([a-z])([A-Z])/g, '$1 $2')).join(' and ')
+              : record.originalItem?.recommendation);
+        }
         return (
           <span style={{ fontWeight: 500, color: '#333' }}>
             {recommendation || '—'}
@@ -642,19 +773,74 @@ const BatchComparisonTable = ({ comparisonData, onPaginationChange, onSearch, on
             </div>
           )}
 
-          {/* Search Bar */}
-          <div style={{ marginBottom: 16 }}>
-            <Spin spinning={loading} size="small">
-              <Input.Search
-                placeholder="Search by Catch No or Centre Code (min 2 characters, searches after 2 secs)"
-                prefix={<SearchOutlined />}
-                value={searchText}
-                onChange={(e) => setSearchText(e.target.value)}
-                allowClear
-                style={{ width: 300 }}
-                disabled={loading}
-              />
-            </Spin>
+          {/* Search Bar & Action Toolbar */}
+          <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+            <Space align="center" wrap>
+              <Spin spinning={loading} size="small">
+                <Input.Search
+                  placeholder="Search by Catch No or Centre Code (min 2 characters, searches after 2 secs)"
+                  prefix={<SearchOutlined />}
+                  value={searchText}
+                  onChange={(e) => setSearchText(e.target.value)}
+                  allowClear
+                  style={{ width: 320 }}
+                  disabled={loading}
+                />
+              </Spin>
+
+              <Dropdown menu={{ items: downloadMenuItems }} trigger={['click']} placement="bottomLeft">
+                <Button
+                  icon={<DownloadOutlined />}
+                  loading={exportLoading}
+                  style={{
+                    fontWeight: 500,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6
+                  }}
+                >
+                  {selectedCount > 0 ? `Download (${selectedCount})` : 'Download'} <ChevronDown size={14} />
+                </Button>
+              </Dropdown>
+            </Space>
+
+            <Space wrap align="center">
+              {selectedCount > 0 && (
+                <Space>
+                  <Tag color="blue" style={{ fontSize: 13, padding: '3px 8px' }}>
+                    {selectedCount} row{selectedCount > 1 ? 's' : ''} selected
+                  </Tag>
+                  <Button
+                    size="small"
+                    onClick={() => {
+                      setSelectedRowKeys([]);
+                      setSelectedRowsData([]);
+                    }}
+                    style={{ fontSize: 12 }}
+                  >
+                    Clear Selection
+                  </Button>
+                </Space>
+              )}
+
+              {onPushChanges && (
+                <Button
+                  type="primary"
+                  icon={<CloudUploadOutlined />}
+                  loading={pushLoading}
+                  onClick={handlePush}
+                  style={{
+                    fontWeight: 500,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    backgroundColor: '#1890ff'
+                  }}
+                >
+                  {selectedCount > 0 ? `Push Changes (${selectedCount})` : 'Push All Changes'}
+                </Button>
+              )}
+            </Space>
           </div>
 
           {/* Tabs */}
@@ -684,6 +870,7 @@ const BatchComparisonTable = ({ comparisonData, onPaginationChange, onSearch, on
               columns={columns}
               dataSource={loading ? [] : currentTableData}
               rowKey="key"
+              rowSelection={rowSelection}
               pagination={false}
               scroll={{ x: 1200 }}
               size="middle"
