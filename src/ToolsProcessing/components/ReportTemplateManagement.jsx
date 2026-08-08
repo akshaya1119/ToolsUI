@@ -876,7 +876,7 @@ const ReportTemplateManagement = ({
                                   <div style={{ fontSize: 12, color: '#334155' }}>{dlBy}</div>
                                 </>
                               ) : (
-                                <span style={{ color: '#94a3b8', fontSize: 11, fontStyle: 'italic' }}>Not downloaded</span>
+                                <span style={{ color: '#94a3b8', fontSize: 11, fontStyle: 'italic' }}>-</span>
                               )}
                             </td>
                           )}

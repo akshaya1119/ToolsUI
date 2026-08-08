@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import '@ant-design/v5-patch-for-react-19'
 import { Row, Col, Card, Select, Upload, Button, Typography, Space, Table, Tabs, Checkbox, Input, Modal, Radio, DatePicker, Popconfirm } from 'antd';
 import dayjs from 'dayjs';
+import {TriangleAlert,Trash2,ChevronDown,ChevronUp } from 'lucide-react';
 import { MessageService } from "../services/MessageService";
 import { useToast } from '../hooks/useToast';
 import { CheckCircleOutlined, UploadOutlined, ToolOutlined, SearchOutlined, PlusOutlined, EditOutlined, CloseCircleOutlined, DeleteOutlined } from '@ant-design/icons';
@@ -2204,62 +2205,76 @@ const DataImport = () => {
           }
           extra={
             <Space size={6} onClick={e => e.stopPropagation()}>
+             <Button
+  type="primary"
+  size="small"
+  icon={<PlusOutlined />}
+  style={{ minWidth: 110, height: 28, fontSize: 12 }}
+  onClick={() => {
+    if (uploadSectionCollapsed) setUploadSectionCollapsed(false);
+    setAddRowOpen((prev) => !prev);
+  }}
+>
+  Add Data
+</Button>
+
+<Button
+  size="small"
+  icon={<TriangleAlert size={14} />}
+  style={{
+    minWidth: 110,
+    height: 28,
+    fontSize: 12,
+    backgroundColor: "#f0dc24ff",
+    borderColor: "#d4bc00",
+    color: "#000",
+  }}
+  onClick={fetchConflictReport}
+>
+  Load Conflict
+</Button>
+
+<Button
+  danger
+  size="small"
+  icon={<Trash2 size={14} />}
+  style={{
+    minWidth: 110,
+    height: 28,
+    fontSize: 12,
+    backgroundColor: "#ff4d4f",
+    borderColor: "#ff4d4f",
+    color: "#fff",
+  }}
+  onClick={async () => {
+    const confirmed = await MessageService.confirm(
+      "Are you sure you want to delete NR data for this project?",
+      {
+        title: "Confirm Deletion",
+        confirmText: "Yes, Delete",
+        cancelText: "Cancel",
+        type: 'error',
+      }
+    );
+    if (confirmed) await deleteNRData();
+  }}
+>
+  Delete NR Data
+</Button>
               <Button
-                type="primary"
-                size="small"
-                icon={<PlusOutlined />}
-                onClick={() => {
-                  if (uploadSectionCollapsed) setUploadSectionCollapsed(false);
-                  setAddRowOpen((prev) => !prev);
-                }}
-              >
-                Add Data
-              </Button>
-              <Button
-                size="small"
-                onClick={fetchConflictReport}
-                style={{
-                  backgroundColor: "#f0dc24ff",
-                  borderColor: "#d4bc00",
-                  color: "#000",
-                }}
-              >
-                ⚠️ Load Conflict
-              </Button>
-              <Button
-                danger
-                size="small"
-                style={{
-                  backgroundColor: "#ff4d4f",
-                  borderColor: "#ff4d4f",
-                  color: "#fff",
-                }}
-                onClick={async () => {
-                  const confirmed = await MessageService.confirm(
-                    "Are you sure you want to delete NR data for this project?",
-                    {
-                      title: "Confirm Deletion",
-                      confirmText: "Yes, Delete",
-                      cancelText: "Cancel",
-                      type: 'error'
-                    }
-                  );
-                  if (confirmed) {
-                    await deleteNRData();
-                  }
-                }}
-              >
-                🗑️ Delete NR Data
-              </Button>
-              <Button
-                size="small"
-                type="text"
-                onClick={() => setUploadSectionCollapsed(prev => !prev)}
-                style={{ color: '#595959', fontSize: 16, lineHeight: 1, padding: '0 4px' }}
-                title={uploadSectionCollapsed ? "Expand upload section" : "Collapse upload section"}
-              >
-                {uploadSectionCollapsed ? '▼' : '▲'}
-              </Button>
+  size="small"
+  type="text"
+  onClick={() => setUploadSectionCollapsed(prev => !prev)}
+  style={{
+    color: '#595959',
+    fontSize: 16,
+    lineHeight: 1,
+    padding: '0 4px'
+  }}
+  title={uploadSectionCollapsed ? 'Expand upload section' : 'Collapse upload section'}
+>
+  {uploadSectionCollapsed ? <ChevronDown size={18} /> : <ChevronUp size={18} />}
+</Button>
             </Space>
           }
           bordered={true}
@@ -2292,7 +2307,7 @@ const DataImport = () => {
                         onRemove={handleRemove}
                         maxCount={1}
                       >
-                        <p className="ant-upload-drag-icon">📤</p>
+                        {/* <p className="ant-upload-drag-icon">📤</p> */}
                         <p className="ant-upload-text">Upload Excel or CSV file</p>
                         <Text type="secondary" style={{ display: "block" }}>
                           Drag and drop or click to choose a file.

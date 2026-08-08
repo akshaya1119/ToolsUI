@@ -728,7 +728,7 @@ setModifiedRows(newModifiedRows);
             return;
         }
 
-        // Build payload with dynamic fields - ONLY for modified rows
+        // Build payload with all fields from modified rows (not just displayFields)
         const payload = [];
 
 for (const row of missingDataRows) {
@@ -736,15 +736,20 @@ for (const row of missingDataRows) {
 
     const additionalFields = {};
 
-    for (const field of displayFields) {
-        const fieldName = field.name;
-        let value = row[fieldName];
-        if (fieldName === 'ExamTime') {
+    // Iterate through ALL fields in the row, not just displayFields
+    for (const key in row) {
+        if (key === 'catchNo' || key === 'key' || key === 'id') continue;
+
+        let value = row[key];
+        
+        // Normalize ExamTime values
+        if (key === 'ExamTime') {
             value = normalizeTimeValue(value);
         }
 
+        // Include all non-empty values
         if (value !== "" && value !== null && value !== undefined) {
-            additionalFields[fieldName] = value;
+            additionalFields[key] = value;
         }
     }
 
@@ -769,6 +774,7 @@ for (const row of missingDataRows) {
             const chunkSize = 100;
 
             for (let i = 0; i < payload.length; i += chunkSize) {
+                const chunk = payload.slice(i, i + chunkSize);
                 const lotParam = selectedLot ? `?lotNo=${selectedLot}` : '';
                 await API.post(`/NRDatas/missing-data${lotParam}`, {
                     projectId,
@@ -1178,7 +1184,7 @@ for (const row of missingDataRows) {
                                     <Button
                                         type="primary"
                                         onClick={handleSubmit}
-                                        disabled={!reviewRows.length}
+                                        disabled={!missingDataRows.length}
                                         loading={submitting}
                                     >
                                         Submit
