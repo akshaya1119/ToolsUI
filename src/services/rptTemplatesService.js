@@ -100,6 +100,7 @@ export const uploadTemplate = async (
     groupId,
     typeId,
     templateName,
+    subName,
     file,
     projectId,
     moduleIds,
@@ -109,6 +110,9 @@ export const uploadTemplate = async (
   const formData = new FormData();
   formData.append("typeId", typeId);
   formData.append("templateName", templateName);
+  if (subName) {
+    formData.append("subName", subName);
+  }
   formData.append("file", file);
   if (groupId !== null && groupId !== undefined) {
     formData.append("groupId", groupId);
@@ -132,6 +136,11 @@ export const uploadTemplate = async (
 
 export const importTemplatesFromGroup = async (apiUrl, payload) => {
   await axios.post(`${apiUrl}/RPTTemplates/import-from-group`, payload);
+};
+
+export const promoteTemplatesToMaster = async (apiUrl, payload) => {
+  const res = await axios.post(`${apiUrl}/RPTTemplates/promote-to-group-master`, payload);
+  return res.data;
 };
 
 export const fetchTemplateDetails = async (apiUrl, templateId) => {
@@ -190,4 +199,80 @@ export const softDeleteTemplate = async (apiUrl, templateId, scope) => {
 
 export const restoreTemplate = async (apiUrl, templateId) => {
   await axios.post(`${apiUrl}/RPTTemplates/${templateId}/activate`);
+};
+
+// ====================
+// MRPTTemplates (Master Templates)
+// ====================
+
+export const fetchMasterTemplatesByGroup = async (apiUrl, { typeId, groupId }) => {
+  const params = { typeId };
+  if (groupId) params.groupId = groupId;
+  const res = await axios.get(`${apiUrl}/MRPTTemplates/by-group`, { params });
+  return res.data;
+};
+
+export const uploadMasterTemplate = async (apiUrl, payload) => {
+  const formData = new FormData();
+  formData.append("file", payload.file);
+  formData.append("typeId", payload.typeId);
+  if (payload.groupId) formData.append("groupId", payload.groupId);
+  formData.append("templateName", payload.templateName);
+  if (payload.subName) formData.append("subName", payload.subName);
+
+  const res = await axios.post(`${apiUrl}/MRPTTemplates/upload`, formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  return res.data;
+};
+
+export const softDeleteMasterTemplate = async (apiUrl, templateId) => {
+  await axios.delete(`${apiUrl}/MRPTTemplates/${templateId}/soft-delete`);
+};
+
+export const restoreMasterTemplate = async (apiUrl, templateId) => {
+  await axios.post(`${apiUrl}/MRPTTemplates/${templateId}/restore`);
+};
+
+export const downloadMasterTemplateBlob = async (apiUrl, template) => {
+  const res = await axios.get(`${apiUrl}/MRPTTemplates/${template.templateId}/download`, {
+    responseType: "blob",
+  });
+  const contentDisposition = res.headers["content-disposition"];
+  let fileName = "template.rpt";
+  if (contentDisposition) {
+    const fileNameMatch = contentDisposition.match(/filename="?([^"]+)"?/);
+    if (fileNameMatch && fileNameMatch.length === 2) {
+      fileName = fileNameMatch[1];
+    }
+  }
+  return { blob: res.data, fileName };
+};
+
+export const fetchMasterTemplateVersions = async (apiUrl, templateId) => {
+  const res = await axios.get(`${apiUrl}/MRPTTemplates/${templateId}/versions`);
+  return res.data;
+};
+
+export const activateMasterTemplateVersion = async (apiUrl, templateId) => {
+  await axios.post(`${apiUrl}/MRPTTemplates/${templateId}/activate`);
+};
+
+export const fetchMasterTemplateMapping = async (apiUrl, templateId) => {
+  const res = await axios.get(`${apiUrl}/MRPTTemplates/${templateId}/mapping`);
+  return res.data;
+};
+
+export const saveMasterTemplateMapping = async (apiUrl, templateId, mappingJson) => {
+  await axios.post(`${apiUrl}/MRPTTemplates/${templateId}/mapping`, { mappingJson });
+};
+
+export const fetchImportableTemplates = async (apiUrl, { sourceScope, sourceGroupId, sourceProjectId, sourceTypeId }) => {
+  const params = { sourceScope };
+  if (sourceGroupId) params.sourceGroupId = sourceGroupId;
+  if (sourceProjectId) params.sourceProjectId = sourceProjectId;
+  if (sourceTypeId) params.sourceTypeId = sourceTypeId;
+  
+  const res = await axios.get(`${apiUrl}/RPTTemplates/importable-templates`, { params });
+  return res.data;
 };

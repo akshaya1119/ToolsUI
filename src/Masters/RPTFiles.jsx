@@ -17,25 +17,28 @@ import {
   rptTemplatesStyles,
 } from "../components/rpt/rptTemplatesShared";
 import {
-  activateTemplateVersion as activateTemplateVersionService,
-  downloadTemplateBlob as downloadTemplateBlobService,
   fetchGroupOptions,
   fetchMappingOptions as fetchMappingOptionsService,
   fetchModuleOptions,
   fetchProjectOptions,
   fetchTemplateDetails,
-  fetchTemplateMapping,
-  fetchTemplateVersions as fetchTemplateVersionsService,
-  fetchTemplatesByGroup,
   fetchTypeOptions,
   fetchUsers as fetchUsersService,
   importTemplatesFromGroup,
+  fetchImportableTemplates,
   parseTemplateFields,
-  restoreTemplate,
-  saveTemplateMapping,
-  softDeleteTemplate,
   updateTemplate,
-  uploadTemplate as uploadTemplateService,
+
+  // Alias Master Templates
+  activateMasterTemplateVersion as activateTemplateVersionService,
+  downloadMasterTemplateBlob as downloadTemplateBlobService,
+  fetchMasterTemplateMapping as fetchTemplateMapping,
+  fetchMasterTemplateVersions as fetchTemplateVersionsService,
+  fetchMasterTemplatesByGroup as fetchTemplatesByGroup,
+  restoreMasterTemplate as restoreTemplate,
+  saveMasterTemplateMapping as saveTemplateMapping,
+  softDeleteMasterTemplate as softDeleteTemplate,
+  uploadMasterTemplate as uploadTemplateService,
 } from "../services/rptTemplatesService";
 import RPTFilesHeader from "./components/RPTFiles/RPTFilesHeader";
 import TemplatesCard from "../components/rpt/TemplatesCard";
@@ -112,6 +115,48 @@ const RPTFiles = () => {
   const importGroupId = Form.useWatch("sourceGroupId", importForm);
   const importProjectId = Form.useWatch("sourceProjectId", importForm);
   const importTypeId = Form.useWatch("sourceTypeId", importForm);
+
+  const [importableTemplates, setImportableTemplates] = useState([]);
+  const [importableTemplatesLoading, setImportableTemplatesLoading] = useState(false);
+
+  useEffect(() => {
+    if (!importModalOpen) {
+      setImportableTemplates([]);
+      return;
+    }
+    const fetchTemplates = async () => {
+      if (!importScope) {
+        setImportableTemplates([]);
+        return;
+      }
+      if (importScope === "group" && !importGroupId) {
+        setImportableTemplates([]);
+        return;
+      }
+      if (importScope === "project" && (!importProjectId || !importTypeId)) {
+        setImportableTemplates([]);
+        return;
+      }
+      
+      setImportableTemplatesLoading(true);
+      try {
+        const payload = { sourceScope: importScope };
+        if (importScope === "group") payload.sourceGroupId = importGroupId;
+        if (importScope === "project") payload.sourceProjectId = importProjectId;
+        if (importTypeId) payload.sourceTypeId = importTypeId;
+        
+        const data = await fetchImportableTemplates(APIURL, payload);
+        setImportableTemplates(data || []);
+      } catch (err) {
+        console.error("Failed to fetch importable templates", err);
+        setImportableTemplates([]);
+      } finally {
+        setImportableTemplatesLoading(false);
+      }
+    };
+    
+    fetchTemplates();
+  }, [importModalOpen, importScope, importGroupId, importProjectId, importTypeId, APIURL]);
 
   const selectionReady = Boolean(
     selectedType && (templateScope === "standard" || selectedGroup)
@@ -507,6 +552,7 @@ const RPTFiles = () => {
     groupId,
     typeId,
     templateName,
+    subName,
     file,
     projectId,
     moduleIds,
@@ -518,6 +564,7 @@ const RPTFiles = () => {
       groupId,
       typeId,
       templateName,
+      subName,
       file,
       projectId,
       moduleIds,
@@ -540,6 +587,7 @@ const RPTFiles = () => {
           groupId: templateScope === "group" ? values.groupId : null,
           typeId: values.typeId,
           templateName: values.templateName,
+          subName: values.subName,
           file,
           moduleIds: values.moduleIds || [],
           forceUpload,
@@ -549,7 +597,7 @@ const RPTFiles = () => {
         message.success("Template uploaded successfully.");
         setAddModalOpen(false);
         setAddFileList([]);
-        addForm.resetFields(["templateName", "moduleIds"]);
+        addForm.resetFields(["templateName", "moduleIds", "subName"]);
         if (selectionReady) fetchAvailableRPTFiles();
 
         const uploadedTemplate = {
@@ -643,6 +691,9 @@ const RPTFiles = () => {
         targetTypeId: selectedType,
         copyMappings: values.copyMappings ?? true,
       };
+      if (values.selectedTemplateIds && values.selectedTemplateIds.length > 0) {
+        payload.SelectedTemplateIds = values.selectedTemplateIds;
+      }
       if (sourceScope === "group") {
         payload.sourceGroupId = values.sourceGroupId;
         payload.includeStandard = true;
@@ -958,7 +1009,7 @@ setUseBoxLabelSP(parsed.useBoxLabelSP || false);
       });
       const options = list.map((item) => ({
         value: resolveTemplateId(item),
-        label: `v${item?.version}${item?.isActive ? " (Active)" : ""}`,
+        label: `v${item?.version}${item?.subName || item?.SubName ? ` (${item?.subName || item?.SubName})` : ""}${item?.isActive ? " (Active)" : ""}`,
       }));
       setEditingVersionOptions(options);
       const active = list.find((item) => item?.isActive);
@@ -1426,6 +1477,8 @@ setUseBoxLabelSP(parsed.useBoxLabelSP || false);
               )?.label,
               importSubmitting,
               onSubmit: handleImportTemplates,
+              importableTemplates,
+              importableTemplatesLoading,
             }}
           />
         )}

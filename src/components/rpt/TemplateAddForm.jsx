@@ -25,6 +25,12 @@ const TemplateAddForm = ({
       >
         <Input placeholder="Enter template name" />
       </Form.Item>
+      <Form.Item
+        label="Sub Name"
+        name="subName"
+      >
+        <Input placeholder="Enter template subname" />
+      </Form.Item>
       {children}
       <Form.Item 
         label={moduleLabel} 

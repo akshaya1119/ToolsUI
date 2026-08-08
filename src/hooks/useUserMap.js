@@ -3,9 +3,67 @@ import axios from 'axios';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL;
 
+// External ERP User API — source of truth for user names
+const ERP_USER_API = 'http://192.168.10.208:82/API/api/User';
+
 /**
- * Hook to fetch all users and create a map of userId -> firstName
- * This allows frontend to display user names from stored userIds
+ * Decode the stored JWT and return the numeric userId from the "userid" claim.
+ * Returns null if no valid token is present.
+ */
+export const getCurrentUserId = () => {
+  try {
+    const token = localStorage.getItem('token');
+    if (!token) return null;
+    // JWT payload is the second base64-url segment
+    const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+    // The backend sets a custom "userid" claim (lowercase)
+    const id = payload['userid'] ?? payload['unique_name'] ?? payload['sub'] ?? null;
+    const num = id !== null ? Number(id) : null;
+    return num && !isNaN(num) ? num : null;
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Decode the stored JWT and return the numeric roleId from token claims.
+ * Returns null if not found.
+ */
+export const getCurrentUserRoleId = () => {
+  try {
+    const rawRoleId = localStorage.getItem('roleId') || localStorage.getItem('role');
+    if (rawRoleId && !isNaN(Number(rawRoleId))) {
+      return Number(rawRoleId);
+    }
+    const userDataStr = localStorage.getItem('userData') || localStorage.getItem('user');
+    if (userDataStr) {
+      try {
+        const parsed = JSON.parse(userDataStr);
+        const rId = parsed.roleId ?? parsed.roleid ?? parsed.RoleId ?? parsed.role;
+        if (rId !== undefined && rId !== null && !isNaN(Number(rId))) return Number(rId);
+      } catch {}
+    }
+    const token = localStorage.getItem('token');
+    if (!token) return null;
+    const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+    const roleId =
+      payload['roleId'] ??
+      payload['roleid'] ??
+      payload['RoleId'] ??
+      payload['role'] ??
+      payload['Role'] ??
+      payload['http://schemas.microsoft.com/ws/2008/06/identity/claims/role'] ??
+      payload['http://schemas.xmlsoap.org/ws/2005/05/identity/claims/role'] ??
+      null;
+    const num = roleId !== null ? Number(roleId) : null;
+    return num && !isNaN(num) ? num : null;
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Hook to fetch all users from the ERP User API and build a userId → firstName map.
  */
 export const useUserMap = () => {
   const [userMap, setUserMap] = useState({});
@@ -14,25 +72,39 @@ export const useUserMap = () => {
 
   useEffect(() => {
     const fetchUsers = async () => {
-      if (!API_BASE) {
-         setLoading(false);
-         return;
-      }
       try {
         const token = localStorage.getItem('token');
-        const response = await axios.get(`${API_BASE}/User`, {
-            headers: { Authorization: `Bearer ${token}` }
-        });
-        const users = response.data || [];
-        
-        // Create a map of userId -> firstName
+        const headers = token ? { Authorization: `Bearer ${token}` } : {};
+
+        // Try the ERP User API first (source of truth for names)
+        let users = [];
+        try {
+          const res = await axios.get(ERP_USER_API, { headers });
+          users = Array.isArray(res.data) ? res.data
+            : Array.isArray(res.data?.$values) ? res.data.$values
+            : [];
+        } catch {
+          // Fallback to internal API if ERP is unreachable
+          if (API_BASE) {
+            const res = await axios.get(`${API_BASE}/User`, { headers });
+            users = Array.isArray(res.data) ? res.data
+              : Array.isArray(res.data?.$values) ? res.data.$values
+              : [];
+          }
+        }
+
+        // Build userId → display name map (keyed by both number and string for safe lookup)
         const map = {};
         users.forEach(user => {
-          if (user.userId && user.firstName) {
-            map[user.userId] = user.firstName;
-          }
+          const id = user.userId ?? user.UserId ?? user.id ?? user.Id;
+          if (id == null) return;
+          const name = user.firstName || user.FirstName
+            || user.userName || user.Username || user.UserName
+            || `User ${id}`;
+          map[Number(id)] = name;
+          map[String(id)] = name;
         });
-        
+
         setUserMap(map);
       } catch (err) {
         console.error('Failed to fetch user map:', err);
@@ -49,9 +121,10 @@ export const useUserMap = () => {
 };
 
 /**
- * Helper function to get firstName from userId
+ * Returns the display name for a userId from the map.
+ * Tries both numeric and string keys to handle type mismatches.
  */
 export const getFirstNameFromUserId = (userId, userMap) => {
-  if (!userId || !userMap) return '-';
-  return userMap[userId] || '-';
+  if (userId == null || !userMap) return null;
+  return userMap[Number(userId)] || userMap[String(userId)] || null;
 };

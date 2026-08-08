@@ -71,8 +71,9 @@ import {
   saveTemplateMapping,
   softDeleteTemplate,
   updateTemplate,
-
   uploadTemplate as uploadTemplateService,
+  promoteTemplatesToMaster,
+  fetchImportableTemplates,
 } from "../services/rptTemplatesService";
 import ProjectTemplatesHeader from "./components/ProjectTemplates/ProjectTemplatesHeader";
 import TemplatesCard from "../components/rpt/TemplatesCard";
@@ -148,6 +149,9 @@ const ProjectTemplates = () => {
   const [editingVersionOptions, setEditingVersionOptions] = useState([]);
   const [editingVersionsLoading, setEditingVersionsLoading] = useState(false);
 
+  const [savingMaster, setSavingMaster] = useState(false);
+  const [selectedRowKeys, setSelectedRowKeys] = useState([]);
+
   const [useBoxLabelSP, setUseBoxLabelSP] = useState(false);
   const [addForm] = Form.useForm();
   const [importForm] = Form.useForm();
@@ -155,6 +159,47 @@ const ProjectTemplates = () => {
   const importGroupId = Form.useWatch("sourceGroupId", importForm);
   const importProjectId = Form.useWatch("sourceProjectId", importForm);
   const importTypeId = Form.useWatch("sourceTypeId", importForm);
+  const [importableTemplates, setImportableTemplates] = useState([]);
+  const [importableTemplatesLoading, setImportableTemplatesLoading] = useState(false);
+
+  useEffect(() => {
+    if (!importModalOpen) {
+      setImportableTemplates([]);
+      return;
+    }
+    const fetchTemplates = async () => {
+      if (!importScope) {
+        setImportableTemplates([]);
+        return;
+      }
+      if (importScope === "group" && !importGroupId) {
+        setImportableTemplates([]);
+        return;
+      }
+      if (importScope === "project" && (!importProjectId || !importTypeId)) {
+        setImportableTemplates([]);
+        return;
+      }
+      
+      setImportableTemplatesLoading(true);
+      try {
+        const payload = { sourceScope: importScope };
+        if (importScope === "group") payload.sourceGroupId = importGroupId;
+        if (importScope === "project") payload.sourceProjectId = importProjectId;
+        if (importTypeId) payload.sourceTypeId = importTypeId;
+        
+        const data = await fetchImportableTemplates(APIURL, payload);
+        setImportableTemplates(data || []);
+      } catch (err) {
+        console.error("Failed to fetch importable templates", err);
+        setImportableTemplates([]);
+      } finally {
+        setImportableTemplatesLoading(false);
+      }
+    };
+    
+    fetchTemplates();
+  }, [importModalOpen, importScope, importGroupId, importProjectId, importTypeId, APIURL]);
 
   const selectionReady = Boolean(projectId && projectGroupId && projectTypeId);
 
@@ -574,6 +619,7 @@ const ProjectTemplates = () => {
       groupId,
       typeId,
       templateName,
+      subName,
       templateId,
       file,
       projectId,
@@ -584,6 +630,9 @@ const ProjectTemplates = () => {
     const formData = new FormData();
     formData.append("typeId", typeId);
     formData.append("templateName", templateName);
+    if (subName) {
+      formData.append("subName", subName);
+    }
     if (templateId) {
       formData.append("templateId", templateId);
     }
@@ -644,6 +693,25 @@ const ProjectTemplates = () => {
     return data;
   };
 
+  const handleSaveAsMaster = async () => {
+    if (!selectedRowKeys.length) return;
+    setSavingMaster(true);
+    try {
+      const res = await promoteTemplatesToMaster(APIURL, {
+        templateIds: selectedRowKeys,
+        targetGroupId: projectGroupId
+      });
+      message.success(`Successfully promoted ${res.promoted?.length || selectedRowKeys.length} template(s) to Group Master.`);
+      setSelectedRowKeys([]);
+      fetchAvailableRPTFiles();
+    } catch (err) {
+      console.error("Failed to save as master", err);
+      showError(err, "Failed to promote templates to group master");
+    } finally {
+      setSavingMaster(false);
+    }
+  };
+
   const handleAddSubmit = async () => {
     try {
       const values = await addForm.validateFields();
@@ -654,11 +722,12 @@ const ProjectTemplates = () => {
       setAddSubmitting(true);
       const file = addFileList[0].originFileObj || addFileList[0];
 
-      const result = await uploadTemplate({
+      const result = await uploadTemplateService({
         groupId: projectGroupId,
         typeId: projectTypeId,
         projectId: normalizeId(projectId),
         templateName: values.templateName,
+        subName: values.subName,
         file,
         moduleIds: values.moduleIds
       });
@@ -705,6 +774,9 @@ const ProjectTemplates = () => {
         targetTypeId: projectTypeId,
         copyMappings: values.copyMappings ?? true,
       };
+      if (values.selectedTemplateIds && values.selectedTemplateIds.length > 0) {
+        payload.SelectedTemplateIds = values.selectedTemplateIds;
+      }
       if (sourceScope === "group") {
         payload.sourceGroupId = values.sourceGroupId;
         payload.includeStandard = true;
@@ -1030,7 +1102,7 @@ const ProjectTemplates = () => {
       });
       const options = list.map((item) => ({
         value: resolveTemplateId(item),
-        label: `v${item?.version}${item?.isActive ? " (Active)" : ""}`,
+        label: `v${item?.version}${item?.isActive ? " (Active)" : ""}`
       }));
       setEditingVersionOptions(options);
       const active = list.find((item) => item?.isActive);
@@ -1504,7 +1576,6 @@ const ProjectTemplates = () => {
           tags={["Project", groupLabel, typeLabel]}
           data={availableRPTFiles}
           columns={columns}
-          loading={loadingTemplates}
           selectionEmptyText="Select a project with group and type to view templates."
           noTemplatesTitle="No templates found for this project."
           noTemplatesSubtitle="Uploading here creates a project-only version."
@@ -1527,7 +1598,37 @@ const ProjectTemplates = () => {
           }}
           disableAdd={!selectionReady}
           disableImport={!selectionReady}
+          loading={loadingTemplates}
+          rowSelection={{ 
+            selectedRowKeys, 
+            onChange: (newSelectedRowKeys, selectedRows, info) => {
+              if (info && info.type === 'all') {
+                if (newSelectedRowKeys.length > selectedRowKeys.length) {
+                  const nonDeletedKeys = availableRPTFiles.filter(r => !r.isDeleted).map(r => r.templateId);
+                  const finalKeys = new Set([...selectedRowKeys, ...nonDeletedKeys]);
+                  setSelectedRowKeys(Array.from(finalKeys));
+                } else {
+                  setSelectedRowKeys([]);
+                }
+              } else if (!info) {
+                // Fallback for older antd versions where info is not available
+                if (newSelectedRowKeys.length === availableRPTFiles.length && availableRPTFiles.length > selectedRowKeys.length) {
+                  const nonDeletedKeys = availableRPTFiles.filter(r => !r.isDeleted).map(r => r.templateId);
+                  const finalKeys = new Set([...selectedRowKeys, ...nonDeletedKeys]);
+                  setSelectedRowKeys(Array.from(finalKeys));
+                } else {
+                  setSelectedRowKeys(newSelectedRowKeys);
+                }
+              } else {
+                setSelectedRowKeys(newSelectedRowKeys);
+              }
+            } 
+          }}
+          onSaveAsMaster={() => handleSaveAsMaster(projectGroupId)}
+          isSavingMaster={savingMaster}
         />
+
+        <Modal />
 
         {showSidePanel && (
           <TemplatesSidePanel
@@ -1582,181 +1683,13 @@ const ProjectTemplates = () => {
               )?.label,
               importSubmitting,
               onSubmit: handleImportTemplates,
+              importableTemplates,
+              importableTemplatesLoading,
               showTargetProject: true,
               targetProjectLabel:
                 projectLabel ||
                 projectName ||
                 (projectId ? `Project ${projectId}` : ""),
-              children: (
-                <Form
-                  layout="vertical"
-                  form={importForm}
-                  initialValues={{ copyMappings: true }}
-                  preserve={false}
-                >
-                  <Form.Item label="Target Project" style={{ marginBottom: 8 }}>
-                    <Input
-                      value={
-                        projectLabel ||
-                        projectName ||
-                        (projectId ? `Project ${projectId}` : "")
-                      }
-                      placeholder="Target Project"
-                      disabled
-                    />
-                  </Form.Item>
-
-                  <Form.Item
-                    label="Import From"
-                    name="sourceScope"
-                    rules={[
-                      {
-                        validator: (_, value) =>
-                          value
-                            ? Promise.resolve()
-                            : Promise.reject("Import source is required"),
-                      },
-                    ]}
-                    style={{ marginBottom: 8 }}
-                  >
-                    <Select
-                      options={[
-                        { label: "Select import source", value: "", disabled: true },
-                        { label: "Standard Templates", value: "standard" },
-                        { label: "Group Templates (includes standard)", value: "group" },
-                        { label: "Project Templates", value: "project" },
-                      ]}
-                      placeholder="Select import source"
-                      showSearch
-                      optionFilterProp="label"
-                      allowClear
-                    />
-                  </Form.Item>
-
-                  <Form.Item shouldUpdate noStyle>
-                    {({ getFieldValue }) => {
-                      const scope = getFieldValue("sourceScope");
-                      if (scope === "group") {
-                        return (
-                          <Form.Item
-                            label="Source Group"
-                            name="sourceGroupId"
-                            rules={[
-                              {
-                                validator: (_, value) =>
-                                  value
-                                    ? Promise.resolve()
-                                    : Promise.reject("Source group is required"),
-                              },
-                            ]}
-                            style={{ marginBottom: 8 }}
-                          >
-                            <Select
-                              options={[
-                                {
-                                  label: "Select source group",
-                                  value: "",
-                                  disabled: true,
-                                },
-                                ...groupOptions,
-                              ]}
-                              placeholder="Select source group"
-                              showSearch
-                              optionFilterProp="label"
-                              allowClear
-                            />
-                          </Form.Item>
-                        );
-                      }
-                      if (scope === "project") {
-                        return (
-                          <Form.Item
-                            label="Source Project"
-                            name="sourceProjectId"
-                            rules={[
-                              {
-                                validator: (_, value) =>
-                                  value
-                                    ? Promise.resolve()
-                                    : Promise.reject("Source project is required"),
-                              },
-                            ]}
-                            style={{ marginBottom: 8 }}
-                          >
-                            <Select
-                              options={[
-                                {
-                                  label: "Select source project",
-                                  value: "",
-                                  disabled: true,
-                                },
-                                ...projectOptions,
-                              ]}
-                              placeholder="Select source project"
-                              showSearch
-                              optionFilterProp="label"
-                              allowClear
-                            />
-                          </Form.Item>
-                        );
-                      }
-                      return null;
-                    }}
-                  </Form.Item>
-
-                  <Form.Item
-                    label="Source Type"
-                    name="sourceTypeId"
-                    style={{ marginBottom: 8 }}
-                  >
-                    <Select
-                      options={[
-                        { label: "All types (optional)", value: "", disabled: true },
-                        ...typeOptions,
-                      ]}
-                      placeholder="All types (optional)"
-                      showSearch
-                      optionFilterProp="label"
-                      allowClear
-                    />
-                  </Form.Item>
-
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      gap: 12,
-                      marginBottom: 16,
-                    }}
-                  >
-                    <div>
-                      <Typography.Text strong>Copy mappings</Typography.Text>
-                      <Typography.Text type="secondary" style={{ display: "block" }}>
-                        If enabled, existing mappings are cloned as well.
-                      </Typography.Text>
-                    </div>
-                    <Form.Item
-                      name="copyMappings"
-                      valuePropName="checked"
-                      initialValue={true}
-                      style={{ marginBottom: 0 }}
-                    >
-                      <Switch />
-                    </Form.Item>
-                  </div>
-                  <Space style={{ display: "flex", justifyContent: "flex-end" }}>
-                    <Button onClick={() => setImportModalOpen(false)}>Cancel</Button>
-                    <Button
-                      type="primary"
-                      onClick={handleImportTemplates}
-                      loading={importSubmitting}
-                    >
-                      Import Templates
-                    </Button>
-                  </Space>
-                </Form>
-              ),
             }}
           />
         )}

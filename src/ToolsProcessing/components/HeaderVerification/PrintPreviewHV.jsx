@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { X, ChevronLeft, ChevronRight, CheckCircle2, AlertCircle, Circle } from 'lucide-react';
 import { normalizeStatus } from './statusUtils';
+import { getCurrentUserRoleId } from '../../../hooks/useUserMap';
 
 const PrintPreviewHV = ({
   record: initialRecord,
@@ -11,6 +12,9 @@ const PrintPreviewHV = ({
   currentUser,
   userMap = {},
 }) => {
+  const userRoleId = getCurrentUserRoleId();
+  const canEditVerified = userRoleId !== null && Number(userRoleId) <= 4 && Number(userRoleId) > 0;
+
   const [record, setRecord] = useState(initialRecord);
   const [draftRecord, setDraftRecord] = useState(initialRecord);
   const [currentIndex, setCurrentIndex] = useState(
@@ -119,7 +123,8 @@ const PrintPreviewHV = ({
   const handleSaveEdit = useCallback(async () => {
     setLoading(true);
     try {
-      const fields = ['a', 'b', 'c', 'd'];
+      const isVerified = normalizeStatus(currentRecord?.status) === 1 && !canEditVerified;
+      const fields = isVerified ? ['remark'] : ['a', 'b', 'c', 'd', 'remark'];
       let hasChanges = false;
       
       // Check if any field actually changed
@@ -131,17 +136,18 @@ const PrintPreviewHV = ({
       }
 
       if (hasChanges) {
-        // Pass all draft field values as override so they all get updated in one call
+        // Pass draft field values as override so they all get updated in one call
         const overrideValues = {
-          A: draftRecord?.a || '',
-          B: draftRecord?.b || '',
-          C: draftRecord?.c || '',
-          D: draftRecord?.d || '',
+          A: isVerified ? (currentRecord?.a || '') : (draftRecord?.a || ''),
+          B: isVerified ? (currentRecord?.b || '') : (draftRecord?.b || ''),
+          C: isVerified ? (currentRecord?.c || '') : (draftRecord?.c || ''),
+          D: isVerified ? (currentRecord?.d || '') : (draftRecord?.d || ''),
+          remark: draftRecord?.remark || '',
         };
         
         // Call onFieldUpdate with overrideValues parameter (3rd param) containing all fields
-        // We use 'a' as the fieldName just as a marker, the actual update comes from overrideValues
-        const updatedRecord = await onFieldUpdate(currentRecord?.id, 'a', draftRecord?.a || '', overrideValues);
+        // We use 'remark' or 'a' as the fieldName marker
+        const updatedRecord = await onFieldUpdate(currentRecord?.id, isVerified ? 'remark' : 'a', draftRecord?.remark || '', overrideValues);
         if (updatedRecord) {
           setRecord(updatedRecord);
           setDraftRecord(updatedRecord);
@@ -155,14 +161,18 @@ const PrintPreviewHV = ({
     } finally {
       setLoading(false);
     }
-  }, [currentRecord, draftRecord, onFieldUpdate]);
+  }, [currentRecord, draftRecord, onFieldUpdate, canEditVerified]);
 
-  const editableField = (label, fieldName, isLarge = false) => {
-    if (isEditing) {
+  const editableField = (label, fieldName, isLarge = false, placeholder = '') => {
+    const isVerified = normalizeStatus(currentRecord?.status) === 1 && !canEditVerified;
+    const canEdit = isEditing && (!isVerified || fieldName === 'remark');
+
+    if (canEdit) {
       return (
         <input 
           key={`edit-${fieldName}-${currentRecord?.id}`}
           type="text"
+          placeholder={placeholder}
           className="border-b border-gray-300 focus:outline-none focus:border-amber-500 text-center bg-gray-50 px-2 py-1"
           value={draftRecord?.[fieldName] ?? ''}
           onChange={(e) => {
@@ -170,7 +180,7 @@ const PrintPreviewHV = ({
             setDraftRecord({ ...draftRecord, [fieldName]: e.target.value });
           }}
           disabled={loading}
-          autoFocus={fieldName === 'a'} // Auto focus first field when editing starts
+          autoFocus={isVerified ? fieldName === 'remark' : fieldName === 'a'} // Auto focus remark if verified, otherwise first field
         />
       );
     }
@@ -209,13 +219,9 @@ const PrintPreviewHV = ({
             <button
               type="button"
               onClick={() => handleStatusChange('edit')}
-              disabled={loading || normalizeStatus(record?.status) === 1}
-              className={`flex items-center justify-center gap-1 px-3 py-1 text-xs font-medium rounded-md transition-all duration-200 whitespace-nowrap ${
-                loading || normalizeStatus(record?.status) === 1
-                  ? 'text-gray-400 bg-gray-100 cursor-not-allowed opacity-60'
-                  : 'text-white bg-blue-500 hover:bg-blue-600 active:scale-95 cursor-pointer'
-              }`}
-              title={normalizeStatus(record?.status) === 1 ? 'Cannot edit verified records' : 'Edit this record'}
+              disabled={loading}
+              className="flex items-center justify-center gap-1 px-3 py-1 text-xs font-medium rounded-md transition-all duration-200 whitespace-nowrap text-white bg-blue-500 hover:bg-blue-600 active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Edit this record"
             >
               Edit
             </button>
@@ -265,6 +271,10 @@ const PrintPreviewHV = ({
             <div className="text-md font-bold tracking-wider">
                {editableField('ID', 'd')}
             </div>
+            <div className="text-sm text-gray-600 mt-2 flex items-center justify-center gap-1">
+              <span className="font-semibold text-gray-500">Remark:</span>
+              {editableField('Remark', 'remark', false, 'Enter remark...')}
+            </div>
           </div>
 
           {/* Bottom section — always below content */}
@@ -305,15 +315,15 @@ const PrintPreviewHV = ({
         <button
           type="button"
           onClick={() => handleStatusChange('Unclear')}
-          disabled={loading || normalizeStatus(currentRecord?.status) === 1 || (!currentRecord?.a && !currentRecord?.b && !currentRecord?.c && !currentRecord?.d)}
+          disabled={loading || (normalizeStatus(currentRecord?.status) === 1 && !canEditVerified) || (!currentRecord?.a && !currentRecord?.b && !currentRecord?.c && !currentRecord?.d)}
           className={`flex items-center justify-center gap-1 px-3 py-1 text-xs font-medium rounded-md transition-all duration-200
-            ${loading || normalizeStatus(currentRecord?.status) === 1 || (!currentRecord?.a && !currentRecord?.b && !currentRecord?.c && !currentRecord?.d)
+            ${loading || (normalizeStatus(currentRecord?.status) === 1 && !canEditVerified) || (!currentRecord?.a && !currentRecord?.b && !currentRecord?.c && !currentRecord?.d)
               ? 'bg-orange-100 text-orange-400 cursor-not-allowed opacity-60'
               : normalizeStatus(currentRecord?.status) === 2
                 ? 'bg-orange-100 text-orange-400 cursor-not-allowed opacity-60'
                 : 'bg-orange-400 text-white hover:bg-orange-500 active:scale-95 cursor-pointer'
             }`}
-          title={(!currentRecord?.a && !currentRecord?.b && !currentRecord?.c && !currentRecord?.d) ? 'At least one of A, B, C, D is required' : normalizeStatus(currentRecord?.status) === 1 ? 'Cannot change verified records' : 'Mark as Needs Review'}
+          title={(!currentRecord?.a && !currentRecord?.b && !currentRecord?.c && !currentRecord?.d) ? 'At least one of A, B, C, D is required' : (normalizeStatus(currentRecord?.status) === 1 && !canEditVerified) ? 'Cannot change verified records' : 'Mark as Needs Review'}
         >
           <AlertCircle className="w-3 h-3" />
           Needs Review
@@ -321,13 +331,13 @@ const PrintPreviewHV = ({
         <button
           type="button"
           onClick={() => handleStatusChange('Verified')}
-          disabled={loading || normalizeStatus(currentRecord?.status) === 1 || (!currentRecord?.a && !currentRecord?.b && !currentRecord?.c && !currentRecord?.d)}
+          disabled={loading || (normalizeStatus(currentRecord?.status) === 1 && !canEditVerified) || (!currentRecord?.a && !currentRecord?.b && !currentRecord?.c && !currentRecord?.d)}
           className={`flex items-center justify-center gap-1 px-3 py-1 text-xs font-medium rounded-md transition-all duration-200
-            ${loading || normalizeStatus(currentRecord?.status) === 1 || (!currentRecord?.a && !currentRecord?.b && !currentRecord?.c && !currentRecord?.d)
+            ${loading || (normalizeStatus(currentRecord?.status) === 1 && !canEditVerified) || (!currentRecord?.a && !currentRecord?.b && !currentRecord?.c && !currentRecord?.d)
               ? 'bg-green-100 text-green-400 cursor-not-allowed opacity-60'
               : 'bg-green-500 text-white hover:bg-green-600 active:scale-95 cursor-pointer'
             }`}
-          title={(!currentRecord?.a && !currentRecord?.b && !currentRecord?.c && !currentRecord?.d) ? 'At least one of A, B, C, D is required' : normalizeStatus(currentRecord?.status) === 1 ? 'Already verified' : 'Mark as Verified (or press Enter)'}
+          title={(!currentRecord?.a && !currentRecord?.b && !currentRecord?.c && !currentRecord?.d) ? 'At least one of A, B, C, D is required' : (normalizeStatus(currentRecord?.status) === 1 && !canEditVerified) ? 'Already verified' : 'Mark as Verified (or press Enter)'}
         >
           <CheckCircle2 className="w-3 h-3" />
           Verified

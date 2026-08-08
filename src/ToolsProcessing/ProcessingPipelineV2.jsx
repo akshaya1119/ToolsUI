@@ -1737,7 +1737,7 @@ const loadGeneratedTemplateReports = async () => {
             envLotNumbers: isQS ? String(currentLot) : (envLotNumbers.length > 0 ? envLotNumbers.join(',') : "0"),
             lotNo: isQS ? Number(currentLot) : (isBoxBreakingDependent && currentLot ? Number(currentLot) : 0),
             fileName: fileName,
-            generatedByUserId: currentUserId ? Number(currentUserId) : null,
+            generatedByUserId: currentUserId,
             filePath: filePath
           };
           console.log('[handleGenerateTemplate] Saving report to database:', reportData);
