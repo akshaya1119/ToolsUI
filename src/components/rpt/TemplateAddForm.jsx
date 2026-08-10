@@ -29,7 +29,7 @@ const TemplateAddForm = ({
         label="Sub Name"
         name="subName"
       >
-        <Input placeholder="eg: Box Breaking, 3-column, std-t2..." />
+        <Input placeholder="Enter template subname" />
       </Form.Item>
       {children}
       <Form.Item 

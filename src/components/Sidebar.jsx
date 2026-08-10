@@ -5,17 +5,22 @@ import { FaHome, FaWrench, FaChartBar, FaSignOutAlt, FaBookmark, FaBook, FaChevr
 import useStore from "../stores/ProjectData";
 import API from "../hooks/api";
 import Footer from "./Footer";
+import { getCurrentUserRoleId } from "../hooks/useUserMap";
 
 export default function Sidebar({ collapsed }) {
   const navigate = useNavigate();
   const location = useLocation();
   const [openGroups, setOpenGroups] = useState({});
+  const roleId = getCurrentUserRoleId();
+  const isRoleAuthorized = roleId === null || (Number(roleId) <= 4 && Number(roleId) > 0);
 
   // Subscribe to Zustand store for projectName (optimizing re-renders)
   const projectName = useStore((state) => state.projectName);
   const projectId = useStore((state) => state.projectId);
   const nrDataCount = useStore((state) => state.nrDataCount);
   const setNrDataCount = useStore((state) => state.setNrDataCount);
+  const headerCorrectionCount = useStore((state) => state.headerCorrectionCount);
+  const setHeaderCorrectionCount = useStore((state) => state.setHeaderCorrectionCount);
   const isConfigured = useStore((state) => state.isConfigured);
   const setIsConfigured = useStore((state) => state.setIsConfigured);
   const setIsLoadingData = useStore((state) => state.setIsLoadingData);
@@ -34,6 +39,15 @@ export default function Sidebar({ collapsed }) {
           // Fetch project configuration status
           const configRes = await API.get(`/ProjectConfigs/ByProject/${projectId}`);
           setIsConfigured(!!configRes.data);
+
+          // Fetch Header Verification remarks count
+          try {
+            const hvRes = await API.get(`/Correction/HeaderVerification/${projectId}?pageSize=1&page=1`);
+            const hvCount = hvRes.data?.summary?.correctionCount ?? hvRes.data?.summary?.hasRemarkCount ?? 0;
+            setHeaderCorrectionCount(hvCount);
+          } catch (e) {
+            console.error("Failed to fetch header verification remarks count", e);
+          }
         } catch (err) {
           console.error("Failed to fetch project data", err);
           // Don't reset everything on error, but maybe log it
@@ -43,7 +57,7 @@ export default function Sidebar({ collapsed }) {
       }
     };
     fetchData();
-  }, [projectId, setNrDataCount, setIsConfigured]);
+  }, [projectId, setNrDataCount, setHeaderCorrectionCount, setIsConfigured]);
 
   // Handle collapse toggle
   const toggleGroup = (groupKey) => {
@@ -92,10 +106,11 @@ export default function Sidebar({ collapsed }) {
     ...(projectName
       ? [
         {
-      label: "Header Verification",
-      icon: <FaBook className="text-black" />, // Book icon for header verification
-      path: "/headerverification",
-    },
+          label: "Header Verification",
+          icon: <FaBook className="text-black" />, // Book icon for header verification
+          path: "/headerverification",
+          badge: isRoleAuthorized ? headerCorrectionCount : null,
+        },
         {
           label: "Horizontal To Vertical Tool",
           icon: <FaWrench className="text-black" />, // Filled wrench icon
@@ -120,21 +135,29 @@ export default function Sidebar({ collapsed }) {
   ,   
   ];
 
-  const SidebarItem = ({ label, icon, path, disabled, active, isChild = false }) => {
+  const SidebarItem = ({ label, icon, path, disabled, active, isChild = false, badge = null }) => {
     const isActive = active || location.pathname === path;
     const isDisabled = disabled;
 
     return (
       <li
         onClick={() => !isDisabled && navigate(path)}
-        className={`flex items-center gap-3 px-3 py-2 rounded-md cursor-pointer transition-all duration-150
+        className={`flex items-center justify-between gap-3 px-3 py-2 rounded-md cursor-pointer transition-all duration-150
           ${isChild ? "text-sm pl-6 mt-1" : ""}
           ${isDisabled ? "text-gray-400 cursor-not-allowed" : isActive ? "bg-blue-100 text-blue-700 border-l-4 border-blue-500 font-medium" : "text-gray-700 hover:bg-gray-100"}
           ${collapsed && !isChild ? "justify-center" : ""}`}
       >
-        <div className="relative group flex items-center gap-3">
-          {icon && <span className={collapsed ? "text-2xl" : "text-base"}>{icon}</span>}
-          {(!collapsed || isChild) && <span>{label}</span>}
+        <div className="relative group flex items-center gap-3 min-w-0">
+          <div className="relative flex items-center justify-center">
+            {icon && <span className={collapsed ? "text-2xl" : "text-base"}>{icon}</span>}
+            {collapsed && badge !== null && badge !== undefined && Number(badge) > 0 && (
+              <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-600"></span>
+              </span>
+            )}
+          </div>
+          {(!collapsed || isChild) && <span className="truncate">{label}</span>}
           
           {isDisabled && (
             <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 
@@ -147,6 +170,13 @@ export default function Sidebar({ collapsed }) {
             </div>
           )}
         </div>
+
+        {/* Count Badge when expanded */}
+        {!collapsed && badge !== null && badge !== undefined && Number(badge) > 0 && (
+          <span className="ml-auto inline-flex items-center justify-center px-2 py-0.5 text-xs font-bold rounded-full bg-red-600 text-white shadow-sm min-w-[20px] flex-shrink-0">
+            {badge}
+          </span>
+        )}
       </li>
     );
   };
@@ -158,6 +188,7 @@ export default function Sidebar({ collapsed }) {
       icon={item.icon}
       path={item.path}
       disabled={item.disabled}
+      badge={item.badge}
     />
   );
 

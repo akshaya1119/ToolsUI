@@ -10,7 +10,7 @@ const BatchComparisonTable = ({ comparisonData, onPaginationChange, onSearch, on
   const [sortOrder, setSortOrder] = useState(null);
   const [activeTab, setActiveTab] = useState('allChanges');
   const debounceTimer = useRef(null);
-  
+
   const [headerFilters, setHeaderFilters] = useState({
     catchNo: null,
     centerCode: null,
@@ -60,11 +60,11 @@ const BatchComparisonTable = ({ comparisonData, onPaginationChange, onSearch, on
   // Categorize fields into unique and non-unique
   const { fieldsToShowUnique, fieldsToShowNonUnique, catchLevelFields } = useMemo(() => {
     if (!comparisonData || !comparisonData.data) return { fieldsToShowUnique: [], fieldsToShowNonUnique: [], catchLevelFields: [] };
-    
+
     const unique = new Set();
     const nonUnique = new Set();
     const catchLevel = new Set();
-    
+
     comparisonData.data.forEach(item => {
       item.changes.forEach(change => {
         if (change.isConsistentCatchLevelChange) {
@@ -76,7 +76,7 @@ const BatchComparisonTable = ({ comparisonData, onPaginationChange, onSearch, on
         }
       });
     });
-    
+
     return {
       fieldsToShowUnique: Array.from(unique),
       fieldsToShowNonUnique: Array.from(nonUnique).sort((a, b) => a === 'Difference' ? 1 : b === 'Difference' ? -1 : 0),
@@ -145,7 +145,7 @@ const BatchComparisonTable = ({ comparisonData, onPaginationChange, onSearch, on
         otherData: []
       };
     }
-    
+
     const allData = comparisonData.data.map((item, index) => ({
       id: `${item.catchNo}-${item.centerCode}-${index}`,
       key: `${item.catchNo}-${item.centerCode}-${index}`,
@@ -158,7 +158,7 @@ const BatchComparisonTable = ({ comparisonData, onPaginationChange, onSearch, on
       }, {}),
       originalItem: item
     }));
-    
+
     // Filter for All Changes: include records that have non-unique field changes or are Added/Removed
     const allChanges = allData.filter(item => {
       const hasNonUniqueChanges = Object.values(item.originalItem.changes || []).some(
@@ -167,7 +167,7 @@ const BatchComparisonTable = ({ comparisonData, onPaginationChange, onSearch, on
       const isAddedOrRemoved = item.status === "Centre Catch Added" || item.status === "Centre Catch Removed";
       return hasNonUniqueChanges || isAddedOrRemoved;
     });
-    
+
     // Filter for Catch-Level Changes: ONE row per catch with all centers aggregated
     const catchLevelMap = new Map();
     allData.forEach(item => {
@@ -195,7 +195,7 @@ const BatchComparisonTable = ({ comparisonData, onPaginationChange, onSearch, on
       }
     });
     const catchLevel = Array.from(catchLevelMap.values());
-    
+
     // Filter by status for other tabs
     const added = allData.filter(item => item.status === "Centre Catch Added");
     const removed = allData.filter(item => item.status === "Centre Catch Removed");
@@ -203,7 +203,7 @@ const BatchComparisonTable = ({ comparisonData, onPaginationChange, onSearch, on
     const nodal = allData.filter(item => item.status === "Nodal Changed");
     const centerCodeData = allData.filter(item => item.status === "Center Code Changed");
     const other = allData.filter(item => item.status === "Updated");
-    
+
     return {
       allChangesData: allChanges,
       catchLevelData: catchLevel,
@@ -261,7 +261,7 @@ const BatchComparisonTable = ({ comparisonData, onPaginationChange, onSearch, on
       ...getColumnSearchProps('catchNo', 'Catch No'),
     },
   ];
-  
+
   // Add Centers column only for catch-level changes
   if (activeTab === 'catchLevel') {
     baseColumns.push({
@@ -290,8 +290,8 @@ const BatchComparisonTable = ({ comparisonData, onPaginationChange, onSearch, on
         if (centerChange && centerChange.previousValue && centerChange.newValue) {
           return (
             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              <span style={{ 
-                background: "#fff2f0", 
+              <span style={{
+                background: "#fff2f0",
                 color: "#cf1322",
                 padding: "2px 6px",
                 borderRadius: "4px",
@@ -301,8 +301,8 @@ const BatchComparisonTable = ({ comparisonData, onPaginationChange, onSearch, on
               }}>
                 - {centerChange.previousValue}
               </span>
-              <span style={{ 
-                background: "#f6ffed", 
+              <span style={{
+                background: "#f6ffed",
                 color: "#274e0a",
                 padding: "2px 6px",
                 borderRadius: "4px",
@@ -321,7 +321,7 @@ const BatchComparisonTable = ({ comparisonData, onPaginationChange, onSearch, on
       ...getColumnSearchProps('centerCode', 'Centre Code'),
     });
   }
-  
+
   const columns = [
     ...baseColumns,
     {
@@ -342,7 +342,7 @@ const BatchComparisonTable = ({ comparisonData, onPaginationChange, onSearch, on
       render: (status) => {
         // Map status to color
         let color = '#faad14'; // default orange
-        
+
         if (status) {
           const statusLower = status.toLowerCase();
           if (statusLower.includes('added')) {
@@ -359,7 +359,7 @@ const BatchComparisonTable = ({ comparisonData, onPaginationChange, onSearch, on
             color = '#1890ff'; // blue for centre changed
           }
         }
-        
+
         return (
           <span style={{ color: color, fontWeight: 500 }}>
             {status || '—'}
@@ -374,21 +374,21 @@ const BatchComparisonTable = ({ comparisonData, onPaginationChange, onSearch, on
       render: (_, record) => {
         const change = record.changes[field];
         if (!change) return <span style={{ color: "#d9d9d9" }}>—</span>;
-        
+
         // If both previous and new values are null/empty, show plain dash
         if (!change.previousValue && !change.newValue) {
           return <span style={{ color: "#d9d9d9" }}>—</span>;
         }
-        
+
         if (field === 'Difference') {
           try {
             const data = JSON.parse(change.newValue);
-            
+
             // Compare revised to baseQty
             const targetQty = data.baseQty ?? data.baseNR;
             const revisedIsLower = data.revised < targetQty;
             const revisedIsUpper = data.revised > targetQty;
-            
+
             const RevisedIcon = revisedIsLower ? <ChevronDown size={14} /> : (revisedIsUpper ? <ChevronUp size={14} /> : null);
 
             const baseIsLower = targetQty < data.revised;
@@ -396,7 +396,7 @@ const BatchComparisonTable = ({ comparisonData, onPaginationChange, onSearch, on
             const BaseIcon = baseIsLower ? <ChevronDown size={14} /> : (baseIsUpper ? <ChevronUp size={14} /> : null);
 
             const lowerStyle = {
-              background: "#fff2f0", 
+              background: "#fff2f0",
               color: "#cf1322",
               padding: "2px 8px",
               borderRadius: "4px",
@@ -406,9 +406,9 @@ const BatchComparisonTable = ({ comparisonData, onPaginationChange, onSearch, on
               alignItems: "center",
               gap: "4px"
             };
-            
+
             const upperStyle = {
-              background: "#f6ffed", 
+              background: "#f6ffed",
               color: "#274e0a",
               padding: "2px 8px",
               borderRadius: "4px",
@@ -418,9 +418,9 @@ const BatchComparisonTable = ({ comparisonData, onPaginationChange, onSearch, on
               alignItems: "center",
               gap: "4px"
             };
-            
+
             const equalStyle = {
-              background: "#e6f4ff", 
+              background: "#e6f4ff",
               color: "#0958d9",
               padding: "2px 8px",
               borderRadius: "4px",
@@ -434,7 +434,7 @@ const BatchComparisonTable = ({ comparisonData, onPaginationChange, onSearch, on
             const revisedStyle = revisedIsLower ? lowerStyle : (revisedIsUpper ? upperStyle : equalStyle);
             const baseStyle = baseIsLower ? lowerStyle : (baseIsUpper ? upperStyle : equalStyle);
             const fulfilmentColor = data.fulfilment === 'Not Fulfilled' ? '#cf1322' : '#389e0d';
-            
+
             let tooltipText = '';
             if (targetQty === data.revised) {
               tooltipText = 'Equal';
@@ -451,16 +451,16 @@ const BatchComparisonTable = ({ comparisonData, onPaginationChange, onSearch, on
                     <span style={baseStyle}>
                       {BaseIcon} {targetQty}
                     </span>
-                    
+
                     <span style={revisedStyle}>
                       {RevisedIcon} {data.revised}
                     </span>
-                    
+
                     <span style={{ color: fulfilmentColor, fontWeight: 500 }}>
                       {data.fulfilment}
                     </span>
                   </div>
-                  
+
                   {data.remaining !== null && (
                     <div style={{ color: '#333', fontWeight: 500 }}>
                       Remaining: {data.remaining}
@@ -477,11 +477,11 @@ const BatchComparisonTable = ({ comparisonData, onPaginationChange, onSearch, on
             );
           }
         }
-        
+
         return (
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <span style={{ 
-              background: "#fff2f0", 
+            <span style={{
+              background: "#fff2f0",
               color: "#cf1322",
               padding: "2px 8px",
               borderRadius: "4px",
@@ -490,8 +490,8 @@ const BatchComparisonTable = ({ comparisonData, onPaginationChange, onSearch, on
             }}>
               - {change.previousValue}
             </span>
-            <span style={{ 
-              background: "#f6ffed", 
+            <span style={{
+              background: "#f6ffed",
               color: "#274e0a",
               padding: "2px 8px",
               borderRadius: "4px",
@@ -523,7 +523,7 @@ const BatchComparisonTable = ({ comparisonData, onPaginationChange, onSearch, on
     // Handle column sorter
     let field = sortField;
     let order = sortOrder;
-    
+
     if (sorter && sorter.column) {
       field = sorter.field?.toLowerCase();
       order = sorter.order ? (sorter.order === 'ascend' ? 'asc' : 'desc') : null;
@@ -659,14 +659,14 @@ const BatchComparisonTable = ({ comparisonData, onPaginationChange, onSearch, on
 
           {/* Tabs */}
           <Spin spinning={loading} size="small">
-            <Tabs 
+            <Tabs
               activeKey={activeTab}
               onChange={handleTabChange}
               style={{ marginBottom: 16 }}
               items={tabs.map(tab => ({
                 key: tab.key,
                 label: (
-                  <span style={{ 
+                  <span style={{
                     color: tab.color || '#1890ff',
                     fontWeight: tab.bold ? 'bold' : 'normal'
                   }}>
@@ -691,7 +691,7 @@ const BatchComparisonTable = ({ comparisonData, onPaginationChange, onSearch, on
               locale={{ emptyText: loading ? "Loading..." : <Empty description="No records found for this status" /> }}
             />
           </Spin>
-          
+
           {/* Custom Pagination Controls */}
           <Row justify="space-between" align="middle" style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid #f0f0f0' }}>
             <Col>

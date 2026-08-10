@@ -6,6 +6,7 @@ const COLUMN_LABELS = {
   b: 'B',
   c: 'C',
   d: 'D',
+  remark: 'Remark',
   lotNo: 'Lot',
   date: 'Exam Date',
   time: 'Exam Time'
@@ -29,11 +30,22 @@ const SearchBarHV = ({
   toggleableColumns = [],
   onColumnToggle,
   tableSorter,
+  isRole4 = false,
+  userRoleId = null,
+  showCorrection = null,
+  isCorrectionFilter = false,
+  onCorrectionFilterToggle,
+  correctionCount = 0,
 }) => {
   const [lotDropdownOpen, setLotDropdownOpen] = useState(false);
   const [colMenuOpen, setColMenuOpen] = useState(false);
   const lotRef = useRef(null);
   const colRef = useRef(null);
+
+  const isRoleAuthorized = (userRoleId !== null && Number(userRoleId) <= 4 && Number(userRoleId) > 0) || isRole4;
+  const canShowCorrection = showCorrection !== null 
+    ? (showCorrection && (correctionCount > 0 || isCorrectionFilter))
+    : (isRoleAuthorized && (correctionCount > 0 || isCorrectionFilter));
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -58,14 +70,15 @@ const SearchBarHV = ({
           value={globalSearch}
           onChange={(e) => onGlobalSearchChange(e.target.value)}
         />
-        {/* Reset button - enabled when any filter/search/lot/status/column filter/sorting is active */}
+        {/* Reset button - enabled when any filter/search/lot/status/column filter/sorting/correction is active */}
         {(() => {
           const isResetEnabled = !!(
             globalSearch ||
             selectedLot ||
             (selectedStatus && selectedStatus !== 'ALL') ||
             Object.values(columnFilters || {}).some((v) => !!v) ||
-            (tableSorter && tableSorter.field)
+            (tableSorter && tableSorter.field) ||
+            isCorrectionFilter
           );
           return (
             <button
@@ -83,6 +96,40 @@ const SearchBarHV = ({
           );
         })()}
       </div>
+
+      {/* Correction Filter Button - Red color theme with blinking attention dot & count badge */}
+      {canShowCorrection && (
+        <button
+          onClick={() => onCorrectionFilterToggle?.()}
+          className={`relative flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-semibold transition-all duration-200 shadow-xs select-none ${
+            isCorrectionFilter
+              ? 'bg-red-600 hover:bg-red-700 text-white border border-red-700 shadow-md ring-2 ring-red-300/80'
+              : 'bg-red-50 hover:bg-red-100 text-red-700 border border-red-300 hover:border-red-400'
+          }`}
+          title={isCorrectionFilter ? "Showing only catches with remarks (Click to show all)" : "Filter catches with remarks (clears all other filters)"}
+        >
+          {/* Blinking attention dot */}
+          <span className="relative flex h-2 w-2">
+            <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
+              isCorrectionFilter ? 'bg-white' : (correctionCount > 0 ? 'bg-red-500' : 'bg-red-400')
+            }`} />
+            <span className={`relative inline-flex rounded-full h-2 w-2 ${
+              isCorrectionFilter ? 'bg-white' : (correctionCount > 0 ? 'bg-red-600' : 'bg-red-500')
+            }`} />
+          </span>
+
+          <span>Correction</span>
+
+          {/* Backend Unique Catches Count Badge */}
+          <span className={`inline-flex items-center justify-center px-2 py-0.2 text-xs font-bold rounded-full min-w-[20px] transition-colors ${
+            isCorrectionFilter
+              ? 'bg-white text-red-700 shadow-xs'
+              : (correctionCount > 0 ? 'bg-red-600 text-white shadow-xs' : 'bg-red-200 text-red-800')
+          }`}>
+            {correctionCount}
+          </span>
+        </button>
+      )}
 
       {/* Column toggle */}
       <div className="relative" ref={colRef}>
