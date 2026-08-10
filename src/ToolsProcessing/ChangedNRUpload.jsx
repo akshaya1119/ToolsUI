@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
-import { Typography, Row, Col, Card, Button, Select, Space, Spin, Empty, Tag } from "antd";
-import { RedoOutlined, DeleteOutlined, ReloadOutlined } from "@ant-design/icons";
+import { Typography, Row, Col, Card, Button, Select, Space, Spin, Empty, Tag, Modal } from "antd";
+import { RedoOutlined, DeleteOutlined, ReloadOutlined, CloudUploadOutlined } from "@ant-design/icons";
 import API from "../hooks/api";
 import { useToast } from "../hooks/useToast";
 import useStore from "../stores/ProjectData";
@@ -14,6 +14,7 @@ const ChangedNRUpload = () => {
   const [comparedBatch, setComparedBatch] = useState(null);
   const [loading, setLoading] = useState(false);
   const [loadingBatches, setLoadingBatches] = useState(false);
+  const [pushLoading, setPushLoading] = useState(false);
   const [comparisonData, setComparisonData] = useState(null);
   const [lots, setLots] = useState([]);
   const [selectedLot, setSelectedLot] = useState(null);
@@ -206,6 +207,55 @@ const ChangedNRUpload = () => {
     setComparisonData(null);
     setComparedBatch(null);
     setAdditionalFields([]);
+  };
+
+  const handlePushChanges = async (selectedItems = null) => {
+    if (!projectId || !comparedBatch) {
+      showToast("Please select a batch to push changes", "warning");
+      return;
+    }
+
+    const process = processes.find(p => p.processId === selectedProcess);
+    const step = process ? process.steps : 0;
+
+    const isAll = !selectedItems || selectedItems.length === 0;
+    const confirmTitle = isAll
+      ? `Are you sure you want to push ALL changes from Batch ${comparedBatch} to Base Batch (Batch 1)?`
+      : `Are you sure you want to push ${selectedItems.length} selected change(s) to Base Batch (Batch 1)?`;
+
+    Modal.confirm({
+      title: "Confirm Push to Base Batch",
+      content: confirmTitle,
+      okText: "Yes, Push Changes",
+      okType: "primary",
+      cancelText: "Cancel",
+      onOk: async () => {
+        setPushLoading(true);
+        try {
+          const payload = {
+            projectId: projectId,
+            compareBatch: comparedBatch,
+            lotNo: selectedLot || 0,
+            processStep: step,
+            processId: selectedProcess,
+            additionalFields: additionalFields.length > 0 ? additionalFields.join(",") : null,
+            selectedItems: selectedItems && selectedItems.length > 0 ? selectedItems : null
+          };
+
+          const res = await API.post("/NRDatas/apply-comparison-changes", payload);
+          showToast(res.data?.message || "Changes pushed successfully to Base Batch!", "success");
+
+          // Refresh comparison data to reflect updated status
+          handleCompareBatches();
+        } catch (error) {
+          console.error("Failed to push changes:", error);
+          const errorMsg = error?.response?.data?.message || "Failed to push changes";
+          showToast(errorMsg, "error");
+        } finally {
+          setPushLoading(false);
+        }
+      }
+    });
   };
 
   const handlePaginationChange = async (pageNo, pageSize, searchText, sortField, sortOrder, headerFilters) => {
@@ -416,7 +466,7 @@ const ChangedNRUpload = () => {
             </Col>
 
             <Col xs={24} sm={24} md={7}>
-              <Space style={{ width: "100%", justifyContent: "flex-end" }}>
+              <Space style={{ width: "100%", justifyContent: "flex-end" }} wrap>
                 <Button
                   type="primary"
                   icon={<RedoOutlined />}
@@ -456,7 +506,15 @@ const ChangedNRUpload = () => {
             onPaginationChange={handlePaginationChange}
             onSearch={handleSearch}
             onSort={handleSort}
+            onPushChanges={handlePushChanges}
+            pushLoading={pushLoading}
             loading={loading}
+            projectId={projectId}
+            comparedBatch={comparedBatch}
+            selectedLot={selectedLot}
+            selectedProcess={selectedProcess}
+            processes={processes}
+            additionalFields={additionalFields}
           />
         </Card>
       )}

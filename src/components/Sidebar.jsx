@@ -59,6 +59,23 @@ export default function Sidebar({ collapsed }) {
     fetchData();
   }, [projectId, setNrDataCount, setHeaderCorrectionCount, setIsConfigured]);
 
+  // Auto-expand group if current path is a child
+  useEffect(() => {
+    const isToolsChild = [
+      "/projectconfiguration",
+      "/dataimport",
+      "/changedNRUpload",
+      "/projecttemplates",
+      "/processingpipeline",
+      "/processingpipelinev2",
+      "/headerverification"
+    ].includes(location.pathname);
+
+    if (isToolsChild) {
+      setOpenGroups((prev) => ({ ...prev, Tools: true }));
+    }
+  }, [location.pathname]);
+
   // Handle collapse toggle
   const toggleGroup = (groupKey) => {
     setOpenGroups((prev) => ({
@@ -98,6 +115,11 @@ export default function Sidebar({ collapsed }) {
               path: "/processingpipelinev2",
               disabled: nrDataCount === 0 || !isConfigured
             },
+            {
+              label: "Header Verification",
+              path: "/headerverification",
+              badge: isRoleAuthorized ? headerCorrectionCount : null,
+            },
             // { label: "RPT Reports", path: "/rptreports" },
           ],
         },
@@ -105,12 +127,6 @@ export default function Sidebar({ collapsed }) {
       : []),
     ...(projectName
       ? [
-        {
-          label: "Header Verification",
-          icon: <FaBook className="text-black" />, // Book icon for header verification
-          path: "/headerverification",
-          badge: isRoleAuthorized ? headerCorrectionCount : null,
-        },
         {
           label: "Horizontal To Vertical Tool",
           icon: <FaWrench className="text-black" />, // Filled wrench icon
@@ -194,6 +210,7 @@ export default function Sidebar({ collapsed }) {
 
   const renderGroupItem = (group) => {
     const isOpen = openGroups[group.label];
+    const groupBadgeCount = group.children?.reduce((sum, child) => sum + (Number(child.badge) || 0), 0) || 0;
 
     return (
       <li key={group.label} className="flex flex-col">
@@ -201,14 +218,29 @@ export default function Sidebar({ collapsed }) {
           onClick={() => toggleGroup(group.label)}
           className={`flex items-center justify-between px-3 py-2 rounded-md cursor-pointer text-gray-800 hover:bg-gray-100 transition-all duration-150 ${collapsed ? "justify-center" : ""}`}
         >
-          <div className="flex items-center gap-3">
-            <span className={collapsed ? "text-2xl" : "text-base"}>{group.icon}</span>
+          <div className="relative flex items-center gap-3">
+            <div className="relative flex items-center justify-center">
+              <span className={collapsed ? "text-2xl" : "text-base"}>{group.icon}</span>
+              {collapsed && groupBadgeCount > 0 && (
+                <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-600"></span>
+                </span>
+              )}
+            </div>
             {!collapsed && <span>{group.label}</span>}
           </div>
           {!collapsed && (
-            <span className="ml-auto">
-              {isOpen ? <FaChevronDown className="text-black" /> : <FaChevronRight className="text-black" />}
-            </span>
+            <div className="flex items-center gap-2 ml-auto">
+              {!isOpen && groupBadgeCount > 0 && (
+                <span className="inline-flex items-center justify-center px-2 py-0.5 text-xs font-bold rounded-full bg-red-600 text-white shadow-sm min-w-[20px]">
+                  {groupBadgeCount}
+                </span>
+              )}
+              <span>
+                {isOpen ? <FaChevronDown className="text-black" /> : <FaChevronRight className="text-black" />}
+              </span>
+            </div>
           )}
         </div>
 
@@ -221,6 +253,7 @@ export default function Sidebar({ collapsed }) {
                 label={child.label}
                 path={child.path}
                 disabled={child.disabled}
+                badge={child.badge}
                 isChild={true}
               />
             ))}

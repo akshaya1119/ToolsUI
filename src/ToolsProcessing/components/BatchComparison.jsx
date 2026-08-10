@@ -87,6 +87,50 @@ const BatchComparison = ({ projectId }) => {
     setComparedBatch(null);
   };
 
+  const handlePushChanges = async (selectedItems = null) => {
+    if (!projectId || !comparedBatch) {
+      showToast("Please select a batch to push changes", "warning");
+      return;
+    }
+
+    const isAll = !selectedItems || selectedItems.length === 0;
+    const confirmTitle = isAll
+      ? `Are you sure you want to push ALL changes from Batch ${comparedBatch} to Base Batch (Batch 1)?`
+      : `Are you sure you want to push ${selectedItems.length} selected change(s) to Base Batch (Batch 1)?`;
+
+    Modal.confirm({
+      title: "Confirm Push to Base Batch",
+      content: confirmTitle,
+      okText: "Yes, Push Changes",
+      okType: "primary",
+      cancelText: "Cancel",
+      onOk: async () => {
+        setLoading(true);
+        try {
+          const payload = {
+            projectId: projectId,
+            compareBatch: comparedBatch,
+            lotNo: 0,
+            processStep: 1,
+            selectedItems: selectedItems && selectedItems.length > 0 ? selectedItems : null
+          };
+
+          const res = await API.post("/NRDatas/apply-comparison-changes", payload);
+          showToast(res.data?.message || "Changes pushed successfully to Base Batch!", "success");
+
+          // Refresh comparison data to reflect updated status
+          handleCompareBatches();
+        } catch (error) {
+          console.error("Failed to push changes:", error);
+          const errorMsg = error?.response?.data?.message || "Failed to push changes";
+          showToast(errorMsg, "error");
+        } finally {
+          setLoading(false);
+        }
+      }
+    });
+  };
+
   const handlePaginationChange = async (pageNo, pageSize) => {
     setLoading(true);
     try {
@@ -131,27 +175,18 @@ const BatchComparison = ({ projectId }) => {
     }
   };
 
-  const handleSort = async (sortField, sortOrder, searchText) => {
+  const handleSort = async (sortField, sortOrder, searchText, status) => {
     setLoading(true);
     try {
-      // Handle sort field format (e.g., 'catchNo-desc' -> 'catchNo', 'desc')
-      let field = sortField;
-      let order = sortOrder;
-      
-      if (sortField?.includes('-')) {
-        const parts = sortField.split('-');
-        field = parts[0];
-        order = parts[1];
-      }
-
       const res = await API.get(`/NRDatas/CompareBatches/${projectId}`, {
         params: {
           compareBatch: comparedBatch,
           pageNo: 1,
           pageSize: 20,
           search: searchText || null,
-          sortField: field || null,
-          sortOrder: order || null
+          sortField: sortField || null,
+          sortOrder: sortOrder || null,
+          status: status || null
         }
       });
       
@@ -165,8 +200,8 @@ const BatchComparison = ({ projectId }) => {
   };
 
   return (
-    <div className="batch-comparison-section">
-      <Card title="Batch Comparison" className="batch-selection-card">
+    <div className="batch-comparison-container">
+      <Card className="batch-selection-card">
         <Spin spinning={loadingBatches}>
           <Row gutter={[16, 16]}>
             <Col xs={24} sm={12} md={6}>
@@ -242,6 +277,8 @@ const BatchComparison = ({ projectId }) => {
               onPaginationChange={handlePaginationChange}
               onSearch={handleSearch}
               onSort={handleSort}
+              onPushChanges={handlePushChanges}
+              loading={loading}
             />
           </Spin>
         </Card>
