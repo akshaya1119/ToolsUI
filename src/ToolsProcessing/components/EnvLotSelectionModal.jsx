@@ -129,10 +129,10 @@ const EnvLotSelectionModal = ({
   const sourceItems = showAssigned
     ? assignedEnvLots
     : unassignedCatches;
- console.log("sourceItems", sourceItems);
- console.log("showAssigned:", showAssigned);
-console.log("assignedEnvLots:", assignedEnvLots);
-console.log("unassignedCatches:", unassignedCatches);
+//  console.log("sourceItems", sourceItems);
+//  console.log("showAssigned:", showAssigned);
+// console.log("assignedEnvLots:", assignedEnvLots);
+// console.log("unassignedCatches:", unassignedCatches);
   const filteredItems = sourceItems.filter((item) => {
     const search = envLotSearch.trim().toLowerCase();
 
@@ -182,7 +182,7 @@ console.log("unassignedCatches:", unassignedCatches);
         <Alert
           description={
             showAssigned
-              ? "Select assigned envelope lots for processing."
+              ? "Select assigned batches for processing."
               : "Select unassigned catches for processing."
           }
           type="info"
@@ -193,7 +193,7 @@ console.log("unassignedCatches:", unassignedCatches);
         <Input.Search
           placeholder={
             showAssigned
-              ? "Search Env Lot / Catch"
+              ? "Search Batch / Catch"
               : "Search Catch No"
           }
           value={envLotSearch}
@@ -213,7 +213,7 @@ console.log("unassignedCatches:", unassignedCatches);
             marginRight: 12
           }}
         >
-          Show assigned envelope lots
+          Show assigned batches
         </Checkbox>
 
         <Checkbox
@@ -228,14 +228,14 @@ console.log("unassignedCatches:", unassignedCatches);
             fontWeight: 500
           }}
         >
-          Select All {showAssigned ? "Lots" : "Catches"} (
+          Select All {showAssigned ? "Batches" : "Catches"} (
           {filteredItems.length})
         </Checkbox>
       </div>
 
       {sourceItems.length === 0 && !unverifiedCatch && !isVerifying ? (
         <Alert
-          message={showAssigned ? "No envelope lots to process" : "No catches to process"}
+          message={showAssigned ? "No batches to process" : "No catches to process"}
           type="warning"
           showIcon
           style={{ marginBottom: 16 }}
@@ -276,7 +276,7 @@ console.log("unassignedCatches:", unassignedCatches);
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                 <Text strong style={{ fontSize: "14px", color: "#d4380d" }}>
-                  Catch No {unverifiedCatch.catchNo}
+                  Catch No : {unverifiedCatch.catchNo}
                 </Text>
                 <Tag color="error">Not Verified</Tag>
               </div>
@@ -339,7 +339,7 @@ console.log("unassignedCatches:", unassignedCatches);
                             fontSize: "14px"
                           }}
                         >
-                          Env Lot {item.envLotNo}
+                          Batch {item.envLotNo}
                         </Text>
 
                         {(
@@ -409,7 +409,7 @@ console.log("unassignedCatches:", unassignedCatches);
           >
             {selectedEnvLots.length}{" "}
             {showAssigned
-              ? "lot(s)"
+              ? "batch(es)"
               : "catch(es)"}{" "}
             selected
           </Text>

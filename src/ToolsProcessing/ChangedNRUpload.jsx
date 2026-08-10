@@ -148,6 +148,13 @@ const ChangedNRUpload = () => {
       return;
     }
 
+    if (!selectedProcess) {
+      showToast("Please select a Process before comparing.", "warning");
+      return;
+    }
+    const process = processes.find(p => p.processId === selectedProcess);
+    const step = process ? process.steps : 0;
+
     setLoading(true);
     try {
       const params = {
@@ -156,6 +163,7 @@ const ChangedNRUpload = () => {
         lotNo: selectedLot || 0,
         pageNo: 1,
         pageSize: 20,
+        processStep: step,
       };
 
       // Add additional fields if selected
@@ -200,7 +208,10 @@ const ChangedNRUpload = () => {
     setAdditionalFields([]);
   };
 
-  const handlePaginationChange = async (pageNo, pageSize) => {
+  const handlePaginationChange = async (pageNo, pageSize, searchText, sortField, sortOrder, headerFilters) => {
+    const process = processes.find(p => p.processId === selectedProcess);
+    const step = process ? process.steps : 0;
+    
     setLoading(true);
     try {
       const params = {
@@ -209,6 +220,13 @@ const ChangedNRUpload = () => {
         lotNo: selectedLot || 0,
         pageNo: pageNo,
         pageSize: pageSize,
+        search: searchText || null,
+        sortField: sortField || null,
+        sortOrder: sortOrder || null,
+        status: headerFilters?.status || null,
+        catchNo: headerFilters?.catchNo || null,
+        centerCode: headerFilters?.centerCode || null,
+        processStep: step,
       };
 
       if (additionalFields.length > 0) {
@@ -228,7 +246,10 @@ const ChangedNRUpload = () => {
     }
   };
 
-  const handleSearch = async (searchText, sortField, sortOrder, status) => {
+  const handleSearch = async (searchText, sortField, sortOrder, headerFilters) => {
+    const process = processes.find(p => p.processId === selectedProcess);
+    const step = process ? process.steps : 0;
+    
     setLoading(true);
     try {
       const params = {
@@ -240,7 +261,10 @@ const ChangedNRUpload = () => {
         search: searchText || null,
         sortField: sortField || null,
         sortOrder: sortOrder || null,
-        status: status || null,
+        status: headerFilters?.status || null,
+        catchNo: headerFilters?.catchNo || null,
+        centerCode: headerFilters?.centerCode || null,
+        processStep: step,
       };
 
       if (additionalFields.length > 0) {
@@ -260,7 +284,10 @@ const ChangedNRUpload = () => {
     }
   };
 
-  const handleSort = async (sortField, sortOrder, searchText) => {
+  const handleSort = async (sortField, sortOrder, searchText, headerFilters) => {
+    const process = processes.find(p => p.processId === selectedProcess);
+    const step = process ? process.steps : 0;
+
     setLoading(true);
     try {
       const params = {
@@ -272,6 +299,10 @@ const ChangedNRUpload = () => {
         search: searchText || null,
         sortField: sortField || null,
         sortOrder: sortOrder || null,
+        status: headerFilters?.status || null,
+        catchNo: headerFilters?.catchNo || null,
+        centerCode: headerFilters?.centerCode || null,
+        processStep: step,
       };
 
       if (additionalFields.length > 0) {

@@ -79,6 +79,11 @@ export default function Sidebar({ collapsed }) {
               path: "/processingpipeline",
               disabled: nrDataCount === 0 || !isConfigured
             },
+            {
+              label: "Processing Pipeline V2",
+              path: "/processingpipelinev2",
+              disabled: nrDataCount === 0 || !isConfigured
+            },
             // { label: "RPT Reports", path: "/rptreports" },
           ],
         },

@@ -23,6 +23,7 @@ const TemplatesVersionsModal = ({
       footer={null}
       width={860}
     >
+      
       <Space direction="vertical" size={8} style={{ width: "100%" }}>
         <Typography.Text type="secondary">
           Showing all saved versions for this template.
@@ -37,7 +38,8 @@ const TemplatesVersionsModal = ({
               <Space>
                 <ExclamationCircleOutlined style={{ color: "#d46b08" }} />
                 <Typography.Text>
-                  You are using version v{pendingGenerateTemplate.version}. Output may
+                  You are using version v{pendingGenerateTemplate.version}
+                  {(pendingGenerateTemplate.subName || pendingGenerateTemplate.SubName) && ` (${pendingGenerateTemplate.subName || pendingGenerateTemplate.SubName})`}. Output may
                   differ from the latest template.
                 </Typography.Text>
               </Space>

@@ -19,6 +19,7 @@ import MissingData from '../components/MissingData';
 import DataImportConflictReport from '../components/DataImportConflictReport';
 import LotsBifurcation from "./components/LotsBifurcation";
 import MergeCatchNumbers from "./components/MergeCatchNumbers";
+import { getCurrentUserId } from "../hooks/useUserMap";
 
 const { Text } = Typography;
 const { Option } = Select;
@@ -1686,13 +1687,34 @@ const DataImport = () => {
       });
 
       // 3. Save the generated report info to database (EnvelopeLotReports table)
+      let currentUserId = localStorage.getItem('userId');
+      if (!currentUserId || currentUserId === 'undefined') {
+        const userData = localStorage.getItem('userData');
+        if (userData) {
+          try {
+            const parsed = JSON.parse(userData);
+            currentUserId = parsed.userId ?? parsed.UserId ?? parsed.id ?? parsed.Id ?? null;
+          } catch (e) {
+            // ignore
+          }
+        }
+      }
+      if (currentUserId && currentUserId !== 'undefined') {
+        currentUserId = Number(currentUserId);
+        if (isNaN(currentUserId)) {
+          currentUserId = null;
+        }
+      } else {
+        currentUserId = null;
+      }
+
       const reportData = {
         projectId: Number(projectId),
         templateId,
         templateName: outerTemplate.templateName,
         envLotNumbers: catchNo,
         fileName,
-        generatedBy: 'System (Auto)',
+        generatedByUserId: currentUserId ? Number(currentUserId) : null,
         filePath: filePath,
         lotNo: null // Auto-generated reports don't have a specific lot number
       };
