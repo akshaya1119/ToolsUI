@@ -26,7 +26,8 @@ export const useMasterConfigSave = (
   showToast,
   resetForm
 ) => {
-  const handleSave = async () => {
+  const handleSave = async (passcode = null) => {
+    const requestHeaders = passcode ? { headers: { 'X-Master-Auth-Passcode': passcode, 'X-Group-Id': groupId || 0 } } : {};
     try {
       // 1️⃣ Save MasterConfigs including Duplicate Tool
       const masterConfigPayload = {
@@ -56,11 +57,11 @@ export const useMasterConfigSave = (
           : 0,
       };
 
-      await API.post(`/MasterConfigs`, masterConfigPayload);
+      await API.post(`/MasterConfigs`, masterConfigPayload, requestHeaders);
 
       // 2️⃣ Delete existing MasterExtrasConfigurations first
       try {
-        await API.delete(`/MasterExtrasConfigurations/${groupId}/${typeId}`);
+        await API.delete(`/MasterExtrasConfigurations/${groupId}/${typeId}`, requestHeaders);
       } catch (err) {
         // Ignore if no existing configs
         console.log("No existing master extras config to delete");
@@ -116,7 +117,7 @@ export const useMasterConfigSave = (
       if (extrasPayloads.length > 0) {
         await Promise.all(
           extrasPayloads.map((payload) =>
-            API.post(`/MasterExtrasConfigurations`, payload)
+            API.post(`/MasterExtrasConfigurations`, payload, requestHeaders)
           )
         );
       }

@@ -22,6 +22,7 @@ import API from "../hooks/api";
 import ImportConfig from "./components/ImportConfig";
 import { importTemplatesFromGroup } from "../services/rptTemplatesService";
 import { normalizeId } from "../utils/rptTemplateUtils";
+import useMasterAuth from "../hooks/useMasterAuth";
 
 const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, selectedGroup = null, onTypeChange = null, onGroupChange = null, typeOptions: propTypeOptions = [], groupOptions: propGroupOptions = [], onReset = null, onResetAll = null }) => {
   const { showToast } = useToast();
@@ -895,6 +896,25 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
     selectedType,
     selectedGroup
   );
+
+  const { requireAuth, authModalComponent } = useMasterAuth();
+
+  const handleSaveWithMasterAuth = (overrideIsMasterConfig = false, overrideTypeId = null, overrideGroupId = null, skipChangeDetection = false) => {
+    const isMasterMode = overrideIsMasterConfig || isMasterConfig;
+    const targetGroupId = overrideGroupId || selectedGroup || 0;
+    if (isMasterMode) {
+      requireAuth((passcode) => {
+        return handleSave(overrideIsMasterConfig, overrideTypeId, overrideGroupId, skipChangeDetection, passcode);
+      }, {
+        moduleName: 'Master Configuration',
+        operationType: 'SAVE MASTER',
+        groupId: targetGroupId
+      });
+    } else {
+      handleSave(overrideIsMasterConfig, overrideTypeId, overrideGroupId, skipChangeDetection);
+    }
+  };
+
   console.log(selectedCapacity);
   console.log("Type of selectedCapacity:", typeof selectedCapacity);
 
@@ -1389,7 +1409,7 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
             boxConfigured={boxConfigured}
             extraConfigured={extraConfigured}
             duplicateConfigured={duplicateConfigured}
-            handleSave={handleSave}
+            handleSave={handleSaveWithMasterAuth}
             projectId={projectId}
             isMasterConfig={isMasterConfig}
             selectedType={selectedType}
@@ -1397,6 +1417,7 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
           />
         </Col>
       </Row>
+      {authModalComponent}
     </div>
   );
 };

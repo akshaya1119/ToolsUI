@@ -12,6 +12,7 @@ import ConfigSummaryCard from "../ProjectConfig/components/ConfigSummaryCard";
 import { EXTRA_ALIAS_NAME } from "../ProjectConfig/components/constants";
 import DuplicateTool from "../ToolsProcessing/DuplicateTool";
 import API from "../hooks/api";
+import useMasterAuth from "../hooks/useMasterAuth";
 
 const MasterConfiguration = () => {
   const { showToast } = useToast();
@@ -247,6 +248,18 @@ const MasterConfiguration = () => {
     resetForm
   );
 
+  const { requireAuth, authModalComponent } = useMasterAuth();
+
+  const handleSaveWithMasterAuth = () => {
+    requireAuth((passcode) => {
+      return handleSave(passcode);
+    }, {
+      moduleName: 'Master Configuration',
+      operationType: 'SAVE MASTER',
+      groupId: selectedGroup || 0
+    });
+  };
+
   // Helper function
   const isEnabled = (toolName) => enabledModules.includes(toolName);
 
@@ -399,7 +412,7 @@ const MasterConfiguration = () => {
               boxConfigured={boxConfigured}
               extraConfigured={extraConfigured}
               duplicateConfigured={duplicateConfigured}
-              handleSave={handleSave}
+              handleSave={handleSaveWithMasterAuth}
               projectId={selectedGroup && selectedType ? `${selectedGroup}-${selectedType}` : null}
             />
           </Col>
@@ -409,6 +422,7 @@ const MasterConfiguration = () => {
           Please select both Group and Type to configure master settings.
         </Typography.Text>
       )}
+      {authModalComponent}
     </div>
   );
 };

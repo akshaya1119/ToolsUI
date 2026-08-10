@@ -1452,8 +1452,11 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted }, ref) => {
                 }
               }}
               locale={{
-                emptyText: "No catch numbers available for lots.",
-              }}
+  emptyText:
+    activeLotTab === "0"
+      ? "No catch numbers available."
+      : "No catch numbers available for lots.",
+}}
             />
           </Space>
         </Card>
