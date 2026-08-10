@@ -442,6 +442,19 @@ const BatchComparisonTable = ({
   const columns = [
     ...baseColumns,
     {
+      title: 'Extras',
+      key: 'extras',
+      width: 150,
+      render: (_, record) => {
+        const extras = record.extras || record.originalItem?.extras;
+        return (
+          <span style={{ fontWeight: 500, color: '#333' }}>
+            {extras || '-'}
+          </span>
+        );
+      }
+    },
+    {
       title: 'Status',
       dataIndex: 'status',
       key: 'status',
