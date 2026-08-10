@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import '@ant-design/v5-patch-for-react-19'
 import { Row, Col, Card, Select, Upload, Button, Typography, Space, Table, Tabs, Checkbox, Input, Modal, Radio, DatePicker, Popconfirm } from 'antd';
 import dayjs from 'dayjs';
-import {TriangleAlert,Trash2,ChevronDown,ChevronUp } from 'lucide-react';
+import { TriangleAlert, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
 import { MessageService } from "../services/MessageService";
 import { useToast } from '../hooks/useToast';
 import { CheckCircleOutlined, UploadOutlined, ToolOutlined, SearchOutlined, PlusOutlined, EditOutlined, CloseCircleOutlined, DeleteOutlined } from '@ant-design/icons';
@@ -283,6 +283,13 @@ const DataImport = () => {
       useStore.getState().setNrDataCount(res.data.totalCount || 0);
       setShowData(res.data.items && res.data.items.length > 0);
       setSelectedUploadedCatchNos([]);
+
+      // Auto-collapse upload section if data exists, and open if empty
+      // Only do this if there are no search filters applied
+      const totalCount = res.data.totalCount || 0;
+      if (!debouncedGlobalSearchText && Object.keys(columnFilters).length === 0) {
+        setUploadSectionCollapsed(totalCount > 0);
+      }
     } catch (err) {
       console.error("Failed to fetch existing data", err);
       setExistingData([]);
@@ -1177,7 +1184,7 @@ const DataImport = () => {
 
     try {
       let batchId = null;
-      
+
       if (isCorrectedNrdataReport) {
         const changedRes = await API.post(`/ChangedNr`, payload, {
           headers: { Authorization: `Bearer ${token}` }
@@ -1202,25 +1209,25 @@ const DataImport = () => {
         try {
           console.log('Captured batchId from response:', batchId);
           console.log('Running duplicate processing for project:', projectId, 'batch:', batchId);
-          
+
           if (!batchId || batchId <= 0) {
             showToast("Warning: Could not determine batch ID, processing entire project", "warning");
             console.warn('Batch ID is invalid, will process entire project');
           }
-          
+
           showToast("Processing duplicates...", "info");
-          
+
           // Call duplicate endpoint with batchId parameter
-          const duplicateEndpoint = batchId && batchId > 0 
+          const duplicateEndpoint = batchId && batchId > 0
             ? `/Duplicate?ProjectId=${projectId}&batchId=${batchId}`
             : `/Duplicate?ProjectId=${projectId}`;
-          
+
           console.log('Calling duplicate endpoint:', duplicateEndpoint);
-          
+
           const duplicateRes = await API.post(duplicateEndpoint, {}, {
             headers: { Authorization: `Bearer ${token}` }
           });
-          
+
           console.log('Duplicate response:', duplicateRes.data);
           const duplicatesRemoved = duplicateRes?.data?.mergedRows ?? 0;
           showToast(`Duplicate processing completed for batch ${batchId || 'project'}. Duplicates removed: ${duplicatesRemoved}`, "success");
@@ -2057,6 +2064,7 @@ const DataImport = () => {
       setFileList([]);
       setFieldMappings({});
       setFileHeaders({});
+      setUploadSectionCollapsed(false);
 
       // Close modal
       if (closeModal) closeModal();
@@ -2205,76 +2213,73 @@ const DataImport = () => {
           }
           extra={
             <Space size={6} onClick={e => e.stopPropagation()}>
-             <Button
-  type="primary"
-  size="small"
-  icon={<PlusOutlined />}
-  style={{ minWidth: 110, height: 28, fontSize: 12 }}
-  onClick={() => {
-    if (uploadSectionCollapsed) setUploadSectionCollapsed(false);
-    setAddRowOpen((prev) => !prev);
-  }}
->
-  Add Data
-</Button>
-
-<Button
-  size="small"
-  icon={<TriangleAlert size={14} />}
-  style={{
-    minWidth: 110,
-    height: 28,
-    fontSize: 12,
-    backgroundColor: "#f0dc24ff",
-    borderColor: "#d4bc00",
-    color: "#000",
-  }}
-  onClick={fetchConflictReport}
->
-  Load Conflict
-</Button>
-
-<Button
-  danger
-  size="small"
-  icon={<Trash2 size={14} />}
-  style={{
-    minWidth: 110,
-    height: 28,
-    fontSize: 12,
-    backgroundColor: "#ff4d4f",
-    borderColor: "#ff4d4f",
-    color: "#fff",
-  }}
-  onClick={async () => {
-    const confirmed = await MessageService.confirm(
-      "Are you sure you want to delete NR data for this project?",
-      {
-        title: "Confirm Deletion",
-        confirmText: "Yes, Delete",
-        cancelText: "Cancel",
-        type: 'error',
-      }
-    );
-    if (confirmed) await deleteNRData();
-  }}
->
-  Delete NR Data
-</Button>
               <Button
-  size="small"
-  type="text"
-  onClick={() => setUploadSectionCollapsed(prev => !prev)}
-  style={{
-    color: '#595959',
-    fontSize: 16,
-    lineHeight: 1,
-    padding: '0 4px'
-  }}
-  title={uploadSectionCollapsed ? 'Expand upload section' : 'Collapse upload section'}
->
-  {uploadSectionCollapsed ? <ChevronDown size={18} /> : <ChevronUp size={18} />}
-</Button>
+                type="primary"
+                size="small"
+                icon={<PlusOutlined />}
+                style={{ minWidth: 110, height: 28, fontSize: 12 }}
+                onClick={() => setAddRowOpen((prev) => !prev)}
+              >
+                Add Data
+              </Button>
+
+              <Button
+                size="small"
+                icon={<TriangleAlert size={14} />}
+                style={{
+                  minWidth: 110,
+                  height: 28,
+                  fontSize: 12,
+                  backgroundColor: "#f0dc24ff",
+                  borderColor: "#d4bc00",
+                  color: "#000",
+                }}
+                onClick={fetchConflictReport}
+              >
+                Load Conflict
+              </Button>
+
+              <Button
+                danger
+                size="small"
+                icon={<Trash2 size={14} />}
+                style={{
+                  minWidth: 110,
+                  height: 28,
+                  fontSize: 12,
+                  backgroundColor: "#ff4d4f",
+                  borderColor: "#ff4d4f",
+                  color: "#fff",
+                }}
+                onClick={async () => {
+                  const confirmed = await MessageService.confirm(
+                    "Are you sure you want to delete NR data for this project?",
+                    {
+                      title: "Confirm Deletion",
+                      confirmText: "Yes, Delete",
+                      cancelText: "Cancel",
+                      type: 'error',
+                    }
+                  );
+                  if (confirmed) await deleteNRData();
+                }}
+              >
+                Delete NR Data
+              </Button>
+              <Button
+                size="small"
+                type="text"
+                onClick={() => setUploadSectionCollapsed(prev => !prev)}
+                style={{
+                  color: '#595959',
+                  fontSize: 16,
+                  lineHeight: 1,
+                  padding: '0 4px'
+                }}
+                title={uploadSectionCollapsed ? 'Expand upload section' : 'Collapse upload section'}
+              >
+                {uploadSectionCollapsed ? <ChevronDown size={18} /> : <ChevronUp size={18} />}
+              </Button>
             </Space>
           }
           bordered={true}
