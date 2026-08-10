@@ -105,6 +105,7 @@ export const uploadTemplate = async (
     projectId,
     moduleIds,
     forceUpload,
+    passcode,
   },
 ) => {
   const formData = new FormData();
@@ -127,19 +128,28 @@ export const uploadTemplate = async (
     formData.append("forceUpload", "true");
   }
 
+  const headers = { "Content-Type": "multipart/form-data" };
+  if (passcode) {
+    headers["X-Master-Auth-Passcode"] = passcode;
+  }
+
   const res = await axios.post(`${apiUrl}/RPTTemplates/upload`, formData, {
-    headers: { "Content-Type": "multipart/form-data" },
+    headers,
   });
 
   return res.data;
 };
 
 export const importTemplatesFromGroup = async (apiUrl, payload) => {
-  await axios.post(`${apiUrl}/RPTTemplates/import-from-group`, payload);
+  const headers = {};
+  // if (payload.passcode) headers["X-Master-Auth-Passcode"] = payload.passcode;
+  await axios.post(`${apiUrl}/RPTTemplates/import-from-group`, payload, { headers });
 };
 
 export const promoteTemplatesToMaster = async (apiUrl, payload) => {
-  const res = await axios.post(`${apiUrl}/RPTTemplates/promote-to-group-master`, payload);
+  const headers = {};
+  if (payload.passcode) headers["X-Master-Auth-Passcode"] = payload.passcode;
+  const res = await axios.post(`${apiUrl}/RPTTemplates/promote-to-group-master`, payload, { headers });
   return res.data;
 };
 
@@ -220,8 +230,13 @@ export const uploadMasterTemplate = async (apiUrl, payload) => {
   formData.append("templateName", payload.templateName);
   if (payload.subName) formData.append("subName", payload.subName);
 
+  const headers = { "Content-Type": "multipart/form-data" };
+  if (payload.passcode) {
+    headers["X-Master-Auth-Passcode"] = payload.passcode;
+  }
+
   const res = await axios.post(`${apiUrl}/MRPTTemplates/upload`, formData, {
-    headers: { "Content-Type": "multipart/form-data" },
+    headers,
   });
   return res.data;
 };

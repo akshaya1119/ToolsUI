@@ -37,12 +37,13 @@ export const useProjectConfigSave = (
   typeId = null,
   groupId = null
 ) => {
-  const handleSave = async (overrideIsMasterConfig = false, overrideTypeId = null, overrideGroupId = null, skipChangeDetection = false) => {
+  const handleSave = async (overrideIsMasterConfig = false, overrideTypeId = null, overrideGroupId = null, skipChangeDetection = false, passcode = null) => {
     let existingConfig = null;
     const finalIsMasterConfig = overrideIsMasterConfig || isMasterConfig;
     const finalTypeId = overrideTypeId || typeId;
     const finalGroupId = overrideGroupId || groupId;
 
+    const requestHeaders = passcode ? { headers: { 'X-Master-Auth-Passcode': passcode, 'X-Group-Id': finalGroupId || 0 } } : {};
     try {
       const res = await API.get(`/ProjectConfigs/ByProject/${projectId}`);
       existingConfig = res.data;
@@ -209,7 +210,7 @@ export const useProjectConfigSave = (
       };
 
       console.log("SENDING PROJECT CONFIG PAYLOAD:", JSON.stringify(projectConfigPayload, null, 2));
-      await API.post(projectConfigEndpoint, projectConfigPayload);
+      await API.post(projectConfigEndpoint, projectConfigPayload, requestHeaders);
 
       // Prepare extras config for comparison — normalize it to match API structure
       const newExtrasConfig = {};
@@ -438,7 +439,7 @@ export const useProjectConfigSave = (
       if (extrasPayloads.length > 0) {
         await Promise.all(
           extrasPayloads.map((payload) =>
-            API.post(extraConfigEndpoint, payload)
+            API.post(extraConfigEndpoint, payload, requestHeaders)
           )
         );
       }

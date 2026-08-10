@@ -33,6 +33,8 @@ const RPTFilesHeader = ({
         </div>
         <div className="rpt-filter">
           <Select
+            showSearch
+            optionFilterProp="label"
             placeholder="Select Group"
             value={selectedGroup}
             onChange={onGroupChange}

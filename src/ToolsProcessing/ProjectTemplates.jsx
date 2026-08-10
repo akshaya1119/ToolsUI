@@ -33,6 +33,7 @@ import {
 } from "@ant-design/icons";
 import axios from "axios";
 import useStore from "../stores/ProjectData";
+import useMasterAuth from "../hooks/useMasterAuth";
 import {
   extractParsedFields,
   buildReportFileName,
@@ -85,6 +86,7 @@ const ProjectTemplates = () => {
   const url = import.meta.env.VITE_API_BASE_URL;
   const APIURL = import.meta.env.VITE_API_URL;
   const rptApiUrl = import.meta.env.VITE_RPT_API_URL;
+  const { requireAuth, authModalComponent } = useMasterAuth();
   const token = localStorage.getItem("token");
   const [savingMapping, setSavingMapping] = useState(false);
   const projectId = useStore((state) => state.projectId);
@@ -695,21 +697,33 @@ const ProjectTemplates = () => {
 
   const handleSaveAsMaster = async () => {
     if (!selectedRowKeys.length) return;
-    setSavingMaster(true);
-    try {
-      const res = await promoteTemplatesToMaster(APIURL, {
-        templateIds: selectedRowKeys,
-        targetGroupId: projectGroupId
-      });
-      message.success(`Successfully promoted ${res.promoted?.length || selectedRowKeys.length} template(s) to Group Master.`);
-      setSelectedRowKeys([]);
-      fetchAvailableRPTFiles();
-    } catch (err) {
-      console.error("Failed to save as master", err);
-      showError(err, "Failed to promote templates to group master");
-    } finally {
-      setSavingMaster(false);
-    }
+    
+    requireAuth(
+      async (passcode) => {
+        setSavingMaster(true);
+        try {
+          const res = await promoteTemplatesToMaster(APIURL, {
+            templateIds: selectedRowKeys,
+            targetGroupId: projectGroupId,
+            passcode,
+          });
+          message.success(`Successfully promoted ${res.promoted?.length || selectedRowKeys.length} template(s) to Group Master.`);
+          setSelectedRowKeys([]);
+          fetchAvailableRPTFiles();
+        } catch (err) {
+          console.error("Failed to save as master", err);
+          showError(err, "Failed to promote templates to group master");
+          throw err;
+        } finally {
+          setSavingMaster(false);
+        }
+      },
+      {
+        moduleName: "MRPTTemplates",
+        operationType: "SAVE MASTER",
+        groupId: projectGroupId || 0,
+      }
+    );
   };
 
   const handleAddSubmit = async () => {
@@ -1553,6 +1567,7 @@ const ProjectTemplates = () => {
 
   return (
     <div className="rpt-templates">
+      {authModalComponent}
       <style>{rptTemplatesStyles}</style>
       <ProjectTemplatesHeader
         projectLoading={projectLoading}

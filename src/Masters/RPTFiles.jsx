@@ -45,10 +45,12 @@ import TemplatesCard from "../components/rpt/TemplatesCard";
 import TemplatesSidePanel from "../components/rpt/TemplatesSidePanel";
 import TemplatesMappingPanel from "../components/rpt/TemplatesMappingPanel";
 import TemplatesVersionsModal from "../components/rpt/TemplatesVersionsModal";
+import useMasterAuth from "../hooks/useMasterAuth";
 
 const RPTFiles = () => {
   const url = import.meta.env.VITE_API_BASE_URL;
   const APIURL = import.meta.env.VITE_API_URL;
+  const { requireAuth, authModalComponent } = useMasterAuth();
   const token = localStorage.getItem("token");
   const [useBoxLabelSP, setUseBoxLabelSP] = useState(false);
   const [staticVariables, setStaticVariables] = useState({});
@@ -560,15 +562,33 @@ const RPTFiles = () => {
     isUpdate = false,
     existingTemplateId = null,
   }) => {
-    return uploadTemplateService(APIURL, {
-      groupId,
-      typeId,
-      templateName,
-      subName,
-      file,
-      projectId,
-      moduleIds,
-      forceUpload,
+    return new Promise((resolve, reject) => {
+      requireAuth(
+        async (passcode) => {
+          try {
+            const res = await uploadTemplateService(APIURL, {
+              groupId,
+              typeId,
+              templateName,
+              subName,
+              file,
+              projectId,
+              moduleIds,
+              forceUpload,
+              passcode,
+            });
+            resolve(res);
+          } catch (err) {
+            reject(err);
+            throw err;
+          }
+        },
+        {
+          moduleName: "MRPTTemplates",
+          operationType: "SAVE MASTER",
+          groupId: groupId || 0,
+        }
+      );
     });
   };
 
@@ -686,9 +706,10 @@ const RPTFiles = () => {
       setImportSubmitting(true);
       const sourceScope = values.sourceScope || "group";
       const payload = {
-        sourceScope,
+        sourceScope: sourceScope,
         targetGroupId: selectedGroup,
         targetTypeId: selectedType,
+        targetScope: "master",
         copyMappings: values.copyMappings ?? true,
       };
       if (values.selectedTemplateIds && values.selectedTemplateIds.length > 0) {
@@ -704,16 +725,22 @@ const RPTFiles = () => {
         payload.sourceProjectId = values.sourceProjectId;
         payload.sourceTypeId = selectedImportProjectType;
       }
-      await importTemplatesFromGroup(APIURL, { ...payload });
-      message.success("Templates imported successfully.");
-      setImportModalOpen(false);
-      importForm.resetFields();
-      fetchAvailableRPTFiles();
+      try {
+        setImportSubmitting(true);
+        await importTemplatesFromGroup(APIURL, payload);
+        message.success("Templates imported successfully.");
+        setImportModalOpen(false);
+        importForm.resetFields();
+        fetchAvailableRPTFiles();
+      } catch (err) {
+        console.error("Failed to import templates", err);
+        showError(err, "Failed to import templates. Please try again.");
+      } finally {
+        setImportSubmitting(false);
+      }
     } catch (err) {
       if (err?.errorFields) return;
-      console.error("Failed to import templates", err);
-      showError(err, "Failed to import templates. Please try again.");
-    } finally {
+      console.error("Validation failed", err);
       setImportSubmitting(false);
     }
   };
@@ -758,9 +785,7 @@ const RPTFiles = () => {
     setMappingLoading(true);
     setMappingNotFound(false);
     setParsedFields(extractParsedFields(template));
-    setStaticVariables(parsed.staticVariables || {});
-setFilterMode(parsed.filterMode || null);
-setUseBoxLabelSP(parsed.useBoxLabelSP || false);
+    
     fetchMappingOptions(template);
     try {
       const details = await fetchTemplateDetails(APIURL, template.templateId);
@@ -789,6 +814,11 @@ setUseBoxLabelSP(parsed.useBoxLabelSP || false);
       const res = await fetchTemplateMapping(APIURL, template.templateId);
       const mapping = res?.mappingJson ?? res?.MappingJson ?? "";
       const parsed = parseMappingJson(mapping);
+      
+      setStaticVariables(parsed.staticVariables || {});
+      setFilterMode(parsed.filterMode || null);
+      setUseBoxLabelSP(parsed.useBoxLabelSP || false);
+
       setMappingSelections(parsed.mappings || {});
       setGroupBySelections(Array.isArray(parsed.groupBy) ? parsed.groupBy : []);
       setOrderBySelections(Array.isArray(parsed.orderBy) ? parsed.orderBy : []);
@@ -852,9 +882,9 @@ setUseBoxLabelSP(parsed.useBoxLabelSP || false);
         orderBy: orderBySelections || [],
         labelCopies: labelCopies ?? 1,
         staticVariables: staticVariables || {},
-  filterMode: filterMode || null,
-  useBoxLabelSP: useBoxLabelSP || false,
-  qrConfiguration: qrConfiguration || { enabled: false, qrFields: [], separator: "|" },
+        filterMode: filterMode || null,
+        useBoxLabelSP: useBoxLabelSP || false,
+        qrConfiguration: qrConfiguration || { enabled: false, qrFields: [], separator: "|" },
       };
       const hasContent =
         mappingsPayload.length > 0 ||
@@ -1371,6 +1401,7 @@ setUseBoxLabelSP(parsed.useBoxLabelSP || false);
 
   return (
     <div className="rpt-templates">
+      {authModalComponent}
       <style>{rptTemplatesStyles}</style>
       <RPTFilesHeader
         templateScope={templateScope}
@@ -1448,7 +1479,13 @@ setUseBoxLabelSP(parsed.useBoxLabelSP || false);
                       name="groupId"
                       rules={[{ required: true, message: "Group is required" }]}
                     >
-                      <Select options={groupOptions} placeholder="Select group" />
+                      <Select 
+                        showSearch
+                        optionFilterProp="label"
+                        allowClear
+                        options={groupOptions} 
+                        placeholder="Select group" 
+                      />
                     </Form.Item>
                   )}
                   <Form.Item
