@@ -59,7 +59,7 @@ export default function Dashboard({ externalSearchQuery, onSearchQueryChange }) 
   const [loading, setLoading] = useState(true);
   const [pinnedGroups, setPinnedGroups] = useState(() => JSON.parse(localStorage.getItem("pinned_groups") || "[]"));
   const [pinnedProjects, setPinnedProjects] = useState(() => JSON.parse(localStorage.getItem("pinned_projects") || "[]"));
-  const [isGroupsExpanded, setIsGroupsExpanded] = useState(true);
+  const [isGroupsExpanded, setIsGroupsExpanded] = useState(false);
 
   const roleId = getCurrentUserRoleId();
   const isRoleAuthorized = roleId === null || (Number(roleId) <= 4 && Number(roleId) > 0);
@@ -706,7 +706,7 @@ export default function Dashboard({ externalSearchQuery, onSearchQueryChange }) 
                   </div>
                   {!searchQuery && categorizedGroups.remaining.length > 8 && (
                     <div className="flex items-center gap-1 text-[10px] font-bold text-blue-600 uppercase tracking-widest">
-                      {isGroupsExpanded ? "Show Less" : "Explore All"}
+                      {isGroupsExpanded ? "Show Less" : "Show More"}
                       {isGroupsExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                     </div>
                   )}
@@ -893,7 +893,7 @@ export default function Dashboard({ externalSearchQuery, onSearchQueryChange }) 
                   </div>
                   {!searchQuery && categorizedProjects.remaining.length > 12 && (
                     <div className="flex items-center gap-1 text-[10px] font-bold text-blue-600 uppercase tracking-widest">
-                      {isProjectsExpanded ? "Show Less" : "Explore All"}
+                      {isProjectsExpanded ? "Show Less" : "Show More"}
                       {isProjectsExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                     </div>
                   )}
