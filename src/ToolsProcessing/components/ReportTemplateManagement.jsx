@@ -316,11 +316,16 @@ const ReportTemplateManagement = ({
       const templateId   = Number(r.templateId ?? r.TemplateId ?? 0);
       const templateName = r.templateName || '-';
       const moduleLower  = (r.module || '').toLowerCase();
-      const isBoxDep      = moduleLower.includes(BOX_BREAKING_MODULE);
-      const isEnvDep      = moduleLower.includes(ENVELOPE_BREAKING_MODULE);
-
+      
       // Get all DB records for this template
       const dbRows = envLotReportsByTemplate[templateId] || [];
+
+      // Detect if there's any lot or batch data in the rows
+      const hasLot = dbRows.some(db => (Number(db.lotNumber ?? db.lotNo ?? db.LotNo) || 0) > 0);
+      const hasEnv = dbRows.some(db => parseEnvLotNumbers(db.envLotNumbers ?? db.EnvLotNumbers).length > 0);
+
+      const isBoxDep      = moduleLower.includes(BOX_BREAKING_MODULE) || hasLot;
+      const isEnvDep      = moduleLower.includes(ENVELOPE_BREAKING_MODULE) || hasEnv;
 
       if (dbRows.length === 0) {
         // No generated records — show a single placeholder group
@@ -627,12 +632,25 @@ const ReportTemplateManagement = ({
 
     // ── derive header data from the "latest" (first) row ──
     let headerData = {};
+    
+    let displayModule = group.module || '-';
+    if (displayModule === '-') {
+      if (isReport) {
+        if (group.lot != null) displayModule = 'Box Breaking';
+      } else {
+        const dbRows = group.rows.map(r => r._dbRow).filter(Boolean);
+        const hasLot = dbRows.some(db => (Number(db.lotNumber ?? db.lotNo ?? db.LotNo) || 0) > 0);
+        const hasEnv = dbRows.some(db => parseEnvLotNumbers(db.envLotNumbers ?? db.EnvLotNumbers).length > 0);
+        if (hasLot) displayModule = 'Box Breaking';
+        else if (hasEnv) displayModule = 'Envelope Breaking';
+      }
+    }
 
     if (isReport) {
       const latestRow = group.rows[0];
       const v = latestRow?.versions?.[0];
       headerData = {
-        module:      group.module || '-',
+        module:      displayModule,
         lot:         group.lot != null ? `Lot ${group.lot}` : '-',
         name:        latestRow?.reportName || '-',
         version:     v?.version ?? '-',
@@ -646,7 +664,7 @@ const ReportTemplateManagement = ({
       const latestDb = group.rows[0]?._dbRow;
       const envNums  = parseEnvLotNumbers(latestDb?.envLotNumbers ?? latestDb?.EnvLotNumbers);
       headerData = {
-        module:       group.module || '-',
+        module:       displayModule,
         lot:          group.lot != null ? `Lot ${group.lot}` : '-',
         envLotNo:     group.envLotNo ?? (envNums[0] || null),
         name:         group.templateName || '-',

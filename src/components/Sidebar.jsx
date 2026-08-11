@@ -148,47 +148,70 @@ export default function Sidebar({ collapsed }) {
         },
       ]
     ),
-  ,   
+    ,
   ];
 
-  const SidebarItem = ({ label, icon, path, disabled, active, isChild = false, badge = null }) => {
+  const SidebarItem = ({ label, icon, path, disabled, active, isChild = false, badge = null, isFlyoutChild = false }) => {
     const isActive = active || location.pathname === path;
     const isDisabled = disabled;
 
+    const activeClass = isActive
+      ? `bg-blue-100 text-blue-700 font-medium ${collapsed && !isFlyoutChild ? "" : "border-l-4 border-blue-500"}`
+      : "text-gray-700 hover:bg-gray-100";
+
+    const disabledClass = "text-gray-400 cursor-not-allowed";
+
+    let baseClass = "flex items-center justify-between cursor-pointer transition-all duration-150 relative group ";
+    if (isFlyoutChild) {
+      baseClass += "px-4 py-2 text-sm border-l-4 border-transparent hover:border-l-4 hover:border-blue-400 " + (isDisabled ? disabledClass : activeClass);
+    } else {
+      baseClass += "px-3 py-2 rounded-md " +
+        (isChild ? "text-sm pl-6 mt-1 " : "") +
+        (isDisabled ? disabledClass : activeClass) +
+        (collapsed && !isChild ? " justify-center" : " gap-3");
+    }
+
     return (
-      <li
-        onClick={() => !isDisabled && navigate(path)}
-        className={`flex items-center justify-between gap-3 px-3 py-2 rounded-md cursor-pointer transition-all duration-150
-          ${isChild ? "text-sm pl-6 mt-1" : ""}
-          ${isDisabled ? "text-gray-400 cursor-not-allowed" : isActive ? "bg-blue-100 text-blue-700 border-l-4 border-blue-500 font-medium" : "text-gray-700 hover:bg-gray-100"}
-          ${collapsed && !isChild ? "justify-center" : ""}`}
-      >
-        <div className="relative group flex items-center gap-3 min-w-0">
+      <li onClick={() => !isDisabled && navigate(path)} className={baseClass}>
+        <div className={`relative flex items-center min-w-0 ${isFlyoutChild ? "gap-2" : "gap-3"}`}>
           <div className="relative flex items-center justify-center">
-            {icon && <span className={collapsed ? "text-2xl" : "text-base"}>{icon}</span>}
-            {collapsed && badge !== null && badge !== undefined && Number(badge) > 0 && (
+            {icon && <span className={`${(collapsed && !isChild && !isFlyoutChild) ? "text-2xl" : "text-base"} shrink-0`}>{icon}</span>}
+            {collapsed && !isFlyoutChild && badge !== null && badge !== undefined && Number(badge) > 0 && (
               <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-600"></span>
               </span>
             )}
           </div>
-          {(!collapsed || isChild) && <span className="truncate">{label}</span>}
-          
-          {isDisabled && (
+
+          {(!collapsed || isChild || isFlyoutChild) && <span className="truncate">{label}</span>}
+
+          {/* Tooltip for collapsed sidebar (only for top-level non-flyout items) */}
+          {collapsed && !isChild && !isFlyoutChild && (
+            <div className="absolute left-full ml-4 top-1/2 -translate-y-1/2 
+              opacity-0 group-hover:opacity-100 pointer-events-none
+              bg-gray-800 text-white text-[12px] px-2.5 py-1.5 rounded-md whitespace-nowrap
+              shadow-lg transition-all duration-200 z-[60]">
+              {label}
+              {isDisabled && <span className="block text-gray-300 text-[10px] mt-0.5">
+                {label === "Data Import" ? "Add Configuration to enable" : "Upload NR data to enable"}
+              </span>}
+            </div>
+          )}
+
+          {/* Tooltip for disabled items in expanded sidebar or flyout */}
+          {(!collapsed || isFlyoutChild) && isDisabled && (
             <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 
               opacity-0 group-hover:opacity-100 pointer-events-none
-              bg-blue-600 text-white text-[11px] px-2 py-1 rounded-md whitespace-nowrap
-              shadow-lg transition-all duration-200 z-50">
-              {label === "Data Import"
-                ? "Add Configuration to enable"
-                : "Upload NR data to enable"}
+              bg-gray-800 text-white text-[11px] px-2 py-1 rounded-md whitespace-nowrap
+              shadow-lg transition-all duration-200 z-[60]">
+              {label === "Data Import" ? "Add Configuration to enable" : "Upload NR data to enable"}
             </div>
           )}
         </div>
 
-        {/* Count Badge when expanded */}
-        {!collapsed && badge !== null && badge !== undefined && Number(badge) > 0 && (
+        {/* Count Badge when expanded or in flyout */}
+        {(!collapsed || isFlyoutChild) && badge !== null && badge !== undefined && Number(badge) > 0 && (
           <span className="ml-auto inline-flex items-center justify-center px-2 py-0.5 text-xs font-bold rounded-full bg-red-600 text-white shadow-sm min-w-[20px] flex-shrink-0">
             {badge}
           </span>
@@ -211,16 +234,19 @@ export default function Sidebar({ collapsed }) {
   const renderGroupItem = (group) => {
     const isOpen = openGroups[group.label];
     const groupBadgeCount = group.children?.reduce((sum, child) => sum + (Number(child.badge) || 0), 0) || 0;
+    const isGroupActive = group.children?.some(child => location.pathname === child.path);
 
     return (
-      <li key={group.label} className="flex flex-col">
+      <li key={group.label} className="flex flex-col relative group">
         <div
-          onClick={() => toggleGroup(group.label)}
-          className={`flex items-center justify-between px-3 py-2 rounded-md cursor-pointer text-gray-800 hover:bg-gray-100 transition-all duration-150 ${collapsed ? "justify-center" : ""}`}
+          onClick={() => !collapsed && toggleGroup(group.label)}
+          className={`flex items-center justify-between px-3 py-2 rounded-md transition-all duration-150 
+            ${collapsed ? "justify-center cursor-default" : "cursor-pointer"} 
+            ${isGroupActive ? "bg-blue-100 text-blue-700 font-medium " + (collapsed ? "" : "border-l-4 border-blue-500") : "text-gray-800 hover:bg-gray-100"}`}
         >
           <div className="relative flex items-center gap-3">
             <div className="relative flex items-center justify-center">
-              <span className={collapsed ? "text-2xl" : "text-base"}>{group.icon}</span>
+              <span className={`${collapsed ? "text-2xl" : "text-base"} shrink-0`}>{group.icon}</span>
               {collapsed && groupBadgeCount > 0 && (
                 <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
@@ -228,8 +254,9 @@ export default function Sidebar({ collapsed }) {
                 </span>
               )}
             </div>
-            {!collapsed && <span>{group.label}</span>}
+            {!collapsed && <span className={isGroupActive ? "font-medium" : ""}>{group.label}</span>}
           </div>
+
           {!collapsed && (
             <div className="flex items-center gap-2 ml-auto">
               {!isOpen && groupBadgeCount > 0 && (
@@ -242,9 +269,31 @@ export default function Sidebar({ collapsed }) {
               </span>
             </div>
           )}
+
+          {/* Flyout Menu for Collapsed Sidebar */}
+          {collapsed && (
+            <div className="absolute left-full top-0 ml-2 hidden group-hover:block z-[60] bg-white border border-gray-200 rounded-lg shadow-xl min-w-[220px] overflow-hidden">
+              <div className="px-4 py-3 font-semibold text-gray-800 border-b border-gray-100 bg-gray-50/80">
+                {group.label}
+              </div>
+              <ul className="py-2 flex flex-col">
+                {group.children.map((child) => (
+                  <SidebarItem
+                    key={child.label}
+                    label={child.label}
+                    path={child.path}
+                    disabled={child.disabled}
+                    badge={child.badge}
+                    isChild={true}
+                    isFlyoutChild={true}
+                  />
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
 
-        {/* Child menu items */}
+        {/* Child menu items for Expanded Sidebar */}
         {!collapsed && isOpen && (
           <ul className="space-y-1">
             {group.children.map((child) => (
@@ -269,7 +318,7 @@ export default function Sidebar({ collapsed }) {
   };
 
   return (
-    <aside className={`${collapsed ? "w-16" : "w-64"} bg-white border-r border-gray-200 p-4 transition-all duration-300 ease-in-out flex flex-col`}>
+    <aside className={`${collapsed ? "w-16 px-2 py-2" : "w-64 p-4"} bg-white border-r border-gray-200 transition-all duration-300 ease-in-out flex flex-col`}>
       {/* Logo / Heading */}
       <div className="mb-6">
         {!collapsed && (
@@ -298,10 +347,19 @@ export default function Sidebar({ collapsed }) {
         {projectName && (
           <div
             onClick={handleLogout}
-            className={`flex items-center gap-3 px-3 py-2 rounded-md cursor-pointer text-gray-800 hover:bg-gray-100 transition-all duration-150 ${collapsed ? "justify-center" : ""}`}
+            className={`flex items-center px-3 py-2 rounded-md cursor-pointer text-gray-800 hover:bg-gray-100 transition-all duration-150 relative group ${collapsed ? "justify-center" : "gap-3"}`}
           >
-            <FaSignOutAlt className={collapsed ? "text-2xl" : "text-base"} /> {/* Filled log-out icon */}
+            <FaSignOutAlt className={`${collapsed ? "text-2xl" : "text-base"} shrink-0`} />
             {!collapsed && <span>Logout</span>}
+
+            {collapsed && (
+              <div className="absolute left-full ml-4 top-1/2 -translate-y-1/2 
+                opacity-0 group-hover:opacity-100 pointer-events-none
+                bg-gray-800 text-white text-[12px] px-2.5 py-1.5 rounded-md whitespace-nowrap
+                shadow-lg transition-all duration-200 z-[60]">
+                Logout
+              </div>
+            )}
           </div>
         )}
         <Footer collapsed={collapsed} />
