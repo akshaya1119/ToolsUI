@@ -10,10 +10,10 @@ export const formatChangeValueForExcel = (change, field) => {
     try {
       const data = typeof change.newValue === 'string' ? JSON.parse(change.newValue) : change.newValue;
       if (data && typeof data === 'object') {
-        const targetQty = data.baseQty ?? data.baseNR ?? 0;
+        const targetQty = data.baseQty === 0 ? data.baseNR : (data.baseQty ?? data.baseNR ?? 0);
         const revised = data.revised ?? 0;
         const fulfilment = data.fulfilment || '';
-        const remainingStr = data.remaining !== null && data.remaining !== undefined ? ` (Remaining: ${data.remaining})` : '';
+        const remainingStr = data.remaining !== null && data.remaining !== undefined && fulfilment !== 'Fulfilled' ? ` (Remaining: ${data.remaining})` : '';
         return `Enhanced Qty: ${targetQty} | Revised: ${revised} | ${fulfilment}${remainingStr}`;
       }
     } catch (e) {

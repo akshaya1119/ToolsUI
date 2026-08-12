@@ -522,7 +522,7 @@ const BatchComparisonTable = ({
             const data = JSON.parse(change.newValue);
 
             // Compare revised to baseQty
-            const targetQty = data.baseQty ?? data.baseNR;
+            const targetQty = data.baseQty === 0 ? data.baseNR : (data.baseQty ?? data.baseNR);
             const revisedIsLower = data.revised < targetQty;
             const revisedIsUpper = data.revised > targetQty;
 
@@ -530,7 +530,7 @@ const BatchComparisonTable = ({
 
             const baseIsLower = targetQty < data.revised;
             const baseIsUpper = targetQty > data.revised;
-            const BaseIcon = baseIsLower ? <ChevronDown size={14} /> : (baseIsUpper ? <ChevronUp size={14} /> : null);
+            let BaseIcon = baseIsLower ? <ChevronDown size={14} /> : (baseIsUpper ? <ChevronUp size={14} /> : null);
 
             const lowerStyle = {
               background: "#fff2f0",
@@ -568,8 +568,13 @@ const BatchComparisonTable = ({
               gap: "4px"
             };
 
-            const revisedStyle = revisedIsLower ? lowerStyle : (revisedIsUpper ? upperStyle : equalStyle);
-            const baseStyle = baseIsLower ? lowerStyle : (baseIsUpper ? upperStyle : equalStyle);
+            let revisedStyle = revisedIsLower ? lowerStyle : (revisedIsUpper ? upperStyle : equalStyle);
+            let baseStyle = baseIsLower ? lowerStyle : (baseIsUpper ? upperStyle : equalStyle);
+            if (data.baseQty === 0) {
+              baseStyle = lowerStyle;
+              revisedStyle = upperStyle;
+            }
+
             const fulfilmentColor = data.fulfilment === 'Not Fulfilled' ? '#cf1322' : '#389e0d';
 
             let tooltipText = '';
@@ -598,7 +603,7 @@ const BatchComparisonTable = ({
                     </span>
                   </div>
 
-                  {data.remaining !== null && (
+                  {data.remaining !== null && data.fulfilment !== 'Fulfilled' && (
                     <div style={{ color: '#333', fontWeight: 500 }}>
                       Remaining: {data.remaining}
                     </div>
