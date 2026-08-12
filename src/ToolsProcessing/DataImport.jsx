@@ -2325,20 +2325,7 @@ const DataImport = () => {
 
                 <Col xs={24} md={12}>
                   <div style={{ padding: 12, border: "1px solid #d9d9d9", borderRadius: 10, background: "#fff" }}>
-                    <Space direction="vertical" size={10} style={{ width: "100%" }}>
-                      <div>
-                        <Text strong>Changed NR Data</Text>
-                        <Text type="secondary" style={{ display: "block", fontSize: 12, lineHeight: 1.3 }}>
-                          Enable this if you're uploading changed NR data to remove duplicates automatically.
-                        </Text>
-                      </div>
-                      <Checkbox
-                        checked={isChangedNR}
-                        onChange={(e) => setIsChangedNR(e.target.checked)}
-                      >
-                        This is a Changed NR upload
-                      </Checkbox>
-                    </Space>
+
 
                     <Space direction="vertical" size={10} style={{ width: "100%", marginTop: 16 }}>
                       <div>
@@ -2513,7 +2500,24 @@ const DataImport = () => {
                     </Row>
 
                     {isAnyFieldMapped() && (
-                      <Space style={{ marginTop: 16, width: "100%", justifyContent: "space-between" }}>
+                      <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 16 }}>
+                        <div style={{ padding: 12, border: "1px solid #d9d9d9", borderRadius: 10, background: "#fafafa" }}>
+                          <Space direction="vertical" size={10} style={{ width: "100%" }}>
+                            <div>
+                              <Text strong>Changed NR Data</Text>
+                              <Text type="secondary" style={{ display: "block", fontSize: 12, lineHeight: 1.3 }}>
+                                Enable this if you're uploading changed NR data to remove duplicates automatically.
+                              </Text>
+                            </div>
+                            <Checkbox
+                              checked={isChangedNR}
+                              onChange={(e) => setIsChangedNR(e.target.checked)}
+                            >
+                              This is a Changed NR upload
+                            </Checkbox>
+                          </Space>
+                        </div>
+                        <Space style={{ width: "100%", justifyContent: "space-between" }}>
                         <Button
                           type="primary"
                           onClick={handleUpload}
@@ -2530,7 +2534,8 @@ const DataImport = () => {
                             📥 Download Missing Data Report ({skippedRows.length})
                           </Button>
                         )}
-                      </Space>
+                        </Space>
+                      </div>
                     )}
                   </Card>
                 </motion.div>
