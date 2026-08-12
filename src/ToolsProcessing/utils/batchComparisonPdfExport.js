@@ -95,7 +95,7 @@ export const exportBatchComparisonPDF = ({
   // Title Header
   doc.setFontSize(16);
   doc.setFont('helvetica', 'bold');
-  doc.setTextColor(22, 119, 255);
+  doc.setTextColor(31, 65, 114);
   doc.text('Changed NR Upload - Batch Comparison Report', 30, 36);
 
   // Subtitle metadata
@@ -214,7 +214,7 @@ export const exportBatchComparisonPDF = ({
         body: rows,
         theme: 'grid',
         headStyles: {
-          fillColor: [22, 119, 255],
+          fillColor: [31, 65, 114],
           textColor: [255, 255, 255],
           fontSize: 8,
           fontStyle: 'bold',
@@ -234,8 +234,96 @@ export const exportBatchComparisonPDF = ({
           overflow: 'linebreak'
         },
         margin: { left: 30, right: 30, bottom: 40 },
-        didDrawPage: (data) => {
-          // Page rendering helper if needed
+        willDrawCell: (data) => {
+          if (data.section === 'body') {
+            const text = data.cell.raw;
+            if (typeof text === 'string') {
+              if (text.startsWith('Enhanced Qty:') || text.includes('- ') || text.includes('+ ')) {
+                // Clear the text array strings so autoTable doesn't draw them, but keep the array length to maintain row height
+                if (Array.isArray(data.cell.text)) {
+                  data.cell.text = data.cell.text.map(() => '');
+                } else {
+                  data.cell.text = '';
+                }
+              }
+            }
+          }
+        },
+        didDrawCell: (data) => {
+          if (data.section === 'body') {
+            const text = data.cell.raw;
+            if (typeof text === 'string') {
+              if (text.startsWith('Enhanced Qty:') || text.includes('- ') || text.includes('+ ')) {
+                const doc = data.doc;
+                const padLeft = data.cell.padding('left') || 4;
+                const padRight = data.cell.padding('right') || 4;
+                const padTop = data.cell.padding('top') || 4;
+                let x = data.cell.x + padLeft;
+                let y = data.cell.y + padTop + 7; // approximate baseline
+
+                // Important: tell jspdf which font to use before calculating text width!
+                doc.setFont(data.cell.styles.font, data.cell.styles.fontStyle);
+                doc.setFontSize(7.5);
+
+                const drawBadge = (str, bg, fg) => {
+                  const tWidth = doc.getTextWidth(str);
+                  const bWidth = tWidth + 8;
+                  
+                  if (x + bWidth > data.cell.x + data.cell.width - padRight) {
+                    x = data.cell.x + padLeft;
+                    y += 12;
+                  }
+                  
+                  doc.setFillColor(...bg);
+                  doc.rect(x, y - 7.5, bWidth, 11, 'F');
+                  doc.setTextColor(...fg);
+                  doc.text(str, x + 4, y);
+                  x += bWidth + 4;
+                };
+
+                const drawText = (str, fg) => {
+                  const tWidth = doc.getTextWidth(str);
+                  
+                  if (x + tWidth > data.cell.x + data.cell.width - padRight) {
+                    x = data.cell.x + padLeft;
+                    y += 12;
+                  }
+                  
+                  doc.setTextColor(...fg);
+                  doc.text(str, x, y);
+                  x += tWidth + 4;
+                };
+
+                if (text.startsWith('Enhanced Qty:')) {
+                  const parts = text.split('\u00A0\u00A0\u00A0|\u00A0\u00A0\u00A0');
+                  if (parts.length >= 3) {
+                    drawBadge(parts[0], [255, 242, 240], [207, 19, 34]);
+                    drawBadge(parts[1], [246, 255, 237], [39, 78, 10]);
+                    
+                    const stat = parts[2];
+                    if (stat.includes('Not Fulfilled')) {
+                      drawText(stat, [207, 19, 34]);
+                    } else {
+                      drawText(stat, [56, 158, 13]);
+                    }
+                  } else {
+                    drawText(text, [35, 35, 35]);
+                  }
+                } else {
+                  const parts = text.split('\u00A0\u00A0\u00A0/\u00A0\u00A0\u00A0');
+                  parts.forEach(p => {
+                    if (p.startsWith('- ')) {
+                      drawBadge(p, [255, 242, 240], [207, 19, 34]);
+                    } else if (p.startsWith('+ ')) {
+                      drawBadge(p, [246, 255, 237], [39, 78, 10]);
+                    } else {
+                      drawText(p, [35, 35, 35]);
+                    }
+                  });
+                }
+              }
+            }
+          }
         }
       });
 
