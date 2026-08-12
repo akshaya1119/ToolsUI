@@ -14,7 +14,7 @@ export const formatChangeValueForExcel = (change, field) => {
         const revised = data.revised ?? 0;
         const fulfilment = data.fulfilment || '';
         const remainingStr = data.remaining !== null && data.remaining !== undefined && fulfilment !== 'Fulfilled' ? ` (Remaining: ${data.remaining})` : '';
-        return `Enhanced Qty: ${targetQty} | Revised: ${revised} | ${fulfilment}${remainingStr}`;
+        return `Enhanced Qty: ${targetQty}\u00A0\u00A0\u00A0|\u00A0\u00A0\u00A0Revised: ${revised}\u00A0\u00A0\u00A0|\u00A0\u00A0\u00A0${fulfilment}${remainingStr}`;
       }
     } catch (e) {
       return change.newValue || "—";
@@ -28,7 +28,7 @@ export const formatChangeValueForExcel = (change, field) => {
   const hasNext = next !== null && next !== undefined && next !== "";
 
   if (hasPrev && hasNext) {
-    return `- ${prev} / + ${next}`;
+    return `- ${prev}\u00A0\u00A0\u00A0/\u00A0\u00A0\u00A0+ ${next}`;
   }
   if (hasNext) {
     return `+ ${next}`;
@@ -82,22 +82,39 @@ export const categorizeComparisonRecords = (rawItems = []) => {
     return false;
   };
 
-  const isCentreQtyChanged = item =>
-    hasStatus(item, "Centre Catch Quantity Changed") ||
-    hasStatus(item, "Quantity Changed") ||
-    Boolean(item.changes?.NRQuantity || item.changes?.nrQuantity);
-
-  const isCenterCodeChanged = item =>
-    hasStatus(item, "Center Code Changed") ||
-    hasStatus(item, "Center Changed") ||
-    Boolean(item.changes?.CenterCode || item.changes?.centerCode);
-
-  const isNodalChanged = item =>
-    hasStatus(item, "Nodal Changed") ||
-    Boolean(item.changes?.NodalCode || item.changes?.nodalCode);
-
   const isAdded = item => hasStatus(item, "Centre Catch Added") || hasStatus(item, "Added");
   const isRemoved = item => hasStatus(item, "Centre Catch Removed") || hasStatus(item, "Removed");
+
+  const isCentreQtyChanged = item =>
+    !isAdded(item) && !isRemoved(item) &&
+    (hasStatus(item, "Centre Catch Quantity Changed") ||
+    hasStatus(item, "Quantity Changed") ||
+    Boolean(item.changes?.NRQuantity || item.changes?.nrQuantity));
+
+  const isCenterCodeChanged = item =>
+    !isAdded(item) && !isRemoved(item) &&
+    (hasStatus(item, "Center Code Changed") ||
+    hasStatus(item, "Center Changed") ||
+    Boolean(item.changes?.CenterCode || item.changes?.centerCode));
+
+  const isNodalChanged = item => {
+    if (isAdded(item) || isRemoved(item)) return false;
+    
+    // The user explicitly requested to never show Nodal Code changes involving 0 or blank
+    const change = item.changes?.NodalCode || item.changes?.nodalCode;
+    if (change) {
+       const p = change.previousValue;
+       const n = change.newValue;
+       const pValid = p !== null && p !== undefined && p !== "" && p != 0 && p !== "0";
+       const nValid = n !== null && n !== undefined && n !== "" && n != 0 && n !== "0";
+       if (pValid && nValid && String(p) !== String(n)) {
+           return true;
+       }
+       return false; // If there is a change object but it involves 0, ignore it
+    }
+    
+    return hasStatus(item, "Nodal Changed");
+  };
 
   // Filter for All Changes: non-unique changes or Added / Removed
   const allChangesData = allData.filter(item => {
@@ -174,7 +191,7 @@ export const categorizeComparisonRecords = (rawItems = []) => {
  */
 const headerStyle = {
   font: { bold: true, color: { rgb: "FFFFFF" }, sz: 11, name: "Calibri" },
-  fill: { fgColor: { rgb: "1677FF" } },
+  fill: { fgColor: { rgb: "1F4172" } },
   alignment: { horizontal: "center", vertical: "center", wrapText: true },
   border: {
     top: { style: "thin", color: { rgb: "D9D9D9" } },
