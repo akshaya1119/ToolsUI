@@ -568,12 +568,8 @@ const BatchComparisonTable = ({
               gap: "4px"
             };
 
-            let revisedStyle = revisedIsLower ? lowerStyle : (revisedIsUpper ? upperStyle : equalStyle);
-            let baseStyle = baseIsLower ? lowerStyle : (baseIsUpper ? upperStyle : equalStyle);
-            if (data.baseQty === 0) {
-              baseStyle = lowerStyle;
-              revisedStyle = upperStyle;
-            }
+            let revisedStyle = upperStyle; // Always green
+            let baseStyle = lowerStyle;    // Always red
 
             const fulfilmentColor = data.fulfilment === 'Not Fulfilled' ? '#cf1322' : '#389e0d';
 
@@ -846,16 +842,17 @@ const BatchComparisonTable = ({
                   type="primary"
                   icon={<CloudUploadOutlined />}
                   loading={pushLoading}
+                  disabled={selectedCount === 0}
                   onClick={handlePush}
                   style={{
                     fontWeight: 500,
                     display: 'inline-flex',
                     alignItems: 'center',
                     gap: 6,
-                    backgroundColor: '#1890ff'
+                    backgroundColor: selectedCount === 0 ? undefined : '#1890ff'
                   }}
                 >
-                  {selectedCount > 0 ? `Push Changes (${selectedCount})` : 'Push All Changes'}
+                  {selectedCount > 0 ? `Push Changes (${selectedCount})` : 'Push Changes'}
                 </Button>
               )}
             </Space>
