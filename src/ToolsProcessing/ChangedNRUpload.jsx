@@ -26,11 +26,16 @@ const ChangedNRUpload = () => {
   const [availableFields, setAvailableFields] = useState([]);
   const [loadingFields, setLoadingFields] = useState(false);
 
+  const [autoCompareAttempted, setAutoCompareAttempted] = useState(false);
+
   useEffect(() => {
     if (projectId) {
+      setAutoCompareAttempted(false);
+      setComparisonData(null);
       loadLots();
       loadProcesses();
       loadBatches();
+      loadComparisonFields();
     }
   }, [projectId]);
 
@@ -39,7 +44,6 @@ const ChangedNRUpload = () => {
       showToast("Project ID not available", "error");
       return;
     }
-
     setLoadingBatches(true);
     try {
       const res = await API.get(`/NRDatas/active-batches/${projectId}`);
@@ -47,11 +51,15 @@ const ChangedNRUpload = () => {
       setBatches(batchList);
 
       const otherBatches = batchList.filter(b => b !== 1);
-      if (otherBatches.length > 0) {
+      const savedBatch = localStorage.getItem(`changedNR_${projectId}_batch`);
+      if (savedBatch && otherBatches.includes(Number(savedBatch))) {
+        setComparedBatch(Number(savedBatch));
+      } else if (otherBatches.length > 0) {
         setComparedBatch(otherBatches[0]);
+      } else {
+        setComparedBatch(null);
       }
     } catch (error) {
-      console.error("Failed to load batches:", error);
       showToast("Failed to load batches", "error");
       setBatches([]);
     } finally {
@@ -59,89 +67,95 @@ const ChangedNRUpload = () => {
     }
   };
 
-  // Load available lots
   const loadLots = async () => {
     setLoadingLots(true);
     try {
       const res = await API.get(`/NRDatas/unique-lots/${projectId}`);
       const lotList = Array.isArray(res.data) ? res.data : (res.data?.data || []);
       setLots(lotList);
-      // Don't auto-fill selected lot
-      setSelectedLot(null);
+      
+      const savedLot = localStorage.getItem(`changedNR_${projectId}_lot`);
+      if (savedLot && (lotList.includes(Number(savedLot)) || Number(savedLot) === 0)) {
+        setSelectedLot(Number(savedLot));
+      } else {
+        setSelectedLot(null);
+      }
     } catch (error) {
-      console.error("Failed to load lots:", error);
       setLots([]);
     } finally {
       setLoadingLots(false);
     }
   };
 
-  // Load available comparison fields from NRDatas JSON
   const loadComparisonFields = async () => {
-    if (!projectId) {
-      console.log("No projectId, skipping loadComparisonFields");
-      return;
-    }
-
+    if (!projectId) return;
     setLoadingFields(true);
     try {
-      console.log(`[loadComparisonFields] Fetching fields for projectId: ${projectId}`);
       const res = await API.get(`/NRDatas/get-comparison-fields/${projectId}`);
-      console.log("[loadComparisonFields] Response:", res.data);
-
       const fields = res.data?.fields || [];
-      console.log("[loadComparisonFields] Fields extracted:", fields);
-
       setAvailableFields(fields);
 
-      if (fields.length === 0) {
-        console.warn("[loadComparisonFields] No fields found for comparison");
+      const savedFields = localStorage.getItem(`changedNR_${projectId}_fields`);
+      if (savedFields) {
+        try {
+          const parsed = JSON.parse(savedFields);
+          const validFields = parsed.filter(f => fields.includes(f));
+          setAdditionalFields(validFields);
+        } catch (e) {
+          setAdditionalFields([]);
+        }
+      } else {
+        setAdditionalFields([]);
       }
     } catch (error) {
-      console.error("Failed to load comparison fields:", error);
-      console.error("Error response:", error?.response?.data);
-      showToast("Failed to load additional comparison fields", "warning");
       setAvailableFields([]);
     } finally {
       setLoadingFields(false);
     }
   };
 
-  // Load available processes
   const loadProcesses = async () => {
     setLoadingProcesses(true);
     try {
       const res = await API.get("/ProcessSteps");
       const processList = res.data?.data || [];
       setProcesses(processList);
-      // Don't auto-fill selected process
-      setSelectedProcess(null);
+
+      const savedProcess = localStorage.getItem(`changedNR_${projectId}_process`);
+      if (savedProcess && processList.some(p => p.processId === Number(savedProcess))) {
+        setSelectedProcess(Number(savedProcess));
+      } else {
+        setSelectedProcess(null);
+      }
     } catch (error) {
-      console.error("Failed to load processes:", error);
       setProcesses([]);
     } finally {
       setLoadingProcesses(false);
     }
   };
 
-  // Handle process selection and save to localStorage
-  const handleProcessChange = (processId) => {
-    setSelectedProcess(processId);
-    const process = processes.find(p => p.processId === processId);
-    if (process) {
-      localStorage.setItem("selectedProcess", JSON.stringify(process));
-    }
+  const handleLotChange = (val) => {
+    setSelectedLot(val);
+    if (val !== undefined && val !== null) localStorage.setItem(`changedNR_${projectId}_lot`, val);
+    else localStorage.removeItem(`changedNR_${projectId}_lot`);
   };
 
-  // Load on mount
-  useEffect(() => {
-    if (projectId) {
-      loadLots();
-      loadProcesses();
-      loadBatches();
-      loadComparisonFields();
-    }
-  }, [projectId]);
+  const handleProcessChange = (processId) => {
+    setSelectedProcess(processId);
+    if (processId !== undefined && processId !== null) localStorage.setItem(`changedNR_${projectId}_process`, processId);
+    else localStorage.removeItem(`changedNR_${projectId}_process`);
+  };
+
+  const handleBatchChange = (batch) => {
+    setComparedBatch(batch);
+    if (batch !== undefined && batch !== null) localStorage.setItem(`changedNR_${projectId}_batch`, batch);
+    else localStorage.removeItem(`changedNR_${projectId}_batch`);
+  };
+
+  const handleFieldsChange = (fields) => {
+    setAdditionalFields(fields || []);
+    localStorage.setItem(`changedNR_${projectId}_fields`, JSON.stringify(fields || []));
+  };
 
   const handleCompareBatches = async () => {
     if (!comparedBatch) {
@@ -202,6 +216,31 @@ const ChangedNRUpload = () => {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (
+      projectId &&
+      selectedProcess &&
+      comparedBatch &&
+      !loadingBatches &&
+      !loadingProcesses &&
+      !loadingLots &&
+      !loadingFields &&
+      !autoCompareAttempted
+    ) {
+      setAutoCompareAttempted(true);
+      handleCompareBatches();
+    }
+  }, [
+    projectId,
+    selectedProcess,
+    comparedBatch,
+    loadingBatches,
+    loadingProcesses,
+    loadingLots,
+    loadingFields,
+    autoCompareAttempted
+  ]);
 
   const handleReset = () => {
     setComparisonData(null);
@@ -392,7 +431,7 @@ const ChangedNRUpload = () => {
               <Select
                 placeholder="Select lot (optional)"
                 value={selectedLot}
-                onChange={setSelectedLot}
+                onChange={handleLotChange}
                 loading={loadingLots}
                 disabled={loadingLots}
                 style={{ width: "100%" }}
@@ -432,7 +471,7 @@ const ChangedNRUpload = () => {
               <Select
                 placeholder="Select batch"
                 value={comparedBatch}
-                onChange={setComparedBatch}
+                onChange={handleBatchChange}
                 loading={loadingBatches}
                 style={{ width: "100%" }}
               >
@@ -452,10 +491,13 @@ const ChangedNRUpload = () => {
                 mode="multiple"
                 placeholder="Select fields"
                 value={additionalFields}
-                onChange={setAdditionalFields}
+                onChange={handleFieldsChange}
                 style={{ width: "100%" }}
                 maxTagCount={1}
                 notFoundContent={availableFields.length === 0 ? "Loading fields..." : "No fields available"}
+                loading={loadingFields}
+                disabled={loadingFields || availableFields.length === 0}
+                allowClear
               >
                 {availableFields.map((field) => (
                   <Select.Option key={field} value={field}>
