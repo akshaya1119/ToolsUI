@@ -160,6 +160,7 @@ const MissingData = () => {
         current: 1,
         pageSize: 10,
     });
+    const [isApplying, setIsApplying] = useState(false);
 
     // Track modified rows (from upload, inline editing, or bulk updates)
     const [modifiedRows, setModifiedRows] = useState(new Set());
@@ -685,22 +686,21 @@ setModifiedRows(newModifiedRows);
             return;
         }
       const newModified = new Set(modifiedRows);
-        setMissingDataRows((prev) =>
-            prev.map((row) => {
-                if (matcher(row)) {
-                    // Mark this row as modified
-                    newModified.add(row.catchNo);
-                    return { ...row, ...effectivePatch };
-                }
-                return row;
-                
-            })
-            
-        );
-        setModifiedRows(newModified);
+      const newMissingDataRows = missingDataRows.map((row) => {
+          if (matcher(row)) {
+              // Mark this row as modified
+              newModified.add(row.catchNo);
+              return { ...row, ...effectivePatch };
+          }
+          return row;
+      });
+      
+      setMissingDataRows(newMissingDataRows);
+      setModifiedRows(newModified);
+      return { newMissingDataRows, newModified };
     };
 
-    const handleApplyToSelected = () => {
+    const handleApplyToSelected = async () => {
         const targetCatchNos = Array.from(
             new Set([...selectedRowKeys, ...selectedCatchNumbers])
         );
@@ -710,20 +710,29 @@ setModifiedRows(newModifiedRows);
             return;
         }
 
-        applyPatchToRows(
+        const result = applyPatchToRows(
             (row) => targetCatchNos.includes(row.catchNo),
             bulkValues
         );
+
+        if (result) {
+            setIsApplying(true);
+            await handleSubmit(result.newMissingDataRows, result.newModified);
+            setIsApplying(false);
+        }
     };
 
-    const handleSubmit = async () => {
-        if (!missingDataRows.length) {
+    const handleSubmit = async (overrideRows, overrideModified) => {
+        const currentMissingDataRows = Array.isArray(overrideRows) ? overrideRows : missingDataRows;
+        const currentModifiedRows = overrideModified instanceof Set ? overrideModified : modifiedRows;
+
+        if (!currentMissingDataRows.length) {
             showToast("Upload the completed template first", "warning");
             return;
         }
 
         // Only submit rows that were actually modified
-        if (modifiedRows.size === 0) {
+        if (currentModifiedRows.size === 0) {
             showToast("No changes to submit", "warning");
             return;
         }
@@ -731,8 +740,8 @@ setModifiedRows(newModifiedRows);
         // Build payload with all fields from modified rows (not just displayFields)
         const payload = [];
 
-for (const row of missingDataRows) {
-    if (!modifiedRows.has(row.catchNo)) continue;
+for (const row of currentMissingDataRows) {
+    if (!currentModifiedRows.has(row.catchNo)) continue;
 
     const additionalFields = {};
 
@@ -767,7 +776,7 @@ for (const row of missingDataRows) {
             return;
         }
 
-        console.log(`Submitting ${payload.length} modified rows out of ${missingDataRows.length} total rows`);
+        console.log(`Submitting ${payload.length} modified rows out of ${currentMissingDataRows.length} total rows`);
 
         setSubmitting(true);
         try {
@@ -1294,8 +1303,13 @@ for (const row of missingDataRows) {
                                                     type="primary"
                                                     onClick={handleApplyToSelected}
                                                     className="rounded-md font-medium shadow-sm"
+                                                    loading={isApplying}
+                                                    style={{
+                                                        backgroundColor: isApplying ? '#0958d9' : undefined,
+                                                        borderColor: isApplying ? '#0958d9' : undefined,
+                                                    }}
                                                 >
-                                                    Apply to Selected
+                                                    {isApplying ? 'Applying...' : 'Apply to Selected'}
                                                 </Button>
                                                 <Button
                                                     size="small"
