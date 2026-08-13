@@ -225,10 +225,10 @@ const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
             "",
           pages: item?.Pages ?? item?.pages ?? "",
           lotNumber: coerceNumber(item?.LotNumber ?? item?.lotNumber ?? item?.LotNo ?? item?.lotNo ?? 0, 0),
-          aValue: readJsonValue(nrDatas, "A"),
-          bValue: readJsonValue(nrDatas, "B"),
-          cValue: readJsonValue(nrDatas, "C"),
-          dValue: readJsonValue(nrDatas, "D"),
+          aValue: item?.A ?? item?.a ?? readJsonValue(nrDatas, "A"),
+          bValue: item?.B ?? item?.b ?? readJsonValue(nrDatas, "B"),
+          cValue: item?.C ?? item?.c ?? readJsonValue(nrDatas, "C"),
+          dValue: item?.D ?? item?.d ?? readJsonValue(nrDatas, "D"),
         };
 
         if (uniqueByCatch.has(catchNo)) {

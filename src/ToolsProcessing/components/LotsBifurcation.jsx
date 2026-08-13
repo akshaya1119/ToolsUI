@@ -155,7 +155,7 @@ const mergeRows = (base, patch) => ({
     : patch.lotNumber,
 });
 
-const LotsBifurcation = forwardRef(({ onCatchDeleted }, ref) => {
+const LotsBifurcation = forwardRef(({ onCatchDeleted, defaultOpenBifurcation }, ref) => {
   const projectId = useStore((state) => state.projectId);
   const selectedLot = useStore((state) => state.selectedLot);
   const setHasDeactivatedCatches = useStore((state) => state.setHasDeactivatedCatches);
@@ -789,30 +789,39 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted }, ref) => {
     proceedWithBifurcation(false);
   };
 
+  const handleOpenBifurcationModal = async () => {
+    setBifurcationModalOpen(true);
+    if (!projectId) return;
+    try {
+      const res = await API.get(`/NRDatas/GetUniqueByProjectId/${projectId}`, { 
+        params: {
+          pageSize: 100000,
+          pageNo: 1,
+          ...(selectedLot ? { lotNo: selectedLot } : {})
+        } 
+      });
+      const items = Array.isArray(res.data?.items) ? res.data.items : [];
+      const allRows = items.map(item => ({
+        catchNo: item.CatchNo ?? item.catchNo,
+        examDate: item.ExamDate ?? item.examDate,
+        lotNumber: coerceNumber(item.LotNo ?? item.lotNo ?? item.lotNumber, 0)
+      }));
+      setBifurcateRows(allRows);
+    } catch (error) {
+      console.error("Failed to fetch data for bifurcation", error);
+      showToast("Failed to fetch data for bifurcation", "error");
+    }
+  };
+
   useImperativeHandle(ref, () => ({
-    openBifurcationModal: async () => {
-      setBifurcationModalOpen(true);
-      if (!projectId) return;
-      try {
-        const res = await API.get(`/NRDatas/GetUniqueByProjectId/${projectId}`, { 
-          params: {
-            pageSize: 100000,
-            pageNo: 1,
-            ...(selectedLot ? { lotNo: selectedLot } : {})
-          } 
-        });
-        const items = Array.isArray(res.data?.items) ? res.data.items : [];
-        const allRows = items.map(item => ({
-          catchNo: item.CatchNo ?? item.catchNo,
-          examDate: item.ExamDate ?? item.examDate,
-          lotNumber: coerceNumber(item.LotNo ?? item.lotNo ?? item.lotNumber, 0)
-        }));
-        setBifurcateRows(allRows);
-      } catch (err) {
-        console.error("Failed to load full data for bifurcation", err);
-      }
-    },
+    openBifurcationModal: handleOpenBifurcationModal
   }));
+
+  useEffect(() => {
+    if (defaultOpenBifurcation) {
+      handleOpenBifurcationModal();
+    }
+  }, [defaultOpenBifurcation, projectId]);
 
   const getColumnSearchProps = (dataIndex) => ({
     filterDropdown: ({ setSelectedKeys, selectedKeys, confirm, clearFilters }) => (

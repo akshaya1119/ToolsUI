@@ -9,7 +9,7 @@ const { Text, Title } = Typography;
 /**
  * ChangeMasterPasscodeModal - Ant Design modal for changing/setting custom Master Authorization Passcode
  */
-const ChangeMasterPasscodeModal = ({ open, onCancel, groupId = 0 }) => {
+const ChangeMasterPasscodeModal = ({ open, onCancel, onSuccess, groupId = 0 }) => {
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [isPasscodeSet, setIsPasscodeSet] = useState(true);
@@ -64,7 +64,11 @@ const ChangeMasterPasscodeModal = ({ open, onCancel, groupId = 0 }) => {
         setSuccessMessage(res.data.message || msg);
         message.success(msg);
         setTimeout(() => {
-          if (onCancel) onCancel();
+          if (onSuccess) {
+            onSuccess(newPasscode, !isPasscodeSet);
+          } else if (onCancel) {
+            onCancel();
+          }
         }, 1500);
       } else {
         setErrorMessage(res.data?.message || 'Failed to set master passcode.');

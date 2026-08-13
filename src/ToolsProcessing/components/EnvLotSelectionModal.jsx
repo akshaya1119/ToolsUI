@@ -45,17 +45,21 @@ const EnvLotSelectionModal = ({
 
   // Run debounced verification check when user stops typing for 3 seconds
   const checkCatchVerification = async (catchNo) => {
-    if (!catchNo || showAssigned || !projectId) {
+    if (!catchNo || !projectId) {
       setUnverifiedCatch(null);
       setIsVerifying(false);
       return;
     }
 
-    // 1. If catch is already in the verified/unassigned list, just filter — no API needed
+    // 1. If catch is already in the local lists, just filter — no API needed
     const verifiedCatch = unassignedCatches.find(
-      c => c.catchNo?.toString().toLowerCase() === catchNo.toLowerCase()
+      c => String(c?.catchNo ?? c?.CatchNo ?? c).toLowerCase() === catchNo.toLowerCase()
     );
-    if (verifiedCatch) {
+    const assignedCatch = assignedEnvLots.find(
+      lot => (lot?.catches || lot?.Catches || []).some(c => String(c?.catchNo ?? c?.CatchNo ?? c).toLowerCase() === catchNo.toLowerCase())
+    );
+
+    if (verifiedCatch || assignedCatch) {
       setUnverifiedCatch(null);
       setIsVerifying(false);
       return;
@@ -80,7 +84,9 @@ const EnvLotSelectionModal = ({
     } catch (err) {
       setUnverifiedCatch(null);
       if (err.response?.status === 404) {
-        message.error("Catch not found.");
+        if (!showAssigned) {
+          message.error("Catch not found.");
+        }
       } else {
         message.error("Failed to check catch status.");
       }
@@ -104,11 +110,18 @@ const EnvLotSelectionModal = ({
       return;
     }
 
-    // Only show verifying spinner for catches not already in the local list
-    const alreadyInList = unassignedCatches.some(
-      c => c.catchNo?.toString().toLowerCase().includes(value.trim().toLowerCase())
+    // Only show verifying spinner for catches/batches not already in the local list
+    const alreadyInUnassigned = unassignedCatches.some(
+      c => String(c?.catchNo ?? c?.CatchNo ?? c).toLowerCase().includes(value.trim().toLowerCase())
     );
-    if (!alreadyInList && !showAssigned && projectId) {
+    const alreadyInAssigned = assignedEnvLots.some(
+      lot => (lot?.catches || lot?.Catches || []).some(c => String(c?.catchNo ?? c?.CatchNo ?? c).toLowerCase().includes(value.trim().toLowerCase())) || 
+             String(lot?.envLotNo ?? lot?.EnvLotNo ?? "").toLowerCase().includes(value.trim().toLowerCase())
+    );
+
+    const alreadyInList = showAssigned ? alreadyInAssigned : alreadyInUnassigned;
+
+    if (!alreadyInList && projectId) {
       setIsVerifying(true);
     }
 
@@ -139,19 +152,17 @@ const EnvLotSelectionModal = ({
     if (!search) return true;
 
     if (showAssigned) {
+      const lotStr = String(item?.envLotNo ?? item?.EnvLotNo ?? "");
       return (
-        String(item.envLotNo)
-          .toLowerCase()
-          .includes(search) ||
-        (item.catches || []).some((c) =>
-          String(c).toLowerCase().includes(search)
+        lotStr.toLowerCase().includes(search) ||
+        (item?.catches || item?.Catches || []).some((c) =>
+          String(c?.catchNo ?? c?.CatchNo ?? c).toLowerCase().includes(search)
         )
       );
     }
 
-    return String(item.catchNo)
-      .toLowerCase()
-      .includes(search);
+    const catchStr = String(item?.catchNo ?? item?.CatchNo ?? item ?? "");
+    return catchStr.toLowerCase().includes(search);
   });
 
   const allSelected =
@@ -268,28 +279,30 @@ const EnvLotSelectionModal = ({
           <Card
             size="small"
             style={{
-              backgroundColor: "#fff2e8",
-              border: "1px solid #ffbb96",
+              backgroundColor: unverifiedCatch.verificationStatus === 2 ? "#fffbe6" : "#fff2e8",
+              border: unverifiedCatch.verificationStatus === 2 ? "1px solid #ffe58f" : "1px solid #ffbb96",
               marginBottom: 8
             }}
           >
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <Text strong style={{ fontSize: "14px", color: "#d4380d" }}>
+                <Text strong style={{ fontSize: "14px", color: unverifiedCatch.verificationStatus === 2 ? "#d48806" : "#d4380d" }}>
                   Catch No {unverifiedCatch.catchNo}
                 </Text>
-                <Tag color="error">Not Verified</Tag>
+                <Tag color={unverifiedCatch.verificationStatus === 2 ? "warning" : "error"}>
+                  {unverifiedCatch.verificationStatus === 2 ? "Needs Review" : "Not Verified"}
+                </Tag>
               </div>
               <Text type="secondary" style={{ fontSize: "12px" }}>
-                This catch requires header verification.
+                {unverifiedCatch.verificationStatus === 2 ? "This catch requires review." : "This catch requires header verification."}
               </Text>
             </div>
           </Card>
         )}
         {filteredItems.map((item) => {
           const itemId = showAssigned
-            ? item.envLotNo
-            : item.catchNo;
+            ? item?.envLotNo ?? item?.EnvLotNo
+            : item?.catchNo ?? item?.CatchNo ?? item;
 
           const isSelected =
             selectedEnvLots.includes(itemId);
@@ -339,7 +352,7 @@ const EnvLotSelectionModal = ({
                             fontSize: "14px"
                           }}
                         >
-                          Batch {item.envLotNo}
+                          Batch {item?.envLotNo ?? item?.EnvLotNo}
                         </Text>
 
                         {(
@@ -382,7 +395,7 @@ const EnvLotSelectionModal = ({
                         fontSize: "14px"
                       }}
                     >
-                      Catch No {item.catchNo}
+                      Catch No {item?.catchNo ?? item?.CatchNo ?? item}
                     </Text>
                   )}
                 </div>

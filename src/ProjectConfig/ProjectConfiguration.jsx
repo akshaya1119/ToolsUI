@@ -1365,6 +1365,7 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
               okText="Yes, Clear"
               cancelText="No"
               okButtonProps={{ danger: true }}
+              overlayInnerStyle={{ width: 350 }}
             >
               <Button icon={<DeleteOutlined />} danger>
                 Clear All
@@ -1417,7 +1418,7 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
             extraProcessingConfig={extraProcessingConfig}
             setExtraProcessingConfig={setExtraProcessingConfig}
             envelopeOptions={envelopeOptions}
-            allowNodalConfig={!isMasterConfig}
+            allowNodalConfig={true}
             onReset={resetExtraProcessing}
             onClear={clearExtraProcessing}
             importedSnapshot={importedSnapshot}

@@ -171,6 +171,13 @@ export default function Sidebar({ collapsed }) {
         (collapsed && !isChild ? " justify-center" : " gap-3");
     }
 
+    const getDisabledTooltipText = (lbl) => {
+      if (!isDisabled) return undefined;
+      if (lbl === "Data Import") return "Add Configuration to enable.";
+      if (lbl === "Processing Pipeline" || lbl === "Processing Pipeline V2") return "Upload NR Data to enable.";
+      return "Currently unavailable";
+    };
+
     return (
       <li onClick={() => !isDisabled && navigate(path)} className={baseClass}>
         <div className={`relative flex items-center min-w-0 ${isFlyoutChild ? "gap-2" : "gap-3"}`}>
@@ -184,7 +191,19 @@ export default function Sidebar({ collapsed }) {
             )}
           </div>
 
-          {(!collapsed || isChild || isFlyoutChild) && <span className="truncate">{label}</span>}
+          {(!collapsed || isChild || isFlyoutChild) && (
+            <span className="truncate peer">{label}</span>
+          )}
+
+          {/* Tooltip for disabled items in expanded sidebar or flyout */}
+          {(!collapsed || isFlyoutChild) && isDisabled && (
+            <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 
+              opacity-0 peer-hover:opacity-100 pointer-events-none
+              bg-gray-800 text-white text-[11px] px-2 py-1 rounded-md whitespace-nowrap
+              shadow-lg transition-all duration-200 z-[60]">
+              {getDisabledTooltipText(label)}
+            </div>
+          )}
 
           {/* Tooltip for collapsed sidebar (only for top-level non-flyout items) */}
           {collapsed && !isChild && !isFlyoutChild && (
@@ -194,18 +213,8 @@ export default function Sidebar({ collapsed }) {
               shadow-lg transition-all duration-200 z-[60]">
               {label}
               {isDisabled && <span className="block text-gray-300 text-[10px] mt-0.5">
-                {label === "Data Import" ? "Add Configuration to enable" : "Upload NR data to enable"}
+                {getDisabledTooltipText(label)}
               </span>}
-            </div>
-          )}
-
-          {/* Tooltip for disabled items in expanded sidebar or flyout */}
-          {(!collapsed || isFlyoutChild) && isDisabled && (
-            <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 
-              opacity-0 group-hover:opacity-100 pointer-events-none
-              bg-gray-800 text-white text-[11px] px-2 py-1 rounded-md whitespace-nowrap
-              shadow-lg transition-all duration-200 z-[60]">
-              {label === "Data Import" ? "Add Configuration to enable" : "Upload NR data to enable"}
             </div>
           )}
         </div>

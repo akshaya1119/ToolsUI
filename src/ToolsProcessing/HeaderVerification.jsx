@@ -201,7 +201,7 @@ const HeaderVerification = () => {
         params.set('hasRemark', 'true');
       } else {
         if (selectedLot) params.set('lotNo', selectedLot);
-        if (globalSearch) params.set('search', globalSearch);
+        if (searchInput) params.set('search', searchInput);
 
         // Map card key → API status param string
         const statusApiMap = {
@@ -256,7 +256,7 @@ const HeaderVerification = () => {
     } finally {
       setLoading(false);
     }
-  }, [showToast, projectId, selectedLot, pageSize, currentPage, globalSearch, selectedStatus, tableSorter, columnFilters, correctionFilter, setHeaderCorrectionCount]);
+  }, [showToast, projectId, selectedLot, pageSize, currentPage, searchInput, selectedStatus, tableSorter, columnFilters, correctionFilter, setHeaderCorrectionCount]);
 
   const hasAutoSelectedRef = useRef(false);
 
@@ -293,10 +293,10 @@ const HeaderVerification = () => {
   const lots = allLots;
 
   // The API already applies status, columnFilter, and lot filters server-side.
-  // Client-side: handle only globalSearch on returned records.
+  // Client-side: handle only searchInput on returned records.
   const filteredRecords = useMemo(() => {
-    if (!globalSearch) return records;
-    const query = globalSearch.toLowerCase();
+    if (!searchInput) return records;
+    const query = searchInput.toLowerCase();
     return records.filter((r) => {
       const numStatus = getNumericStatus(r.status);
       const statusText = numStatus === 1 ? 'verified' : numStatus === 2 ? 'unclear' : 'not verified';
@@ -307,7 +307,7 @@ const HeaderVerification = () => {
         )
       );
     });
-  }, [records, globalSearch]);
+  }, [records, searchInput]);
 
   // Only calculate totals once data has loaded — avoids "Page 1 of 0" during fetch
   const filteredTotalRecords = loading ? 0 : filteredRecords.length;

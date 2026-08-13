@@ -1509,10 +1509,13 @@ const loadGeneratedTemplateReports = async () => {
         }
         selectedLotsForQS = selectedLots;
       } else {
-        Modal.warning({
+        Modal.confirm({
           title: "Lot Bifurcation Required",
+          icon: <ExclamationCircleOutlined style={{ color: "#faad14" }} />,
           content: "Please complete lot bifurcation before generating Quantity Sheet.",
-          okText: "OK"
+          okText: "Bifurcate Lot",
+          cancelText: "OK",
+          onOk: () => navigate('/dataimport', { state: { activeTab: "4", openBifurcationPanel: true } })
         });
         return;
       }
@@ -1550,10 +1553,13 @@ const loadGeneratedTemplateReports = async () => {
         selectedLotsForBoxBreaking = selectedLots;
         // Don't set envLotNumbers here - we'll set it per lot in the loop
       } else {
-        Modal.warning({
+        Modal.confirm({
           title: "Lot Bifurcation Required",
+          icon: <ExclamationCircleOutlined style={{ color: "#faad14" }} />,
           content: "Please complete lot bifurcation before generating this template.",
-          okText: "OK"
+          okText: "Bifurcate Lot",
+          cancelText: "OK",
+          onOk: () => navigate('/dataimport', { state: { activeTab: "4", openBifurcationPanel: true } })
         });
         return;
       }
@@ -1597,7 +1603,7 @@ const loadGeneratedTemplateReports = async () => {
         const assignedCatchItems = await fetchAssignedEnvLotCatchesForSelection(projectId);
         
         // Show modal even if all catches are assigned, allowing user to select from assigned envelopes for regeneration
-        const selectedCatchNos = await showEnvLotSelectionModal([], false, { unassignedCatches: missingCatchItems, assignedEnvLots: assignedCatchItems, showAssigned: missingCatchItems.length === 0 });
+        const selectedCatchNos = await showEnvLotSelectionModal([], false, { unassignedCatches: missingCatchItems, assignedEnvLots: assignedCatchItems, showAssigned: false });
         if (selectedCatchNos === null) {
           return; // user cancelled
         }
@@ -2969,10 +2975,13 @@ const loadGeneratedTemplateReports = async () => {
                 return next;
               });
             } else {
-              Modal.warning({
+              Modal.confirm({
                 title: "Lot Bifurcation Required",
+                icon: <ExclamationCircleOutlined style={{ color: "#faad14" }} />,
                 content: "Please complete lot bifurcation before running Box Breaking.",
-                okText: "OK"
+                okText: "Bifurcate Lot",
+                cancelText: "OK",
+                onOk: () => navigate('/dataimport', { state: { activeTab: "4", openBifurcationPanel: true } })
               });
               updateStepStatus(step.key, { status: "pending" });
               setSelectedModules(prev => prev.filter(m => m !== step.key));

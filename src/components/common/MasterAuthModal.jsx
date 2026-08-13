@@ -23,11 +23,13 @@ const MasterAuthModal = ({
   const [form] = Form.useForm();
   const [localError, setLocalError] = useState('');
   const [changeModalOpen, setChangeModalOpen] = useState(false);
+  const [isPasscodeSet, setIsPasscodeSet] = useState(null);
 
   useEffect(() => {
     if (open) {
       form.resetFields();
       setLocalError('');
+      setIsPasscodeSet(null);
       checkPasscodeStatus();
     }
   }, [open, form, groupId]);
@@ -35,12 +37,18 @@ const MasterAuthModal = ({
   const checkPasscodeStatus = async () => {
     try {
       const res = await API.get(`/MasterAuth/status?groupId=${groupId}`);
-      if (res.data && res.data.isPasscodeSet === false) {
-        // First-time setup: automatically prompt the Create Master Passcode modal!
-        setChangeModalOpen(true);
+      if (res.data && typeof res.data.isPasscodeSet === 'boolean') {
+        setIsPasscodeSet(res.data.isPasscodeSet);
+        if (res.data.isPasscodeSet === false) {
+          // First-time setup: automatically prompt the Create Master Passcode modal!
+          setChangeModalOpen(true);
+        }
+      } else {
+        setIsPasscodeSet(true);
       }
     } catch (err) {
       console.warn("Could not check MasterAuth status", err);
+      setIsPasscodeSet(true);
     }
   };
 
@@ -72,7 +80,7 @@ const MasterAuthModal = ({
   return (
     <>
       <Modal
-        open={open}
+        open={open && isPasscodeSet === true && !changeModalOpen}
         onCancel={onCancel}
         footer={null}
         destroyOnClose
@@ -204,6 +212,12 @@ const MasterAuthModal = ({
         open={changeModalOpen}
         groupId={groupId}
         onCancel={() => setChangeModalOpen(false)}
+        onSuccess={(newPasscode, isInitialSetup) => {
+          setChangeModalOpen(false);
+          if (onSubmit) {
+            onSubmit(newPasscode);
+          }
+        }}
       />
     </>
   );
