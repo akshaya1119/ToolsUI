@@ -68,7 +68,8 @@ export default function Sidebar({ collapsed }) {
       "/projecttemplates",
       "/processingpipeline",
       "/processingpipelinev2",
-      "/headerverification"
+      "/headerverification",
+      "/batchwisedata"
     ].includes(location.pathname);
 
     if (isToolsChild) {
@@ -104,6 +105,7 @@ export default function Sidebar({ collapsed }) {
             { label: "Project Configuration", path: "/projectconfiguration" },
             { label: "Data Import", path: "/dataimport", disabled: !isConfigured },
             { label: "Changed NR Analysis", path: "/changedNRUpload" },
+            { label: "Batch Wise Data", path: "/batchwisedata" },
             { label: "Project Templates", path: "/projecttemplates" },
             {
               label: "Processing Pipeline",
