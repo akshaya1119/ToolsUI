@@ -9,7 +9,8 @@ const COLUMN_LABELS = {
   remark: 'Remark',
   lotNo: 'Lot',
   date: 'Exam Date',
-  time: 'Exam Time'
+  time: 'Exam Time',
+  batch: 'Batch'
 };
 
 const SearchBarHV = ({
