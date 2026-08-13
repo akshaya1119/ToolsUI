@@ -104,7 +104,7 @@ const DataImport = () => {
   useEffect(() => {
     const requestedTab = location.state?.activeTab;
     const openBifurcation = location.state?.openBifurcationPanel;
-    
+
     if (openBifurcation) {
       setShouldOpenBifurcation(true);
     }
@@ -246,7 +246,7 @@ const DataImport = () => {
             parsedNRDatas = JSON.parse(item.NRDatas);
             if (parsedNRDatas && typeof parsedNRDatas === 'object') {
               Object.keys(parsedNRDatas).forEach(key => {
-                if (key !== "ImportRowNo") {
+                if (key !== "ImportRowNo" && key !== "VerificationStatus" && key !== "LotNo") {
                   dynamicKeys.add(key);
                 }
               });
@@ -267,7 +267,11 @@ const DataImport = () => {
       const baseColumns = (res.data.columns || []).filter((column) =>
         column !== "NRDatas" &&
         column !== "Id" &&
-        column !== "ImportRowNo"
+        column !== "ImportRowNo" &&
+        column !== "VerificationStatus" &&
+        column !== "LotNo" &&
+        column !== "EnvLotNo" &&
+        column !== "Batch"
       );
 
       // Combine base columns and dynamic keys
@@ -281,8 +285,8 @@ const DataImport = () => {
       // Filter out columns that are null, empty, or 0 for ALL items on the current page
       const activeColumns = allPossibleColumns.filter(col => {
         // Always keep certain critical columns even if empty on this page
-        if (col === "CatchNo" || col === "NRQuantity" || col === "CenterCode") return true;
-
+        // if (col === "CatchNo" || col === "NRQuantity" || col === "CenterCode" || col === "Pages") return true;
+        if (baseColumns.includes(col)) return true;
         return processedItems.some(item => {
           const val = item[col];
           // Check for null, undefined, empty string, or zero (as number or string)
@@ -2534,22 +2538,22 @@ const DataImport = () => {
                           </Space>
                         </div>
                         <Space style={{ width: "100%", justifyContent: "space-between" }}>
-                        <Button
-                          type="primary"
-                          onClick={handleUpload}
-                          loading={uploading}
-                          disabled={uploading}
-                        >
-                          Upload Data
-                        </Button>
-                        {skippedRows.length > 0 && (
                           <Button
-                            onClick={downloadSkippedRowsReport}
-                            style={{ backgroundColor: "#faad14", borderColor: "#faad14", color: "#000" }}
+                            type="primary"
+                            onClick={handleUpload}
+                            loading={uploading}
+                            disabled={uploading}
                           >
-                            📥 Download Missing Data Report ({skippedRows.length})
+                            Upload Data
                           </Button>
-                        )}
+                          {skippedRows.length > 0 && (
+                            <Button
+                              onClick={downloadSkippedRowsReport}
+                              style={{ backgroundColor: "#faad14", borderColor: "#faad14", color: "#000" }}
+                            >
+                              📥 Download Missing Data Report ({skippedRows.length})
+                            </Button>
+                          )}
                         </Space>
                       </div>
                     )}
