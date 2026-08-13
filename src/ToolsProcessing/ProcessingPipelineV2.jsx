@@ -571,7 +571,7 @@ const ProcessingPipeline = () => {
     return order;
   };
 
-  const fetchPipelineRerunStatus = async (targetProjectId) => {
+  const fetchPipelineRerunStatus = async (targetProjectId, batchNo) => {
     if (!targetProjectId) {
       setHasPendingPipelineChanges(false);
       setPipelineStepStatus(null);
@@ -579,7 +579,7 @@ const ProcessingPipeline = () => {
     }
     try {
       const res = await API.get(`/NRDatas/PipelineRerunStatus`, {
-        params: { ProjectId: targetProjectId },
+        params: { ProjectId: targetProjectId , BatchNo:batchNo },
       });
       setHasPendingPipelineChanges(Boolean(res.data?.hasPendingPipelineChanges));
       setPipelineStepStatus(res.data);
