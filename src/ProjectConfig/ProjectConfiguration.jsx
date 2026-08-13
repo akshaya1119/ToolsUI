@@ -119,6 +119,9 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
   const [extraProcessingConfig, setExtraProcessingConfig] = useState({});
   const [selectedEnvelopeFields, setSelectedEnvelopeFields] = useState([]);
   const [selectedBoxFields, setSelectedBoxFields] = useState([]);
+  const [selectedUniversityExtraBoxFields, setSelectedUniversityExtraBoxFields] = useState([]);
+  const [selectedOfficeExtraBoxFields, setSelectedOfficeExtraBoxFields] = useState([]);
+  const [selectedNodalExtraBoxFields, setSelectedNodalExtraBoxFields] = useState([]);
   const [boxCapacities, setBoxCapacities] = useState([]);
   const [selectedCapacity, setSelectedCapacity] = useState(null);
   const [configExists, setConfigExists] = useState(false);
@@ -302,6 +305,9 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
       startBookletSerialNumber: 0,
       resetBookletSerialOnCatchChange: false,
       selectedBoxFields: [],
+      selectedUniversityExtraBoxFields: [],
+      selectedOfficeExtraBoxFields: [],
+      selectedNodalExtraBoxFields: [],
       selectedCapacity: resolvedCapacity,
       startBoxNumber: 0,
       selectedDuplicatefields: [],
@@ -341,6 +347,23 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
       const parsedBoxFields = (projectConfig.boxBreakingCriteria || [])
         .filter((fieldId) => fields.some((f) => f.fieldId === fieldId))
         .map((fieldId) => fieldId);
+      const parsedUniversityExtraBoxFields = projectConfig.boxBreakingCriteriaForUniExtra
+        ? projectConfig.boxBreakingCriteriaForUniExtra
+            .filter((fieldId) => fields.some((f) => f.fieldId === fieldId))
+            .map((fieldId) => fieldId)
+        : [...parsedBoxFields];
+
+      const parsedOfficeExtraBoxFields = projectConfig.boxBreakingCriteriaForOffcExtra
+        ? projectConfig.boxBreakingCriteriaForOffcExtra
+            .filter((fieldId) => fields.some((f) => f.fieldId === fieldId))
+            .map((fieldId) => fieldId)
+        : [...parsedBoxFields];
+
+      const parsedNodalExtraBoxFields = projectConfig.boxBreakingCriteriaForNodalExtra
+        ? projectConfig.boxBreakingCriteriaForNodalExtra
+            .filter((fieldId) => fields.some((f) => f.fieldId === fieldId))
+            .map((fieldId) => fieldId)
+        : [...parsedBoxFields];
       const parsedEnvelopeFields = (
         projectConfig.envelopeMakingCriteria || []
       ).filter((fieldId) => fields.some((f) => f.fieldId === fieldId));
@@ -367,6 +390,9 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
         resetBookletSerialOnCatchChange:
           projectConfig.resetBookletSerialOnCatchChange ?? false,
         selectedBoxFields: parsedBoxFields,
+        selectedUniversityExtraBoxFields: parsedUniversityExtraBoxFields,
+        selectedOfficeExtraBoxFields: parsedOfficeExtraBoxFields,
+        selectedNodalExtraBoxFields: parsedNodalExtraBoxFields,
         startBoxNumber: projectConfig.boxNumber || 0,
         selectedDuplicatefields: parsedDuplicateFields,
         selectedSortingField: parsedSortingFields,
@@ -388,6 +414,9 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
         parsedValues.resetBookletSerialOnCatchChange,
       );
       setSelectedBoxFields([...parsedValues.selectedBoxFields]);
+      setSelectedUniversityExtraBoxFields([...parsedValues.selectedUniversityExtraBoxFields]);
+      setSelectedOfficeExtraBoxFields([...parsedValues.selectedOfficeExtraBoxFields]);
+      setSelectedNodalExtraBoxFields([...parsedValues.selectedNodalExtraBoxFields]);
       setStartBoxNumber(parsedValues.startBoxNumber);
       setBoxBreakingCriteria([
         "capacity",
@@ -406,6 +435,9 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
       setOuterEnvelopes([]);
       setSelectedEnvelopeFields([]);
       setSelectedBoxFields([]);
+      setSelectedUniversityExtraBoxFields([]);
+      setSelectedOfficeExtraBoxFields([]);
+      setSelectedNodalExtraBoxFields([]);
       setBoxBreakingCriteria(["capacity"]);
       setSelectedDuplicatefields([]);
       setSelectedSortingField([]);
@@ -575,6 +607,9 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
           startBookletSerialNumber: 0,
           resetBookletSerialOnCatchChange: false,
           selectedBoxFields: [],
+          selectedUniversityExtraBoxFields: [],
+          selectedOfficeExtraBoxFields: [],
+          selectedNodalExtraBoxFields: [],
           selectedCapacity: selectedCapacity,
           startBoxNumber: 0,
           selectedDuplicatefields: [],
@@ -614,6 +649,23 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
           const parsedBoxFields = (projectConfig.boxBreakingCriteria || [])
             .filter((fieldId) => fields.some((f) => f.fieldId === fieldId))
             .map((fieldId) => fieldId);
+          const parsedUniversityExtraBoxFields = projectConfig.boxBreakingCriteriaForUniExtra
+            ? projectConfig.boxBreakingCriteriaForUniExtra
+                .filter((fieldId) => fields.some((f) => f.fieldId === fieldId))
+                .map((fieldId) => fieldId)
+            : [...parsedBoxFields];
+
+          const parsedOfficeExtraBoxFields = projectConfig.boxBreakingCriteriaForOffcExtra
+            ? projectConfig.boxBreakingCriteriaForOffcExtra
+                .filter((fieldId) => fields.some((f) => f.fieldId === fieldId))
+                .map((fieldId) => fieldId)
+            : [...parsedBoxFields];
+
+          const parsedNodalExtraBoxFields = projectConfig.boxBreakingCriteriaForNodalExtra
+            ? projectConfig.boxBreakingCriteriaForNodalExtra
+                .filter((fieldId) => fields.some((f) => f.fieldId === fieldId))
+                .map((fieldId) => fieldId)
+            : [...parsedBoxFields];
           const parsedEnvelopeFields = (
             projectConfig.envelopeMakingCriteria || []
           ).filter((fieldId) => fields.some((f) => f.fieldId === fieldId));
@@ -640,6 +692,9 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
             resetBookletSerialOnCatchChange:
               projectConfig.resetBookletSerialOnCatchChange ?? false,
             selectedBoxFields: parsedBoxFields,
+            selectedUniversityExtraBoxFields: parsedUniversityExtraBoxFields,
+            selectedOfficeExtraBoxFields: parsedOfficeExtraBoxFields,
+            selectedNodalExtraBoxFields: parsedNodalExtraBoxFields,
             startBoxNumber: projectConfig.boxNumber || 0,
             selectedDuplicatefields: parsedDuplicateFields,
             selectedSortingField: parsedSortingFields,
@@ -661,6 +716,9 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
             parsedValues.resetBookletSerialOnCatchChange,
           );
           setSelectedBoxFields([...parsedValues.selectedBoxFields]);
+          setSelectedUniversityExtraBoxFields([...parsedValues.selectedUniversityExtraBoxFields]);
+          setSelectedOfficeExtraBoxFields([...parsedValues.selectedOfficeExtraBoxFields]);
+          setSelectedNodalExtraBoxFields([...parsedValues.selectedNodalExtraBoxFields]);
           setStartBoxNumber(parsedValues.startBoxNumber);
           setBoxBreakingCriteria([
             "capacity",
@@ -812,6 +870,9 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
     setInnerEnvelopes([]);
     setOuterEnvelopes([]);
     setSelectedBoxFields([]);
+    setSelectedUniversityExtraBoxFields([]);
+    setSelectedOfficeExtraBoxFields([]);
+    setSelectedNodalExtraBoxFields([]);
     setSelectedEnvelopeFields([]);
     setExtraTypeSelection({});
     setExtraProcessingConfig({});
@@ -854,6 +915,9 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
     innerEnvelopes,
     outerEnvelopes,
     selectedBoxFields,
+    selectedUniversityExtraBoxFields,
+    selectedOfficeExtraBoxFields,
+    selectedNodalExtraBoxFields,
     selectedEnvelopeFields,
     extraTypeSelection,
     extraTypes,
@@ -979,6 +1043,9 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
   const resetBoxBreaking = () => {
     if (importedSnapshot && importedSnapshot !== "pending") {
       setSelectedBoxFields([...(importedSnapshot.selectedBoxFields || [])]);
+      setSelectedUniversityExtraBoxFields([...(importedSnapshot.selectedUniversityExtraBoxFields || [])]);
+      setSelectedOfficeExtraBoxFields([...(importedSnapshot.selectedOfficeExtraBoxFields || [])]);
+      setSelectedNodalExtraBoxFields([...(importedSnapshot.selectedNodalExtraBoxFields || [])]);
       setSelectedCapacity(importedSnapshot.selectedCapacity);
       setStartBoxNumber(importedSnapshot.startBoxNumber || 0);
       setSelectedDuplicatefields([...(importedSnapshot.selectedDuplicatefields || [])]);
@@ -992,6 +1059,9 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
       ]);
     } else {
       setSelectedBoxFields([]);
+      setSelectedUniversityExtraBoxFields([]);
+      setSelectedOfficeExtraBoxFields([]);
+      setSelectedNodalExtraBoxFields([]);
       setBoxBreakingCriteria(["capacity"]);
       setSelectedCapacity(
         boxCapacities.length > 0 ? boxCapacities[0].id : null,
@@ -1058,6 +1128,9 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
 
   const clearBoxBreaking = () => {
     setSelectedBoxFields([]);
+    setSelectedUniversityExtraBoxFields([]);
+    setSelectedOfficeExtraBoxFields([]);
+    setSelectedNodalExtraBoxFields([]);
     setBoxBreakingCriteria(["capacity"]);
     setSelectedCapacity(boxCapacities.length > 0 ? boxCapacities[0].id : null);
     setStartBoxNumber(0);
@@ -1133,6 +1206,9 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
       startBookletSerialNumber,
       resetBookletSerialOnCatchChange,
       selectedBoxFields: [...selectedBoxFields],
+      selectedUniversityExtraBoxFields: [...selectedUniversityExtraBoxFields],
+      selectedOfficeExtraBoxFields: [...selectedOfficeExtraBoxFields],
+      selectedNodalExtraBoxFields: [...selectedNodalExtraBoxFields],
       selectedCapacity,
       startBoxNumber,
       selectedDuplicatefields: [...selectedDuplicatefields],
@@ -1382,6 +1458,13 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
             fields={fields}
             selectedBoxFields={selectedBoxFields}
             setSelectedBoxFields={setSelectedBoxFields}
+            selectedUniversityExtraBoxFields={selectedUniversityExtraBoxFields}
+            setSelectedUniversityExtraBoxFields={setSelectedUniversityExtraBoxFields}
+            selectedOfficeExtraBoxFields={selectedOfficeExtraBoxFields}
+            setSelectedOfficeExtraBoxFields={setSelectedOfficeExtraBoxFields}
+            selectedNodalExtraBoxFields={selectedNodalExtraBoxFields}
+            setSelectedNodalExtraBoxFields={setSelectedNodalExtraBoxFields}
+            extraProcessingConfig={extraProcessingConfig}
             boxCapacities={boxCapacities}
             selectedCapacity={selectedCapacity}
             setSelectedCapacity={setSelectedCapacity}

@@ -821,7 +821,7 @@ const ReportTemplateManagement = ({
                     {vc('generated') && <th>Generated</th>}
                     {!isReport && tvc('downloaded') && <th>Downloaded</th>}
                     {vc('status') && <th>Status</th>}
-                    <th style={{ textAlign: 'right' }}>Action</th>
+                    <th style={{ textAlign: 'left' }}>Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -848,7 +848,7 @@ const ReportTemplateManagement = ({
                             </td>
                           )}
                           {rvc('status') && <td>{renderStatus(v?.status)}</td>}
-                          <td style={{ textAlign: 'right' }}>
+                          <td style={{ textAlign: 'left' }}>
                             <Button size="small" icon={<Download size={12} />}
                               disabled={!v?.fileUrl}
                               onClick={() => handleDownloadReportVersion(v, row.reportName)}>
@@ -899,7 +899,7 @@ const ReportTemplateManagement = ({
                             </td>
                           )}
                           {tvc('status') && <td>{idx === 0 ? <Tag color="success">Latest</Tag> : <Tag>Previous</Tag>}</td>}
-                          <td style={{ textAlign: 'right' }}>
+                          <td style={{ textAlign: 'left' }}>
                             <Button size="small" icon={<Download size={12} />}
                               onClick={() => handleDownloadTemplate(group, db)}>
                               Download
@@ -1140,7 +1140,7 @@ const ReportTemplateManagement = ({
           gap: 1px;
           min-width: 0;
         }
-        .rtm-cell--action { align-items: flex-end; }
+        .rtm-cell--action { align-items: flex-start; }
         .rtm-cell--icon   { justify-content: center; align-items: center; }
 
         .rtm-label {
