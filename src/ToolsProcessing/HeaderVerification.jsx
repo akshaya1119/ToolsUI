@@ -1046,7 +1046,7 @@ const HeaderVerification = () => {
                     onRow={(record) => {
                       const isSelected = previewOpen && selectedRecord?.id === record.id;
                       const status = normalizeStatus(record.status);
-                      let rowStyle = { cursor: 'pointer' };
+                      let rowStyle = { cursor: 'pointer', backgroundColor: '#ffffff' };
                       
                       // Highlight selected row with blue background ONLY when preview is open
                       if (isSelected) {
