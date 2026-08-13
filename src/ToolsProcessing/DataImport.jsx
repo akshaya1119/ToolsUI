@@ -2221,7 +2221,10 @@ const DataImport = () => {
       >
         <Card
           title={
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div 
+              style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", userSelect: "none" }}
+              onClick={() => setUploadSectionCollapsed(prev => !prev)}
+            >
               <ToolOutlined style={iconStyle} />
               <span>Data Import</span>
               {!uploadSectionCollapsed && (
@@ -2285,20 +2288,6 @@ const DataImport = () => {
                 }}
               >
                 Delete NR Data
-              </Button>
-              <Button
-                size="small"
-                type="text"
-                onClick={() => setUploadSectionCollapsed(prev => !prev)}
-                style={{
-                  color: '#595959',
-                  fontSize: 16,
-                  lineHeight: 1,
-                  padding: '0 4px'
-                }}
-                title={uploadSectionCollapsed ? 'Expand upload section' : 'Collapse upload section'}
-              >
-                {uploadSectionCollapsed ? <ChevronDown size={18} /> : <ChevronUp size={18} />}
               </Button>
             </Space>
           }
