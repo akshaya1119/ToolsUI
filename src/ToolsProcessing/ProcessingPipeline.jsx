@@ -103,6 +103,34 @@ const ProcessingPipeline = () => {
   const [selectedModules, setSelectedModules] = useState([]);
   const [allModules, setAllModules] = useState([]);
   const [projectConfig, setProjectConfig] = useState(null);
+  
+  // Batch states
+  const [batches, setBatches] = useState([]);
+  const [selectedBatch, setSelectedBatch] = useState(1);
+  const [loadingBatches, setLoadingBatches] = useState(false);
+
+  useEffect(() => {
+    if (projectId) {
+      loadBatches();
+    }
+  }, [projectId]);
+
+  const loadBatches = async () => {
+    try {
+      setLoadingBatches(true);
+      const res = await API.get(`/NRDatas/active-batches/${projectId}`);
+      const batchList = res.data?.activeBatches || [1];
+      setBatches(batchList.length > 0 ? batchList : [1]);
+      if (!batchList.includes(selectedBatch)) {
+        setSelectedBatch(1);
+      }
+    } catch (error) {
+      console.error("Failed to fetch batches", error);
+      setBatches([1]);
+    } finally {
+      setLoadingBatches(false);
+    }
+  };
   const [extraConfigData, setExtraConfigData] = useState([]);
   const [configChanged, setConfigChanged] = useState(false);
   const [changedFieldsInfo, setChangedFieldsInfo] = useState([]);
@@ -679,6 +707,7 @@ const ProcessingPipeline = () => {
   const runDuplicate = async (projectId) => {
     const queryParams = {
       ProjectId: projectId,
+      batchId: selectedBatch,
     };
     const query = new URLSearchParams(queryParams).toString();
     const res = await API.post(`/Duplicate?${query}`);
@@ -688,17 +717,17 @@ const ProcessingPipeline = () => {
   };
 
   const runEnhancement = async (projectId) => {
-    const res = await API.post(`/Duplicate/Enhancement?ProjectId=${projectId}`);
+    const res = await API.post(`/Duplicate/Enhancement?ProjectId=${projectId}&batch=${selectedBatch}`);
     message.success(res?.data?.message || "Enhancement processing completed");
   };
 
   const runExtras = async (projectId) => {
-    const res = await API.post(`/ExtraEnvelopes?ProjectId=${projectId}`);
+    const res = await API.post(`/ExtraEnvelopes?ProjectId=${projectId}&batchNo=${selectedBatch}`);
     message.success(res?.data?.message || "Extras calculation completed");
   };
 
   const runEnvelope = async (projectId) => {
-    const res = await API.post(`/EnvelopeBreakageProcessing/ProcessEnvelopeBreaking?ProjectId=${projectId}`);
+    const res = await API.post(`/EnvelopeBreakageProcessing/ProcessEnvelopeBreaking?ProjectId=${projectId}&batchNo=${selectedBatch}`);
     message.success(res?.data?.message || "Envelope breaking completed");
   };
 
@@ -706,6 +735,7 @@ const ProcessingPipeline = () => {
     // Build query string with lot numbers
     const params = new URLSearchParams();
     params.append('ProjectId', projectId);
+    params.append('batchNo', selectedBatch);
 
     if (lotNumbers && lotNumbers.length > 0) {
       lotNumbers.forEach(lot => params.append('LotNo', lot));
@@ -4153,6 +4183,12 @@ Object.keys(groupedTpl).forEach((templateKey) => {
           Processing Pipeline
         </Typography.Title>
         <div className="text-sm flex items-center gap-2">
+          <Select
+            value={selectedBatch}
+            onChange={(val) => setSelectedBatch(val)}
+            style={{ display: 'none' }}
+            options={batches.map((b) => ({ label: `Batch ${b}`, value: b }))}
+          />
           <span>Status:</span>
           {isProcessing ? (
             <Badge status="processing" text="Processing" color="blue" />
