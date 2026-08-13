@@ -91,6 +91,7 @@ const DataImport = () => {
   const [uploadedDisplayFields, setUploadedDisplayFields] = useState([]);
   const [addedFieldIds, setAddedFieldIds] = useState([]);
   const [uploadSectionCollapsed, setUploadSectionCollapsed] = useState(false);
+  const [shouldOpenBifurcation, setShouldOpenBifurcation] = useState(false);
 
   // 👉 Initialize activeTab from localStorage on mount
   useEffect(() => {
@@ -102,12 +103,27 @@ const DataImport = () => {
 
   useEffect(() => {
     const requestedTab = location.state?.activeTab;
+    const openBifurcation = location.state?.openBifurcationPanel;
+    
+    if (openBifurcation) {
+      setShouldOpenBifurcation(true);
+    }
+
     if (requestedTab) {
       handleTabChange(String(requestedTab));
       navigate(location.pathname, { replace: true, state: {} });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location.state?.activeTab, location.pathname]);
+  }, [location.state?.activeTab, location.state?.openBifurcationPanel, location.pathname]);
+
+  useEffect(() => {
+    if (activeTab === "4" && shouldOpenBifurcation) {
+      // The prop handles opening it, so we can clear the trigger after a short delay
+      // to ensure the child receives it first.
+      const timer = setTimeout(() => setShouldOpenBifurcation(false), 500);
+      return () => clearTimeout(timer);
+    }
+  }, [activeTab, shouldOpenBifurcation]);
 
   // 👉 Save activeTab to localStorage whenever it changes
   const handleTabChange = (key) => {
@@ -3030,7 +3046,7 @@ const DataImport = () => {
                 {activeTab === "3" && <MissingData />}
               </TabPane>
               <TabPane tab="Lot Bifurcation" key="4">
-                {activeTab === "4" && <LotsBifurcation ref={lotBifurcationRef} />}
+                {activeTab === "4" && <LotsBifurcation ref={lotBifurcationRef} defaultOpenBifurcation={shouldOpenBifurcation} />}
               </TabPane>
               <TabPane tab="Merge Catch Numbers" key="5">
                 {activeTab === "5" && (

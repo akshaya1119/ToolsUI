@@ -106,10 +106,12 @@ const ImportConfig = ({ onImport, disabled }) => {
         try {
           // Check templates
           const res = await axios.get(`${import.meta.env.VITE_API_URL}/RPTTemplates/by-group?projectId=${selectedProjectId}`);
-          setTemplatesExist(res.data && res.data.length > 0);
+          const exist = res.data && res.data.length > 0;
+          setTemplatesExist(exist);
+          if (!exist) setImportTemplates(false);
 
           // Configuration existence is already filtered in dropdown
-          setMasterConfigExists(true); 
+          setMasterConfigExists(true);
         } catch (err) {
           console.error("Validation failed", err);
         } finally {
@@ -122,9 +124,11 @@ const ImportConfig = ({ onImport, disabled }) => {
           const configRes = await API.get(`/MProjectConfigs/ByTypeGroup/${selectedType}/${selectedGroup}`).catch(() => null);
           setMasterConfigExists(!!configRes?.data);
 
-          // Check templates
+          // Check templates (Master Templates)
           const res = await axios.get(`${import.meta.env.VITE_API_URL}/RPTTemplates/by-group?typeId=${selectedType}&groupId=${selectedGroup}`);
-          setTemplatesExist(res.data && res.data.length > 0);
+          const exist = res.data && res.data.length > 0;
+          setTemplatesExist(exist);
+          if (!exist) setImportTemplates(false);
         } catch (err) {
           console.error("Validation failed", err);
         } finally {
@@ -245,13 +249,13 @@ const ImportConfig = ({ onImport, disabled }) => {
               {(Array.isArray(projectList) ? projectList : [])
                 .filter(p => configuredProjectIds.includes(p.projectId) && p.status !== true)
                 .map((project) => (
-                <Select.Option
-                  key={project.projectId}
-                  value={project.projectId}
-                >
-                  {getDisplayName(project.projectId)}
-                </Select.Option>
-              ))}
+                  <Select.Option
+                    key={project.projectId}
+                    value={project.projectId}
+                  >
+                    {getDisplayName(project.projectId)}
+                  </Select.Option>
+                ))}
             </Select>
           </div>
         ) : (
@@ -286,7 +290,7 @@ const ImportConfig = ({ onImport, disabled }) => {
           </Space>
         )}
 
-        <div style={{ marginTop: 20 }}>
+        {/* <div style={{ marginTop: 20 }}>
           {importMethod === "groupType" && selectedGroup && selectedType && masterConfigExists === false && (
             <Alert
               message="No Master Configuration found for this Group & Type."
@@ -304,7 +308,7 @@ const ImportConfig = ({ onImport, disabled }) => {
               style={{ marginBottom: 12 }}
             />
           )}
-        </div>
+        </div> */}
 
         <div style={{ marginTop: 24, borderTop: '1px solid #f0f0f0', paddingTop: 16 }}>
           <Checkbox
