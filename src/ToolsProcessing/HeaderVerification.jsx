@@ -616,19 +616,19 @@ const HeaderVerification = () => {
       sorter: (a, b) => String(a.date || '').localeCompare(String(b.date || '')),
       sortOrder: tableSorter.field === 'date' ? tableSorter.order : null,
       render: (value, record) => (
-          <span className="text-sm text-gray-600 whitespace-nowrap">{value}</span>
+          <span className="text-sm text-gray-600">{value}</span>
       ),
     },
     {
       title: 'Exam Time',
       dataIndex: 'time',
       key: 'time',
-      width: 130,
+      width: 200,
       ...getColumnSearchProps('time'),
       sorter: (a, b) => String(a.time || '').localeCompare(String(b.time || '')),
       sortOrder: tableSorter.field === 'time' ? tableSorter.order : null,
       render: (value, record) => (
-          <span className="text-sm text-gray-600 whitespace-nowrap">{value}</span>
+          <span className="text-sm text-gray-600">{value}</span>
       ),
     },
     {
@@ -1035,7 +1035,7 @@ const HeaderVerification = () => {
                   <p className="text-sm mt-1">Try adjusting your search or filters.</p>
                 </div>
               ) : (
-                <div id="table-scroll-container" className="h-full overflow-auto">
+                <div id="table-scroll-container" className="max-h-full overflow-auto">
                   <Table
                     className="header-verification-table"
                     dataSource={displayedRows}
@@ -1044,8 +1044,11 @@ const HeaderVerification = () => {
                     loading={loading}
                     onChange={handleTableChange}
                     pagination={false}
-                    scroll={{ x: 'max-content' }}
-                    sticky={{ offsetHeader: 0 }}
+                    scroll={{ x: visibleTableColumns.reduce((sum, col) => sum + (col.width || 120), 0) }}
+                    sticky={{ 
+                      offsetHeader: 0,
+                      getContainer: () => document.getElementById('table-scroll-container')
+                    }}
                     locale={{
                       emptyText: (
                         <div className="p-12 text-center text-gray-500">
