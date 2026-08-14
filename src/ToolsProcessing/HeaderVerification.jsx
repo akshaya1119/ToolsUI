@@ -905,6 +905,18 @@ const HeaderVerification = () => {
 
       const newStatus = isFieldLocked ? 1 : Number(editFormData.status);
       const statusChanged = normalizeStatus(updatedRecord.status) !== newStatus;
+
+      const payloadA = isFieldLocked ? (updatedRecord.a || '') : (editFormData.a || '');
+      const payloadB = isFieldLocked ? (updatedRecord.b || '') : (editFormData.b || '');
+      const payloadC = isFieldLocked ? (updatedRecord.c || '') : (editFormData.c || '');
+      const payloadD = isFieldLocked ? (updatedRecord.d || '') : (editFormData.d || '');
+
+      const isInvalidValue = (val) => !val || String(val).trim() === '' || String(val).trim() === '-';
+      if (newStatus !== 0 && isInvalidValue(payloadA) && isInvalidValue(payloadB) && isInvalidValue(payloadC) && isInvalidValue(payloadD)) {
+        showToast('At least one of A, B, C, or D is required if you want to verify this record', 'error');
+        return;
+      }
+
       const originalRemark = (updatedRecord.remark || '').trim();
       const editedRemark = (editFormData.remark || '').trim();
       const remarkChanged = editedRemark !== originalRemark;
