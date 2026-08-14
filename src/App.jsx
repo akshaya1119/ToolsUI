@@ -26,6 +26,7 @@ import { useUserToken, useUserTokenActions } from "./stores/UserToken";
 import HToV from "./ToolsProcessing/HToV";
 import HeaderVerification from "./ToolsProcessing/HeaderVerification";
 import ChangedNRUpload from "./ToolsProcessing/ChangedNRUpload";
+import BatchWiseData from "./ToolsProcessing/BatchWiseData";
 
 
 function isTokenExpired(token) {
@@ -267,6 +268,15 @@ export default function App() {
                   <ProtectedRoute token={token}>
                     <MainLayout >
                       <ChangedNRUpload />
+                    </MainLayout></ProtectedRoute>
+                }
+              />
+               <Route
+                path="/batchwisedata"
+                element={
+                  <ProtectedRoute token={token}>
+                    <MainLayout >
+                      <BatchWiseData />
                     </MainLayout></ProtectedRoute>
                 }
               />
