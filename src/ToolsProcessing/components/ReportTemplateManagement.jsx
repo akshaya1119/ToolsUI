@@ -11,7 +11,7 @@ import {
   Pagination,
 } from 'antd';
 import axios from 'axios';
-import { Search, Download, FileText, ChevronDown, ChevronRight } from 'lucide-react';
+import { Search, Download, FileText, ChevronDown, ChevronRight, Archive } from 'lucide-react';
 import { useUserMap, getFirstNameFromUserId, getCurrentUserId } from '../../hooks/useUserMap';
 import useStore from '../../stores/ProjectData';
 
@@ -73,17 +73,17 @@ const ReportTemplateManagement = ({
   const projectName = useStore(state => state.projectName);
 
   // filters
-  const [searchText, setSearchText]       = useState('');
+  const [searchText, setSearchText] = useState('');
   const [selectedModule, setSelectedModule] = useState('ALL');
   const [selectedTemplate, setSelectedTemplate] = useState('ALL');
-  const [selectedLot, setSelectedLot]     = useState('ALL');
-  const [viewType, setViewType]           = useState('Report');
+  const [selectedLot, setSelectedLot] = useState('ALL');
+  const [viewType, setViewType] = useState('Report');
 
   // pagination
-  const [reportPage, setReportPage]               = useState(1);
-  const [reportPageSize, setReportPageSize]       = useState(10);
-  const [templatePage, setTemplatePage]           = useState(1);
-  const [templatePageSize, setTemplatePageSize]   = useState(10);
+  const [reportPage, setReportPage] = useState(1);
+  const [reportPageSize, setReportPageSize] = useState(10);
+  const [templatePage, setTemplatePage] = useState(1);
+  const [templatePageSize, setTemplatePageSize] = useState(10);
 
   // expanded accordion keys (set of groupKey strings)
   const [expandedKeys, setExpandedKeys] = useState(new Set());
@@ -109,7 +109,7 @@ const ReportTemplateManagement = ({
 
   // misc
   const [bulkDownloading, setBulkDownloading] = useState(false);
-  const [envLotCatches, setEnvLotCatches]     = useState({});
+  const [envLotCatches, setEnvLotCatches] = useState({});
   const [envLotReportsLocal, setEnvLotReportsLocal] = useState([]);
 
   // ── helpers ──────────────────────────────────────────────────────────────
@@ -137,6 +137,7 @@ const ReportTemplateManagement = ({
     const lookup = {};
     const data = envLotReportsLocal.length > 0 ? envLotReportsLocal : envLotReports;
     (data || []).forEach((r) => {
+      if (r.status === false || r.Status === false) return;
       const id = Number(r.templateId ?? r.TemplateId);
       if (!id) return;
       if (!lookup[id]) lookup[id] = { templateId: id, envLotNumbers: [], lotNumbers: [], reports: [] };
@@ -147,7 +148,7 @@ const ReportTemplateManagement = ({
     });
     Object.values(lookup).forEach((item) => {
       item.envLotNumbers = [...new Set(item.envLotNumbers)];
-      item.lotNumbers    = [...new Set(item.lotNumbers)];
+      item.lotNumbers = [...new Set(item.lotNumbers)];
     });
     return lookup;
   }, [envLotReports, envLotReportsLocal]);
@@ -156,6 +157,7 @@ const ReportTemplateManagement = ({
     const lookup = {};
     const data = envLotReportsLocal.length > 0 ? envLotReportsLocal : envLotReports;
     (data || []).forEach((r) => {
+      if (r.status === false || r.Status === false) return;
       const id = Number(r.templateId ?? r.TemplateId);
       if (!id) return;
       if (!lookup[id]) lookup[id] = [];
@@ -186,7 +188,7 @@ const ReportTemplateManagement = ({
       const lk = {};
       (res.data || []).forEach((item) => {
         const en = item.envLotNo ?? item.EnvLotNo;
-        const cn = item.catchNo  ?? item.CatchNo;
+        const cn = item.catchNo ?? item.CatchNo;
         if (en && cn) {
           if (!lk[en]) lk[en] = [];
           if (!lk[en].includes(cn)) lk[en].push(cn);
@@ -218,11 +220,11 @@ const ReportTemplateManagement = ({
 
   const moduleOptions = useMemo(() =>
     [...new Set(reports.filter(r => r.type === viewType).map(r => r.module).filter(Boolean))],
-  [reports, viewType]);
+    [reports, viewType]);
 
   const templateOptions = useMemo(() =>
     [...new Set(reports.filter(r => r.type === viewType).map(r => r.templateName).filter(Boolean))],
-  [reports, viewType]);
+    [reports, viewType]);
 
   const getLotNumbers = useMemo(() => {
     const lots = new Set();
@@ -262,7 +264,7 @@ const ReportTemplateManagement = ({
         .filter(r => r.type === 'Report')
         .filter(r => {
           const fileName = r.reportName || r.fileName || '';
-          const lotNum   = extractLotFromFilename(fileName);
+          const lotNum = extractLotFromFilename(fileName);
           if (search && !r.module?.toLowerCase().includes(search) && !r.reportName?.toLowerCase().includes(search)) return false;
           if (selectedModule !== 'ALL' && r.module !== selectedModule) return false;
           if (selectedLot !== 'ALL' && Number(lotNum) !== Number(selectedLot)) return false;
@@ -272,8 +274,8 @@ const ReportTemplateManagement = ({
       // Group: for box breaking use "module||lot", for others use "module"
       const groupMap = new Map();
       filtered.forEach(r => {
-        const isBox   = r.module?.toLowerCase().includes(BOX_BREAKING_MODULE);
-        const lotNum  = isBox ? extractLotFromFilename(r.reportName || r.fileName || '') : null;
+        const isBox = r.module?.toLowerCase().includes(BOX_BREAKING_MODULE);
+        const lotNum = isBox ? extractLotFromFilename(r.reportName || r.fileName || '') : null;
         const groupKey = isBox && lotNum
           ? `${r.module}||lot-${lotNum}`
           : `${r.module}`;
@@ -314,11 +316,22 @@ const ReportTemplateManagement = ({
 
     const groupMap = new Map();
 
+    const pushDbRow = (gk, r, db, idx) => {
+      const arr = groupMap.get(gk).rows;
+      if (!db) {
+        arr.push({ ...r, _dbRow: null });
+        return;
+      }
+      const dbId = db.id ?? db.Id;
+      if (dbId && arr.some(x => (x._dbRow?.id ?? x._dbRow?.Id) === dbId)) return;
+      arr.push({ ...r, _dbRow: db, _versionIdx: idx });
+    };
+
     filtered.forEach((r) => {
-      const templateId   = Number(r.templateId ?? r.TemplateId ?? 0);
+      const templateId = Number(r.templateId ?? r.TemplateId ?? 0);
       const templateName = r.templateName || '-';
-      const moduleLower  = (r.module || '').toLowerCase();
-      
+      const moduleLower = (r.module || '').toLowerCase();
+
       // Get all DB records for this template
       const dbRows = envLotReportsByTemplate[templateId] || [];
 
@@ -326,8 +339,8 @@ const ReportTemplateManagement = ({
       const hasLot = dbRows.some(db => (Number(db.lotNumber ?? db.lotNo ?? db.LotNo) || 0) > 0);
       const hasEnv = dbRows.some(db => parseEnvLotNumbers(db.envLotNumbers ?? db.EnvLotNumbers).length > 0);
 
-      const isBoxDep      = moduleLower.includes(BOX_BREAKING_MODULE) || hasLot;
-      const isEnvDep      = moduleLower.includes(ENVELOPE_BREAKING_MODULE) || hasEnv;
+      const isBoxDep = moduleLower.includes(BOX_BREAKING_MODULE) || hasLot;
+      const isEnvDep = moduleLower.includes(ENVELOPE_BREAKING_MODULE) || hasEnv;
 
       if (dbRows.length === 0) {
         // No generated records — show a single placeholder group
@@ -359,7 +372,7 @@ const ReportTemplateManagement = ({
           }
           // Each DB row = one version row; map to the report shape
           dbs.forEach((db, idx) => {
-            groupMap.get(gk).rows.push({ ...r, _dbRow: db, _versionIdx: idx });
+            pushDbRow(gk, r, db, idx);
           });
         });
       } else if (isEnvDep) {
@@ -367,7 +380,7 @@ const ReportTemplateManagement = ({
         const batchGroups = {};
         dbRows.forEach((db) => {
           const envNums = parseEnvLotNumbers(db.envLotNumbers ?? db.EnvLotNumbers);
-          const envNo   = envNums[0] ?? 0;
+          const envNo = envNums[0] ?? 0;
           if (!batchGroups[envNo]) batchGroups[envNo] = [];
           batchGroups[envNo].push(db);
         });
@@ -377,7 +390,7 @@ const ReportTemplateManagement = ({
             groupMap.set(gk, { key: gk, module: r.module, templateId, templateName, subName: r.subName || r.SubName || null, lot: null, envLotNo: Number(envNo), rows: [] });
           }
           dbs.forEach((db, idx) => {
-            groupMap.get(gk).rows.push({ ...r, _dbRow: db, _versionIdx: idx });
+            pushDbRow(gk, r, db, idx);
           });
         });
       } else {
@@ -387,7 +400,7 @@ const ReportTemplateManagement = ({
           groupMap.set(gk, { key: gk, module: r.module, templateId, templateName, subName: r.subName || r.SubName || null, lot: null, envLotNo: null, rows: [] });
         }
         dbRows.forEach((db, idx) => {
-          groupMap.get(gk).rows.push({ ...r, _dbRow: db, _versionIdx: idx });
+          pushDbRow(gk, r, db, idx);
         });
       }
     });
@@ -446,7 +459,7 @@ const ReportTemplateManagement = ({
   }, [accordionGroups, sortState, viewType]);
 
   // pagination over sorted groups
-  const currentPage     = viewType === 'Report' ? reportPage : templatePage;
+  const currentPage = viewType === 'Report' ? reportPage : templatePage;
   const currentPageSize = viewType === 'Report' ? reportPageSize : templatePageSize;
   const paginatedGroups = useMemo(() => {
     const start = (currentPage - 1) * currentPageSize;
@@ -459,7 +472,7 @@ const ReportTemplateManagement = ({
   const handleSort = (field) => {
     setSortState(prev => {
       if (prev.field !== field) return { field, dir: 'asc' };          // new field → asc
-      if (prev.dir === 'asc')  return { field, dir: 'desc' };          // asc → desc
+      if (prev.dir === 'asc') return { field, dir: 'desc' };          // asc → desc
       return { field: null, dir: null };                                // desc → reset
     });
   };
@@ -484,7 +497,7 @@ const ReportTemplateManagement = ({
   // Download the latest (first) version of a report group
   const handleDownloadReport = async (group) => {
     const latestRow = group.rows[0];
-    const version   = latestRow?.versions?.[0];
+    const version = latestRow?.versions?.[0];
     if (!version?.fileUrl) { message.error('Download URL not available.'); return; }
     const link = document.createElement('a');
     link.href = version.fileUrl; link.download = latestRow.reportName || 'report'; link.target = '_blank';
@@ -504,7 +517,7 @@ const ReportTemplateManagement = ({
   // Download a template (uses rptApiUrl)
   const handleDownloadTemplate = async (group, dbRow) => {
     const templateId = group.templateId;
-    const lotNumber  = dbRow
+    const lotNumber = dbRow
       ? Number(dbRow.lotNumber ?? dbRow.lotNo ?? dbRow.LotNo ?? 0) || 1
       : group.lot || 1;
     if (!templateId || !projectId) { message.error('Missing template download details.'); return; }
@@ -513,17 +526,17 @@ const ReportTemplateManagement = ({
       if (!base) { message.error('RPT API URL not configured.'); return; }
       const ok = await axios.get(`${base}/api/report/generated-exists?templateId=${templateId}&projectId=${projectId}`);
       if (!ok.data?.exists && ok.data !== true) { message.error('No generated PDF found.'); return; }
-      
+
       let fileName = projectName ? projectName.replace(/[^a-zA-Z0-9_-]/g, '_') : `Project_${projectId}`;
       const envNums = parseEnvLotNumbers(dbRow?.envLotNumbers ?? dbRow?.EnvLotNumbers);
       const envLotVal = group.envLotNo ?? envNums[0];
-      
+
       if (envLotVal) {
         fileName += `_Batch-${envLotVal}`;
       } else if (lotNumber) {
         fileName += `_Lot-${lotNumber}`;
       }
-      
+
       // Include template name to be descriptive
       const templateNameStr = group.templateName ? `_${group.templateName.replace(/[^a-zA-Z0-9_-]/g, '_')}` : '';
       fileName += `${templateNameStr}.pdf`;
@@ -566,7 +579,7 @@ const ReportTemplateManagement = ({
       const items = [];
       for (const g of accordionGroups) {
         const dbRow = g.rows[0]?._dbRow;
-        const lot   = Number(dbRow?.lotNumber ?? dbRow?.lotNo ?? dbRow?.LotNo ?? g.lot ?? 1) || 1;
+        const lot = Number(dbRow?.lotNumber ?? dbRow?.lotNo ?? dbRow?.LotNo ?? g.lot ?? 1) || 1;
         const exists = envLotReportsLocal.some(x => Number(x.templateId ?? x.TemplateId) === g.templateId && Number(x.lotNumber ?? x.lotNo) === lot);
         if (exists) items.push({ templateId: g.templateId, lotNumber: lot });
       }
@@ -583,10 +596,34 @@ const ReportTemplateManagement = ({
     finally { setBulkDownloading(false); }
   };
 
+  const handleArchiveTemplate = async (dbRow) => {
+    const dbId = dbRow?.id ?? dbRow?.Id;
+    if (!dbId) return;
+
+    Modal.confirm({
+      title: 'Archive Report',
+      content: 'Are you sure you want to archive this report?',
+      okText: 'Yes, Archive',
+      okType: 'danger',
+      cancelText: 'Cancel',
+      onOk: async () => {
+        try {
+          await axios.put(`${apiBaseUrl}/EnvelopeLotReports/${dbId}/archive`);
+          message.success('Report archived successfully');
+          fetchEnvLotReports();
+        } catch (e) {
+          console.error('Failed to archive report:', e);
+          message.error('Failed to archive report');
+        }
+      }
+    });
+  };
+
   // ── render helpers ────────────────────────────────────────────────────────
 
   const renderStatus = (status) => {
-    if (status === 'Latest')   return <Tag color="success">Latest</Tag>;
+    if (status === 'Archived') return <Tag color="error">Archived</Tag>;
+    if (status === 'Latest') return <Tag color="success">Latest</Tag>;
     if (status === 'Previous') return <Tag color="default">Previous</Tag>;
     return <Tag>{status || '-'}</Tag>;
   };
@@ -619,28 +656,28 @@ const ReportTemplateManagement = ({
   // grid naturally collapses without leaving empty gaps.
   const reportGridCols = useMemo(() => {
     const cols = ['22px']; // icon always visible
-    if (rvc('module'))      cols.push('1.3fr');
-    if (rvc('lot'))         cols.push('0.6fr');
-    if (rvc('reportName'))  cols.push('1.8fr');
-    if (rvc('version'))     cols.push('0.65fr');
-    if (rvc('generated'))   cols.push('1.6fr');
-    if (rvc('status'))      cols.push('0.8fr');
+    if (rvc('module')) cols.push('1.3fr');
+    if (rvc('lot')) cols.push('0.6fr');
+    if (rvc('reportName')) cols.push('1.8fr');
+    if (rvc('version')) cols.push('0.65fr');
+    if (rvc('generated')) cols.push('1.6fr');
+    if (rvc('status')) cols.push('0.8fr');
     cols.push('0.9fr'); // action always visible
     return cols.join(' ');
   }, [reportVisibleColumns]);
 
   const templateGridCols = useMemo(() => {
     const cols = ['22px']; // icon always visible
-    if (tvc('module'))       cols.push('1.1fr');
-    if (tvc('lot'))          cols.push('0.55fr');
-    if (tvc('envLot'))       cols.push('0.9fr');
+    if (tvc('module')) cols.push('1.1fr');
+    if (tvc('lot')) cols.push('0.55fr');
+    if (tvc('envLot')) cols.push('0.9fr');
     if (tvc('templateName')) cols.push('1.6fr');
-    if (tvc('subName'))      cols.push('0.8fr');
-    if (tvc('version'))      cols.push('0.6fr');
-    if (tvc('generated'))    cols.push('1.5fr');
-    if (tvc('downloaded'))   cols.push('1.5fr');
-    if (tvc('status'))       cols.push('0.75fr');
-    cols.push('0.85fr'); // action always visible
+    if (tvc('subName')) cols.push('0.8fr');
+    if (tvc('version')) cols.push('0.6fr');
+    if (tvc('generated')) cols.push('1.5fr');
+    if (tvc('downloaded')) cols.push('1.5fr');
+    if (tvc('status')) cols.push('0.75fr');
+    cols.push('1.2fr'); // action always visible
     return cols.join(' ');
   }, [templateVisibleColumns]);
 
@@ -649,15 +686,15 @@ const ReportTemplateManagement = ({
   // ══════════════════════════════════════════════════════════════════════════
 
   const renderGroup = (group) => {
-    const isReport    = viewType === 'Report';
+    const isReport = viewType === 'Report';
     const hasMultiple = group.rows.length > 1;
-    const isExpanded  = expandedKeys.has(group.key);
-    const vc          = isReport ? rvc : tvc;
-    const gridCols    = isReport ? reportGridCols : templateGridCols;
+    const isExpanded = expandedKeys.has(group.key);
+    const vc = isReport ? rvc : tvc;
+    const gridCols = isReport ? reportGridCols : templateGridCols;
 
     // ── derive header data from the "latest" (first) row ──
     let headerData = {};
-    
+
     let displayModule = group.module || '-';
     if (displayModule === '-') {
       if (isReport) {
@@ -675,33 +712,35 @@ const ReportTemplateManagement = ({
       const latestRow = group.rows[0];
       const v = latestRow?.versions?.[0];
       headerData = {
-        module:      displayModule,
-        lot:         group.lot != null ? `Lot ${group.lot}` : '-',
-        name:        latestRow?.reportName || '-',
-        version:     v?.version ?? '-',
+        module: displayModule,
+        lot: group.lot != null ? `Lot ${group.lot}` : '-',
+        name: latestRow?.reportName || '-',
+        version: v?.version ?? '-',
         generatedOn: v?.generatedOn,
         generatedBy: resolveUserName(v?.generatedByUserId || latestRow?.generatedByUserId, v?.generatedBy || latestRow?.generatedBy),
-        status:      v?.status,
-        onDownload:  () => handleDownloadReport(group),
+        status: v?.status,
+        onDownload: () => handleDownloadReport(group),
         canDownload: !!v?.fileUrl,
       };
     } else {
       const latestDb = group.rows[0]?._dbRow;
-      const envNums  = parseEnvLotNumbers(latestDb?.envLotNumbers ?? latestDb?.EnvLotNumbers);
+      const envNums = parseEnvLotNumbers(latestDb?.envLotNumbers ?? latestDb?.EnvLotNumbers);
       headerData = {
-        module:       displayModule,
-        lot:          group.lot != null ? `Lot ${group.lot}` : '-',
-        envLotNo:     group.envLotNo ?? (envNums[0] || null),
-        name:         group.templateName || '-',
-        subName:      group.subName || null,
-        version:      latestDb?.version ?? latestDb?.Version ?? '-',
-        generatedOn:  latestDb?.generatedAt ?? latestDb?.GeneratedAt,
-        generatedBy:  resolveUserName(latestDb?.generatedByUserId ?? latestDb?.GeneratedByUserId, latestDb?.generatedBy ?? latestDb?.GeneratedBy),
+        module: displayModule,
+        lot: group.lot != null ? `Lot ${group.lot}` : '-',
+        envLotNo: group.envLotNo ?? (envNums[0] || null),
+        name: group.templateName || '-',
+        subName: group.subName || null,
+        version: latestDb?.version ?? latestDb?.Version ?? '-',
+        generatedOn: latestDb?.generatedAt ?? latestDb?.GeneratedAt,
+        generatedBy: resolveUserName(latestDb?.generatedByUserId ?? latestDb?.GeneratedByUserId, latestDb?.generatedBy ?? latestDb?.GeneratedBy),
         downloadedBy: resolveUserName(latestDb?.downloadedByUserId ?? latestDb?.DownloadedByUserId, latestDb?.downloadedBy ?? latestDb?.DownloadedBy),
         downloadedAt: latestDb?.downloadedAt ?? latestDb?.DownloadedAt,
-        status:       'Latest',
-        onDownload:   () => handleDownloadTemplate(group, latestDb),
-        canDownload:  true,
+        status: latestDb?.status === false || latestDb?.Status === false ? 'Archived' : 'Latest',
+        onDownload: () => handleDownloadTemplate(group, latestDb),
+        canDownload: true,
+        onArchive: () => handleArchiveTemplate(latestDb),
+        canArchive: !(latestDb?.status === false || latestDb?.Status === false),
       };
     }
 
@@ -817,14 +856,23 @@ const ReportTemplateManagement = ({
 
           {/* action — always shown */}
           <div className="rtm-cell rtm-cell--action" onClick={e => e.stopPropagation()}>
-            <Button
-              type="primary" size="small"
-              icon={<Download size={13} />}
-              disabled={!headerData.canDownload}
-              onClick={(e) => { e.stopPropagation(); headerData.onDownload(); }}
-            >
-              Download
-            </Button>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <Button
+                type="primary" size="small"
+                icon={<Download size={13} />}
+                disabled={!headerData.canDownload}
+                onClick={(e) => { e.stopPropagation(); headerData.onDownload(); }}
+              >
+                Download
+              </Button>
+              {!isReport && (
+                <Button size="small" danger icon={<Archive size={12} />}
+                  disabled={!headerData.canArchive}
+                  onClick={(e) => { e.stopPropagation(); headerData.onArchive(); }}>
+
+                </Button>
+              )}
+            </div>
           </div>
         </div>
 
@@ -852,7 +900,7 @@ const ReportTemplateManagement = ({
                 <tbody>
                   {group.rows.map((row, idx) => {
                     if (isReport) {
-                      const v   = row.versions?.[0];
+                      const v = row.versions?.[0];
                       const ver = v?.version ?? '-';
                       return (
                         <tr key={idx} className={idx === 0 ? 'rtm-vrow--latest' : ''}>
@@ -883,13 +931,13 @@ const ReportTemplateManagement = ({
                         </tr>
                       );
                     } else {
-                      const db      = row._dbRow;
-                      const ver     = db?.version ?? db?.Version ?? '-';
-                      const lot     = Number(db?.lotNumber ?? db?.lotNo ?? db?.LotNo ?? group.lot ?? 0) || null;
+                      const db = row._dbRow;
+                      const ver = db?.version ?? db?.Version ?? '-';
+                      const lot = Number(db?.lotNumber ?? db?.lotNo ?? db?.LotNo ?? group.lot ?? 0) || null;
                       const envNums = parseEnvLotNumbers(db?.envLotNumbers ?? db?.EnvLotNumbers);
-                      const envNo   = envNums[0] ?? group.envLotNo ?? null;
-                      const dlBy    = resolveUserName(db?.downloadedByUserId ?? db?.DownloadedByUserId, db?.downloadedBy ?? db?.DownloadedBy);
-                      const dlAt    = db?.downloadedAt ?? db?.DownloadedAt;
+                      const envNo = envNums[0] ?? group.envLotNo ?? null;
+                      const dlBy = resolveUserName(db?.downloadedByUserId ?? db?.DownloadedByUserId, db?.downloadedBy ?? db?.DownloadedBy);
+                      const dlAt = db?.downloadedAt ?? db?.DownloadedAt;
                       return (
                         <tr key={idx} className={idx === 0 ? 'rtm-vrow--latest' : ''}>
                           <td style={{ color: '#94a3b8', fontSize: 12 }}>{idx + 1}</td>
@@ -923,12 +971,19 @@ const ReportTemplateManagement = ({
                               )}
                             </td>
                           )}
-                          {tvc('status') && <td>{idx === 0 ? <Tag color="success">Latest</Tag> : <Tag>Previous</Tag>}</td>}
+                          {tvc('status') && <td>{db?.status === false || db?.Status === false ? <Tag color="error">Archived</Tag> : (idx === 0 ? <Tag color="success">Latest</Tag> : <Tag>Previous</Tag>)}</td>}
                           <td style={{ textAlign: 'left' }}>
-                            <Button size="small" icon={<Download size={12} />}
-                              onClick={() => handleDownloadTemplate(group, db)}>
-                              Download
-                            </Button>
+                            <div style={{ display: 'flex', gap: '8px' }}>
+                              <Button size="small" icon={<Download size={12} />}
+                                onClick={() => handleDownloadTemplate(group, db)}>
+                                Download
+                              </Button>
+                              <Button size="small" danger icon={<Archive size={12} />}
+                                disabled={db?.status === false || db?.Status === false}
+                                onClick={() => handleArchiveTemplate(db)}>
+                                Archive
+                              </Button>
+                            </div>
                           </td>
                         </tr>
                       );
@@ -1056,9 +1111,9 @@ const ReportTemplateManagement = ({
               {isReport
                 ? rvc('lot') && <span className="rtm-col-sortable" onClick={() => handleSort('lot')}>Lot <SortIcon field="lot" /></span>
                 : <>
-                    {tvc('lot') && <span className="rtm-col-sortable" onClick={() => handleSort('lot')}>Lot <SortIcon field="lot" /></span>}
-                    {tvc('envLot') && <span>Batch</span>}
-                  </>
+                  {tvc('lot') && <span className="rtm-col-sortable" onClick={() => handleSort('lot')}>Lot <SortIcon field="lot" /></span>}
+                  {tvc('envLot') && <span>Batch</span>}
+                </>
               }
               {(isReport ? rvc('reportName') : tvc('templateName')) && <span>{isReport ? 'Report' : 'Template'}</span>}
               {!isReport && tvc('subName') && <span>Sub Name</span>}
