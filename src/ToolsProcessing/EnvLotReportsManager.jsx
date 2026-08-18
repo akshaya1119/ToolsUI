@@ -51,8 +51,8 @@ const EnvLotReportsManager = ({
 
   const formatEnvLotDisplay = (envLotNumbers) => {
     if (!envLotNumbers || envLotNumbers.length === 0) return "No lots";
-    if (envLotNumbers.length === 1) return `Env Lot ${envLotNumbers[0]}`;
-    return `Env Lots ${envLotNumbers.join(', ')}`;
+    if (envLotNumbers.length === 1) return `Batch - ${envLotNumbers[0]}`;
+    return `Batches - ${envLotNumbers.join(', ')}`;
   };
 
   const formatDateTime = (isoString) => {

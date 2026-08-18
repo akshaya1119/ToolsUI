@@ -13,6 +13,7 @@ import {
 import axios from 'axios';
 import { Search, Download, FileText, ChevronDown, ChevronRight } from 'lucide-react';
 import { useUserMap, getFirstNameFromUserId, getCurrentUserId } from '../../hooks/useUserMap';
+import useStore from '../../stores/ProjectData';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -69,6 +70,7 @@ const ReportTemplateManagement = ({
   envLotReports = [],
 }) => {
   const { userMap } = useUserMap();
+  const projectName = useStore(state => state.projectName);
 
   // filters
   const [searchText, setSearchText]       = useState('');
@@ -511,7 +513,31 @@ const ReportTemplateManagement = ({
       if (!base) { message.error('RPT API URL not configured.'); return; }
       const ok = await axios.get(`${base}/api/report/generated-exists?templateId=${templateId}&projectId=${projectId}`);
       if (!ok.data?.exists && ok.data !== true) { message.error('No generated PDF found.'); return; }
-      window.open(`${base}/api/report/generated-download?templateId=${templateId}&projectId=${projectId}&lotNumber=${lotNumber}`, '_blank');
+      
+      let fileName = projectName ? projectName.replace(/[^a-zA-Z0-9_-]/g, '_') : `Project_${projectId}`;
+      const envNums = parseEnvLotNumbers(dbRow?.envLotNumbers ?? dbRow?.EnvLotNumbers);
+      const envLotVal = group.envLotNo ?? envNums[0];
+      
+      if (envLotVal) {
+        fileName += `_Batch-${envLotVal}`;
+      } else if (lotNumber) {
+        fileName += `_Lot-${lotNumber}`;
+      }
+      
+      // Include template name to be descriptive
+      const templateNameStr = group.templateName ? `_${group.templateName.replace(/[^a-zA-Z0-9_-]/g, '_')}` : '';
+      fileName += `${templateNameStr}.pdf`;
+
+      message.loading({ content: 'Downloading...', key: 'downloading-template' });
+      const res = await axios.get(`${base}/api/report/generated-download`, {
+        params: { templateId, projectId, lotNumber },
+        responseType: 'blob'
+      });
+      const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+      const a = document.createElement('a'); a.href = url; a.download = fileName;
+      document.body.appendChild(a); a.click(); a.remove(); window.URL.revokeObjectURL(url);
+      message.success({ content: 'Download completed.', key: 'downloading-template' });
+
       // track download
       const dbId = dbRow?.id ?? dbRow?.Id;
       if (dbId) {
@@ -521,8 +547,7 @@ const ReportTemplateManagement = ({
           await fetchEnvLotReports();
         } catch (e) { console.warn('Failed to track download:', e); }
       }
-      message.success('Download started.');
-    } catch (e) { console.error('Template download failed:', e); message.error('Failed to download.'); }
+    } catch (e) { console.error('Template download failed:', e); message.error({ content: 'Failed to download.', key: 'downloading-template' }); }
   };
 
   const handleDownloadAll = async () => {

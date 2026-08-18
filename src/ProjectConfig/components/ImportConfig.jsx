@@ -105,7 +105,7 @@ const ImportConfig = ({ onImport, disabled }) => {
         setValidationLoading(true);
         try {
           // Check templates
-          const res = await axios.get(`${import.meta.env.VITE_API_URL}/RPTTemplates/by-group?projectId=${selectedProjectId}`);
+          const res = await API.get(`/RPTTemplates/by-group?projectId=${selectedProjectId}`);
           const exist = res.data && res.data.length > 0;
           setTemplatesExist(exist);
           if (!exist) setImportTemplates(false);
@@ -114,6 +114,8 @@ const ImportConfig = ({ onImport, disabled }) => {
           setMasterConfigExists(true);
         } catch (err) {
           console.error("Validation failed", err);
+          setTemplatesExist(false);
+          setImportTemplates(false);
         } finally {
           setValidationLoading(false);
         }
@@ -125,12 +127,14 @@ const ImportConfig = ({ onImport, disabled }) => {
           setMasterConfigExists(!!configRes?.data);
 
           // Check templates (Master Templates)
-          const res = await axios.get(`${import.meta.env.VITE_API_URL}/RPTTemplates/by-group?typeId=${selectedType}&groupId=${selectedGroup}`);
+          const res = await API.get(`/MRPTTemplates/by-group?typeId=${selectedType}&groupId=${selectedGroup}`);
           const exist = res.data && res.data.length > 0;
           setTemplatesExist(exist);
           if (!exist) setImportTemplates(false);
         } catch (err) {
           console.error("Validation failed", err);
+          setTemplatesExist(false);
+          setImportTemplates(false);
         } finally {
           setValidationLoading(false);
         }

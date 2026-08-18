@@ -437,11 +437,11 @@ const ChangedNRUpload = () => {
                 style={{ width: "100%" }}
                 allowClear
               >
-                <Select.Option value={0}>
+                <Select.Option value={0} title="">
                   All Records (No Lot)
                 </Select.Option>
                 {lots.filter(lot => lot !== 0).map((lot) => (
-                  <Select.Option key={lot} value={lot}>
+                  <Select.Option key={lot} value={lot} title="">
                     Lot {lot}
                   </Select.Option>
                 ))}
@@ -459,7 +459,7 @@ const ChangedNRUpload = () => {
                 style={{ width: "100%" }}
               >
                 {processes.map((process) => (
-                  <Select.Option key={process.processId} value={process.processId}>
+                  <Select.Option key={process.processId} value={process.processId} title="">
                     {process.processName}
                   </Select.Option>
                 ))}
@@ -477,7 +477,7 @@ const ChangedNRUpload = () => {
               >
                 {batches.map((batch) => (
                   batch !== 1 && (
-                    <Select.Option key={batch} value={batch}>
+                    <Select.Option key={batch} value={batch} title="">
                       Batch {batch}
                     </Select.Option>
                   )
@@ -500,7 +500,7 @@ const ChangedNRUpload = () => {
                 allowClear
               >
                 {availableFields.map((field) => (
-                  <Select.Option key={field} value={field}>
+                  <Select.Option key={field} value={field} title="">
                     {field}
                   </Select.Option>
                 ))}

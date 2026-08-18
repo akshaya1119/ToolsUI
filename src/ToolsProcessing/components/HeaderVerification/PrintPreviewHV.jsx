@@ -108,12 +108,17 @@ const PrintPreviewHV = ({
     const onKeyDown = (e) => {
       if (e.key === 'Enter' && !isEditing && !loading) {
         e.preventDefault();
-        handleStatusChange('Verified');
+        // Calculate hasNoValidValues here inside the effect since it's outside render scope, or include it in dependencies
+        const isInvalid = (val) => !val || String(val).trim() === '' || String(val).trim() === '-';
+        const invalid = isInvalid(currentRecord?.a) && isInvalid(currentRecord?.b) && isInvalid(currentRecord?.c) && isInvalid(currentRecord?.d);
+        if (!invalid) {
+          handleStatusChange('Verified');
+        }
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [isEditing, loading, handleStatusChange]);
+  }, [isEditing, loading, handleStatusChange, currentRecord]);
 
   const handleCancelEdit = useCallback(() => {
     if (currentRecord) setDraftRecord(currentRecord);
@@ -187,6 +192,9 @@ const PrintPreviewHV = ({
     return <div className={`font-semibold ${isLarge ? 'text-lg' : ''}`}>{currentRecord?.[fieldName] || '-'}</div>;
   }
 
+  const isInvalidValue = (val) => !val || String(val).trim() === '' || String(val).trim() === '-';
+  const hasNoValidValues = isInvalidValue(currentRecord?.a) && isInvalidValue(currentRecord?.b) && isInvalidValue(currentRecord?.c) && isInvalidValue(currentRecord?.d);
+
   return (
     <div className="h-full min-h-0 flex flex-col bg-white overflow-hidden">
       {/* Header */}
@@ -251,7 +259,7 @@ const PrintPreviewHV = ({
             )}
             
             {/* Check if all ABCD fields are empty */}
-            {!currentRecord?.a && !currentRecord?.b && !currentRecord?.c && !currentRecord?.d && (
+            {hasNoValidValues && (
               <div className="w-full bg-red-50 border border-red-200 rounded-lg p-4 text-center">
                 <p className="text-sm font-semibold text-red-700">
                   ⚠ At least one of A, B, C, or D is required if you want to verify this record
@@ -315,15 +323,15 @@ const PrintPreviewHV = ({
         <button
           type="button"
           onClick={() => handleStatusChange('Unclear')}
-          disabled={loading || (normalizeStatus(currentRecord?.status) === 1 && !canEditVerified) || (!currentRecord?.a && !currentRecord?.b && !currentRecord?.c && !currentRecord?.d)}
+          disabled={loading || (normalizeStatus(currentRecord?.status) === 1 && !canEditVerified) || hasNoValidValues}
           className={`flex items-center justify-center gap-1 px-3 py-1 text-xs font-medium rounded-md transition-all duration-200
-            ${loading || (normalizeStatus(currentRecord?.status) === 1 && !canEditVerified) || (!currentRecord?.a && !currentRecord?.b && !currentRecord?.c && !currentRecord?.d)
+            ${loading || (normalizeStatus(currentRecord?.status) === 1 && !canEditVerified) || hasNoValidValues
               ? 'bg-orange-100 text-orange-400 cursor-not-allowed opacity-60'
               : normalizeStatus(currentRecord?.status) === 2
                 ? 'bg-orange-100 text-orange-400 cursor-not-allowed opacity-60'
                 : 'bg-orange-400 text-white hover:bg-orange-500 active:scale-95 cursor-pointer'
             }`}
-          title={(!currentRecord?.a && !currentRecord?.b && !currentRecord?.c && !currentRecord?.d) ? 'At least one of A, B, C, D is required' : (normalizeStatus(currentRecord?.status) === 1 && !canEditVerified) ? 'Cannot change verified records' : 'Mark as Needs Review'}
+          title={hasNoValidValues ? 'At least one of A, B, C, D is required' : (normalizeStatus(currentRecord?.status) === 1 && !canEditVerified) ? 'Cannot change verified records' : 'Mark as Needs Review'}
         >
           <AlertCircle className="w-3 h-3" />
           Needs Review
@@ -331,13 +339,13 @@ const PrintPreviewHV = ({
         <button
           type="button"
           onClick={() => handleStatusChange('Verified')}
-          disabled={loading || (normalizeStatus(currentRecord?.status) === 1 && !canEditVerified) || (!currentRecord?.a && !currentRecord?.b && !currentRecord?.c && !currentRecord?.d)}
+          disabled={loading || (normalizeStatus(currentRecord?.status) === 1 && !canEditVerified) || hasNoValidValues}
           className={`flex items-center justify-center gap-1 px-3 py-1 text-xs font-medium rounded-md transition-all duration-200
-            ${loading || (normalizeStatus(currentRecord?.status) === 1 && !canEditVerified) || (!currentRecord?.a && !currentRecord?.b && !currentRecord?.c && !currentRecord?.d)
+            ${loading || (normalizeStatus(currentRecord?.status) === 1 && !canEditVerified) || hasNoValidValues
               ? 'bg-green-100 text-green-400 cursor-not-allowed opacity-60'
               : 'bg-green-500 text-white hover:bg-green-600 active:scale-95 cursor-pointer'
             }`}
-          title={(!currentRecord?.a && !currentRecord?.b && !currentRecord?.c && !currentRecord?.d) ? 'At least one of A, B, C, D is required' : (normalizeStatus(currentRecord?.status) === 1 && !canEditVerified) ? 'Already verified' : 'Mark as Verified (or press Enter)'}
+          title={hasNoValidValues ? 'At least one of A, B, C, D is required' : (normalizeStatus(currentRecord?.status) === 1 && !canEditVerified) ? 'Already verified' : 'Mark as Verified (or press Enter)'}
         >
           <CheckCircle2 className="w-3 h-3" />
           Verified
