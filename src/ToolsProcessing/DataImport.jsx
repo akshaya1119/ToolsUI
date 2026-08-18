@@ -1196,6 +1196,7 @@ const DataImport = () => {
     const payload = {
       projectId: Number(projectId),
       isCorrectedNrdataReport,
+      isChangedNR,
       data: mappedData.map(row => ({
         ...row,
         ExamDate: String(row.ExamDate),
