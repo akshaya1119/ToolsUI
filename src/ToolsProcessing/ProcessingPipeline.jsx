@@ -138,6 +138,7 @@ const ProcessingPipeline = () => {
   const [dependencyModal, setDependencyModal] = useState({ visible: false, unprocessedSteps: [], selectedStep: null });
   const [templatesLoading, setTemplatesLoading] = useState(false);
   const [templateOptions, setTemplateOptions] = useState([]);
+  const [allTemplateOptions, setAllTemplateOptions] = useState([]);
   const [templatePanel, setTemplatePanel] = useState({ open: false, moduleKey: null });
   const [templateDownloads, setTemplateDownloads] = useState({});
   const [generatingTemplates, setGeneratingTemplates] = useState({});
@@ -409,8 +410,10 @@ const ProcessingPipeline = () => {
           projectId,
         },
       });
+      const fetchedTemplates = res.data || [];
+      setAllTemplateOptions(fetchedTemplates);
       setTemplateOptions(
-        (res.data || []).filter((t) => t.hasMapping !== false && !t.isDeleted)
+        fetchedTemplates.filter((t) => t.hasMapping !== false && !t.isDeleted)
       );
     } catch (err) {
       console.error("Failed to fetch templates", err);
@@ -425,6 +428,7 @@ const ProcessingPipeline = () => {
       fetchTemplates();
     } else {
       setTemplateOptions([]);
+      setAllTemplateOptions([]);
     }
   }, [projectId, groupId, typeId]);
 
@@ -4000,15 +4004,20 @@ Object.keys(groupedTpl).forEach((templateKey) => {
 
   const firstRep = reps[0];
 
-  /*
-   * Find template metadata
-   */
-  const tpl = templateOptions.find(
+  let tpl = allTemplateOptions.find(
     (t) =>
       String(
         resolveTemplateId(t)
       ) === String(firstRep?.templateId)
   );
+
+  // If exact template ID is not found (e.g. historical report from a superseded scope), match by name
+  if (!tpl && firstRep?.templateName) {
+    tpl = allTemplateOptions.find(
+      (t) =>
+        (t.templateName || t.TemplateName) === (firstRep.templateName || firstRep.TemplateName)
+    );
+  }
 
   /*
    * Resolve module name
@@ -4016,7 +4025,7 @@ Object.keys(groupedTpl).forEach((templateKey) => {
   let resolvedModuleName =
     firstRep?.module || null;
 
-  if (!resolvedModuleName && tpl) {
+  if ((!resolvedModuleName || resolvedModuleName === "-") && tpl) {
     let mods = [];
 
     let mIds =
@@ -4068,8 +4077,7 @@ Object.keys(groupedTpl).forEach((templateKey) => {
       type: "Template",
 
       module:
-        r.module ||
-        resolvedModuleName,
+        (r.module && r.module !== "-") ? r.module : resolvedModuleName,
 
       templateName:
         r.templateName ||
