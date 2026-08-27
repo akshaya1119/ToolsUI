@@ -1,0 +1,30 @@
+.batch-comparison-section {
+  padding: 16px 0;
+}
+
+.batch-selection-card {
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+.batch-label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 500;
+  color: #262626;
+  font-size: 14px;
+}
+
+.comparison-results-card {
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .batch-comparison-section {
+    padding: 8px 0;
+  }
+
+  .batch-selection-card {
+    padding: 12px;
+  }
+}
