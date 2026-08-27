@@ -16,16 +16,16 @@ const LotSelectionModal = ({
   okText = "Process Selected Lots",
   isQuantitySheet = false,
 }) => {
-  // Count lots without pages
-  const lotsWithoutPages = availableLots.filter(lot => lot.hasZeroPages);
-  const validLots = availableLots.filter(lot => !lot.hasZeroPages);
+  // Count lots with and without pages
+  const lotsWithoutPages = availableLots.filter(lot => !lot.hasPages);
+  const validLots = availableLots.filter(lot => lot.hasPages);
   const validSelectedLots = selectedLots.filter(lotNo => 
-    availableLots.find(lot => lot.lotNo === lotNo && !lot.hasZeroPages)
+    availableLots.find(lot => lot.lotNo === lotNo && lot.hasPages)
   );
 
   const handleSelectAll = (checked) => {
     if (checked) {
-      // For quantity sheet, select all lots including those with zero pages
+      // For quantity sheet, select all lots including those without pages
       // For other templates, only select valid lots (those with pages)
       const lotsToSelect = isQuantitySheet 
         ? availableLots.map(lot => lot.lotNo)
@@ -40,7 +40,7 @@ const LotSelectionModal = ({
     // For quantity sheet, allow toggling all lots regardless of pages
     // For other templates, only allow toggling lots with valid pages
     const lot = availableLots.find(l => l.lotNo === lotNo);
-    if (isQuantitySheet || (lot && !lot.hasZeroPages)) {
+    if (isQuantitySheet || (lot && lot.hasPages)) {
       onToggle(lotNo, checked);
     }
   };
@@ -94,7 +94,7 @@ const LotSelectionModal = ({
 
       <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 400, overflowY: "auto" }}>
         {availableLots.map((lot) => {
-          const isDisabled = !isQuantitySheet && lot.hasZeroPages;
+          const isDisabled = !isQuantitySheet && !lot.hasPages;
           const isSelected = selectedLots.includes(lot.lotNo);
 
           return (

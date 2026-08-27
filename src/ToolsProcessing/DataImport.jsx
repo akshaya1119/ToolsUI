@@ -1631,7 +1631,8 @@ const triggerOuterTemplateRegeneration = async (catchNo) => {
             envLotNumbers: catchNo,
             fileName,
             generatedBy: 'System (Auto)',
-            filePath: filePath
+            filePath: filePath,
+            lotNo: null // Auto-generated reports don't have a specific lot number
         };
 
         await API.post('/EnvelopeLotReports', reportData);
