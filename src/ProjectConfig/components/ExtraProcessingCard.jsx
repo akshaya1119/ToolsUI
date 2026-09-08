@@ -234,7 +234,13 @@ useEffect(() => {
                             }))
                           }
                         >
-                          {envelopeOptions.map((e) => (
+                          {envelopeOptions
+                            .filter((e) => {
+                              const innerVal = extraProcessingConfig[et.type]?.envelopeType?.inner || [];
+                              const selected = Array.isArray(innerVal) ? innerVal.join(',') : innerVal;
+                              return !selected.split(',').map(s => s.trim()).includes(e.envelopeName);
+                            })
+                            .map((e) => (
                             <Option key={e.envelopeId} value={e.envelopeName}>
                               {e.envelopeName} (Capacity: {e.capacity})
                             </Option>
@@ -270,7 +276,13 @@ useEffect(() => {
                             }))
                           }
                         >
-                          {envelopeOptions.map((e) => (
+                          {envelopeOptions
+                            .filter((e) => {
+                              const outerVal = extraProcessingConfig[et.type]?.envelopeType?.outer || [];
+                              const selected = Array.isArray(outerVal) ? outerVal.join(',') : outerVal;
+                              return !selected.split(',').map(s => s.trim()).includes(e.envelopeName);
+                            })
+                            .map((e) => (
                             <Option key={e.envelopeId} value={e.envelopeName}>
                               {e.envelopeName} (Capacity: {e.capacity})
                             </Option>
