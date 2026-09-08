@@ -27,6 +27,7 @@ import HToV from "./ToolsProcessing/HToV";
 import HeaderVerification from "./ToolsProcessing/HeaderVerification";
 import ChangedNRUpload from "./ToolsProcessing/ChangedNRUpload";
 import BatchWiseData from "./ToolsProcessing/BatchWiseData";
+import NodalCenterList from "./ToolsProcessing/NodalCenterList";
 
 
 function isTokenExpired(token) {
@@ -277,6 +278,15 @@ export default function App() {
                   <ProtectedRoute token={token}>
                     <MainLayout >
                       <BatchWiseData />
+                    </MainLayout></ProtectedRoute>
+                }
+              />
+               <Route
+                path="/nodal-center-list"
+                element={
+                  <ProtectedRoute token={token}>
+                    <MainLayout >
+                      <NodalCenterList />
                     </MainLayout></ProtectedRoute>
                 }
               />

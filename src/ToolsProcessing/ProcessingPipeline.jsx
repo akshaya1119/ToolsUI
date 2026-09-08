@@ -1973,7 +1973,7 @@ const loadGeneratedTemplateReports = async () => {
     }
 
     try {
-      const res = await axios.get(`${rptApiUrl}/report/generated-download`, {
+      const res = await axios.get(`${base}/api/report/generated-download`, {
         params: {
           templateId,
           projectId: Number(projectId),
@@ -2061,7 +2061,7 @@ const loadGeneratedTemplateReports = async () => {
 
     setBulkDownloading(true);
     try {
-      const res = await axios.get(`${rptApiUrl}/report/generated-download-zip`, {
+      const res = await axios.get(`${base}/api/report/generated-download-zip`, {
         params: {
           projectId: Number(projectId),
           templateIds: ids.join(","),
@@ -2450,7 +2450,7 @@ const loadGeneratedTemplateReports = async () => {
     setDownloadingLotTemplates(prev => ({ ...prev, [statusKey]: true }));
 
     try {
-      const res = await axios.get(`${rptApiUrl}/report/generated-download`, {
+      const res = await axios.get(`${base}/api/report/generated-download`, {
         params: {
           templateId,
           projectId: Number(projectId),
@@ -2660,7 +2660,7 @@ const loadGeneratedTemplateReports = async () => {
     });
 
     try {
-      const res = await axios.get(`${rptApiUrl}/report/generated-download-zip`, {
+      const res = await axios.get(`${base}/api/report/generated-download-zip`, {
         params: {
           projectId: Number(projectId),
           templateIds: templateIds.join(","),

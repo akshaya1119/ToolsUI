@@ -69,7 +69,8 @@ export default function Sidebar({ collapsed }) {
       "/processingpipeline",
       "/processingpipelinev2",
       "/headerverification",
-      "/batchwisedata"
+      "/batchwisedata",
+      "/nodal-center-list"
     ].includes(location.pathname);
 
     if (isToolsChild) {
@@ -125,6 +126,11 @@ export default function Sidebar({ collapsed }) {
             // { label: "RPT Reports", path: "/rptreports" },
           ],
         },
+        {
+          label: "Nodal Center List",
+          icon: <FaBook className="text-black" />, // Using FaBook icon
+          path: "/nodal-center-list"
+        },
       ]
       : []),
     ...(projectName
@@ -135,8 +141,7 @@ export default function Sidebar({ collapsed }) {
           path: "/horizontalToVertical"
         },
       ]
-      : []
-    ),
+      : []),
     ...(projectName
       ? [] // Don't show "Correction Tool" if projectName exists
       : [
@@ -150,7 +155,6 @@ export default function Sidebar({ collapsed }) {
         },
       ]
     ),
-    ,
   ];
 
   const SidebarItem = ({ label, icon, path, disabled, active, isChild = false, badge = null, isFlyoutChild = false }) => {
