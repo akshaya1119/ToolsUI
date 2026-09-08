@@ -11,7 +11,7 @@ import {
   Pagination,
 } from 'antd';
 import axios from 'axios';
-import { Search, Download, FileText, ChevronDown, ChevronRight, Archive } from 'lucide-react';
+import { Search, Download, FileText, ChevronDown, ChevronRight, Archive, ArchiveRestore } from 'lucide-react';
 import { useUserMap, getFirstNameFromUserId, getCurrentUserId } from '../../hooks/useUserMap';
 import useStore from '../../stores/ProjectData';
 
@@ -77,7 +77,7 @@ const ReportTemplateManagement = ({
   const [selectedModule, setSelectedModule] = useState('ALL');
   const [selectedTemplate, setSelectedTemplate] = useState('ALL');
   const [selectedLot, setSelectedLot] = useState('ALL');
-  const [viewType, setViewType] = useState('Report');
+  const [viewType, setViewType] = useState('Template');
 
   // pagination
   const [reportPage, setReportPage] = useState(1);
@@ -137,7 +137,6 @@ const ReportTemplateManagement = ({
     const lookup = {};
     const data = envLotReportsLocal.length > 0 ? envLotReportsLocal : envLotReports;
     (data || []).forEach((r) => {
-      if (r.status === false || r.Status === false) return;
       const id = Number(r.templateId ?? r.TemplateId);
       if (!id) return;
       if (!lookup[id]) lookup[id] = { templateId: id, envLotNumbers: [], lotNumbers: [], reports: [] };
@@ -157,7 +156,6 @@ const ReportTemplateManagement = ({
     const lookup = {};
     const data = envLotReportsLocal.length > 0 ? envLotReportsLocal : envLotReports;
     (data || []).forEach((r) => {
-      if (r.status === false || r.Status === false) return;
       const id = Number(r.templateId ?? r.TemplateId);
       if (!id) return;
       if (!lookup[id]) lookup[id] = [];
@@ -306,11 +304,12 @@ const ReportTemplateManagement = ({
       return groups;
     }
 
-    // ── TEMPLATE VIEW ────────────────────────────────────────────────────────
+    const isArchivedView = selectedTemplate === 'ARCHIVED_TEMPLATES';
+
     const filtered = reports.filter(r => r.type === 'Template').filter(r => {
       if (search && !r.module?.toLowerCase().includes(search) && !r.templateName?.toLowerCase().includes(search)) return false;
       if (selectedModule !== 'ALL' && r.module !== selectedModule) return false;
-      if (selectedTemplate !== 'ALL' && r.templateName !== selectedTemplate) return false;
+      if (selectedTemplate !== 'ALL' && !isArchivedView && r.templateName !== selectedTemplate) return false;
       return true;
     });
 
@@ -319,7 +318,7 @@ const ReportTemplateManagement = ({
     const pushDbRow = (gk, r, db, idx) => {
       const arr = groupMap.get(gk).rows;
       if (!db) {
-        arr.push({ ...r, _dbRow: null });
+        if (!isArchivedView) arr.push({ ...r, _dbRow: null });
         return;
       }
       const dbId = db.id ?? db.Id;
@@ -333,7 +332,11 @@ const ReportTemplateManagement = ({
       const moduleLower = (r.module || '').toLowerCase();
 
       // Get all DB records for this template
-      const dbRows = envLotReportsByTemplate[templateId] || [];
+      const rawDbRows = envLotReportsByTemplate[templateId] || [];
+      const dbRows = rawDbRows.filter(db => {
+        const isArchived = db.status === false || db.Status === false;
+        return isArchivedView ? isArchived : !isArchived;
+      });
 
       // Detect if there's any lot or batch data in the rows
       const hasLot = dbRows.some(db => (Number(db.lotNumber ?? db.lotNo ?? db.LotNo) || 0) > 0);
@@ -343,7 +346,9 @@ const ReportTemplateManagement = ({
       const isEnvDep = moduleLower.includes(ENVELOPE_BREAKING_MODULE) || hasEnv;
 
       if (dbRows.length === 0) {
-        // No generated records — show a single placeholder group
+        // No generated records — show a single placeholder group if we are not in Archived view
+        if (isArchivedView) return;
+
         const gk = `tpl-${templateId}-none`;
         if (!groupMap.has(gk)) {
           groupMap.set(gk, {
@@ -619,6 +624,20 @@ const ReportTemplateManagement = ({
     });
   };
 
+  const handleUnarchiveTemplate = async (dbRow) => {
+    const dbId = dbRow?.id ?? dbRow?.Id;
+    if (!dbId) return;
+
+    try {
+      await axios.put(`${apiBaseUrl}/EnvelopeLotReports/${dbId}/unarchive`);
+      message.success('Report unarchived successfully');
+      fetchEnvLotReports();
+    } catch (e) {
+      console.error('Failed to unarchive report:', e);
+      message.error('Failed to unarchive report');
+    }
+  };
+
   // ── render helpers ────────────────────────────────────────────────────────
 
   const renderStatus = (status) => {
@@ -740,6 +759,7 @@ const ReportTemplateManagement = ({
         onDownload: () => handleDownloadTemplate(group, latestDb),
         canDownload: true,
         onArchive: () => handleArchiveTemplate(latestDb),
+        onUnarchive: () => handleUnarchiveTemplate(latestDb),
         canArchive: !(latestDb?.status === false || latestDb?.Status === false),
       };
     }
@@ -857,20 +877,30 @@ const ReportTemplateManagement = ({
           {/* action — always shown */}
           <div className="rtm-cell rtm-cell--action" onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', gap: '8px' }}>
-              <Button
-                type="primary" size="small"
-                icon={<Download size={13} />}
-                disabled={!headerData.canDownload}
-                onClick={(e) => { e.stopPropagation(); headerData.onDownload(); }}
-              >
-                Download
-              </Button>
-              {!isReport && (
-                <Button size="small" danger icon={<Archive size={12} />}
-                  disabled={!headerData.canArchive}
-                  onClick={(e) => { e.stopPropagation(); headerData.onArchive(); }}>
-
+              <Tooltip title="Download">
+                <Button
+                  type="primary" size="small"
+                  icon={<Download size={13} />}
+                  disabled={!headerData.canDownload}
+                  onClick={(e) => { e.stopPropagation(); headerData.onDownload(); }}>
                 </Button>
+              </Tooltip>
+              {!isReport && (
+                <>
+                  {headerData.status === 'Archived' ? (
+                    <Tooltip title="Unarchive">
+                      <Button size="small" icon={<ArchiveRestore size={12} />} onClick={(e) => { e.stopPropagation(); headerData.onUnarchive(); }}>
+                      </Button>
+                    </Tooltip>
+                  ) : (
+                    <Tooltip title="Archive">
+                      <Button size="small" danger icon={<Archive size={12} />}
+                        disabled={!headerData.canArchive}
+                        onClick={(e) => { e.stopPropagation(); headerData.onArchive(); }}>
+                      </Button>
+                    </Tooltip>
+                  )}
+                </>
               )}
             </div>
           </div>
@@ -974,15 +1004,23 @@ const ReportTemplateManagement = ({
                           {tvc('status') && <td>{db?.status === false || db?.Status === false ? <Tag color="error">Archived</Tag> : (idx === 0 ? <Tag color="success">Latest</Tag> : <Tag>Previous</Tag>)}</td>}
                           <td style={{ textAlign: 'left' }}>
                             <div style={{ display: 'flex', gap: '8px' }}>
-                              <Button size="small" icon={<Download size={12} />}
-                                onClick={() => handleDownloadTemplate(group, db)}>
-                                Download
-                              </Button>
-                              <Button size="small" danger icon={<Archive size={12} />}
-                                disabled={db?.status === false || db?.Status === false}
-                                onClick={() => handleArchiveTemplate(db)}>
-                                Archive
-                              </Button>
+                              <Tooltip title="Download">
+                                <Button size="small" icon={<Download size={12} />}
+                                  onClick={() => handleDownloadTemplate(group, db)}>
+                                </Button>
+                              </Tooltip>
+                              {(db?.status === false || db?.Status === false) ? (
+                                <Tooltip title="Unarchive">
+                                  <Button size="small" icon={<ArchiveRestore size={12} />} onClick={() => handleUnarchiveTemplate(db)}>
+                                  </Button>
+                                </Tooltip>
+                              ) : (
+                                <Tooltip title="Archive">
+                                  <Button size="small" danger icon={<Archive size={12} />}
+                                    onClick={() => handleArchiveTemplate(db)}>
+                                  </Button>
+                                </Tooltip>
+                              )}
                             </div>
                           </td>
                         </tr>
@@ -1035,6 +1073,7 @@ const ReportTemplateManagement = ({
           <Select value={selectedTemplate} onChange={setSelectedTemplate} className="w-[170px]">
             <Select.Option value="ALL">All Templates</Select.Option>
             {templateOptions.map(t => <Select.Option key={t} value={t}>{t}</Select.Option>)}
+            <Select.Option value="ARCHIVED_TEMPLATES">Archived Templates</Select.Option>
           </Select>
         )}
 
