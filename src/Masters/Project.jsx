@@ -203,6 +203,9 @@ const Project = () => {
                     localStorage.removeItem('projectNamesCache');
                     sessionStorage.removeItem('projectsCache');
                     sessionStorage.removeItem('projectNamesCache');
+                    localStorage.removeItem('cached_all_projects');
+                    localStorage.removeItem('cached_groups');
+                    localStorage.removeItem('recent_projects');
                 } catch (cacheError) {
                     console.warn('Failed to clear cache:', cacheError);
                 }
