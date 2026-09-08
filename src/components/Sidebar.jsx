@@ -69,8 +69,7 @@ export default function Sidebar({ collapsed }) {
       "/processingpipeline",
       "/processingpipelinev2",
       "/headerverification",
-      "/batchwisedata",
-      "/nodal-center-list"
+      "/batchwisedata"
     ].includes(location.pathname);
 
     if (isToolsChild) {
@@ -125,11 +124,6 @@ export default function Sidebar({ collapsed }) {
             },
             // { label: "RPT Reports", path: "/rptreports" },
           ],
-        },
-        {
-          label: "Nodal Center List",
-          icon: <FaBook className="text-black" />, // Using FaBook icon
-          path: "/nodal-center-list"
         },
       ]
       : []),
