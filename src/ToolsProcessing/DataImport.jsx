@@ -1168,6 +1168,17 @@ const DataImport = () => {
   };
 
   const handleUpload = async () => {
+    // Validate required fields mapping
+    const missingRequiredFieldNames = requiredFieldNames.filter(fieldName => {
+      const field = expectedFields.find(f => f.name === fieldName);
+      return !field || !fieldMappings[field.fieldId];
+    });
+
+    if (missingRequiredFieldNames.length > 0) {
+      showToast(`Please map all required fields: ${missingRequiredFieldNames.join(", ")}`, "error");
+      return;
+    }
+
     let mappedData = getMappedData();
 
     // Keep the original Excel row number in NRDatas JSON for conflict display.
@@ -1196,6 +1207,7 @@ const DataImport = () => {
     const payload = {
       projectId: Number(projectId),
       isCorrectedNrdataReport,
+      isChangedNR,
       data: mappedData.map(row => ({
         ...row,
         ExamDate: String(row.ExamDate),

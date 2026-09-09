@@ -135,8 +135,7 @@ export default function Sidebar({ collapsed }) {
           path: "/horizontalToVertical"
         },
       ]
-      : []
-    ),
+      : []),
     ...(projectName
       ? [] // Don't show "Correction Tool" if projectName exists
       : [
@@ -150,7 +149,6 @@ export default function Sidebar({ collapsed }) {
         },
       ]
     ),
-    ,
   ];
 
   const SidebarItem = ({ label, icon, path, disabled, active, isChild = false, badge = null, isFlyoutChild = false }) => {
