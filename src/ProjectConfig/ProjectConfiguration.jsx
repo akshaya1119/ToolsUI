@@ -12,6 +12,7 @@ import { useConfigChangeDetection } from "./hooks/useConfigChangeDetection";
 import ModuleSelectionCard from "./components/ModuleSelectionCard";
 import EnvelopeSetupCard from "./components/EnvelopeSetupCard";
 import EnvelopeMakingCriteriaCard from "./components/EnvelopeMakingCriteriaCard";
+import HeaderVerificationCard from "./components/HeaderVerificationCard";
 import ExtraProcessingCard from "./components/ExtraProcessingCard";
 import BoxBreakingCard from "./components/BoxBreakingCard";
 import ConfigSummaryCard from "./components/ConfigSummaryCard";
@@ -137,6 +138,7 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
     useState(false);
   const [isInnerBundlingDone, setIsInnerBundlingDone] = useState(false);
   const [innerBundlingCriteria, setInnerBundlingCriteria] = useState([]);
+  const [selectedHeaderVerificationFields, setSelectedHeaderVerificationFields] = useState([]);
   const [duplicateConfig, setDuplicateConfig] = useState({
     duplicateCriteria: [],
     enhancement: 0,
@@ -169,6 +171,7 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
       outerEnvelopes,
       selectedBoxFields,
       selectedEnvelopeFields,
+      selectedHeaderVerificationFields,
       extraTypeSelection,
       selectedCapacity,
       startBoxNumber,
@@ -300,6 +303,7 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
       innerEnvelopes: [],
       outerEnvelopes: [],
       selectedEnvelopeFields: [],
+      selectedHeaderVerificationFields: [],
       startOmrEnvelopeNumber: 0,
       resetOmrSerialOnCatchChange: false,
       startBookletSerialNumber: 0,
@@ -376,10 +380,28 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
       const parsedInnerBundlingCriteria = (
         projectConfig.innerBundlingCriteria || []
       ).filter((fieldId) => fields.some((f) => f.fieldId === fieldId));
+      
+      const parsedHeaderVerificationFields = (
+        projectConfig.headerVerificationFields || []
+      ).filter((fieldId) => fields.some((f) => f.fieldId === fieldId));
+
+      // Enable Header Verification by default if not explicitly set
+      enabledNames.add("Header Verification");
+
+      // If no header verification fields are set, default to A, B, C, D fields
+      let defaultHeaderVerificationFields = parsedHeaderVerificationFields;
+      if (defaultHeaderVerificationFields.length === 0) {
+        // Get field IDs for A, B, C, D
+        const abcdFieldIds = fields
+          .filter((f) => ["A", "B", "C", "D"].includes(f.name))
+          .map((f) => f.fieldId);
+        defaultHeaderVerificationFields = abcdFieldIds;
+      }
 
       parsedValues = {
         ...parsedValues,
         enabledModules: Array.from(enabledNames),
+        selectedHeaderVerificationFields: defaultHeaderVerificationFields,
         innerEnvelopes: parsedInnerEnvelopes,
         outerEnvelopes: parsedOuterEnvelopes,
         selectedEnvelopeFields: parsedEnvelopeFields,
@@ -407,6 +429,7 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
       setInnerEnvelopes([...parsedValues.innerEnvelopes]);
       setOuterEnvelopes([...parsedValues.outerEnvelopes]);
       setSelectedEnvelopeFields([...parsedValues.selectedEnvelopeFields]);
+      setSelectedHeaderVerificationFields([...parsedValues.selectedHeaderVerificationFields]);
       setStartOmrEnvelopeNumber(parsedValues.startOmrEnvelopeNumber);
       setResetOmrSerialOnCatchChange(parsedValues.resetOmrSerialOnCatchChange);
       setStartBookletSerialNumber(parsedValues.startBookletSerialNumber);
@@ -430,10 +453,16 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
       setSelectedMss([...parsedValues.selectedMss]);
       setMssInsertPosition(parsedValues.mssInsertPosition);
     } else {
-      setEnabledModules([]);
+      // Get default A, B, C, D field IDs when no config exists
+      const abcdFieldIds = fields
+        .filter((f) => ["A", "B", "C", "D"].includes(f.name))
+        .map((f) => f.fieldId);
+
+      setEnabledModules(["Header Verification"]);
       setInnerEnvelopes([]);
       setOuterEnvelopes([]);
       setSelectedEnvelopeFields([]);
+      setSelectedHeaderVerificationFields(abcdFieldIds);
       setSelectedBoxFields([]);
       setSelectedUniversityExtraBoxFields([]);
       setSelectedOfficeExtraBoxFields([]);
@@ -936,6 +965,7 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
     duplicateConfig,
     selectedMss,
     mssInsertPosition,
+    selectedHeaderVerificationFields,
     fetchProjectConfigData,
     showToast,
     resetForm,
@@ -1014,6 +1044,18 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
         roundOffBeforeEnhancement: false,
       });
     }
+  };
+
+  const resetHeaderVerification = () => {
+    if (importedSnapshot && importedSnapshot !== "pending") {
+      setSelectedHeaderVerificationFields([...(importedSnapshot.selectedHeaderVerificationFields || [])]);
+    } else {
+      setSelectedHeaderVerificationFields([]);
+    }
+  };
+
+  const clearHeaderVerification = () => {
+    setSelectedHeaderVerificationFields([]);
   };
 
   const resetEnvelopeMakingCriteria = () => {
@@ -1421,6 +1463,16 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
             allowNodalConfig={true}
             onReset={resetExtraProcessing}
             onClear={clearExtraProcessing}
+            importedSnapshot={importedSnapshot}
+          />
+
+          <HeaderVerificationCard
+            isEnabled={isEnabled("Header Verification")}
+            fields={fields}
+            selectedHeaderVerificationFields={selectedHeaderVerificationFields}
+            setSelectedHeaderVerificationFields={setSelectedHeaderVerificationFields}
+            onReset={resetHeaderVerification}
+            onClear={clearHeaderVerification}
             importedSnapshot={importedSnapshot}
           />
         </Col>

@@ -114,10 +114,38 @@ const HeaderVerification = () => {
     fetchUsers();
   }, []);
 
-  // All toggleable columns; catchNo and status are always visible
-  const ALWAYS_VISIBLE = ['catchNo', 'status', 'actions'];
-  const ALL_TOGGLEABLE = ['a', 'b', 'c', 'd', 'remark', 'lotNo', 'date', 'time', 'batch'];
+  const [headerFields, setHeaderFields] = useState(['A', 'B', 'C', 'D']);
+  const ALWAYS_VISIBLE = useMemo(() => ['catchNo', 'status', 'actions'], []);
+  const ALL_TOGGLEABLE = useMemo(() => [...headerFields, 'remark', 'lotNo', 'date', 'time', 'batch'], [headerFields]);
   const [visibleColumns, setVisibleColumns] = useState(new Set([...ALWAYS_VISIBLE, ...ALL_TOGGLEABLE]));
+
+  useEffect(() => {
+    setVisibleColumns(new Set([...ALWAYS_VISIBLE, ...ALL_TOGGLEABLE]));
+  }, [ALWAYS_VISIBLE, ALL_TOGGLEABLE]);
+
+  useEffect(() => {
+    const fetchDynamicFields = async () => {
+      try {
+        if (!projectId) return;
+        const res = await API.get(`/ProjectConfigs/ByProject/${projectId}`);
+        const config = res.data;
+        if (config?.headerVerificationFields && config.headerVerificationFields.length > 0) {
+          const fieldsRes = await API.get('/Fields');
+          const allFields = fieldsRes.data;
+          const selectedNames = config.headerVerificationFields.map(id => {
+            const f = allFields.find(x => x.fieldId === id);
+            return f ? f.name : null;
+          }).filter(Boolean);
+          if (selectedNames.length > 0) {
+            setHeaderFields(selectedNames);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch header fields:', err);
+      }
+    };
+    fetchDynamicFields();
+  }, [projectId]);
 
   // Fetch envLot assignments to build catchNo → envLotNo map for the Batch column
   const fetchCatchEnvLotMap = useCallback(async () => {
@@ -488,102 +516,35 @@ const HeaderVerification = () => {
           : <span style={{ color: '#94a3b8', fontSize: 12, fontStyle: 'italic' }}>Not allotted</span>;
       },
     },
-    {
-      title: 'A',
-      dataIndex: 'a',
-      key: 'a',
-      width: 90,
-      ...getColumnSearchProps('a'),
-      sorter: (a, b) => String(a.a || '').localeCompare(String(b.a || '')),
-      sortOrder: tableSorter.field === 'a' ? tableSorter.order : null,
+    ...headerFields.map(fieldName => ({
+      title: fieldName,
+      dataIndex: fieldName,
+      key: fieldName,
+      width: 100,
+      ...getColumnSearchProps(fieldName),
+      sorter: (a, b) => {
+          const valA = (a.dynamicData && a.dynamicData[fieldName]) || a[fieldName] || a[fieldName.toLowerCase()] || a[fieldName.toUpperCase()] || '';
+          const valB = (b.dynamicData && b.dynamicData[fieldName]) || b[fieldName] || b[fieldName.toLowerCase()] || b[fieldName.toUpperCase()] || '';
+          return String(valA).localeCompare(String(valB));
+      },
+      sortOrder: tableSorter.field === fieldName ? tableSorter.order : null,
       render: (value, record) => {
         const isFieldLocked = normalizeStatus(record.status) === 1 && !isRoleAuthorized;
+        const actualValue = (record.dynamicData && record.dynamicData[fieldName]) || record[fieldName] || record[fieldName.toLowerCase()] || record[fieldName.toUpperCase()] || value || '';
         if (editingRowId === record.id && !isFieldLocked) {
           return (
             <textarea
               className="w-full px-2 py-1 text-sm border border-amber-400 rounded focus:outline-none resize-none overflow-hidden"
-              value={editFormData.a || ''}
-              rows={Math.max(2, Math.ceil((editFormData.a || '').length / 30))}
-              onChange={(e) => setEditFormData({ ...editFormData, a: e.target.value })}
+              value={editFormData[fieldName] !== undefined ? editFormData[fieldName] : actualValue}
+              rows={Math.max(2, Math.ceil(String(actualValue).length / 30))}
+              onChange={(e) => setEditFormData({ ...editFormData, [fieldName]: e.target.value })}
               onClick={(e) => e.stopPropagation()}
             />
           );
         }
-        return <span className="text-sm text-gray-800">{value || '-'}</span>;
+        return <span className="text-sm text-gray-800">{actualValue || '-'}</span>;
       },
-    },
-    {
-      title: 'B',
-      dataIndex: 'b',
-      key: 'b',
-      width: 90,
-      ...getColumnSearchProps('b'),
-      sorter: (a, b) => String(a.b || '').localeCompare(String(b.b || '')),
-      sortOrder: tableSorter.field === 'b' ? tableSorter.order : null,
-      render: (value, record) => {
-        const isFieldLocked = normalizeStatus(record.status) === 1 && !isRoleAuthorized;
-        if (editingRowId === record.id && !isFieldLocked) {
-          return (
-            <textarea
-              className="w-full px-2 py-1 text-sm border border-amber-400 rounded focus:outline-none resize-none overflow-hidden"
-              value={editFormData.b || ''}
-              rows={Math.max(2, Math.ceil((editFormData.b || '').length / 30))}
-              onChange={(e) => setEditFormData({ ...editFormData, b: e.target.value })}
-              onClick={(e) => e.stopPropagation()}
-            />
-          );
-        }
-        return <span className="text-sm text-gray-800">{value || '-'}</span>;
-      },
-    },
-    {
-      title: 'C',
-      dataIndex: 'c',
-      key: 'c',
-      width: 90,
-      ...getColumnSearchProps('c'),
-      sorter: (a, b) => String(a.c || '').localeCompare(String(b.c || '')),
-      sortOrder: tableSorter.field === 'c' ? tableSorter.order : null,
-      render: (value, record) => {
-        const isFieldLocked = normalizeStatus(record.status) === 1 && !isRoleAuthorized;
-        if (editingRowId === record.id && !isFieldLocked) {
-          return (
-            <textarea
-              className="w-full px-2 py-1 text-sm border border-amber-400 rounded focus:outline-none resize-none overflow-hidden"
-              value={editFormData.c || ''}
-              rows={Math.max(2, Math.ceil((editFormData.c || '').length / 30))}
-              onChange={(e) => setEditFormData({ ...editFormData, c: e.target.value })}
-              onClick={(e) => e.stopPropagation()}
-            />
-          );
-        }
-        return <span className="text-sm text-gray-800">{value || '-'}</span>;
-      },
-    },
-    {
-      title: 'D',
-      dataIndex: 'd',
-      key: 'd',
-      width: 90,
-      ...getColumnSearchProps('d'),
-      sorter: (a, b) => String(a.d || '').localeCompare(String(b.d || '')),
-      sortOrder: tableSorter.field === 'd' ? tableSorter.order : null,
-      render: (value, record) => {
-        const isFieldLocked = normalizeStatus(record.status) === 1 && !isRoleAuthorized;
-        if (editingRowId === record.id && !isFieldLocked) {
-          return (
-            <textarea
-              className="w-full px-2 py-1 text-sm border border-amber-400 rounded focus:outline-none resize-none overflow-hidden"
-              value={editFormData.d || ''}
-              rows={Math.max(2, Math.ceil((editFormData.d || '').length / 30))}
-              onChange={(e) => setEditFormData({ ...editFormData, d: e.target.value })}
-              onClick={(e) => e.stopPropagation()}
-            />
-          );
-        }
-        return <span className="text-sm text-gray-800">{value || '-'}</span>;
-      },
-    },
+    })),
     {
       title: 'Remark',
       dataIndex: 'remark',
@@ -741,7 +702,7 @@ const HeaderVerification = () => {
         </div>
       ),
     },
-  ], [columnFilters, editFormData, editingRowId, tableSorter, selectedStatus, catchEnvLotMap, isRoleAuthorized]);
+  ], [columnFilters, editFormData, editingRowId, tableSorter, selectedStatus, catchEnvLotMap, isRoleAuthorized, headerFields]);
 
   const handleColumnToggle = useCallback((colKey) => {
     if (ALWAYS_VISIBLE.includes(colKey)) return;
@@ -809,14 +770,13 @@ const HeaderVerification = () => {
       
       // If overrideValues is provided (for batch updates), use those instead of record values
       const payload = {
-        A: overrideValues?.A !== undefined ? overrideValues.A : (fieldName === 'a' ? newValue : updatedRecord.a),
-        B: overrideValues?.B !== undefined ? overrideValues.B : (fieldName === 'b' ? newValue : updatedRecord.b),
-        C: overrideValues?.C !== undefined ? overrideValues.C : (fieldName === 'c' ? newValue : updatedRecord.c),
-        D: overrideValues?.D !== undefined ? overrideValues.D : (fieldName === 'd' ? newValue : updatedRecord.d),
         remark: overrideValues?.remark !== undefined ? overrideValues.remark : (fieldName === 'remark' ? newValue : (updatedRecord.remark || '')),
         status: overrideValues?.status !== undefined ? overrideValues.status : (fieldName === 'status' ? normalizeStatus(newValue) : normalizeStatus(updatedRecord.status)),
         verifiedBy: userId ?? null,
       };
+      headerFields.forEach(f => {
+        payload[f] = overrideValues?.[f] !== undefined ? overrideValues[f] : (fieldName === f ? newValue : ((updatedRecord.dynamicData && updatedRecord.dynamicData[f]) || updatedRecord[f] || updatedRecord[f.toLowerCase()] || updatedRecord[f.toUpperCase()] || ''));
+      });
       console.log('[HeaderVerification] handleFieldUpdate payload:', payload, 'userId from token:', userId);
       const lotParam = selectedLot ? `&lotNo=${selectedLot}` : '';
       const res = await API.put(`/Correction/HeaderVerification/${recordId}?projectId=${projectId}${lotParam}`, payload);
@@ -845,14 +805,13 @@ const HeaderVerification = () => {
       const normalizedStatus = normalizeStatus(newStatusValue);
       const userId = getCurrentUserId();
       const payload = {
-        A: updatedRecord.a,
-        B: updatedRecord.b,
-        C: updatedRecord.c,
-        D: updatedRecord.d,
         remark: null, // Only status is updating -> make remark null
         status: normalizedStatus,
         verifiedBy: userId ?? null,
       };
+      headerFields.forEach(f => {
+        payload[f] = (updatedRecord.dynamicData && updatedRecord.dynamicData[f]) || updatedRecord[f] || updatedRecord[f.toLowerCase()] || updatedRecord[f.toUpperCase()] || '';
+      });
       console.log('[HeaderVerification] handleStatusChange payload:', payload, 'userId from token:', userId);
       const lotParam = selectedLot ? `&lotNo=${selectedLot}` : '';
       const res = await API.put(`/Correction/HeaderVerification/${recordId}?projectId=${projectId}${lotParam}`, payload);
@@ -876,16 +835,14 @@ const HeaderVerification = () => {
   const handleEditRowClick = (e, record) => {
     e.stopPropagation();
     setEditingRowId(record.id);
-    setEditFormData({
-      a: record.a,
-      b: record.b,
-      c: record.c,
-      d: record.d,
+    const initialFormData = {
       remark: record.remark || '',
-      // date: record.date,
-      // time: record.time,
       status: normalizeStatus(record.status),
+    };
+    headerFields.forEach(f => {
+      initialFormData[f] = (record.dynamicData && record.dynamicData[f]) || record[f] || record[f.toLowerCase()] || record[f.toUpperCase()] || '';
     });
+    setEditFormData(initialFormData);
   };
 
   const handleCancelEdit = (e) => {
@@ -1156,6 +1113,7 @@ const HeaderVerification = () => {
                 onFieldUpdate={handleFieldUpdate}
                 currentUser={currentUser}
                 userMap={userMap}
+                headerFields={headerFields}
               />
             </div>
           )}
