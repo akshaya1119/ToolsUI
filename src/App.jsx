@@ -28,6 +28,7 @@ import HeaderVerification from "./ToolsProcessing/HeaderVerification";
 import ChangedNRUpload from "./ToolsProcessing/ChangedNRUpload";
 import BatchWiseData from "./ToolsProcessing/BatchWiseData";
 import NodalCenterList from "./ToolsProcessing/NodalCenterList";
+import MasterConfigReport from "./pages/Reports/MasterConfigReport";
 
 
 function isTokenExpired(token) {
@@ -287,7 +288,18 @@ export default function App() {
                   <ProtectedRoute token={token}>
                     <MainLayout >
                       <NodalCenterList />
-                    </MainLayout></ProtectedRoute>
+                    </MainLayout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/masterconfig-report"
+                element={
+                  <ProtectedRoute token={token}>
+                    <MainLayout >
+                      <MasterConfigReport />
+                    </MainLayout>
+                  </ProtectedRoute>
                 }
               />
             </>
