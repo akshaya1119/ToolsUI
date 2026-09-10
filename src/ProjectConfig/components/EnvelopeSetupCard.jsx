@@ -133,7 +133,12 @@ const EnvelopeSetupCard = ({
                 onChange={setInnerEnvelopes}
                 style={{ width: "100%", marginTop: 4 }}
               >
-                {envelopeOptions.map((e) => (
+                {envelopeOptions
+                  .filter((e) => {
+                    const selected = Array.isArray(innerEnvelopes) ? innerEnvelopes.join(',') : (innerEnvelopes || '');
+                    return !selected.split(',').map(s => s.trim()).includes(e.envelopeName);
+                  })
+                  .map((e) => (
                   <Option key={e.envelopeId} value={e.envelopeName}>
                     {e.envelopeName} (Cap: {e.capacity})
                   </Option>
@@ -152,7 +157,12 @@ const EnvelopeSetupCard = ({
                 onChange={setOuterEnvelopes}
                 style={{ width: "100%", marginTop: 4 }}
               >
-                {envelopeOptions.map((e) => (
+                {envelopeOptions
+                  .filter((e) => {
+                    const selected = Array.isArray(outerEnvelopes) ? outerEnvelopes.join(',') : (outerEnvelopes || '');
+                    return !selected.split(',').map(s => s.trim()).includes(e.envelopeName);
+                  })
+                  .map((e) => (
                   <Option key={e.envelopeId} value={e.envelopeName}>
                     {e.envelopeName} (Cap: {e.capacity})
                   </Option>
