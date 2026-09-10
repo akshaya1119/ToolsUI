@@ -83,6 +83,9 @@ const HeaderVerification = () => {
   const [userMap, setUserMap] = useState({});
   // catchNo → envLotNo map for the Batch column
   const [catchEnvLotMap, setCatchEnvLotMap] = useState({});
+  // Bulk-verify modal state
+  const [showBulkVerifyModal, setShowBulkVerifyModal] = useState(false);
+  const [bulkVerifyLoading, setBulkVerifyLoading] = useState(false);
 
   // Fetch all users for mapping userId to firstName
   useEffect(() => {
@@ -761,6 +764,24 @@ const HeaderVerification = () => {
     setCurrentPage(1);
   }, []);
 
+  const handleBulkVerify = useCallback(async () => {
+    try {
+      setBulkVerifyLoading(true);
+      const res = await API.post(`/Correction/HeaderVerification/BulkVerifyProject/${projectId}`);
+      const { updatedCount, message } = res.data;
+      showToast(message || `${updatedCount} catch(es) marked as Verified.`, 'success');
+      setShowBulkVerifyModal(false);
+      await fetchAllMeta();
+      await fetchRecords();
+    } catch (err) {
+      console.error('[HeaderVerification] BulkVerify failed:', err);
+      const errorMessage = err.response?.data || err.message || 'Failed to bulk verify';
+      showToast(errorMessage, 'error');
+    } finally {
+      setBulkVerifyLoading(false);
+    }
+  }, [projectId, showToast, fetchAllMeta, fetchRecords]);
+
   const handleFieldUpdate = useCallback(async (recordId, fieldName, newValue, overrideValues = null) => {
     try {
       if (!projectId) throw new Error('No project selected');
@@ -917,6 +938,7 @@ const HeaderVerification = () => {
   };
 
   return (
+    <>
     <div className="w-full h-full min-h-0 flex flex-col overflow-hidden">
       <style>{customTableStyles}</style>
       <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 flex-shrink-0 px-6 pt-6">
@@ -924,7 +946,26 @@ const HeaderVerification = () => {
           <h1 className="text-2xl font-bold text-gray-900">Paper Header Verification</h1>
           <p className="text-sm text-gray-500 mt-1">Search, filter, edit, and verify academic papers</p>
         </div>
-        <div className="flex items-center gap-3" />
+        <div className="flex items-center gap-3">
+          {isRoleAuthorized && (() => {
+            const allVerified = summaryStats.total > 0 && summaryStats.notVerified === 0 && summaryStats.unclear === 0;
+            return (
+              <button
+                onClick={() => setShowBulkVerifyModal(true)}
+                disabled={allVerified}
+                className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg shadow-sm transition-colors ${
+                  allVerified
+                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                    : 'bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer'
+                }`}
+                title={allVerified ? 'All catches are already verified' : 'Bulk verify all catches in this project'}
+              >
+                <Check className="w-4 h-4" />
+                Verify All
+              </button>
+            );
+          })()}
+        </div>
       </div>
 
       <div className="px-6 py-4 flex-shrink-0">
@@ -1120,6 +1161,75 @@ const HeaderVerification = () => {
         </div>
       </div>
     </div>
+
+      {/* Bulk-Verify Modal */}
+      {showBulkVerifyModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          style={{ background: 'rgba(0,0,0,0.45)' }}
+          onClick={() => !bulkVerifyLoading && setShowBulkVerifyModal(false)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full mx-4 relative"
+            style={{ border: '1px solid #e5e7eb' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Close button */}
+            {!bulkVerifyLoading && (
+              <button
+                onClick={() => setShowBulkVerifyModal(false)}
+                className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"
+                aria-label="Close modal"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            )}
+
+            {/* Icon */}
+            <div className="flex items-center justify-center w-14 h-14 rounded-full bg-emerald-50 mx-auto mb-5">
+              <Check className="w-7 h-7 text-emerald-600" />
+            </div>
+
+            {/* Title */}
+            <h2 className="text-xl font-bold text-gray-900 text-center mb-2">Verify All Catches</h2>
+            <p className="text-sm text-gray-500 text-center mb-6">
+              Does this project have <span className="font-semibold text-gray-700">ABCD data</span>?
+            </p>
+
+            {/* Info box */}
+            <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 mb-6 text-sm text-amber-800">
+              <strong>If No:</strong> All catches in this project will be marked as{' '}
+              <span className="font-semibold text-emerald-700">Verified</span> regardless of ABCD fields.
+            </div>
+
+            {/* Action buttons */}
+            <div className="flex gap-3">
+              <button
+                disabled={bulkVerifyLoading}
+                onClick={() => setShowBulkVerifyModal(false)}
+                className="flex-1 py-2.5 rounded-lg border border-gray-300 bg-white text-gray-700 text-sm font-medium hover:bg-gray-50 transition-colors disabled:opacity-50"
+              >
+                Yes, has ABCD
+              </button>
+              <button
+                disabled={bulkVerifyLoading}
+                onClick={handleBulkVerify}
+                className="flex-1 py-2.5 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
+              >
+                {bulkVerifyLoading ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Verifying…
+                  </>
+                ) : (
+                  'No, verify all'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 };
 
