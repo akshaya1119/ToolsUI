@@ -7,11 +7,13 @@ import API from "./hooks/api";
 import { useUserToken, useUserTokenActions } from "./stores/UserToken";
 import { motion } from "framer-motion";
 import loginImage from "/Maintenance-cuate.png";
+import { Spin } from "antd";
 
 export default function Login() {
   const [userName, setUserName] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const { showToast } = useToast();
   const token = useUserToken();
@@ -31,6 +33,7 @@ export default function Login() {
 
   const handleLogin = async (e) => {
     e.preventDefault();
+    setLoading(true);
     try {
       const response = await API.post(`/UserLogs/login`, {
         userName,
@@ -45,6 +48,8 @@ export default function Login() {
     } catch (error) {
       showToast("Login failed. Please check your username or password.", "error");
       console.error(error);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -114,9 +119,21 @@ export default function Login() {
 
             <button
               type="submit"
-              className="w-full py-2 bg-blue-600 text-white rounded-md text-lg font-medium hover:bg-blue-700 transition duration-200 shadow hover:shadow-md focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              disabled={loading}
+              className={`w-full py-2 rounded-md text-lg font-medium transition duration-200 shadow focus:outline-none focus:ring-2 focus:ring-indigo-400 flex items-center justify-center gap-2 ${
+                loading
+                  ? "bg-blue-400 text-white cursor-not-allowed"
+                  : "bg-blue-600 text-white hover:bg-blue-700 hover:shadow-md"
+              }`}
             >
-              Login
+              {loading ? (
+                <>
+                  <Spin size="small" style={{ color: "white" }} />
+                  Logging in...
+                </>
+              ) : (
+                "Login"
+              )}
             </button>
           </form>
         </div>
