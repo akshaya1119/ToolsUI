@@ -3360,7 +3360,69 @@ const loadGeneratedTemplateReports = async () => {
       title: "Module Name",
       dataIndex: "moduleName",
       key: "moduleName",
-      render: (text) => <b>{text}</b>,
+      render: (text, record) => {
+        const isBoxBreaking = record.key === "box";
+        const hasStale = isBoxBreaking && (() => {
+          const boxTemplateIds = getTemplatesForModuleKey("box")
+            .map((t) => resolveTemplateId(t))
+            .filter(Boolean);
+          if (boxTemplateIds.length === 0) return false;
+
+          // 1️⃣ In-session stale: staleLotIds populated when box breaking ran this session
+          if (staleLotIds.size > 0) {
+            const staleArr = Array.from(staleLotIds);
+            if (staleArr.some((k) => boxTemplateIds.some((tid) => k.endsWith(`_${tid}`)))) {
+              return true;
+            }
+          }
+
+          // 2️⃣ Persistent stale: lotTemplateStatus shows templates not yet generated
+          //    for lots that exist (box breaking completed). Works across page loads.
+          //    Only flag as stale when status has been explicitly fetched (s !== undefined)
+          //    AND exists is false. Avoids false positives when status hasn't loaded yet.
+          if (availableLots && availableLots.length > 0) {
+            return availableLots.some((lot) =>
+              boxTemplateIds.some((tid) => {
+                const statusKey = `${lot.lotNo}_${tid}`;
+                const s = lotTemplateStatus[statusKey];
+                return s !== undefined && !s.exists; // only stale if status is known AND missing
+              })
+            );
+          }
+
+          return false;
+        })();
+
+        return (
+          <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-start" }}>
+            <b>{text}</b>
+            {hasStale && (
+              <span
+                onClick={() => openLotWisePanel("box")}
+                title="Some lot templates are outdated — click to open and regenerate"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
+                  background: "#fff7e6",
+                  border: "1px solid #ffd591",
+                  borderRadius: 4,
+                  padding: "2px 7px",
+                  fontSize: 11,
+                  color: "#d46b08",
+                  cursor: "pointer",
+                  fontWeight: 500,
+                  userSelect: "none",
+                  lineHeight: "20px",
+                }}
+              >
+                <ExclamationCircleOutlined style={{ fontSize: 12 }} />
+                Outdated
+              </span>
+            )}
+          </div>
+        );
+      },
     },
     {
       title: "Configuration",
@@ -3497,19 +3559,17 @@ const loadGeneratedTemplateReports = async () => {
         const isBoxBreaking = record.key === "box";
 
         return (
-          <Space size="small">
-            <Button
-              size="small"
-              onClick={() =>
-                isBoxBreaking
-                  ? openLotWisePanel(record.key)
-                  : openTemplatePanel(record.key)
-              }
-              disabled={!isReady || !hasTemplates}
-            >
-              Templates{hasTemplates ? ` (${moduleTemplates.length})` : ""}
-            </Button>
-          </Space>
+          <Button
+            size="small"
+            onClick={() =>
+              isBoxBreaking
+                ? openLotWisePanel(record.key)
+                : openTemplatePanel(record.key)
+            }
+            disabled={!isReady || !hasTemplates}
+          >
+            Templates{hasTemplates ? ` (${moduleTemplates.length})` : ""}
+          </Button>
         );
       },
     },

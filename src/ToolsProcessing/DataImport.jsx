@@ -92,6 +92,7 @@ const DataImport = () => {
   const [addedFieldIds, setAddedFieldIds] = useState([]);
   const [uploadSectionCollapsed, setUploadSectionCollapsed] = useState(false);
   const [shouldOpenBifurcation, setShouldOpenBifurcation] = useState(false);
+  const [localLotFilter, setLocalLotFilter] = useState(""); // Local lot number filter
 
   // 👉 Initialize activeTab from localStorage on mount
   useEffect(() => {
@@ -218,6 +219,7 @@ const DataImport = () => {
     uploadedTableSorter.field,
     uploadedTableSorter.order,
     selectedLot,
+    localLotFilter,
   ]);
 
   const fetchExistingData = async (projectId) => {
@@ -225,7 +227,14 @@ const DataImport = () => {
 
     setLoading(true);
     try {
-      const lotParam = selectedLot ? { lotNo: selectedLot } : {};
+      // Use localLotFilter if it's set, otherwise use selectedLot from store
+      const effectiveLot = localLotFilter && localLotFilter !== "" && localLotFilter !== "ALL" 
+        ? parseInt(localLotFilter, 10) 
+        : selectedLot && selectedLot !== "ALL" 
+          ? selectedLot 
+          : null;
+      
+      const lotParam = effectiveLot ? { lotNo: effectiveLot } : {};
       const res = await API.get(`/NRDatas/GetByProjectId/${projectId}`, {
         params: {
           pageSize: pagination.pageSize,
