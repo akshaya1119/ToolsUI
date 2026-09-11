@@ -607,7 +607,7 @@ const ProcessingPipeline = () => {
     }
     try {
       const res = await API.get(`/NRDatas/PipelineRerunStatus`, {
-        params: { ProjectId: targetProjectId, Batch: selectedBatch },
+        params: { ProjectId: targetProjectId, batch: selectedBatch },
       });
       setHasPendingPipelineChanges(Boolean(res.data?.hasPendingPipelineChanges));
       setPipelineStepStatus(res.data);

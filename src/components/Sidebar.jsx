@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
-import { FaHome, FaWrench, FaChartBar, FaSignOutAlt, FaBookmark, FaBook, FaChevronDown, FaChevronRight } from "react-icons/fa"; // Using filled versions from FontAwesome
+import { FaHome, FaWrench, FaChartBar, FaSignOutAlt, FaBookmark, FaBook, FaChevronDown, FaChevronRight, FaChartLine } from "react-icons/fa";
 import useStore from "../stores/ProjectData";
 import API from "../hooks/api";
 import Footer from "./Footer";
@@ -75,6 +75,11 @@ export default function Sidebar({ collapsed }) {
     if (isToolsChild) {
       setOpenGroups((prev) => ({ ...prev, Tools: true }));
     }
+
+    const isReportsChild = ["/masterconfig-report"].includes(location.pathname);
+    if (isReportsChild) {
+      setOpenGroups((prev) => ({ ...prev, Reports: true }));
+    }
   }, [location.pathname]);
 
   // Handle collapse toggle
@@ -88,13 +93,20 @@ export default function Sidebar({ collapsed }) {
   const menuItems = [
     {
       label: projectName ? "Project Dashboard" : "Dashboard",
-      icon: <FaHome className="text-black" />, // Filled version of home icon
+      icon: <FaHome className="text-black" />,
       path: projectName ? "/projectdashboard" : "/dashboard",
     },
     {
       label: "Masters",
-      icon: <FaBookmark className="text-black" />, // Filled version of bookmark icon
+      icon: <FaBookmark className="text-black" />,
       path: "/masters",
+    },
+    {
+      label: "Reports",
+      icon: <FaChartLine className="text-black" />,
+      children: [
+        { label: "Master Config Report", path: "/masterconfig-report" },
+      ],
     },
     ...(projectName
       ? [
