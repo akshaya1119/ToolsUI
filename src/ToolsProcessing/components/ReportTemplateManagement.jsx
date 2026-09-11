@@ -78,6 +78,8 @@ const ReportTemplateManagement = ({
   const [selectedTemplate, setSelectedTemplate] = useState('ALL');
   const [selectedLot, setSelectedLot] = useState('ALL');
   const [viewType, setViewType] = useState('Template');
+  // show only the most recent per (template + lot + batch) — default on
+  const [showRecentOnly, setShowRecentOnly] = useState(true);
 
   // pagination
   const [reportPage, setReportPage] = useState(1);
@@ -166,12 +168,14 @@ const ReportTemplateManagement = ({
 
   // ── API fetches ───────────────────────────────────────────────────────────
 
-  useEffect(() => { fetchEnvLotReports(); }, [projectId, envLotReports]);
+  useEffect(() => { fetchEnvLotReports(showRecentOnly); }, [projectId, envLotReports, showRecentOnly]);
 
-  const fetchEnvLotReports = async () => {
+  const fetchEnvLotReports = async (latestOnly = true) => {
     if (!projectId || !apiBaseUrl) return;
     try {
-      const res = await axios.get(`${apiBaseUrl}/EnvelopeLotReports/ByProject/${projectId}`);
+      const res = await axios.get(
+        `${apiBaseUrl}/EnvelopeLotReports/ByProject/${projectId}?latestOnly=${latestOnly}`
+      );
       setEnvLotReportsLocal(res.data || []);
     } catch (e) { console.error('Failed to fetch EnvLotReports:', e); }
   };
@@ -206,7 +210,7 @@ const ReportTemplateManagement = ({
     setExpandedKeys(new Set());
     if (type === 'Report') { setSelectedTemplate('ALL'); setReportPage(1); }
     else setTemplatePage(1);
-    fetchEnvLotReports();
+    fetchEnvLotReports(showRecentOnly);
   };
 
   useEffect(() => {
@@ -420,15 +424,24 @@ const ReportTemplateManagement = ({
       groups.push(g);
     });
 
-    // Default display order: Module name → Template name → Lot → Batch (envLotNo)
+    // Default display order for Template view: most recent GeneratedAt first (data arrives pre-sorted from backend)
     groups.sort((a, b) => {
-      const modCmp = (a.module || '').localeCompare(b.module || '', undefined, { sensitivity: 'base' });
-      if (modCmp !== 0) return modCmp;
-      const tplCmp = (a.templateName || '').localeCompare(b.templateName || '', undefined, { sensitivity: 'base' });
-      if (tplCmp !== 0) return tplCmp;
-      const lotCmp = (a.lot ?? 0) - (b.lot ?? 0);
-      if (lotCmp !== 0) return lotCmp;
-      return (a.envLotNo ?? 0) - (b.envLotNo ?? 0);
+      const getNewestDate = (g) => {
+        let best = 0;
+        g.rows.forEach((row) => {
+          const raw = row._dbRow?.generatedAt ?? row._dbRow?.GeneratedAt ?? null;
+          if (!raw) return;
+          let s = String(raw);
+          if (!s.endsWith('Z') && !s.includes('+') && !s.match(/-\d{2}:\d{2}$/)) {
+            if (s.includes(' ') && !s.includes('T')) s = s.replace(' ', 'T');
+            s += 'Z';
+          }
+          const t = new Date(s).getTime();
+          if (!isNaN(t) && t > best) best = t;
+        });
+        return best;
+      };
+      return getNewestDate(b) - getNewestDate(a);
     });
 
     return groups;
@@ -1081,6 +1094,19 @@ const ReportTemplateManagement = ({
           <Select.Option value="ALL">All Lots</Select.Option>
           {getLotNumbers.map(l => <Select.Option key={l} value={l}>Lot {l}</Select.Option>)}
         </Select>
+
+        {/* Version filter dropdown — only shown in Template view */}
+        {!isReport && (
+          <Select
+            value={showRecentOnly ? 'recent' : 'all'}
+            onChange={(val) => setShowRecentOnly(val === 'recent')}
+            className="w-[150px]"
+            style={{ flexShrink: 0 }}
+          >
+            <Select.Option value="recent">Most Recent</Select.Option>
+            <Select.Option value="all">All Versions</Select.Option>
+          </Select>
+        )}
 
         <Button type="primary" loading={bulkDownloading} disabled={bulkDownloading || accordionGroups.length === 0}
           icon={<Download size={15} />} onClick={handleDownloadAll}>

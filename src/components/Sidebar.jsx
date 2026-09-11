@@ -59,7 +59,7 @@ export default function Sidebar({ collapsed }) {
     fetchData();
   }, [projectId, setNrDataCount, setHeaderCorrectionCount, setIsConfigured]);
 
-  // Auto-expand group if current path is a child
+  // Auto-expand group if current path is a child (accordion style - close others)
   useEffect(() => {
     const isToolsChild = [
       "/projectconfiguration",
@@ -67,27 +67,34 @@ export default function Sidebar({ collapsed }) {
       "/changedNRUpload",
       "/projecttemplates",
       "/processingpipeline",
-      "/processingpipelinev2",
       "/headerverification",
       "/batchwisedata"
     ].includes(location.pathname);
 
-    if (isToolsChild) {
-      setOpenGroups((prev) => ({ ...prev, Tools: true }));
-    }
-
     const isReportsChild = ["/masterconfig-report"].includes(location.pathname);
-    if (isReportsChild) {
-      setOpenGroups((prev) => ({ ...prev, Reports: true }));
+
+    if (isToolsChild) {
+      setOpenGroups({ Tools: true, Reports: false });
+    } else if (isReportsChild) {
+      setOpenGroups({ Tools: false, Reports: true });
     }
   }, [location.pathname]);
 
-  // Handle collapse toggle
+  // Handle collapse toggle - accordion style (only one group open at a time)
   const toggleGroup = (groupKey) => {
-    setOpenGroups((prev) => ({
-      ...prev,
-      [groupKey]: !prev[groupKey],
-    }));
+    setOpenGroups((prev) => {
+      // If the group is already open, close it
+      if (prev[groupKey]) {
+        return { ...prev, [groupKey]: false };
+      }
+      // If the group is closed, close all other groups and open this one
+      const newState = {};
+      Object.keys(prev).forEach((key) => {
+        newState[key] = false;
+      });
+      newState[groupKey] = true;
+      return newState;
+    });
   };
 
   const menuItems = [
@@ -122,11 +129,6 @@ export default function Sidebar({ collapsed }) {
             {
               label: "Processing Pipeline",
               path: "/processingpipeline",
-              disabled: nrDataCount === 0 || !isConfigured
-            },
-            {
-              label: "Processing Pipeline V2",
-              path: "/processingpipelinev2",
               disabled: nrDataCount === 0 || !isConfigured
             },
             {
