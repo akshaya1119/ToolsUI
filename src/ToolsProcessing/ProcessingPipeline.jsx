@@ -599,7 +599,7 @@ const ProcessingPipeline = () => {
     return order;
   };
 
-  const fetchPipelineRerunStatus = async (targetProjectId) => {
+  const fetchPipelineRerunStatus = async (targetProjectId, selectedBatch) => {
     if (!targetProjectId) {
       setHasPendingPipelineChanges(false);
       setPipelineStepStatus(null);
@@ -607,7 +607,7 @@ const ProcessingPipeline = () => {
     }
     try {
       const res = await API.get(`/NRDatas/PipelineRerunStatus`, {
-        params: { ProjectId: targetProjectId },
+        params: { ProjectId: targetProjectId, batch: selectedBatch },
       });
       setHasPendingPipelineChanges(Boolean(res.data?.hasPendingPipelineChanges));
       setPipelineStepStatus(res.data);
@@ -666,7 +666,7 @@ const ProcessingPipeline = () => {
         setSteps(initialSteps);
         setSelectedModules([]);
         await checkReportExistence(projectId);
-        await fetchPipelineRerunStatus(projectId);
+        await fetchPipelineRerunStatus(projectId, selectedBatch);
       } catch (err) {
         console.error("Failed to load enabled modules", err);
         setEnabledModuleNames([]);
@@ -693,7 +693,7 @@ const ProcessingPipeline = () => {
           setChangedFieldsInfo(data.changedModules || []);
 
           // Refresh pipeline rerun status to update pending flags
-          fetchPipelineRerunStatus(projectId);
+          fetchPipelineRerunStatus(projectId, selectedBatch);
 
           // Clear the sessionStorage
           sessionStorage.removeItem("configChangeData");
@@ -3029,7 +3029,8 @@ const loadGeneratedTemplateReports = async () => {
           }
 
           // Refresh status immediately after each step finishes to avoid "Outdated" flicker
-          await fetchPipelineRerunStatus(projectId);
+          await fetchPipelineRerunStatus(projectId, selectedBatch
+          );
           await checkReportExistence(projectId);
         } catch (stepErr) {
           console.error(`Step ${step.key} failed`, stepErr);
@@ -3038,7 +3039,7 @@ const loadGeneratedTemplateReports = async () => {
         }
       }
       await checkReportExistence(projectId);
-      await fetchPipelineRerunStatus(projectId);
+      await fetchPipelineRerunStatus(projectId,selectedBatch);
       message.success("Data processing completed");
 
       // Mark modules with templates as stale if their processing step was re-run
