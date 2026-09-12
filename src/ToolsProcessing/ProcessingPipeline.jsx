@@ -3360,69 +3360,7 @@ const loadGeneratedTemplateReports = async () => {
       title: "Module Name",
       dataIndex: "moduleName",
       key: "moduleName",
-      render: (text, record) => {
-        const isBoxBreaking = record.key === "box";
-        const hasStale = isBoxBreaking && (() => {
-          const boxTemplateIds = getTemplatesForModuleKey("box")
-            .map((t) => resolveTemplateId(t))
-            .filter(Boolean);
-          if (boxTemplateIds.length === 0) return false;
-
-          // 1️⃣ In-session stale: staleLotIds populated when box breaking ran this session
-          if (staleLotIds.size > 0) {
-            const staleArr = Array.from(staleLotIds);
-            if (staleArr.some((k) => boxTemplateIds.some((tid) => k.endsWith(`_${tid}`)))) {
-              return true;
-            }
-          }
-
-          // 2️⃣ Persistent stale: lotTemplateStatus shows templates not yet generated
-          //    for lots that exist (box breaking completed). Works across page loads.
-          //    Only flag as stale when status has been explicitly fetched (s !== undefined)
-          //    AND exists is false. Avoids false positives when status hasn't loaded yet.
-          if (availableLots && availableLots.length > 0) {
-            return availableLots.some((lot) =>
-              boxTemplateIds.some((tid) => {
-                const statusKey = `${lot.lotNo}_${tid}`;
-                const s = lotTemplateStatus[statusKey];
-                return s !== undefined && !s.exists; // only stale if status is known AND missing
-              })
-            );
-          }
-
-          return false;
-        })();
-
-        return (
-          <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-start" }}>
-            <b>{text}</b>
-            {hasStale && (
-              <span
-                onClick={() => openLotWisePanel("box")}
-                title="Some lot templates are outdated — click to open and regenerate"
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 4,
-                  background: "#fff7e6",
-                  border: "1px solid #ffd591",
-                  borderRadius: 4,
-                  padding: "2px 7px",
-                  fontSize: 11,
-                  color: "#d46b08",
-                  cursor: "pointer",
-                  fontWeight: 500,
-                  userSelect: "none",
-                  lineHeight: "20px",
-                }}
-              >
-                <ExclamationCircleOutlined style={{ fontSize: 12 }} />
-                Outdated
-              </span>
-            )}
-          </div>
-        );
-      },
+      render: (text) => <b>{text}</b>,
     },
     {
       title: "Configuration",
@@ -3558,18 +3496,129 @@ const loadGeneratedTemplateReports = async () => {
         const isReady = record.status === "completed";
         const isBoxBreaking = record.key === "box";
 
-        return (
-          <Button
-            size="small"
-            onClick={() =>
-              isBoxBreaking
-                ? openLotWisePanel(record.key)
-                : openTemplatePanel(record.key)
+        // Compute outdated info for Templates column badge
+        // Returns: false (none) | true (non-box) | number[] (stale lot numbers for box)
+        const outdatedInfo = (() => {
+          if (!hasTemplates) return false;
+
+          if (isBoxBreaking) {
+            const boxTemplateIds = moduleTemplates.map((t) => resolveTemplateId(t)).filter(Boolean);
+            if (boxTemplateIds.length === 0) return false;
+
+            const staleLotNos = new Set();
+
+            // 1️⃣ In-session: staleLotIds is set when box breaking runs this session
+            if (staleLotIds.size > 0) {
+              Array.from(staleLotIds).forEach((k) => {
+                const parts = k.split("_");
+                const lotNo = parts[0];
+                const tid = parts.slice(1).join("_");
+                if (boxTemplateIds.some((id) => String(id) === String(tid))) {
+                  staleLotNos.add(Number(lotNo));
+                }
+              });
             }
-            disabled={!isReady || !hasTemplates}
-          >
-            Templates{hasTemplates ? ` (${moduleTemplates.length})` : ""}
-          </Button>
+
+            // 2️⃣ Cross-session: lot.minStep < 6 means box breaking report is "Outdated"
+            //    for that lot (same signal LotWisePanel uses for its "Outdated" tag).
+            //    Use generatedTemplateReports (fetched on page load) to check if any
+            //    template was actually generated — avoids false positives for lots
+            //    where nothing was ever generated.
+            //    Do NOT use lotTemplateStatus here — it is only populated when
+            //    LotWisePanel is opened, so it's empty on fresh page load.
+            if (availableLots && availableLots.length > 0) {
+              availableLots.forEach((lot) => {
+                if (lotReportStatus[lot.lotNo] && lot.minStep < 6) {
+                  const anyGenerated = generatedTemplateReports.some((r) =>
+                    r.lotNo === lot.lotNo &&
+                    boxTemplateIds.some((tid) => String(r.templateId) === String(tid))
+                  );
+                  if (anyGenerated) staleLotNos.add(lot.lotNo);
+                }
+              });
+            }
+
+            return staleLotNos.size > 0
+              ? Array.from(staleLotNos).sort((a, b) => a - b)
+              : false;
+          }
+
+          // Non-box modules: only show Outdated below Templates when a SPECIFIC
+          // template is outdated — not just because the module step needs re-running.
+          // (pipelineStepStatus pending flags drive the Status column "Outdated" tag;
+          //  they must NOT bleed into the Templates column badge.)
+
+          // Cross-session: mappingUpdateMap (localStorage) has an update entry for a
+          // template in this module. This is set when the template mapping changes and
+          // cleared when the template is regenerated — so if it's non-null, the mapping
+          // is newer than the last generated report. Only applicable when the module has
+          // been run (has reportVersions) so templates could have been generated.
+          const moduleHasBeenRun = (reportVersions[record.key] && reportVersions[record.key].length > 0)
+            || record.status === "completed" || !!record.report;
+
+          const hasMappingStale = moduleHasBeenRun && moduleTemplates.some((t) => {
+            const tid = resolveTemplateId(t);
+            if (!tid) return false;
+            return getMappingUpdateTime(tid) !== null;
+          });
+          if (hasMappingStale) return true;
+
+          // In-session: staleTemplateIds set when a template just ran this session
+          const hasInSessionStale = moduleTemplates.some((t) => {
+            const tid = resolveTemplateId(t);
+            if (!tid) return false;
+            return staleTemplateIds.has(tid);
+          });
+          return hasInSessionStale ? true : false;
+        })();
+
+        const outdatedLabel = (() => {
+          if (!outdatedInfo) return null;
+          if (Array.isArray(outdatedInfo)) {
+            // Box Breaking: show lot numbers
+            return `Outdated - Lot ${outdatedInfo.join(", ")}`;
+          }
+          return "Outdated";
+        })();
+
+        return (
+          <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-start" }}>
+            <Button
+              size="small"
+              onClick={() =>
+                isBoxBreaking
+                  ? openLotWisePanel(record.key)
+                  : openTemplatePanel(record.key)
+              }
+              disabled={!isReady || !hasTemplates}
+            >
+              Templates{hasTemplates ? ` (${moduleTemplates.length})` : ""}
+            </Button>
+
+            {outdatedLabel && (
+              <span
+                onClick={() => isBoxBreaking ? openLotWisePanel("box") : openTemplatePanel(record.key)}
+                title="Some templates need regeneration — click to open"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
+                  background: "#fff7e6",
+                  border: "1px solid #ffd591",
+                  borderRadius: 4,
+                  padding: "1px 6px",
+                  fontSize: 11,
+                  color: "#d46b08",
+                  cursor: "pointer",
+                  fontWeight: 500,
+                  userSelect: "none",
+                }}
+              >
+                <ExclamationCircleOutlined style={{ fontSize: 11 }} />
+                {outdatedLabel}
+              </span>
+            )}
+          </div>
         );
       },
     },
