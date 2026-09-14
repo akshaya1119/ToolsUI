@@ -222,6 +222,35 @@ const ProcessingPipeline = () => {
   const typeId = storedTypeId ? Number(storedTypeId) : null;
   const [envLotSearch, setEnvLotSearch] = useState("");
   const [errorDetailsModal, setErrorDetailsModal] = useState({ visible: false, error: null, retryFn: null, templateId: null });
+  const [hasLotZeroCatches, setHasLotZeroCatches] = useState(false);
+
+  // Check if any catches have lotNo = 0 (need bifurcation)
+  useEffect(() => {
+    if (!projectId) {
+      setHasLotZeroCatches(false);
+      return;
+    }
+
+    const checkLotZeroCatches = async () => {
+      try {
+        const res = await API.get(`/NRDatas/GetByProjectId/${projectId}`, {
+          params: {
+            pageSize: 1, // Just check if any exist
+            pageNo: 1,
+          },
+        });
+        const items = Array.isArray(res.data?.items) ? res.data.items : [];
+        const hasLotZero = items.some(item => item.LotNo === 0 || item.lotNo === 0);
+        setHasLotZeroCatches(hasLotZero);
+      } catch (error) {
+        console.error("Failed to check for lot zero catches", error);
+        setHasLotZeroCatches(false);
+      }
+    };
+
+    checkLotZeroCatches();
+  }, [projectId]);
+
   const currentStep = useMemo(
     () =>
       steps.findIndex((s) => s.status === "in-progress") + 1 ||
@@ -3360,7 +3389,32 @@ const loadGeneratedTemplateReports = async () => {
       title: "Module Name",
       dataIndex: "moduleName",
       key: "moduleName",
-      render: (text) => <b>{text}</b>,
+      render: (text, record) => (
+        <div>
+          <b>{text}</b>
+          {hasLotZeroCatches && record.key === "box" && (
+            <div style={{ marginTop: 4 }}>
+              <Button
+                type="link"
+                size="small"
+                style={{ padding: 0, height: 'auto' }}
+                onClick={() => {
+                  // Navigate to Data Import page with Lot Bifurcation tab and Lot 0 selected
+                  navigate('/dataimport', {
+                    state: {
+                      activeTab: '4', // Tab 4 is Lot Bifurcation based on the import statement
+                      selectedLot: 0,
+                      openBifurcationPanel: true
+                    }
+                  });
+                }}
+              >
+                Bifurcate Lot
+              </Button>
+            </div>
+          )}
+        </div>
+      ),
     },
     {
       title: "Configuration",
@@ -3493,8 +3547,13 @@ const loadGeneratedTemplateReports = async () => {
       render: (_, record) => {
         const moduleTemplates = getTemplatesForModuleKey(record.key);
         const hasTemplates = moduleTemplates.length > 0;
-        const isReady = record.status === "completed";
         const isBoxBreaking = record.key === "box";
+        
+        // For box breaking, allow opening if any lots are completed
+        // For other modules, only allow if status is completed
+        const isReady = isBoxBreaking 
+          ? (record.completedLots && record.completedLots > 0) || record.status === "completed"
+          : record.status === "completed";
 
         // Compute outdated info for Templates column badge
         // Returns: false (none) | true (non-box) | number[] (stale lot numbers for box)
@@ -3591,6 +3650,7 @@ const loadGeneratedTemplateReports = async () => {
                   : openTemplatePanel(record.key)
               }
               disabled={!isReady || !hasTemplates}
+              loading={isBoxBreaking && loadingLots}
             >
               Templates{hasTemplates ? ` (${moduleTemplates.length})` : ""}
             </Button>
