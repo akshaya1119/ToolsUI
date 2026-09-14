@@ -389,7 +389,7 @@ const LotWisePanel = ({
                                           </Text>
                                         )}
                                       </div>
-                                      {(isStale || !template.reportStatus) && status?.exists && (
+                                      {isStale && status?.exists && (
                                         <Tag color="warning" style={{ fontSize: "10px", marginTop: 4 }}>
                                           Data updated - regeneration required
                                         </Tag>
