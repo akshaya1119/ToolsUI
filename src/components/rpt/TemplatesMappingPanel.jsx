@@ -147,7 +147,6 @@ const TemplatesMappingPanel = ({
               dataSource={mappingRows}
               pagination={false}
               size="small"
-              // scroll={{ y: 260 }}
               columns={[
                 {
                   title: "RPT Field",
