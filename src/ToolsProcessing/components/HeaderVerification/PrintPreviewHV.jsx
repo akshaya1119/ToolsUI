@@ -11,6 +11,7 @@ const PrintPreviewHV = ({
   onFieldUpdate,
   currentUser,
   userMap = {},
+  headerFields = [],
 }) => {
   const userRoleId = getCurrentUserRoleId();
   const canEditVerified = userRoleId !== null && Number(userRoleId) <= 4 && Number(userRoleId) > 0;
@@ -110,7 +111,7 @@ const PrintPreviewHV = ({
         e.preventDefault();
         // Calculate hasNoValidValues here inside the effect since it's outside render scope, or include it in dependencies
         const isInvalid = (val) => !val || String(val).trim() === '' || String(val).trim() === '-';
-        const invalid = isInvalid(currentRecord?.a) && isInvalid(currentRecord?.b) && isInvalid(currentRecord?.c) && isInvalid(currentRecord?.d);
+        const invalid = headerFields.length > 0 && headerFields.every(f => isInvalid((currentRecord?.dynamicData && currentRecord?.dynamicData[f]) || currentRecord?.[f] || currentRecord?.[f.toLowerCase()] || currentRecord?.[f.toUpperCase()]));
         if (!invalid) {
           handleStatusChange('Verified');
         }
@@ -129,7 +130,7 @@ const PrintPreviewHV = ({
     setLoading(true);
     try {
       const isVerified = normalizeStatus(currentRecord?.status) === 1 && !canEditVerified;
-      const fields = isVerified ? ['remark'] : ['a', 'b', 'c', 'd', 'remark'];
+      const fields = isVerified ? ['remark'] : [...headerFields, 'remark'];
       let hasChanges = false;
       
       // Check if any field actually changed
@@ -142,17 +143,14 @@ const PrintPreviewHV = ({
 
       if (hasChanges) {
         // Pass draft field values as override so they all get updated in one call
-        const overrideValues = {
-          A: isVerified ? (currentRecord?.a || '') : (draftRecord?.a || ''),
-          B: isVerified ? (currentRecord?.b || '') : (draftRecord?.b || ''),
-          C: isVerified ? (currentRecord?.c || '') : (draftRecord?.c || ''),
-          D: isVerified ? (currentRecord?.d || '') : (draftRecord?.d || ''),
-          remark: draftRecord?.remark || '',
-        };
+        const overrideValues = { remark: draftRecord?.remark || '' };
+        headerFields.forEach(f => {
+           overrideValues[f] = isVerified ? ((currentRecord?.dynamicData && currentRecord?.dynamicData[f]) || currentRecord?.[f] || currentRecord?.[f.toLowerCase()] || currentRecord?.[f.toUpperCase()] || '') : (draftRecord?.[f] || '');
+        });
         
         // Call onFieldUpdate with overrideValues parameter (3rd param) containing all fields
         // We use 'remark' or 'a' as the fieldName marker
-        const updatedRecord = await onFieldUpdate(currentRecord?.id, isVerified ? 'remark' : 'a', draftRecord?.remark || '', overrideValues);
+        const updatedRecord = await onFieldUpdate(currentRecord?.id, isVerified ? 'remark' : headerFields[0] || 'a', draftRecord?.remark || '', overrideValues);
         if (updatedRecord) {
           setRecord(updatedRecord);
           setDraftRecord(updatedRecord);
@@ -185,15 +183,16 @@ const PrintPreviewHV = ({
             setDraftRecord({ ...draftRecord, [fieldName]: e.target.value });
           }}
           disabled={loading}
-          autoFocus={isVerified ? fieldName === 'remark' : fieldName === 'a'} // Auto focus remark if verified, otherwise first field
+          autoFocus={isVerified ? fieldName === 'remark' : fieldName === headerFields[0]} // Auto focus remark if verified, otherwise first field
         />
       );
     }
-    return <div className={`font-semibold ${isLarge ? 'text-lg' : ''}`}>{currentRecord?.[fieldName] || '-'}</div>;
+    const actualValue = (currentRecord?.dynamicData && currentRecord?.dynamicData[fieldName]) || currentRecord?.[fieldName] || currentRecord?.[fieldName.toLowerCase()] || currentRecord?.[fieldName.toUpperCase()] || '';
+    return <div className={`font-semibold ${isLarge ? 'text-lg' : ''}`}>{actualValue || '-'}</div>;
   }
 
   const isInvalidValue = (val) => !val || String(val).trim() === '' || String(val).trim() === '-';
-  const hasNoValidValues = isInvalidValue(currentRecord?.a) && isInvalidValue(currentRecord?.b) && isInvalidValue(currentRecord?.c) && isInvalidValue(currentRecord?.d);
+  const hasNoValidValues = headerFields.length > 0 && headerFields.every(f => isInvalidValue((currentRecord?.dynamicData && currentRecord?.dynamicData[f]) || currentRecord?.[f] || currentRecord?.[f.toLowerCase()] || currentRecord?.[f.toUpperCase()]));
 
   return (
     <div className="h-full min-h-0 flex flex-col bg-white overflow-hidden">
@@ -258,26 +257,22 @@ const PrintPreviewHV = ({
               </div>
             )}
             
-            {/* Check if all ABCD fields are empty */}
+            {/* Check if all dynamic fields are empty */}
             {hasNoValidValues && (
               <div className="w-full bg-red-50 border border-red-200 rounded-lg p-4 text-center">
                 <p className="text-sm font-semibold text-red-700">
-                  ⚠ At least one of A, B, C, or D is required if you want to verify this record
+                  ⚠ At least one of the fields is required if you want to verify this record
                 </p>
               </div>
             )}
             
-            <div className="text-lg font-bold">
-               {editableField('Subject', 'a', true)}
-            </div>
-            <div className="text-md font-semibold text-gray-700">
-               {editableField('Course', 'b')}
-            </div>
-            <div className="text-md font-semibold text-gray-700">
-               {editableField('Code', 'c')}
-            </div>
-            <div className="text-md font-bold tracking-wider">
-               {editableField('ID', 'd')}
+            <div className="flex flex-col space-y-4 items-center w-full">
+              {headerFields.map((field, idx) => (
+                <div key={field} className={idx === 0 ? "text-lg font-bold" : (idx === 3 ? "text-md font-bold tracking-wider" : "text-md font-semibold text-gray-700")}>
+                   <div className="text-xs text-gray-400 mb-1">{field}</div>
+                   {editableField(field, field, idx === 0)}
+                </div>
+              ))}
             </div>
             <div className="text-sm text-gray-600 mt-2 flex items-center justify-center gap-1">
               <span className="font-semibold text-gray-500">Remark:</span>
@@ -345,7 +340,7 @@ const PrintPreviewHV = ({
               ? 'bg-green-100 text-green-400 cursor-not-allowed opacity-60'
               : 'bg-green-500 text-white hover:bg-green-600 active:scale-95 cursor-pointer'
             }`}
-          title={hasNoValidValues ? 'At least one of A, B, C, D is required' : (normalizeStatus(currentRecord?.status) === 1 && !canEditVerified) ? 'Already verified' : 'Mark as Verified (or press Enter)'}
+          title={hasNoValidValues ? 'At least one field is required' : (normalizeStatus(currentRecord?.status) === 1 && !canEditVerified) ? 'Already verified' : 'Mark as Verified (or press Enter)'}
         >
           <CheckCircle2 className="w-3 h-3" />
           Verified
