@@ -228,11 +228,8 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted, defaultOpenBifurcation }, 
 
       if (lotTab !== "all") {
         const lotValue = Number(lotTab);
-        if (lotValue === 0) {
-          params.missingExamDate = true;
-        } else {
-          params.lotNo = lotValue;
-        }
+        // For lot 0 tab: filter by lotNo=0 (rows explicitly assigned to lot 0)
+        params.lotNo = lotValue;
       } else {
         if (lotFilter === "assigned") {
           params.assigned = true;
@@ -387,10 +384,13 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted, defaultOpenBifurcation }, 
   }, [bifurcationModalOpen, bifurcateRows, lotNumber, startTouched]);
 
   const lotTabs = useMemo(() => {
+    const allLotNos = projectLots.map((lot) => coerceNumber(lot.lotNo ?? lot.LotNo, -1));
+    const hasLotZero = allLotNos.includes(0);
     const uniqueLots = Array.from(
-      new Set(projectLots.map((lot) => coerceNumber(lot.lotNo ?? lot.LotNo, 0)))
+      new Set(allLotNos)
     ).filter(lot => lot > 0).sort((a, b) => a - b);
-    return ["all", "0", ...uniqueLots.map((lot) => String(lot))];
+    // Include "0" tab only when there are actual rows with lot number 0
+    return ["all", ...(hasLotZero ? ["0"] : []), ...uniqueLots.map((lot) => String(lot))];
   }, [projectLots]);
 
   const filteredRows = rows;
@@ -978,73 +978,24 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted, defaultOpenBifurcation }, 
       key: "LotNo",
       width: 120,
       render: (_, record) => {
-        const allowInlineEdit = activeLotTab === "0";
-        const isEditing = editingCatchNo === record?.CatchNo && editingField === "LotNo";
-        if (!allowInlineEdit) {
+        const isLotZeroTab = activeLotTab === "0";
+        const isEditing = isLotZeroTab && editingCatchNo === record?.CatchNo;
+
+        if (!isEditing) {
+          // Just show the value — no separate edit button
           return <span>{coerceNumber(record?.LotNo, 0)}</span>;
         }
-        if (!isEditing) {
-          return (
-            <Space size={6}>
-              <span>{coerceNumber(record?.LotNo, 0)}</span>
-              <Button
-                size="small"
-                icon={<EditOutlined />}
-                onClick={() => {
-                  setEditingCatchNo(record.CatchNo);
-                  setEditingField("LotNo");
-                  setEditingValue(coerceNumber(record?.LotNo, 0));
-                }}
-              />
-            </Space>
-          );
-        }
 
+        // Editing mode — InputNumber driven by the Actions column edit click
         return (
-          <Space size={6}>
-            <InputNumber
-              min={0}
-              size="small"
-              value={editingValue}
-              onChange={(value) => setEditingValue(coerceNumber(value, 0))}
-              autoFocus
-            />
-            <Button
-              size="small"
-              type="primary"
-              onClick={async () => {
-                const nextLot = coerceNumber(editingValue, 0);
-                const ok = await saveLotAssignments(
-                  [{ catchNo: record.CatchNo, lotNo: nextLot }],
-                  "Lot number saved"
-                );
-                if (ok) {
-                  setRows((prev) =>
-                    prev.map((row) =>
-                      row.CatchNo === record.CatchNo
-                        ? { ...row, LotNo: nextLot }
-                        : row
-                    )
-                  );
-                  setEditingCatchNo(null);
-                  setEditingField(null);
-                  setEditingValue(null);
-                }
-              }}
-            >
-              Save
-            </Button>
-            <Button
-              size="small"
-              onClick={() => {
-                setEditingCatchNo(null);
-                setEditingField(null);
-                setEditingValue(null);
-              }}
-            >
-              Cancel
-            </Button>
-          </Space>
+          <InputNumber
+            min={0}
+            size="small"
+            style={{ width: 70 }}
+            value={editingValue ?? coerceNumber(record?.LotNo, 0)}
+            onChange={(value) => setEditingValue(coerceNumber(value, 0))}
+            autoFocus
+          />
         );
       },
       sorter: true,
@@ -1081,26 +1032,42 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted, defaultOpenBifurcation }, 
                       }
                     });
 
-                    // If no fields changed, just cancel edit
-                    if (Object.keys(payload).length <= 1) {
-                      setEditingCatchNo(null);
-                      setEditingRowValues({});
-                      return;
+                    // Save field edits (other columns)
+                    if (Object.keys(payload).length > 1) {
+                      const lotParam = selectedLot ? `?lotNo=${selectedLot}` : '';
+                      await API.put(`/NRDatas/UpdateCatchwise/${record.CatchNo}${lotParam}`, payload);
+                      showToast("Catch fields updated successfully", "success");
+                      setRows((prev) =>
+                        prev.map((row) =>
+                          row.CatchNo === record.CatchNo
+                            ? { ...row, ...editingRowValues }
+                            : row
+                        )
+                      );
                     }
-                     const lotParam = selectedLot ? `?lotNo=${selectedLot}` : '';
-                    await API.put(`/NRDatas/UpdateCatchwise/${record.CatchNo}${lotParam}`, payload);
-                    showToast("Catch fields updated successfully", "success");
 
-                    // Update rows state in UI
-                    setRows((prev) =>
-                      prev.map((row) =>
-                        row.CatchNo === record.CatchNo
-                          ? { ...row, ...editingRowValues }
-                          : row
-                      )
-                    );
+                    // In Lot 0 tab: also save the LotNo if it changed
+                    if (activeLotTab === "0") {
+                      const nextLot = coerceNumber(editingValue, 0);
+                      const originalLot = coerceNumber(record?.LotNo, 0);
+                      if (nextLot !== originalLot) {
+                        await saveLotAssignments(
+                          [{ catchNo: record.CatchNo, lotNo: nextLot }],
+                          "Lot number saved"
+                        );
+                        setRows((prev) =>
+                          prev.map((row) =>
+                            row.CatchNo === record.CatchNo
+                              ? { ...row, LotNo: nextLot }
+                              : row
+                          )
+                        );
+                      }
+                    }
+
                     setEditingCatchNo(null);
                     setEditingRowValues({});
+                    setEditingValue(null);
                   } catch (error) {
                     console.error("Failed to update catch", error);
                     showToast("Failed to update catch", "error");
@@ -1130,8 +1097,12 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted, defaultOpenBifurcation }, 
                 icon={<EditOutlined />}
                 onClick={() => {
                   setEditingCatchNo(record.CatchNo);
-                  // Initialize editing values with all record fields
+                  // Initialise row values for other fields
                   setEditingRowValues({ ...record });
+                  // In Lot 0 tab, also initialise the LotNo input in the Lot Number column
+                  if (activeLotTab === "0") {
+                    setEditingValue(coerceNumber(record?.LotNo, 0));
+                  }
                 }}
                 title="Edit inline"
               />
@@ -1399,7 +1370,7 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted, defaultOpenBifurcation }, 
                     lotKey === "all"
                       ? "All Lots"
                       : Number(lotKey) === 0
-                      ? "Missing Exam Date"
+                      ? "Lot 0"
                       : `Lot ${lotKey}`,
                 }))}
               />

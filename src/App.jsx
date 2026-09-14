@@ -16,7 +16,7 @@ import DuplicateTool from "./ToolsProcessing/DuplicateTool";
 import Master from "./Masters/Master";
 import EnvelopeBreaking from "./ToolsProcessing/Envelope/EnvelopeBreaking";
 import ProcessingPipeline from "./ToolsProcessing/ProcessingPipeline";
-import ProcessingPipelineV2 from "./ToolsProcessing/ProcessingPipelineV2";
+
 import RPTReports from "./ToolsProcessing/RPTReports";
 import Report from "./pages/Report/Report";
 import ReportBuilder from "./pages/Report/ReportBuilder";
@@ -28,6 +28,7 @@ import HeaderVerification from "./ToolsProcessing/HeaderVerification";
 import ChangedNRUpload from "./ToolsProcessing/ChangedNRUpload";
 import BatchWiseData from "./ToolsProcessing/BatchWiseData";
 import NodalCenterList from "./ToolsProcessing/NodalCenterList";
+import MasterConfigReport from "./pages/Reports/MasterConfigReport";
 
 
 function isTokenExpired(token) {
@@ -209,15 +210,7 @@ export default function App() {
                     </MainLayout></ProtectedRoute>
                 }
               />
-              <Route
-                path="/processingpipelinev2"
-                element={
-                  <ProtectedRoute token={token}>
-                    <MainLayout >
-                      <ProcessingPipelineV2 />
-                    </MainLayout></ProtectedRoute>
-                }
-              />
+              
               <Route
                 path="/rptreports"
                 element={
@@ -287,7 +280,18 @@ export default function App() {
                   <ProtectedRoute token={token}>
                     <MainLayout >
                       <NodalCenterList />
-                    </MainLayout></ProtectedRoute>
+                    </MainLayout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/masterconfig-report"
+                element={
+                  <ProtectedRoute token={token}>
+                    <MainLayout >
+                      <MasterConfigReport />
+                    </MainLayout>
+                  </ProtectedRoute>
                 }
               />
             </>

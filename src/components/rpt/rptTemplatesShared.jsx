@@ -166,16 +166,31 @@ export const buildTemplateColumns = ({
     },
   },
   {
-  title: "Sub Name",
-  dataIndex: "subName",
-  key: "subName",
-  width: 150,
-  render: (value, record) => (
-    <Typography.Text>
-      {value ?? record?.SubName ?? "-"}
-    </Typography.Text>
-  ),
-},
+    title: "Generated",
+    key: "createdDate",
+    width: 180,
+    sorter: (a, b) => {
+      const dateA = new Date(a?.createdDate || a?.CreatedDate || 0).getTime();
+      const dateB = new Date(b?.createdDate || b?.CreatedDate || 0).getTime();
+      return dateB - dateA;
+    },
+    render: (_, record) => {
+      const date = record?.createdDate || record?.CreatedDate;
+      if (!date) return <Typography.Text type="secondary">-</Typography.Text>;
+      return <Typography.Text>{formatDateTime(date)}</Typography.Text>;
+    },
+  },
+  {
+    title: "Sub Name",
+    dataIndex: "subName",
+    key: "subName",
+    width: 150,
+    render: (value, record) => (
+      <Typography.Text>
+        {value ?? record?.SubName ?? "-"}
+      </Typography.Text>
+    ),
+  },
   {
     title: "Version",
     dataIndex: "version",

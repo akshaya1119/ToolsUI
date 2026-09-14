@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
-import { FaHome, FaWrench, FaChartBar, FaSignOutAlt, FaBookmark, FaBook, FaChevronDown, FaChevronRight } from "react-icons/fa"; // Using filled versions from FontAwesome
+import { FaHome, FaWrench, FaChartBar, FaSignOutAlt, FaBookmark, FaBook, FaChevronDown, FaChevronRight, FaChartLine } from "react-icons/fa";
 import useStore from "../stores/ProjectData";
 import API from "../hooks/api";
 import Footer from "./Footer";
@@ -59,7 +59,7 @@ export default function Sidebar({ collapsed }) {
     fetchData();
   }, [projectId, setNrDataCount, setHeaderCorrectionCount, setIsConfigured]);
 
-  // Auto-expand group if current path is a child
+  // Auto-expand group if current path is a child (accordion style - close others)
   useEffect(() => {
     const isToolsChild = [
       "/projectconfiguration",
@@ -67,34 +67,53 @@ export default function Sidebar({ collapsed }) {
       "/changedNRUpload",
       "/projecttemplates",
       "/processingpipeline",
-      "/processingpipelinev2",
       "/headerverification",
       "/batchwisedata"
     ].includes(location.pathname);
 
+    const isReportsChild = ["/masterconfig-report"].includes(location.pathname);
+
     if (isToolsChild) {
-      setOpenGroups((prev) => ({ ...prev, Tools: true }));
+      setOpenGroups({ Tools: true, Reports: false });
+    } else if (isReportsChild) {
+      setOpenGroups({ Tools: false, Reports: true });
     }
   }, [location.pathname]);
 
-  // Handle collapse toggle
+  // Handle collapse toggle - accordion style (only one group open at a time)
   const toggleGroup = (groupKey) => {
-    setOpenGroups((prev) => ({
-      ...prev,
-      [groupKey]: !prev[groupKey],
-    }));
+    setOpenGroups((prev) => {
+      // If the group is already open, close it
+      if (prev[groupKey]) {
+        return { ...prev, [groupKey]: false };
+      }
+      // If the group is closed, close all other groups and open this one
+      const newState = {};
+      Object.keys(prev).forEach((key) => {
+        newState[key] = false;
+      });
+      newState[groupKey] = true;
+      return newState;
+    });
   };
 
   const menuItems = [
     {
       label: projectName ? "Project Dashboard" : "Dashboard",
-      icon: <FaHome className="text-black" />, // Filled version of home icon
+      icon: <FaHome className="text-black" />,
       path: projectName ? "/projectdashboard" : "/dashboard",
     },
     {
       label: "Masters",
-      icon: <FaBookmark className="text-black" />, // Filled version of bookmark icon
+      icon: <FaBookmark className="text-black" />,
       path: "/masters",
+    },
+    {
+      label: "Reports",
+      icon: <FaChartLine className="text-black" />,
+      children: [
+        { label: "Master Config Report", path: "/masterconfig-report" },
+      ],
     },
     ...(projectName
       ? [
@@ -112,11 +131,11 @@ export default function Sidebar({ collapsed }) {
               path: "/processingpipeline",
               disabled: nrDataCount === 0 || !isConfigured
             },
-            {
-              label: "Processing Pipeline V2",
-              path: "/processingpipelinev2",
-              disabled: nrDataCount === 0 || !isConfigured
-            },
+            // {
+            //   label: "Processing Pipeline V2",
+            //   path: "/processingpipelinev2",
+            //   disabled: nrDataCount === 0 || !isConfigured
+            // },
             {
               label: "Header Verification",
               path: "/headerverification",

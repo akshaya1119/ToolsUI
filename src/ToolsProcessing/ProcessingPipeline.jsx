@@ -599,7 +599,7 @@ const ProcessingPipeline = () => {
     return order;
   };
 
-  const fetchPipelineRerunStatus = async (targetProjectId) => {
+  const fetchPipelineRerunStatus = async (targetProjectId, selectedBatch) => {
     if (!targetProjectId) {
       setHasPendingPipelineChanges(false);
       setPipelineStepStatus(null);
@@ -607,7 +607,7 @@ const ProcessingPipeline = () => {
     }
     try {
       const res = await API.get(`/NRDatas/PipelineRerunStatus`, {
-        params: { ProjectId: targetProjectId },
+        params: { ProjectId: targetProjectId, batch: selectedBatch },
       });
       setHasPendingPipelineChanges(Boolean(res.data?.hasPendingPipelineChanges));
       setPipelineStepStatus(res.data);
@@ -666,7 +666,7 @@ const ProcessingPipeline = () => {
         setSteps(initialSteps);
         setSelectedModules([]);
         await checkReportExistence(projectId);
-        await fetchPipelineRerunStatus(projectId);
+        await fetchPipelineRerunStatus(projectId, selectedBatch);
       } catch (err) {
         console.error("Failed to load enabled modules", err);
         setEnabledModuleNames([]);
@@ -693,7 +693,7 @@ const ProcessingPipeline = () => {
           setChangedFieldsInfo(data.changedModules || []);
 
           // Refresh pipeline rerun status to update pending flags
-          fetchPipelineRerunStatus(projectId);
+          fetchPipelineRerunStatus(projectId, selectedBatch);
 
           // Clear the sessionStorage
           sessionStorage.removeItem("configChangeData");
@@ -3029,7 +3029,8 @@ const loadGeneratedTemplateReports = async () => {
           }
 
           // Refresh status immediately after each step finishes to avoid "Outdated" flicker
-          await fetchPipelineRerunStatus(projectId);
+          await fetchPipelineRerunStatus(projectId, selectedBatch
+          );
           await checkReportExistence(projectId);
         } catch (stepErr) {
           console.error(`Step ${step.key} failed`, stepErr);
@@ -3038,7 +3039,7 @@ const loadGeneratedTemplateReports = async () => {
         }
       }
       await checkReportExistence(projectId);
-      await fetchPipelineRerunStatus(projectId);
+      await fetchPipelineRerunStatus(projectId,selectedBatch);
       message.success("Data processing completed");
 
       // Mark modules with templates as stale if their processing step was re-run
@@ -3495,8 +3496,93 @@ const loadGeneratedTemplateReports = async () => {
         const isReady = record.status === "completed";
         const isBoxBreaking = record.key === "box";
 
+        // Compute outdated info for Templates column badge
+        // Returns: false (none) | true (non-box) | number[] (stale lot numbers for box)
+        const outdatedInfo = (() => {
+          if (!hasTemplates) return false;
+
+          if (isBoxBreaking) {
+            const boxTemplateIds = moduleTemplates.map((t) => resolveTemplateId(t)).filter(Boolean);
+            if (boxTemplateIds.length === 0) return false;
+
+            const staleLotNos = new Set();
+
+            // 1️⃣ In-session: staleLotIds is set when box breaking runs this session
+            if (staleLotIds.size > 0) {
+              Array.from(staleLotIds).forEach((k) => {
+                const parts = k.split("_");
+                const lotNo = parts[0];
+                const tid = parts.slice(1).join("_");
+                if (boxTemplateIds.some((id) => String(id) === String(tid))) {
+                  staleLotNos.add(Number(lotNo));
+                }
+              });
+            }
+
+            // 2️⃣ Cross-session: lot.minStep < 6 means box breaking report is "Outdated"
+            //    for that lot (same signal LotWisePanel uses for its "Outdated" tag).
+            //    Use generatedTemplateReports (fetched on page load) to check if any
+            //    template was actually generated — avoids false positives for lots
+            //    where nothing was ever generated.
+            //    Do NOT use lotTemplateStatus here — it is only populated when
+            //    LotWisePanel is opened, so it's empty on fresh page load.
+            if (availableLots && availableLots.length > 0) {
+              availableLots.forEach((lot) => {
+                if (lotReportStatus[lot.lotNo] && lot.minStep < 6) {
+                  const anyGenerated = generatedTemplateReports.some((r) =>
+                    r.lotNo === lot.lotNo &&
+                    boxTemplateIds.some((tid) => String(r.templateId) === String(tid))
+                  );
+                  if (anyGenerated) staleLotNos.add(lot.lotNo);
+                }
+              });
+            }
+
+            return staleLotNos.size > 0
+              ? Array.from(staleLotNos).sort((a, b) => a - b)
+              : false;
+          }
+
+          // Non-box modules: only show Outdated below Templates when a SPECIFIC
+          // template is outdated — not just because the module step needs re-running.
+          // (pipelineStepStatus pending flags drive the Status column "Outdated" tag;
+          //  they must NOT bleed into the Templates column badge.)
+
+          // Cross-session: mappingUpdateMap (localStorage) has an update entry for a
+          // template in this module. This is set when the template mapping changes and
+          // cleared when the template is regenerated — so if it's non-null, the mapping
+          // is newer than the last generated report. Only applicable when the module has
+          // been run (has reportVersions) so templates could have been generated.
+          const moduleHasBeenRun = (reportVersions[record.key] && reportVersions[record.key].length > 0)
+            || record.status === "completed" || !!record.report;
+
+          const hasMappingStale = moduleHasBeenRun && moduleTemplates.some((t) => {
+            const tid = resolveTemplateId(t);
+            if (!tid) return false;
+            return getMappingUpdateTime(tid) !== null;
+          });
+          if (hasMappingStale) return true;
+
+          // In-session: staleTemplateIds set when a template just ran this session
+          const hasInSessionStale = moduleTemplates.some((t) => {
+            const tid = resolveTemplateId(t);
+            if (!tid) return false;
+            return staleTemplateIds.has(tid);
+          });
+          return hasInSessionStale ? true : false;
+        })();
+
+        const outdatedLabel = (() => {
+          if (!outdatedInfo) return null;
+          if (Array.isArray(outdatedInfo)) {
+            // Box Breaking: show lot numbers
+            return `Outdated - Lot ${outdatedInfo.join(", ")}`;
+          }
+          return "Outdated";
+        })();
+
         return (
-          <Space size="small">
+          <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-start" }}>
             <Button
               size="small"
               onClick={() =>
@@ -3508,7 +3594,31 @@ const loadGeneratedTemplateReports = async () => {
             >
               Templates{hasTemplates ? ` (${moduleTemplates.length})` : ""}
             </Button>
-          </Space>
+
+            {outdatedLabel && (
+              <span
+                onClick={() => isBoxBreaking ? openLotWisePanel("box") : openTemplatePanel(record.key)}
+                title="Some templates need regeneration — click to open"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
+                  background: "#fff7e6",
+                  border: "1px solid #ffd591",
+                  borderRadius: 4,
+                  padding: "1px 6px",
+                  fontSize: 11,
+                  color: "#d46b08",
+                  cursor: "pointer",
+                  fontWeight: 500,
+                  userSelect: "none",
+                }}
+              >
+                <ExclamationCircleOutlined style={{ fontSize: 11 }} />
+                {outdatedLabel}
+              </span>
+            )}
+          </div>
         );
       },
     },

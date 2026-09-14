@@ -737,7 +737,7 @@ setModifiedRows(newModifiedRows);
             return;
         }
 
-        // Build payload with all fields from modified rows (not just displayFields)
+        // Build payload - send all non-empty fields that were in the uploaded Excel file
         const payload = [];
 
 for (const row of currentMissingDataRows) {
@@ -745,14 +745,14 @@ for (const row of currentMissingDataRows) {
 
     const additionalFields = {};
 
-    // Iterate through ALL fields in the row, not just displayFields
+    // Iterate through all fields in the row
     for (const key in row) {
         if (key === 'catchNo' || key === 'key' || key === 'id') continue;
 
         let value = row[key];
         
         // Normalize ExamTime values
-        if (key === 'ExamTime') {
+        if (key === 'ExamTime' || key === 'examtime') {
             value = normalizeTimeValue(value);
         }
 
