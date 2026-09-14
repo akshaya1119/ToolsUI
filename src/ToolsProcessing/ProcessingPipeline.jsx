@@ -2137,10 +2137,20 @@ const loadGeneratedTemplateReports = async () => {
 
     setTemplatePanel({ open: false, moduleKey: null }); // Ensure standard panel is closed
     
-    // Fetch data BEFORE opening the panel to avoid white screen
-    await fetchAvailableLots();
+    // Only fetch lots if they haven't been loaded yet
+    if (!availableLots || availableLots.length === 0) {
+      await fetchAvailableLots();
+    }
     
-    // Open panel after data is loaded
+    // Auto-select Lot 1 if it exists
+    if (availableLots && availableLots.length > 0) {
+      const lot1 = availableLots.find(lot => lot.lotNo === 1);
+      if (lot1) {
+        setSelectedLotTab(1);
+      }
+    }
+    
+    // Open panel after data is loaded (or immediately if already loaded)
     setLotWisePanel({ open: true, moduleKey });
   };
 
