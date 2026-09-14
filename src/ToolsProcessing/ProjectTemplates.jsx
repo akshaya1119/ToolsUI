@@ -182,14 +182,14 @@ const ProjectTemplates = () => {
         setImportableTemplates([]);
         return;
       }
-      
+
       setImportableTemplatesLoading(true);
       try {
         const payload = { sourceScope: importScope };
         if (importScope === "group") payload.sourceGroupId = importGroupId;
         if (importScope === "project") payload.sourceProjectId = importProjectId;
         if (importTypeId) payload.sourceTypeId = importTypeId;
-        
+
         const data = await fetchImportableTemplates(APIURL, payload);
         setImportableTemplates(data || []);
       } catch (err) {
@@ -199,7 +199,7 @@ const ProjectTemplates = () => {
         setImportableTemplatesLoading(false);
       }
     };
-    
+
     fetchTemplates();
   }, [importModalOpen, importScope, importGroupId, importProjectId, importTypeId, APIURL]);
 
@@ -697,7 +697,7 @@ const ProjectTemplates = () => {
 
   const handleSaveAsMaster = async () => {
     if (!selectedRowKeys.length) return;
-    
+
     requireAuth(
       async (passcode) => {
         setSavingMaster(true);
@@ -1614,8 +1614,8 @@ const ProjectTemplates = () => {
           disableAdd={!selectionReady}
           disableImport={!selectionReady}
           loading={loadingTemplates}
-          rowSelection={{ 
-            selectedRowKeys, 
+          rowSelection={{
+            selectedRowKeys,
             onChange: (newSelectedRowKeys, selectedRows, info) => {
               if (info && info.type === 'all') {
                 if (newSelectedRowKeys.length > selectedRowKeys.length) {
@@ -1637,7 +1637,7 @@ const ProjectTemplates = () => {
               } else {
                 setSelectedRowKeys(newSelectedRowKeys);
               }
-            } 
+            }
           }}
           onSaveAsMaster={() => handleSaveAsMaster(projectGroupId)}
           isSavingMaster={savingMaster}

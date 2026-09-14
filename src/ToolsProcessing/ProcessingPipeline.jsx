@@ -149,6 +149,7 @@ const ProcessingPipeline = () => {
   const [staleTemplateIds, setStaleTemplateIds] = useState(new Set());
   const [lotWisePanel, setLotWisePanel] = useState({ open: false, moduleKey: null });
   const [availableLots, setAvailableLots] = useState([]);
+  const [hasUnassignedCatches, setHasUnassignedCatches] = useState(false);
   const [selectedLotTab, setSelectedLotTab] = useState(null);
   const [loadingLots, setLoadingLots] = useState(false);
   const [generatingLotTemplates, setGeneratingLotTemplates] = useState({});
@@ -774,6 +775,8 @@ const ProcessingPipeline = () => {
       // Use the endpoint provided by user
       const res = await API.get(`/NRDataLots/GetByProjectId/${projectId}`);
       const data = res.data || [];
+      // Check if any catches are unassigned (lotNo <= 0)
+      setHasUnassignedCatches(data.some(lot => (lot.lotNo ?? 0) <= 0 && (lot.catchCount ?? lot.catches ?? 1) > 0));
       // Transform to use hasPages directly from API
       return data.filter(lot => lot.lotNo > 0).map(lot => ({
         ...lot,
@@ -2350,12 +2353,13 @@ const loadGeneratedTemplateReports = async () => {
         },
       }));
 
-      // Remove from stale list
+      // Remove from stale list and clear mapping update flag
       setStaleLotIds((prev) => {
         const next = new Set(prev);
         next.delete(statusKey);
         return next;
       });
+      clearMappingUpdate(templateId); // clears "Data updated - regeneration required" tag
 
       message.success({
         content: `Generated ${resolveTemplateName(template)} for Lot ${lotNo}`,
@@ -3360,7 +3364,19 @@ const loadGeneratedTemplateReports = async () => {
       title: "Module Name",
       dataIndex: "moduleName",
       key: "moduleName",
-      render: (text) => <b>{text}</b>,
+      render: (text, record) => (
+        <div>
+          <b>{text}</b>
+          {record.key === "box" && hasUnassignedCatches && (
+            <div
+              style={{ marginTop: 3, fontSize: 11, color: "#0871d4ff", cursor: "pointer" }}
+              onClick={() => navigate("/dataimport", { state: { activeTab: "4", openBifurcationPanel: true } })}
+            >
+               Bifurcate Lot
+            </div>
+          )}
+        </div>
+      ),
     },
     {
       title: "Configuration",
@@ -3532,6 +3548,24 @@ const loadGeneratedTemplateReports = async () => {
                   const anyGenerated = generatedTemplateReports.some((r) =>
                     r.lotNo === lot.lotNo &&
                     boxTemplateIds.some((tid) => String(r.templateId) === String(tid))
+                  );
+                  if (anyGenerated) staleLotNos.add(lot.lotNo);
+                }
+              });
+            }
+
+            // 3️⃣ Mapping/file update: a box template's mapping or .rpt file was changed
+            //    (recordMappingUpdate writes to localStorage on file upload or mapping save).
+            //    Mark all lots that have a generated report for that template as stale.
+            const staleMappingTemplateIds = boxTemplateIds.filter(
+              (tid) => getMappingUpdateTime(tid) != null
+            );
+            if (staleMappingTemplateIds.length > 0 && availableLots && availableLots.length > 0) {
+              availableLots.forEach((lot) => {
+                if (lotReportStatus[lot.lotNo]) {
+                  const anyGenerated = generatedTemplateReports.some((r) =>
+                    r.lotNo === lot.lotNo &&
+                    staleMappingTemplateIds.some((tid) => String(r.templateId) === String(tid))
                   );
                   if (anyGenerated) staleLotNos.add(lot.lotNo);
                 }
@@ -4585,6 +4619,7 @@ Object.keys(groupedTpl).forEach((templateKey) => {
             bulkGeneratingLots={bulkGeneratingLots}
             bulkDownloadingLots={bulkDownloadingLots}
             staleTemplateIds={staleTemplateIds}
+            getMappingUpdateTime={getMappingUpdateTime}
             generatingTemplates={generatingTemplates}
             templateReportStatus={templateReportStatus}
             handleGenerateTemplate={handleGenerateTemplate}
