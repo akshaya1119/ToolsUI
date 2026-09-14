@@ -45,7 +45,7 @@ export const rptTemplatesStyles = `
     align-items: start;
   }
   .rpt-main--with-panel {
-    grid-template-columns: minmax(0, 2fr) minmax(320px, 1fr);
+    grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
   }
   .rpt-main--single {
     grid-template-columns: minmax(0, 1fr);
@@ -54,6 +54,24 @@ export const rptTemplatesStyles = `
     padding: 12px;
     max-height: calc(100vh - 220px);
     overflow-y: auto;
+  }
+  .rpt-mapping-card-body::-webkit-scrollbar {
+    width: 6px;
+  }
+  .rpt-mapping-card-body::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .rpt-mapping-card-body::-webkit-scrollbar-thumb {
+    background: #d9d9d9;
+    border-radius: 4px;
+  }
+  .rpt-mapping-card-body::-webkit-scrollbar-thumb:hover {
+    background: #bfbfbf;
+  }
+  .rpt-mapping-card {
+    position: sticky;
+    top: 16px;
+    align-self: start;
   }
   .rpt-mapping-card .ant-card-head {
     min-height: 32px;
@@ -119,6 +137,8 @@ export const buildTemplateColumns = ({
     title: "Template",
     dataIndex: "templateName",
     key: "templateName",
+    fixed: "left",
+    width: 220,
     render: (value, record) => {
       const scopeLabel = record?.projectId
         ? "Project"

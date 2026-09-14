@@ -93,6 +93,8 @@ const TemplatesCard = ({
           columns={columns}
           pagination={false}
           loading={loading}
+          size="small"
+          scroll={{ x: 'max-content' }}
         />
       )}
     </Card>
