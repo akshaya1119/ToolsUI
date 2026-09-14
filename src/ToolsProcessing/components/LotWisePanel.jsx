@@ -37,6 +37,7 @@ const LotWisePanel = ({
   isQuantitySheetTemplate,
   isCompositeSummaryTemplate,
   staleTemplateIds,
+  getMappingUpdateTime,
 }) => {
   if (!open) return null;
 
@@ -360,10 +361,11 @@ const LotWisePanel = ({
                                 ? templateReportStatus[templateId]
                                 : lotTemplateStatus[`${lot.lotNo}_${templateId}`];
                                 
+                              const isMappingStale = templateId && getMappingUpdateTime?.(templateId) != null;
+
                               const isStale = isProjectWide 
-                                ? staleTemplateIds.has(templateId)
-                                : staleLotIds.has(`${lot.lotNo}_${templateId}`);
-                                
+                                ? staleTemplateIds.has(templateId) || isMappingStale
+                                : staleLotIds.has(`${lot.lotNo}_${templateId}`) || isMappingStale;
                               const canGenerate = !status?.exists || isStale;
                               const hasDownload = status?.exists && !isStale;
 
