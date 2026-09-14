@@ -10,7 +10,8 @@ import {
   Input,
   Tag,
   Spin,
-  message
+  message,
+  Button
 } from "antd";
 import useStore from "../../stores/ProjectData";
 
@@ -244,7 +245,19 @@ const EnvLotSelectionModal = ({
         </Checkbox>
       </div>
 
-      {sourceItems.length === 0 && !unverifiedCatch && !isVerifying ? (
+      {(unassignedCatches.length === 0 && (!showAssigned || assignedEnvLots.length === 0)) && !unverifiedCatch && !isVerifying ? (
+        <Alert
+          message="No catch verified yet"
+          type="warning"
+          showIcon
+          action={
+            <Button size="small" type="primary" onClick={() => navigate('/headerverification')}>
+              Verify Catch
+            </Button>
+          }
+          style={{ marginBottom: 16 }}
+        />
+      ) : sourceItems.length === 0 && !unverifiedCatch && !isVerifying ? (
         <Alert
           message={showAssigned ? "No batches to process" : "No catches to process"}
           type="warning"

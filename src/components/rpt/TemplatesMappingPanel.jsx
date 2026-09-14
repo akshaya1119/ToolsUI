@@ -96,7 +96,7 @@ const TemplatesMappingPanel = ({
         )}
 
         {showDuplicateToggle && (
-          <Card size="small" style={{ marginBottom: 12 }} bodyStyle={{ padding: 12 }}>
+          <Card size="small" style={{ marginBottom: 8 }} bodyStyle={{ padding: 8 }}>
             <Space style={{ display: "flex", justifyContent: "space-between" }}>
               <div>
                 <Typography.Text strong>Duplicate box labels</Typography.Text>
@@ -109,7 +109,7 @@ const TemplatesMappingPanel = ({
           </Card>
         )}
 
-        <Card size="small" style={{ marginBottom: 12 }} bodyStyle={{ padding: 12 }}>
+        <Card size="small" style={{ marginBottom: 8 }} bodyStyle={{ padding: 8 }}>
           <Space style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
             <Typography.Text strong>Field Mapping</Typography.Text>
             <Space size={8}>
@@ -147,7 +147,6 @@ const TemplatesMappingPanel = ({
               dataSource={mappingRows}
               pagination={false}
               size="small"
-              scroll={{ y: 260 }}
               columns={[
                 {
                   title: "RPT Field",
@@ -254,7 +253,7 @@ const TemplatesMappingPanel = ({
           )}
         </Card>
 
-        <div style={{ marginBottom: 12 }}>
+        <div style={{ marginBottom: 8 }}>
           <Typography.Text strong>Mapped Fields:</Typography.Text>
           <Typography.Text
             type="secondary"
@@ -264,7 +263,7 @@ const TemplatesMappingPanel = ({
           </Typography.Text>
         </div>
 
-        <Card size="small" style={{ marginBottom: 12 }} bodyStyle={{ padding: 12 }}>
+        <Card size="small" style={{ marginBottom: 8 }} bodyStyle={{ padding: 8 }}>
           <Checkbox
             checked={useBoxLabelSP}
             onChange={(e) => setUseBoxLabelSP?.(e.target.checked)}
@@ -277,23 +276,23 @@ const TemplatesMappingPanel = ({
         </Card>
 
         {/* QR Code Settings Section */}
-        <Card size="small" style={{ marginBottom: 12 }} bodyStyle={{ padding: 12 }}>
+        <Card size="small" style={{ marginBottom: 8 }} bodyStyle={{ padding: 8 }}>
           <Space style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
             <Typography.Text strong>QR Code Settings</Typography.Text>
-            <Switch 
+            <Switch
               checked={qrConfiguration?.enabled ?? false}
               onChange={(enabled) => setQrConfiguration?.({ ...(qrConfiguration || {}), enabled })}
               checkedChildren="Enabled"
               unCheckedChildren="Disabled"
             />
           </Space>
-          
+
           {qrConfiguration?.enabled && (
             <>
               <Typography.Text type="secondary" style={{ display: "block", marginBottom: 8, fontSize: 11 }}>
                 Select fields to combine into the dynamically generated QrCodeImage.
               </Typography.Text>
-              
+
               <div style={{ marginBottom: 8 }}>
                 <Typography.Text type="secondary" style={{ fontSize: 12, marginRight: 8 }}>Fields to Add:</Typography.Text>
                 <Select
@@ -313,18 +312,18 @@ const TemplatesMappingPanel = ({
 
               <div>
                 <Typography.Text type="secondary" style={{ fontSize: 12, marginRight: 8 }}>Separator:</Typography.Text>
-                <Input 
-                  size="small" 
-                  value={qrConfiguration?.separator ?? "|"} 
-                  onChange={(e) => setQrConfiguration?.({ ...(qrConfiguration || {}), separator: e.target.value })} 
-                  style={{ width: 60 }} 
+                <Input
+                  size="small"
+                  value={qrConfiguration?.separator ?? "|"}
+                  onChange={(e) => setQrConfiguration?.({ ...(qrConfiguration || {}), separator: e.target.value })}
+                  style={{ width: 60 }}
                 />
               </div>
             </>
           )}
         </Card>
 
-        <Card size="small" style={{ marginBottom: 12 }} bodyStyle={{ padding: 12 }}>
+        <Card size="small" style={{ marginBottom: 8 }} bodyStyle={{ padding: 8 }}>
           <Checkbox
             checked={filterMode === "ExtrasOnly"}
             onChange={(e) => setFilterMode?.(e.target.checked ? "ExtrasOnly" : null)}
@@ -336,7 +335,7 @@ const TemplatesMappingPanel = ({
           </Checkbox>
         </Card>
 
-        <Card size="small" style={{ marginBottom: 12 }} bodyStyle={{ padding: 12 }}>
+        <Card size="small" style={{ marginBottom: 8 }} bodyStyle={{ padding: 8 }}>
           <Typography.Text strong>Group By</Typography.Text>
           <Typography.Text type="secondary" style={{ display: "block" }}>
             Select one or more columns to group the report output.
@@ -356,7 +355,7 @@ const TemplatesMappingPanel = ({
           />
         </Card>
 
-        <Card size="small" style={{ marginBottom: 12 }} bodyStyle={{ padding: 12 }}>
+        <Card size="small" style={{ marginBottom: 8 }} bodyStyle={{ padding: 8 }}>
           <Typography.Text strong>Order By</Typography.Text>
           <Typography.Text type="secondary" style={{ display: "block" }}>
             Select one or more columns to sort the report output (ascending).
