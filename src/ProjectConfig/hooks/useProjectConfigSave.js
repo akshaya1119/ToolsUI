@@ -32,6 +32,7 @@ export const useProjectConfigSave = (
   duplicateConfig,
   selectedMss,
   mssInsertPosition,
+  selectedHeaderVerificationFields,
   fetchProjectConfigData,
   showToast,
   resetForm,
@@ -213,6 +214,7 @@ export const useProjectConfigSave = (
         roundOffBeforeEnhancement: duplicateConfig?.roundOffBeforeEnhancement || false,
         mssTypes: selectedMss || [],
         mssAttached: mssInsertPosition || "end",
+        headerVerificationFields: selectedHeaderVerificationFields || []
       };
 
       console.log("SENDING PROJECT CONFIG PAYLOAD:", JSON.stringify(projectConfigPayload, null, 2));

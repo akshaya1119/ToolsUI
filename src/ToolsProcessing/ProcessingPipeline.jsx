@@ -4271,6 +4271,19 @@ Object.keys(groupedTpl).forEach((templateKey) => {
         r.templateId ||
         firstRep?.templateId,
 
+      subName:
+        r.subName ||
+        r.SubName ||
+        tpl?.subName ||
+        tpl?.SubName ||
+        null,
+
+      lotNumber:
+        r.lotNumber ||
+        r.lotNo ||
+        r.LotNo ||
+        null,
+
       envLotNumbers:
         r.envLotNumbers ||
         r.envLotKey ||

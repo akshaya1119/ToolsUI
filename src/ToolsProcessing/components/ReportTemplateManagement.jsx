@@ -159,9 +159,16 @@ const ReportTemplateManagement = ({
     const data = envLotReportsLocal.length > 0 ? envLotReportsLocal : envLotReports;
     (data || []).forEach((r) => {
       const id = Number(r.templateId ?? r.TemplateId);
-      if (!id) return;
-      if (!lookup[id]) lookup[id] = [];
-      lookup[id].push(r);
+      if (id) {
+        if (!lookup[id]) lookup[id] = [];
+        lookup[id].push(r);
+      }
+      const name = (r.templateName ?? r.TemplateName ?? '').trim().toLowerCase();
+      if (name) {
+        const nameKey = `name_${name}`;
+        if (!lookup[nameKey]) lookup[nameKey] = [];
+        lookup[nameKey].push(r);
+      }
     });
     return lookup;
   }, [envLotReports, envLotReportsLocal]);
@@ -333,10 +340,14 @@ const ReportTemplateManagement = ({
     filtered.forEach((r) => {
       const templateId = Number(r.templateId ?? r.TemplateId ?? 0);
       const templateName = r.templateName || '-';
+      const templateNameKey = (r.templateName || r.TemplateName || '').trim().toLowerCase();
       const moduleLower = (r.module || '').toLowerCase();
 
-      // Get all DB records for this template
-      const rawDbRows = envLotReportsByTemplate[templateId] || [];
+      // Get all DB records for this template (first by templateId, fallback by templateName)
+      let rawDbRows = templateId ? (envLotReportsByTemplate[templateId] || []) : [];
+      if (rawDbRows.length === 0 && templateNameKey) {
+        rawDbRows = envLotReportsByTemplate[`name_${templateNameKey}`] || [];
+      }
       const dbRows = rawDbRows.filter(db => {
         const isArchived = db.status === false || db.Status === false;
         return isArchivedView ? isArchived : !isArchived;
@@ -755,20 +766,35 @@ const ReportTemplateManagement = ({
         canDownload: !!v?.fileUrl,
       };
     } else {
-      const latestDb = group.rows[0]?._dbRow;
-      const envNums = parseEnvLotNumbers(latestDb?.envLotNumbers ?? latestDb?.EnvLotNumbers);
+      const firstRow = group.rows[0];
+      const firstVer = firstRow?.versions?.[0];
+      const latestDb = firstRow?._dbRow;
+      const envNums = parseEnvLotNumbers(latestDb?.envLotNumbers ?? latestDb?.EnvLotNumbers ?? firstRow?.envLotNumbers ?? firstRow?.envLotKey);
+
+      const rawVer = latestDb?.version ?? latestDb?.Version ?? firstVer?.version ?? firstRow?.version;
+      const formattedVer = rawVer != null && rawVer !== '-' ? (String(rawVer).startsWith('v') ? String(rawVer) : `v${rawVer}`) : '-';
+
+      const resolvedSubName = group.subName || latestDb?.subName || latestDb?.SubName || firstRow?.subName || firstRow?.SubName || null;
+      const resolvedLotNumber = (group.lot != null && group.lot > 0) ? group.lot : (firstRow?.lotNumber || firstRow?.lotNo || firstRow?.LotNo || null);
+
       headerData = {
         module: displayModule,
-        lot: group.lot != null ? `Lot ${group.lot}` : '-',
+        lot: resolvedLotNumber ? `Lot ${resolvedLotNumber}` : '-',
         envLotNo: group.envLotNo ?? (envNums[0] || null),
-        name: group.templateName || '-',
-        subName: group.subName || null,
-        version: latestDb?.version ?? latestDb?.Version ?? '-',
-        generatedOn: latestDb?.generatedAt ?? latestDb?.GeneratedAt,
-        generatedBy: resolveUserName(latestDb?.generatedByUserId ?? latestDb?.GeneratedByUserId, latestDb?.generatedBy ?? latestDb?.GeneratedBy),
-        downloadedBy: resolveUserName(latestDb?.downloadedByUserId ?? latestDb?.DownloadedByUserId, latestDb?.downloadedBy ?? latestDb?.DownloadedBy),
-        downloadedAt: latestDb?.downloadedAt ?? latestDb?.DownloadedAt,
-        status: latestDb?.status === false || latestDb?.Status === false ? 'Archived' : 'Latest',
+        name: group.templateName || firstRow?.templateName || '-',
+        subName: resolvedSubName,
+        version: formattedVer,
+        generatedOn: latestDb?.generatedAt ?? latestDb?.GeneratedAt ?? firstVer?.generatedOn ?? firstRow?.generatedAt,
+        generatedBy: resolveUserName(
+          latestDb?.generatedByUserId ?? latestDb?.GeneratedByUserId ?? firstVer?.generatedByUserId ?? firstRow?.generatedByUserId,
+          latestDb?.generatedBy ?? latestDb?.GeneratedBy ?? firstVer?.generatedBy ?? firstRow?.generatedBy
+        ),
+        downloadedBy: resolveUserName(
+          latestDb?.downloadedByUserId ?? latestDb?.DownloadedByUserId ?? firstVer?.downloadedByUserId ?? firstRow?.downloadedByUserId,
+          latestDb?.downloadedBy ?? latestDb?.DownloadedBy ?? firstVer?.downloadedBy ?? firstRow?.downloadedBy
+        ),
+        downloadedAt: latestDb?.downloadedAt ?? latestDb?.DownloadedAt ?? firstVer?.downloadedAt ?? firstRow?.downloadedAt,
+        status: (latestDb?.status === false || latestDb?.Status === false) ? 'Archived' : (firstVer?.status || 'Latest'),
         onDownload: () => handleDownloadTemplate(group, latestDb),
         canDownload: true,
         onArchive: () => handleArchiveTemplate(latestDb),
@@ -975,12 +1001,24 @@ const ReportTemplateManagement = ({
                       );
                     } else {
                       const db = row._dbRow;
-                      const ver = db?.version ?? db?.Version ?? '-';
-                      const lot = Number(db?.lotNumber ?? db?.lotNo ?? db?.LotNo ?? group.lot ?? 0) || null;
-                      const envNums = parseEnvLotNumbers(db?.envLotNumbers ?? db?.EnvLotNumbers);
+                      const firstVer = row.versions?.[0];
+                      const rawVer = db?.version ?? db?.Version ?? firstVer?.version ?? row.version;
+                      const ver = rawVer != null && rawVer !== '-' ? (String(rawVer).startsWith('v') ? String(rawVer) : `v${rawVer}`) : '-';
+                      const lot = Number(db?.lotNumber ?? db?.lotNo ?? db?.LotNo ?? row.lotNumber ?? row.lotNo ?? group.lot ?? 0) || null;
+                      const envNums = parseEnvLotNumbers(db?.envLotNumbers ?? db?.EnvLotNumbers ?? row.envLotNumbers ?? row.envLotKey);
                       const envNo = envNums[0] ?? group.envLotNo ?? null;
-                      const dlBy = resolveUserName(db?.downloadedByUserId ?? db?.DownloadedByUserId, db?.downloadedBy ?? db?.DownloadedBy);
-                      const dlAt = db?.downloadedAt ?? db?.DownloadedAt;
+                      const genBy = resolveUserName(
+                        db?.generatedByUserId ?? db?.GeneratedByUserId ?? firstVer?.generatedByUserId ?? row.generatedByUserId,
+                        db?.generatedBy ?? db?.GeneratedBy ?? firstVer?.generatedBy ?? row.generatedBy
+                      );
+                      const genAt = db?.generatedAt ?? db?.GeneratedAt ?? firstVer?.generatedOn ?? row.generatedAt;
+                      const dlBy = resolveUserName(
+                        db?.downloadedByUserId ?? db?.DownloadedByUserId ?? firstVer?.downloadedByUserId ?? row.downloadedByUserId,
+                        db?.downloadedBy ?? db?.DownloadedBy ?? firstVer?.downloadedBy ?? row.downloadedBy
+                      );
+                      const dlAt = db?.downloadedAt ?? db?.DownloadedAt ?? firstVer?.downloadedAt ?? row.downloadedAt;
+                      const subNameVal = group.subName || db?.subName || db?.SubName || row.subName || row.SubName || '-';
+
                       return (
                         <tr key={idx} className={idx === 0 ? 'rtm-vrow--latest' : ''}>
                           <td style={{ color: '#94a3b8', fontSize: 12 }}>{idx + 1}</td>
@@ -993,13 +1031,13 @@ const ReportTemplateManagement = ({
                               </div>
                             </td>
                           )}
-                          {tvc('subName') && <td style={{ color: '#64748b', fontSize: 12 }}>{group.subName || '-'}</td>}
+                          {tvc('subName') && <td style={{ color: '#64748b', fontSize: 12 }}>{subNameVal}</td>}
                           {tvc('lot') && <td>{lot ? `Lot ${lot}` : '-'}</td>}
                           {tvc('envLot') && <td>{renderEnvLotTag(envNo)}</td>}
                           {tvc('generated') && (
                             <td>
-                              <div style={{ fontSize: 12, color: '#64748b' }}>{formatDateTimeToIST(db?.generatedAt ?? db?.GeneratedAt)}</div>
-                              <div style={{ fontSize: 12, color: '#334155' }}>{resolveUserName(db?.generatedByUserId ?? db?.GeneratedByUserId, db?.generatedBy ?? db?.GeneratedBy)}</div>
+                              <div style={{ fontSize: 12, color: '#64748b' }}>{formatDateTimeToIST(genAt)}</div>
+                              <div style={{ fontSize: 12, color: '#334155' }}>{genBy}</div>
                             </td>
                           )}
                           {tvc('downloaded') && (
