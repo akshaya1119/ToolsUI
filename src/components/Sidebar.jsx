@@ -68,7 +68,8 @@ export default function Sidebar({ collapsed }) {
       "/projecttemplates",
       "/processingpipeline",
       "/headerverification",
-      "/batchwisedata"
+      "/batchwisedata",
+      "/nodal-center-list"
     ].includes(location.pathname);
 
     const isReportsChild = ["/masterconfig-report"].includes(location.pathname);
@@ -125,6 +126,7 @@ export default function Sidebar({ collapsed }) {
             { label: "Data Import", path: "/dataimport", disabled: !isConfigured },
             { label: "Changed NR Analysis", path: "/changedNRUpload" },
             { label: "Batch Wise Data", path: "/batchwisedata" },
+            { label: "Nodal & Catch List", path: "/nodal-center-list" },
             { label: "Project Templates", path: "/projecttemplates" },
             {
               label: "Processing Pipeline",
