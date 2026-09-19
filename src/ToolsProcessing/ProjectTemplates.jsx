@@ -72,7 +72,6 @@ import {
   saveTemplateMapping,
   softDeleteTemplate,
   updateTemplate,
-  uploadTemplate as uploadTemplateService,
   promoteTemplatesToMaster,
   fetchImportableTemplates,
 } from "../services/rptTemplatesService";
@@ -616,7 +615,7 @@ const ProjectTemplates = () => {
     }
   }, [mappingModalOpen, projectGroupId, projectTypeId, mappingTemplate]);
 
-  const uploadTemplate = async (params) => {
+  const uploadTemplate = async (params = {}) => {
     const {
       groupId,
       typeId,
@@ -627,7 +626,7 @@ const ProjectTemplates = () => {
       projectId,
       moduleIds,
       forceUpload,
-    } = params;
+    } = params || {};
 
     const formData = new FormData();
     formData.append("typeId", typeId);
@@ -736,7 +735,7 @@ const ProjectTemplates = () => {
       setAddSubmitting(true);
       const file = addFileList[0].originFileObj || addFileList[0];
 
-      const result = await uploadTemplateService({
+      const result = await uploadTemplate({
         groupId: projectGroupId,
         typeId: projectTypeId,
         projectId: normalizeId(projectId),

@@ -325,8 +325,9 @@ const ProcessingPipeline = () => {
             results[fileName] = exists;
 
             if (exists || !requiresDuplicateRerun) {
+              const actualFileName = fileRes.data?.fileName || fileName;
               const fileUrl = exists
-                ? `${url3}/${projectId}/${fileName}?DateTime=${new Date().toISOString()}`
+                ? `${url3}/${projectId}/${actualFileName}?DateTime=${new Date().toISOString()}`
                 : null;
 
               updateStepStatus(key, {
@@ -395,7 +396,8 @@ const ProcessingPipeline = () => {
             results[fileName] = exists;
 
             if (exists) {
-              const fileUrl = `${url3}/${projectId}/${fileName}?DateTime=${new Date().toISOString()}`;
+              const actualFileName = res.data?.fileName || fileName;
+              const fileUrl = `${url3}/${projectId}/${actualFileName}?DateTime=${new Date().toISOString()}`;
               console.log("Updating step", key, "to completed");
               updateStepStatus(key, {
                 status: "completed",
@@ -1558,26 +1560,30 @@ const loadGeneratedTemplateReports = async () => {
 
     let selectedLotsForQS = [];
     if (isQS) {
-      const lots = await fetchLotsForSelection();
-      const validLots = lots.filter(lot => lot.lotNo > 0);
+      if (selectedDropdownLot !== "all" && selectedDropdownLot !== null) {
+        selectedLotsForQS = [Number(selectedDropdownLot)];
+      } else {
+        const lots = await fetchLotsForSelection();
+        const validLots = (lots || []).filter(lot => lot.lotNo > 0);
 
-      if (validLots.length > 0) {
-        const selectedLots = await showLotSelectionModal(validLots, {
-          description: "Please select which lot(s) you want to generate for quantity sheet. You can select all lots or specific ones.",
-          okText: "Generate",
-          isQuantitySheet: true
-        });
-        if (selectedLots === null) {
+        if (validLots.length > 0) {
+          const selectedLots = await showLotSelectionModal(validLots, {
+            description: "Please select which lot(s) you want to generate for quantity sheet. You can select all lots or specific ones.",
+            okText: "Generate",
+            isQuantitySheet: true
+          });
+          if (selectedLots === null) {
+            return;
+          }
+          selectedLotsForQS = selectedLots;
+        } else {
+          Modal.warning({
+            title: "Lot Bifurcation Required",
+            content: "Please complete lot bifurcation before generating Quantity Sheet.",
+            okText: "OK"
+          });
           return;
         }
-        selectedLotsForQS = selectedLots;
-      } else {
-        Modal.warning({
-          title: "Lot Bifurcation Required",
-          content: "Please complete lot bifurcation before generating Quantity Sheet.",
-          okText: "OK"
-        });
-        return;
       }
     }
 
@@ -1598,27 +1604,31 @@ const loadGeneratedTemplateReports = async () => {
     // For box breaking dependent templates, show lot selection modal
     let selectedLotsForBoxBreaking = [];
     if (isBoxBreakingDependent && !isQS && !isComposite) {
-      const lots = await fetchLotsForSelection();
-      const validLots = lots.filter(lot => lot.lotNo > 0);
+      if (selectedDropdownLot !== "all" && selectedDropdownLot !== null) {
+        selectedLotsForBoxBreaking = [Number(selectedDropdownLot)];
+      } else {
+        const lots = await fetchLotsForSelection();
+        const validLots = (lots || []).filter(lot => lot.lotNo > 0);
 
-      if (validLots.length > 0) {
-        const selectedLots = await showLotSelectionModal(validLots, {
-          description: "Please select which lot(s) you want to generate for box breaking template. You can select all lots or specific ones.",
-          okText: "Generate",
-          isQuantitySheet: false
-        });
-        if (selectedLots === null) {
+        if (validLots.length > 0) {
+          const selectedLots = await showLotSelectionModal(validLots, {
+            description: "Please select which lot(s) you want to generate for box breaking template. You can select all lots or specific ones.",
+            okText: "Generate",
+            isQuantitySheet: false
+          });
+          if (selectedLots === null) {
+            return;
+          }
+          selectedLotsForBoxBreaking = selectedLots;
+          // Don't set envLotNumbers here - we'll set it per lot in the loop
+        } else {
+          Modal.warning({
+            title: "Lot Bifurcation Required",
+            content: "Please complete lot bifurcation before generating this template.",
+            okText: "OK"
+          });
           return;
         }
-        selectedLotsForBoxBreaking = selectedLots;
-        // Don't set envLotNumbers here - we'll set it per lot in the loop
-      } else {
-        Modal.warning({
-          title: "Lot Bifurcation Required",
-          content: "Please complete lot bifurcation before generating this template.",
-          okText: "OK"
-        });
-        return;
       }
     }
     
@@ -2968,6 +2978,7 @@ const loadGeneratedTemplateReports = async () => {
         // Check if report already exists — skip only if user did NOT explicitly select this module
         const fileName = fileNames[step.key];
         let reportExists = false;
+        let actualFileName = fileName;
 
         if (fileName && !modulesToProcess.includes(step.key)) {
           try {
@@ -2975,6 +2986,9 @@ const loadGeneratedTemplateReports = async () => {
               `/EnvelopeBreakages/Reports/Exists?projectId=${projectId}&fileName=${fileName}`
             );
             reportExists = res.data.exists;
+            if (res.data?.fileName) {
+              actualFileName = res.data.fileName;
+            }
           } catch (err) {
             console.error(`Failed to check file existence: ${fileName}`, err);
           }
@@ -2982,7 +2996,7 @@ const loadGeneratedTemplateReports = async () => {
 
         // If report already exists and not explicitly selected, mark as completed and skip
         if (reportExists) {
-          const fileUrl = `${url3}/${projectId}/${fileName}?DateTime=${new Date().toISOString()}`;
+          const fileUrl = `${url3}/${projectId}/${actualFileName}?DateTime=${new Date().toISOString()}`;
           updateStepStatus(step.key, {
             status: "completed",
             fileUrl,
@@ -3002,52 +3016,50 @@ const loadGeneratedTemplateReports = async () => {
           else if (step.key === "extra") await runExtras(projectId);
           else if (step.key === "envelopebreaking") await runEnvelope(projectId);
           else if (step.key === "box") {
-            // Fetch available lots before running box breaking
-            const lots = await fetchLotsForSelection();
+            if (selectedDropdownLot !== "all" && selectedDropdownLot !== null) {
+              // Specific lot selected: bypass lot selection and bifurcation modal completely
+              const selectedLots = [Number(selectedDropdownLot)];
+              await runBoxBreaking(projectId, selectedLots);
+              setLotReportStatus((prev) => ({
+                ...prev,
+                [Number(selectedDropdownLot)]: true,
+              }));
+            } else {
+              // "All Lots" selected: fetch available lots and show lot selection modal
+              const lots = await fetchLotsForSelection();
+              const validLots = (lots || []).filter(lot => lot.lotNo > 0);
 
-            // Filter out unassigned catches or invalid lot numbers (lotNo <= 0)
-            const validLots = lots.filter(lot => lot.lotNo > 0);
+              if (validLots.length > 0) {
+                const selectedLots = await showLotSelectionModal(validLots);
 
-            if (validLots.length > 0) {
-              let selectedLots = null;
-              
-              if (selectedDropdownLot !== "all" && selectedDropdownLot !== null) {
-                // If a specific lot is selected in the main dropdown, bypass the modal
-                selectedLots = [Number(selectedDropdownLot)];
+                if (selectedLots === null) {
+                  // User cancelled - stop processing
+                  message.info("Box breaking cancelled by user");
+                  updateStepStatus(step.key, { status: "pending" });
+                  setSelectedModules(prev => prev.filter(m => m !== step.key));
+                  break;
+                }
+
+                // Run box breaking with selected lots
+                await runBoxBreaking(projectId, selectedLots);
+
+                // Immediately update availableLots and mark selectedLots as completed
+                setAvailableLots(validLots);
+                setLotReportStatus((prev) => {
+                  const next = { ...prev };
+                  selectedLots.forEach((lotNo) => { next[lotNo] = true; });
+                  return next;
+                });
               } else {
-                // If "All Lots" is selected, show the lot selection modal as usual
-                selectedLots = await showLotSelectionModal(validLots);
-              }
-
-              if (selectedLots === null) {
-                // User cancelled - stop processing
-                message.info("Box breaking cancelled by user");
+                Modal.warning({
+                  title: "Lot Bifurcation Required",
+                  content: "Please complete lot bifurcation before running Box Breaking.",
+                  okText: "OK"
+                });
                 updateStepStatus(step.key, { status: "pending" });
                 setSelectedModules(prev => prev.filter(m => m !== step.key));
-                break;
+                return;
               }
-
-              // Run box breaking with selected lots
-              await runBoxBreaking(projectId, selectedLots);
-
-              // Immediately update availableLots and mark selectedLots as completed
-              // in lotReportStatus so the badge is accurate right away (before the
-              // async checkReportExistence re-confirms via file-existence calls).
-              setAvailableLots(validLots);
-              setLotReportStatus((prev) => {
-                const next = { ...prev };
-                selectedLots.forEach((lotNo) => { next[lotNo] = true; });
-                return next;
-              });
-            } else {
-              Modal.warning({
-                title: "Lot Bifurcation Required",
-                content: "Please complete lot bifurcation before running Box Breaking.",
-                okText: "OK"
-              });
-              updateStepStatus(step.key, { status: "pending" });
-              setSelectedModules(prev => prev.filter(m => m !== step.key));
-              return;
             }
           }
           else if (step.key === "envelopeSummary") await runEnvelopeSummary(projectId);

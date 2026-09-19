@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Typography, Card, Tabs, Upload, Button, Select, Table, Tag, Row, Col, Popover, Checkbox, Tooltip, Input, Form, Modal, Popconfirm, Space, InputNumber, Alert, Spin } from "antd";
-import { UploadOutlined, DownOutlined, UpOutlined, CheckCircleOutlined, CloseCircleOutlined, SettingOutlined, SearchOutlined } from "@ant-design/icons";
+import { UploadOutlined, DownOutlined, UpOutlined, CheckCircleOutlined, CloseCircleOutlined, SettingOutlined, SearchOutlined, DeleteOutlined } from "@ant-design/icons";
 import * as XLSX from "xlsx-js-style";
 import API from "../hooks/api";
 import { useToast } from "../hooks/useToast";
@@ -66,6 +66,7 @@ export default function NodalCenterList() {
   const [addingRecord, setAddingRecord] = useState(false);
 
   const [addedFields, setAddedFields] = useState([]);
+  const [selectedRowKeys, setSelectedRowKeys] = useState([]);
 
   const allTempColumnsList = [
     "CatchNo", "CollegeCode", "CollegeName", "CenterCode", "NodalCode", "NRQuantity", "CourseName", "SubjectName", "ExamDate", "ExamTime"
@@ -86,13 +87,13 @@ export default function NodalCenterList() {
     "CatchNo", "CollegeCode", "CollegeName", "PaperCode", "CourseName", "SubjectName", "NRQuantity", "ExamDate", "ExamTime",
     "Transgender", "Male", "Female", "Semester"
   ];
-  const requiredCatchListFields = ["CatchNo", "NRQuantity"];
+  const requiredCatchListFields = ["CatchNo", "NRQuantity","CollegeCode", "CollegeName"];
 
   const nodalListFields = [
     "CollegeCode", "CollegeName", "ExamCenterCode", "ExamCenterName",
     "Gender", "NodalCode", "NodalName"
   ];
-  const requiredNodalListFields = ["NodalCode", "CollegeCode"];
+  const requiredNodalListFields = ["NodalCode", "CollegeCode","ExamCenterCode"];
 
   const currentFields = activeTab === "1" ? catchListFields : nodalListFields;
   const currentRequiredFields = activeTab === "1" ? requiredCatchListFields : requiredNodalListFields;
@@ -140,6 +141,7 @@ export default function NodalCenterList() {
   useEffect(() => {
     // Reset added fields to just required fields when tab changes
     setAddedFields([...currentRequiredFields]);
+    setSelectedRowKeys([]);
   }, [activeTab]);
 
   const fetchExistingData = async () => {
@@ -189,7 +191,6 @@ export default function NodalCenterList() {
       setPagination(prev => ({ ...prev, total: totalCount }));
     } catch (error) {
       console.error(error);
-      showToast("Failed to fetch existing data", "error");
     } finally {
       setLoadingData(false);
     }
@@ -564,6 +565,49 @@ export default function NodalCenterList() {
     }
   };
 
+  const handleDelete = async (key) => {
+    try {
+      const endpoint = activeTab === "1" ? `/CatchLists/${key}` : `/NodalLists/${key}`;
+      await API.delete(endpoint);
+      showToast("Record deleted successfully", "success");
+      setSelectedRowKeys(prev => prev.filter(k => k !== key));
+      setIsDirty(true);
+      fetchExistingData();
+    } catch (error) {
+      console.error(error);
+      showToast(error.response?.data?.message || error.response?.data || "Failed to delete record", "error");
+    }
+  };
+
+  const handleDeleteSelected = async () => {
+    if (!selectedRowKeys.length) return;
+    try {
+      const endpoint = activeTab === "1" ? `/CatchLists/batch-delete` : `/NodalLists/batch-delete`;
+      const res = await API.post(endpoint, selectedRowKeys);
+      showToast(res.data?.message || `${selectedRowKeys.length} records deleted successfully`, "success");
+      setSelectedRowKeys([]);
+      setIsDirty(true);
+      fetchExistingData();
+    } catch (error) {
+      console.error(error);
+      showToast(error.response?.data?.message || error.response?.data || "Failed to delete selected records", "error");
+    }
+  };
+
+  const handleDeleteAll = async () => {
+    try {
+      const endpoint = activeTab === "1" ? `/CatchLists/deleteAll/${projectId}` : `/NodalLists/deleteAll/${projectId}`;
+      const res = await API.delete(endpoint);
+      showToast(res.data?.message || "All records deleted successfully", "success");
+      setSelectedRowKeys([]);
+      setIsDirty(true);
+      fetchExistingData();
+    } catch (error) {
+      console.error(error);
+      showToast(error.response?.data?.message || error.response?.data || "Failed to delete records", "error");
+    }
+  };
+
   baseColumns.push({
     title: 'Action',
     dataIndex: 'operation',
@@ -578,13 +622,29 @@ export default function NodalCenterList() {
           </Popconfirm>
         </Space>
       ) : (
-        <Typography.Link
-          disabled={editingKey !== '' || tempData.length > 0}
-          onClick={() => edit(record)}
-          title={tempData.length > 0 ? "Edit in Merge Preview instead" : ""}
-        >
-          Edit
-        </Typography.Link>
+        <Space size="middle">
+          <Typography.Link
+            disabled={editingKey !== '' || tempData.length > 0}
+            onClick={() => edit(record)}
+            title={tempData.length > 0 ? "Edit in Merge Preview instead" : ""}
+          >
+            Edit
+          </Typography.Link>
+          <Popconfirm
+            title="Are you sure you want to delete this record?"
+            onConfirm={() => handleDelete(record.id)}
+            okText="Yes"
+            cancelText="No"
+            disabled={editingKey !== '' || tempData.length > 0}
+          >
+            <Typography.Link
+              type="danger"
+              disabled={editingKey !== '' || tempData.length > 0}
+            >
+              Delete
+            </Typography.Link>
+          </Popconfirm>
+        </Space>
       );
     },
   });
@@ -830,6 +890,32 @@ export default function NodalCenterList() {
             <Button onClick={() => setIsAddModalVisible(true)} disabled={tempData.length > 0}>
               + Add Record
             </Button>
+            {selectedRowKeys.length > 0 && (
+              <Popconfirm
+                title={`Are you sure you want to delete ${selectedRowKeys.length} selected record(s)?`}
+                onConfirm={handleDeleteSelected}
+                okText="Yes, Delete"
+                cancelText="Cancel"
+                okButtonProps={{ danger: true }}
+              >
+                <Button danger icon={<DeleteOutlined />}>
+                  Delete Selected ({selectedRowKeys.length})
+                </Button>
+              </Popconfirm>
+            )}
+            {pagination.total > 0 && (
+              <Popconfirm
+                title={`Are you sure you want to delete ALL (${pagination.total}) records for ${activeTab === "1" ? "Catch List" : "Nodal List"} in this project?`}
+                onConfirm={handleDeleteAll}
+                okText="Yes, Delete All"
+                cancelText="Cancel"
+                okButtonProps={{ danger: true }}
+              >
+                <Button danger type="primary" icon={<DeleteOutlined />}>
+                  Delete All
+                </Button>
+              </Popconfirm>
+            )}
             <Popover content={columnVisibilityContent} title="Column Visibility" trigger="click" placement="bottomRight">
               <Button icon={<SettingOutlined />}>Columns</Button>
             </Popover>
@@ -841,6 +927,10 @@ export default function NodalCenterList() {
               body: {
                 cell: EditableCell,
               },
+            }}
+            rowSelection={{
+              selectedRowKeys,
+              onChange: (keys) => setSelectedRowKeys(keys),
             }}
             dataSource={existingData}
             columns={mergedColumns}
