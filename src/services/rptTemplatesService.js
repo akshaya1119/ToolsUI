@@ -67,25 +67,41 @@ export const fetchUsers = async ({ baseUrl, token }) => {
 };
 
 export const fetchTemplatesByGroup = async (
-  apiUrl,
-  { typeId, groupId, projectId },
+  apiUrlOrParams,
+  maybeParams = {},
 ) => {
+  let apiUrl = apiUrlOrParams;
+  let params = maybeParams;
+  if (typeof apiUrlOrParams === "object" && apiUrlOrParams !== null) {
+    apiUrl = import.meta.env.VITE_API_URL;
+    params = apiUrlOrParams;
+  }
+  const { typeId, groupId, projectId } = params || {};
   if (!typeId) return [];
-  const params = new URLSearchParams();
-  params.set("typeId", typeId);
-  if (groupId) params.set("groupId", groupId);
-  if (projectId) params.set("projectId", projectId);
+  const queryParams = new URLSearchParams();
+  queryParams.set("typeId", typeId);
+  if (groupId) queryParams.set("groupId", groupId);
+  if (projectId) queryParams.set("projectId", projectId);
   const res = await axios.get(
-    `${apiUrl}/RPTTemplates/by-group?${params.toString()}`,
+    `${apiUrl}/RPTTemplates/by-group?${queryParams.toString()}`,
   );
   return Array.isArray(res.data) ? res.data : [];
 };
 
-export const fetchMappingOptions = async (apiUrl, { groupId, typeId, projectId, templateId }) => {
-  const params = { groupId, typeId };
-  if (projectId) params.projectId = projectId;
-  if (templateId) params.templateId = templateId;
-  const res = await axios.get(`${apiUrl}/RPTTemplates/mapping-options`, { params });
+export const fetchMappingOptions = async (apiUrlOrParams, maybeParams = {}) => {
+  let apiUrl = apiUrlOrParams;
+  let params = maybeParams;
+  if (typeof apiUrlOrParams === "object" && apiUrlOrParams !== null) {
+    apiUrl = import.meta.env.VITE_API_URL;
+    params = apiUrlOrParams;
+  }
+  const { groupId, typeId, projectId, templateId } = params || {};
+  const queryParams = {};
+  if (groupId !== undefined && groupId !== null) queryParams.groupId = groupId;
+  if (typeId !== undefined && typeId !== null) queryParams.typeId = typeId;
+  if (projectId) queryParams.projectId = projectId;
+  if (templateId) queryParams.templateId = templateId;
+  const res = await axios.get(`${apiUrl}/RPTTemplates/mapping-options`, { params: queryParams });
   // API returns a flat deduplicated array of { value, label }
   const data = res.data;
   if (Array.isArray(data)) return data;
@@ -95,8 +111,16 @@ export const fetchMappingOptions = async (apiUrl, { groupId, typeId, projectId, 
 };
 
 export const uploadTemplate = async (
-  apiUrl,
-  {
+  apiUrlOrParams,
+  maybeParams = {},
+) => {
+  let apiUrl = apiUrlOrParams;
+  let params = maybeParams;
+  if (typeof apiUrlOrParams === "object" && apiUrlOrParams !== null) {
+    apiUrl = import.meta.env.VITE_API_URL;
+    params = apiUrlOrParams;
+  }
+  const {
     groupId,
     typeId,
     templateName,
@@ -106,15 +130,14 @@ export const uploadTemplate = async (
     moduleIds,
     forceUpload,
     passcode,
-  },
-) => {
+  } = params || {};
   const formData = new FormData();
-  formData.append("typeId", typeId);
-  formData.append("templateName", templateName);
+  if (typeId !== undefined && typeId !== null) formData.append("typeId", typeId);
+  if (templateName) formData.append("templateName", templateName);
   if (subName) {
     formData.append("subName", subName);
   }
-  formData.append("file", file);
+  if (file) formData.append("file", file);
   if (groupId !== null && groupId !== undefined) {
     formData.append("groupId", groupId);
   }
@@ -215,19 +238,26 @@ export const restoreTemplate = async (apiUrl, templateId) => {
 // MRPTTemplates (Master Templates)
 // ====================
 
-export const fetchMasterTemplatesByGroup = async (apiUrl, { typeId, groupId }) => {
-  const params = { typeId };
-  if (groupId) params.groupId = groupId;
-  const res = await axios.get(`${apiUrl}/MRPTTemplates/by-group`, { params });
+export const fetchMasterTemplatesByGroup = async (apiUrlOrParams, maybeParams = {}) => {
+  let apiUrl = apiUrlOrParams;
+  let params = maybeParams;
+  if (typeof apiUrlOrParams === "object" && apiUrlOrParams !== null) {
+    apiUrl = import.meta.env.VITE_API_URL;
+    params = apiUrlOrParams;
+  }
+  const { typeId, groupId } = params || {};
+  const queryParams = { typeId };
+  if (groupId) queryParams.groupId = groupId;
+  const res = await axios.get(`${apiUrl}/MRPTTemplates/by-group`, { params: queryParams });
   return res.data;
 };
 
-export const uploadMasterTemplate = async (apiUrl, payload) => {
+export const uploadMasterTemplate = async (apiUrl, payload = {}) => {
   const formData = new FormData();
-  formData.append("file", payload.file);
-  formData.append("typeId", payload.typeId);
+  if (payload.file) formData.append("file", payload.file);
+  if (payload.typeId) formData.append("typeId", payload.typeId);
   if (payload.groupId) formData.append("groupId", payload.groupId);
-  formData.append("templateName", payload.templateName);
+  if (payload.templateName) formData.append("templateName", payload.templateName);
   if (payload.subName) formData.append("subName", payload.subName);
 
   const headers = { "Content-Type": "multipart/form-data" };
@@ -282,12 +312,19 @@ export const saveMasterTemplateMapping = async (apiUrl, templateId, mappingJson)
   await axios.post(`${apiUrl}/MRPTTemplates/${templateId}/mapping`, { mappingJson });
 };
 
-export const fetchImportableTemplates = async (apiUrl, { sourceScope, sourceGroupId, sourceProjectId, sourceTypeId }) => {
-  const params = { sourceScope };
-  if (sourceGroupId) params.sourceGroupId = sourceGroupId;
-  if (sourceProjectId) params.sourceProjectId = sourceProjectId;
-  if (sourceTypeId) params.sourceTypeId = sourceTypeId;
+export const fetchImportableTemplates = async (apiUrlOrParams, maybeParams = {}) => {
+  let apiUrl = apiUrlOrParams;
+  let params = maybeParams;
+  if (typeof apiUrlOrParams === "object" && apiUrlOrParams !== null) {
+    apiUrl = import.meta.env.VITE_API_URL;
+    params = apiUrlOrParams;
+  }
+  const { sourceScope, sourceGroupId, sourceProjectId, sourceTypeId } = params || {};
+  const queryParams = { sourceScope };
+  if (sourceGroupId) queryParams.sourceGroupId = sourceGroupId;
+  if (sourceProjectId) queryParams.sourceProjectId = sourceProjectId;
+  if (sourceTypeId) queryParams.sourceTypeId = sourceTypeId;
   
-  const res = await axios.get(`${apiUrl}/RPTTemplates/importable-templates`, { params });
+  const res = await axios.get(`${apiUrl}/RPTTemplates/importable-templates`, { params: queryParams });
   return res.data;
 };
