@@ -108,12 +108,27 @@ const ProcessingPipeline = () => {
   const [batches, setBatches] = useState([]);
   const [selectedBatch, setSelectedBatch] = useState(1);
   const [loadingBatches, setLoadingBatches] = useState(false);
+  const [dropdownLots, setDropdownLots] = useState([]);
+  const [selectedDropdownLot, setSelectedDropdownLot] = useState("all");
 
   useEffect(() => {
     if (projectId) {
       loadBatches();
+      loadDropdownLots();
     }
   }, [projectId]);
+
+  const loadDropdownLots = async () => {
+    try {
+      const res = await API.get(`/NRDataLots/GetByProjectId/${projectId}`);
+      const data = res.data || [];
+      const validLots = data.filter(lot => lot.lotNo > 0).map(lot => lot.lotNo);
+      setDropdownLots(validLots);
+      setSelectedDropdownLot("all");
+    } catch (err) {
+      console.error("Failed to fetch lots for dropdown", err);
+    }
+  };
 
   const loadBatches = async () => {
     try {
@@ -310,8 +325,9 @@ const ProcessingPipeline = () => {
             results[fileName] = exists;
 
             if (exists || !requiresDuplicateRerun) {
+              const actualFileName = fileRes.data?.fileName || fileName;
               const fileUrl = exists
-                ? `${url3}/${projectId}/${fileName}?DateTime=${new Date().toISOString()}`
+                ? `${url3}/${projectId}/${actualFileName}?DateTime=${new Date().toISOString()}`
                 : null;
 
               updateStepStatus(key, {
@@ -380,7 +396,8 @@ const ProcessingPipeline = () => {
             results[fileName] = exists;
 
             if (exists) {
-              const fileUrl = `${url3}/${projectId}/${fileName}?DateTime=${new Date().toISOString()}`;
+              const actualFileName = res.data?.fileName || fileName;
+              const fileUrl = `${url3}/${projectId}/${actualFileName}?DateTime=${new Date().toISOString()}`;
               console.log("Updating step", key, "to completed");
               updateStepStatus(key, {
                 status: "completed",
@@ -714,6 +731,9 @@ const ProcessingPipeline = () => {
       ProjectId: projectId,
       batchId: selectedBatch,
     };
+    if (selectedDropdownLot !== "all" && selectedDropdownLot !== null) {
+      queryParams.lotNo = selectedDropdownLot;
+    }
     const query = new URLSearchParams(queryParams).toString();
     const res = await API.post(`/Duplicate?${query}`);
     const data = res?.data || {};
@@ -722,17 +742,29 @@ const ProcessingPipeline = () => {
   };
 
   const runEnhancement = async (projectId) => {
-    const res = await API.post(`/Duplicate/Enhancement?ProjectId=${projectId}&batch=${selectedBatch}`);
+    let url = `/Duplicate/Enhancement?ProjectId=${projectId}&batch=${selectedBatch}`;
+    if (selectedDropdownLot !== "all" && selectedDropdownLot !== null) {
+      url += `&lotNo=${selectedDropdownLot}`;
+    }
+    const res = await API.post(url);
     message.success(res?.data?.message || "Enhancement processing completed");
   };
 
   const runExtras = async (projectId) => {
-    const res = await API.post(`/ExtraEnvelopes?ProjectId=${projectId}&batchNo=${selectedBatch}`);
+    let url = `/ExtraEnvelopes?ProjectId=${projectId}&batchNo=${selectedBatch}`;
+    if (selectedDropdownLot !== "all" && selectedDropdownLot !== null) {
+      url += `&lotNo=${selectedDropdownLot}`;
+    }
+    const res = await API.post(url);
     message.success(res?.data?.message || "Extras calculation completed");
   };
 
   const runEnvelope = async (projectId) => {
-    const res = await API.post(`/EnvelopeBreakageProcessing/ProcessEnvelopeBreaking?ProjectId=${projectId}&batchNo=${selectedBatch}`);
+    let url = `/EnvelopeBreakageProcessing/ProcessEnvelopeBreaking?ProjectId=${projectId}&batchNo=${selectedBatch}`;
+    if (selectedDropdownLot !== "all" && selectedDropdownLot !== null) {
+      url += `&lotNo=${selectedDropdownLot}`;
+    }
+    const res = await API.post(url);
     message.success(res?.data?.message || "Envelope breaking completed");
   };
 
@@ -1528,26 +1560,30 @@ const loadGeneratedTemplateReports = async () => {
 
     let selectedLotsForQS = [];
     if (isQS) {
-      const lots = await fetchLotsForSelection();
-      const validLots = lots.filter(lot => lot.lotNo > 0);
+      if (selectedDropdownLot !== "all" && selectedDropdownLot !== null) {
+        selectedLotsForQS = [Number(selectedDropdownLot)];
+      } else {
+        const lots = await fetchLotsForSelection();
+        const validLots = (lots || []).filter(lot => lot.lotNo > 0);
 
-      if (validLots.length > 0) {
-        const selectedLots = await showLotSelectionModal(validLots, {
-          description: "Please select which lot(s) you want to generate for quantity sheet. You can select all lots or specific ones.",
-          okText: "Generate",
-          isQuantitySheet: true
-        });
-        if (selectedLots === null) {
+        if (validLots.length > 0) {
+          const selectedLots = await showLotSelectionModal(validLots, {
+            description: "Please select which lot(s) you want to generate for quantity sheet. You can select all lots or specific ones.",
+            okText: "Generate",
+            isQuantitySheet: true
+          });
+          if (selectedLots === null) {
+            return;
+          }
+          selectedLotsForQS = selectedLots;
+        } else {
+          Modal.warning({
+            title: "Lot Bifurcation Required",
+            content: "Please complete lot bifurcation before generating Quantity Sheet.",
+            okText: "OK"
+          });
           return;
         }
-        selectedLotsForQS = selectedLots;
-      } else {
-        Modal.warning({
-          title: "Lot Bifurcation Required",
-          content: "Please complete lot bifurcation before generating Quantity Sheet.",
-          okText: "OK"
-        });
-        return;
       }
     }
 
@@ -1568,27 +1604,31 @@ const loadGeneratedTemplateReports = async () => {
     // For box breaking dependent templates, show lot selection modal
     let selectedLotsForBoxBreaking = [];
     if (isBoxBreakingDependent && !isQS && !isComposite) {
-      const lots = await fetchLotsForSelection();
-      const validLots = lots.filter(lot => lot.lotNo > 0);
+      if (selectedDropdownLot !== "all" && selectedDropdownLot !== null) {
+        selectedLotsForBoxBreaking = [Number(selectedDropdownLot)];
+      } else {
+        const lots = await fetchLotsForSelection();
+        const validLots = (lots || []).filter(lot => lot.lotNo > 0);
 
-      if (validLots.length > 0) {
-        const selectedLots = await showLotSelectionModal(validLots, {
-          description: "Please select which lot(s) you want to generate for box breaking template. You can select all lots or specific ones.",
-          okText: "Generate",
-          isQuantitySheet: false
-        });
-        if (selectedLots === null) {
+        if (validLots.length > 0) {
+          const selectedLots = await showLotSelectionModal(validLots, {
+            description: "Please select which lot(s) you want to generate for box breaking template. You can select all lots or specific ones.",
+            okText: "Generate",
+            isQuantitySheet: false
+          });
+          if (selectedLots === null) {
+            return;
+          }
+          selectedLotsForBoxBreaking = selectedLots;
+          // Don't set envLotNumbers here - we'll set it per lot in the loop
+        } else {
+          Modal.warning({
+            title: "Lot Bifurcation Required",
+            content: "Please complete lot bifurcation before generating this template.",
+            okText: "OK"
+          });
           return;
         }
-        selectedLotsForBoxBreaking = selectedLots;
-        // Don't set envLotNumbers here - we'll set it per lot in the loop
-      } else {
-        Modal.warning({
-          title: "Lot Bifurcation Required",
-          content: "Please complete lot bifurcation before generating this template.",
-          okText: "OK"
-        });
-        return;
       }
     }
     
@@ -2938,6 +2978,7 @@ const loadGeneratedTemplateReports = async () => {
         // Check if report already exists — skip only if user did NOT explicitly select this module
         const fileName = fileNames[step.key];
         let reportExists = false;
+        let actualFileName = fileName;
 
         if (fileName && !modulesToProcess.includes(step.key)) {
           try {
@@ -2945,6 +2986,9 @@ const loadGeneratedTemplateReports = async () => {
               `/EnvelopeBreakages/Reports/Exists?projectId=${projectId}&fileName=${fileName}`
             );
             reportExists = res.data.exists;
+            if (res.data?.fileName) {
+              actualFileName = res.data.fileName;
+            }
           } catch (err) {
             console.error(`Failed to check file existence: ${fileName}`, err);
           }
@@ -2952,7 +2996,7 @@ const loadGeneratedTemplateReports = async () => {
 
         // If report already exists and not explicitly selected, mark as completed and skip
         if (reportExists) {
-          const fileUrl = `${url3}/${projectId}/${fileName}?DateTime=${new Date().toISOString()}`;
+          const fileUrl = `${url3}/${projectId}/${actualFileName}?DateTime=${new Date().toISOString()}`;
           updateStepStatus(step.key, {
             status: "completed",
             fileUrl,
@@ -2972,45 +3016,50 @@ const loadGeneratedTemplateReports = async () => {
           else if (step.key === "extra") await runExtras(projectId);
           else if (step.key === "envelopebreaking") await runEnvelope(projectId);
           else if (step.key === "box") {
-            // Fetch available lots before running box breaking
-            const lots = await fetchLotsForSelection();
+            if (selectedDropdownLot !== "all" && selectedDropdownLot !== null) {
+              // Specific lot selected: bypass lot selection and bifurcation modal completely
+              const selectedLots = [Number(selectedDropdownLot)];
+              await runBoxBreaking(projectId, selectedLots);
+              setLotReportStatus((prev) => ({
+                ...prev,
+                [Number(selectedDropdownLot)]: true,
+              }));
+            } else {
+              // "All Lots" selected: fetch available lots and show lot selection modal
+              const lots = await fetchLotsForSelection();
+              const validLots = (lots || []).filter(lot => lot.lotNo > 0);
 
-            // Filter out unassigned catches or invalid lot numbers (lotNo <= 0)
-            const validLots = lots.filter(lot => lot.lotNo > 0);
+              if (validLots.length > 0) {
+                const selectedLots = await showLotSelectionModal(validLots);
 
-            if (validLots.length > 0) {
-              // Show lot selection modal for all cases
-              const selectedLots = await showLotSelectionModal(validLots);
+                if (selectedLots === null) {
+                  // User cancelled - stop processing
+                  message.info("Box breaking cancelled by user");
+                  updateStepStatus(step.key, { status: "pending" });
+                  setSelectedModules(prev => prev.filter(m => m !== step.key));
+                  break;
+                }
 
-              if (selectedLots === null) {
-                // User cancelled - stop processing
-                message.info("Box breaking cancelled by user");
+                // Run box breaking with selected lots
+                await runBoxBreaking(projectId, selectedLots);
+
+                // Immediately update availableLots and mark selectedLots as completed
+                setAvailableLots(validLots);
+                setLotReportStatus((prev) => {
+                  const next = { ...prev };
+                  selectedLots.forEach((lotNo) => { next[lotNo] = true; });
+                  return next;
+                });
+              } else {
+                Modal.warning({
+                  title: "Lot Bifurcation Required",
+                  content: "Please complete lot bifurcation before running Box Breaking.",
+                  okText: "OK"
+                });
                 updateStepStatus(step.key, { status: "pending" });
                 setSelectedModules(prev => prev.filter(m => m !== step.key));
-                break;
+                return;
               }
-
-              // Run box breaking with selected lots
-              await runBoxBreaking(projectId, selectedLots);
-
-              // Immediately update availableLots and mark selectedLots as completed
-              // in lotReportStatus so the badge is accurate right away (before the
-              // async checkReportExistence re-confirms via file-existence calls).
-              setAvailableLots(validLots);
-              setLotReportStatus((prev) => {
-                const next = { ...prev };
-                selectedLots.forEach((lotNo) => { next[lotNo] = true; });
-                return next;
-              });
-            } else {
-              Modal.warning({
-                title: "Lot Bifurcation Required",
-                content: "Please complete lot bifurcation before running Box Breaking.",
-                okText: "OK"
-              });
-              updateStepStatus(step.key, { status: "pending" });
-              setSelectedModules(prev => prev.filter(m => m !== step.key));
-              return;
             }
           }
           else if (step.key === "envelopeSummary") await runEnvelopeSummary(projectId);
@@ -3482,6 +3531,30 @@ const loadGeneratedTemplateReports = async () => {
           pending: "orange",
           skipped: "default",
         };
+
+        const moduleToLotKey = {
+          duplicate: { pending: "pendingDuplicateLots", completed: "completedDuplicateLots" },
+          enhancement: { pending: "pendingEnhancementLots", completed: "completedEnhancementLots" },
+          extra: { pending: "pendingExtraLots", completed: "completedExtraLots" },
+          envelopebreaking: { pending: "pendingEnvelopeLots", completed: "completedEnvelopeLots" },
+        };
+
+        if (moduleToLotKey[record.key] && pipelineStepStatus && status !== "in-progress") {
+          const keys = moduleToLotKey[record.key];
+          const pendingLots = pipelineStepStatus[keys.pending] || [];
+          const completedLots = pipelineStepStatus[keys.completed] || [];
+          
+          if (pendingLots.length > 0 || completedLots.length > 0) {
+             const tags = [];
+             if (completedLots.length > 0) {
+               tags.push(<Tag color="green" key="completed">Completed Lots - {completedLots.join(", ")}</Tag>);
+             }
+             if (pendingLots.length > 0) {
+               tags.push(<Tag color="orange" key="pending" icon={<ExclamationCircleOutlined />}>Outdated Lots - {pendingLots.join(", ")}</Tag>);
+             }
+             return <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-start' }}>{tags}</div>;
+          }
+        }
 
         if (isOutdated && status !== "in-progress") {
           return (
@@ -4353,6 +4426,44 @@ Object.keys(groupedTpl).forEach((templateKey) => {
             const completedCount = Object.values(lotReportStatus || {}).filter(Boolean).length;
             const boxHasRemaining = availableCount > 0 && completedCount < availableCount;
             const canStartByData = hasPendingPipelineChanges || hasAnyPendingStep || configChanged || boxHasRemaining;
+
+            const hasModulePendingData = selectedModules.some(m => {
+              const keyMap = {
+                duplicate: "duplicatePending",
+                enhancement: "enhancementPending",
+                extra: "extraPending",
+                envelopebreaking: "envelopePending",
+                box: "boxPending"
+              };
+              const flag = keyMap[m];
+
+              const lotListKeyMap = {
+                duplicate: "pendingDuplicateLots",
+                enhancement: "pendingEnhancementLots",
+                extra: "pendingExtraLots",
+                envelopebreaking: "pendingEnvelopeLots",
+                box: "pendingBoxLots"
+              };
+              const listKey = lotListKeyMap[m];
+
+              if (selectedDropdownLot !== "all" && selectedDropdownLot !== null) {
+                if (listKey && pipelineStepStatus && Array.isArray(pipelineStepStatus[listKey])) {
+                  return pipelineStepStatus[listKey].includes(Number(selectedDropdownLot));
+                }
+              } else {
+                if (listKey && pipelineStepStatus && Array.isArray(pipelineStepStatus[listKey])) {
+                  return pipelineStepStatus[listKey].length > 0;
+                }
+              }
+
+              if (m === "box") {
+                const avCount = (availableLots && availableLots.length) || 0;
+                const compCount = Object.values(lotReportStatus || {}).filter(Boolean).length;
+                const hasRemainingLots = avCount > 0 && compCount < avCount;
+                return hasRemainingLots || (pipelineStepStatus && pipelineStepStatus[flag]);
+              }
+              return !flag || (pipelineStepStatus && pipelineStepStatus[flag]);
+            });
             
             return (
           <Tooltip
@@ -4361,24 +4472,8 @@ Object.keys(groupedTpl).forEach((templateKey) => {
                 ? "No new data found for processing. All data is already processed."
                 : (selectedModules.length === 0
                   ? "Please select at least one module"
-                  : (!selectedModules.some(m => {
-                    const keyMap = {
-                      duplicate: "duplicatePending",
-                      enhancement: "enhancementPending",
-                      extra: "extraPending",
-                      envelopebreaking: "envelopePending",
-                      box: "boxPending"
-                    };
-                    const flag = keyMap[m];
-                    if (m === "box") {
-                      const avCount = (availableLots && availableLots.length) || 0;
-                      const compCount = Object.values(lotReportStatus || {}).filter(Boolean).length;
-                      const hasRemainingLots = avCount > 0 && compCount < avCount;
-                      return hasRemainingLots || (pipelineStepStatus && pipelineStepStatus[flag]);
-                    }
-                    return !flag || (pipelineStepStatus && pipelineStepStatus[flag]);
-                  }) && !configChanged)
-                    ? "Selected modules have no pending data to process."
+                  : (!hasModulePendingData && !configChanged)
+                    ? "Selected modules have no pending data to process for the chosen lot(s)."
                     : "")
             }
           >
@@ -4390,23 +4485,7 @@ Object.keys(groupedTpl).forEach((templateKey) => {
                   !projectId ||
                   isProcessing ||
                   selectedModules.length === 0 ||
-                  (!selectedModules.some(m => {
-                    const keyMap = {
-                      duplicate: "duplicatePending",
-                      enhancement: "enhancementPending",
-                      extra: "extraPending",
-                      envelopebreaking: "envelopePending",
-                      box: "boxPending"
-                    };
-                    const flag = keyMap[m];
-                    if (m === "box") {
-                      const avCount = (availableLots && availableLots.length) || 0;
-                      const compCount = Object.values(lotReportStatus || {}).filter(Boolean).length;
-                      const hasRemainingLots = avCount > 0 && compCount < avCount;
-                      return hasRemainingLots || (pipelineStepStatus && pipelineStepStatus[flag]);
-                    }
-                    return !flag || (pipelineStepStatus && pipelineStepStatus[flag]);
-                  }) && !configChanged)
+                  (!hasModulePendingData && !configChanged)
                 }
               >
                 Start {selectedModules.length > 0 && `(${selectedModules.length} selected)`}
@@ -4436,7 +4515,25 @@ Object.keys(groupedTpl).forEach((templateKey) => {
         >
           <Card
             size="small"
-            title="Enabled Modules Status & Reports"
+            title={
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <span>Enabled Modules Status & Reports</span>
+                <Select
+                  size="small"
+                  style={{ width: 90 }}
+                  placeholder="Select Lot"
+                  value={selectedDropdownLot}
+                  onChange={(val) => setSelectedDropdownLot(val)}
+                >
+                  <Select.Option value="all">All Lots</Select.Option>
+                  {dropdownLots.map((lotNo) => (
+                    <Select.Option key={lotNo} value={lotNo}>
+                      Lot {lotNo}
+                    </Select.Option>
+                  ))}
+                </Select>
+              </div>
+            }
             className="pipeline-table-card"
             style={{
               marginBottom: 12,
