@@ -283,9 +283,8 @@ const ReportTemplateManagement = ({
       // Group: for box breaking use "module||lot", for others use "module"
       const groupMap = new Map();
       filtered.forEach(r => {
-        const isBox = r.module?.toLowerCase().includes(BOX_BREAKING_MODULE);
-        const lotNum = isBox ? extractLotFromFilename(r.reportName || r.fileName || '') : null;
-        const groupKey = isBox && lotNum
+        const lotNum = extractLotFromFilename(r.reportName || r.fileName || '');
+        const groupKey = lotNum
           ? `${r.module}||lot-${lotNum}`
           : `${r.module}`;
 
