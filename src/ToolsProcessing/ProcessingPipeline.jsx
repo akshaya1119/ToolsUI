@@ -4446,7 +4446,16 @@ Object.keys(groupedTpl).forEach((templateKey) => {
                 envelopebreaking: "extra",
                 box: "envelopebreaking"
               };
-              const dep = dependencies[m];
+
+              const getEffectiveDependency = (mod) => {
+                let currentDep = dependencies[mod];
+                while (currentDep && !steps.some(s => s.key === currentDep)) {
+                  currentDep = dependencies[currentDep];
+                }
+                return currentDep;
+              };
+
+              const dep = getEffectiveDependency(m);
               const isDepSelected = dep && selectedModules.includes(dep);
 
               if (selectedDropdownLot !== "all" && selectedDropdownLot !== null) {
