@@ -19,7 +19,7 @@ import {
   Divider,
   Select,
 } from "antd";
-import { HistoryOutlined, ExclamationCircleOutlined } from "@ant-design/icons";
+import { HistoryOutlined, ExclamationCircleOutlined, SyncOutlined } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import axios from "axios";
@@ -2152,7 +2152,16 @@ const loadGeneratedTemplateReports = async () => {
     setTemplatePanel({ open: false, moduleKey: null }); // Ensure standard panel is closed
     
     // Fetch data BEFORE opening the panel to avoid white screen
-    await fetchAvailableLots();
+    const lots = await fetchAvailableLots();
+    
+    // Auto-select the tab based on the main dropdown
+    if (selectedDropdownLot !== "all" && selectedDropdownLot !== null) {
+      setSelectedLotTab(Number(selectedDropdownLot));
+    } else if (lots && lots.length > 0) {
+      setSelectedLotTab(lots[0].lotNo);
+    } else {
+      setSelectedLotTab(null);
+    }
     
     // Open panel after data is loaded
     setLotWisePanel({ open: true, moduleKey });
@@ -2169,9 +2178,9 @@ const loadGeneratedTemplateReports = async () => {
   const fetchAvailableLots = async () => {
     if (!projectId) return;
     setLoadingLots(true);
+    let lots = [];
     try {
       // Try the new endpoint first
-      let lots = [];
       try {
         const res = await API.get(`/NRDataLots/GetByProjectId/${projectId}`);
         const data = res.data || [];
@@ -2231,9 +2240,11 @@ const loadGeneratedTemplateReports = async () => {
       console.error("Failed to fetch lots", err);
       message.error("Failed to load lots for this project");
       setAvailableLots([]);
+      return [];
     } finally {
       setLoadingLots(false);
     }
+    return lots;
   };
 
   const checkLotReportExistence = async (lots) => {
@@ -3291,6 +3302,26 @@ const loadGeneratedTemplateReports = async () => {
   };
 
   const isStepSelectable = (step) => {
+    const moduleToLotKey = {
+      duplicate: { pending: "pendingDuplicateLots", completed: "completedDuplicateLots" },
+      enhancement: { pending: "pendingEnhancementLots", completed: "completedEnhancementLots" },
+      extra: { pending: "pendingExtraLots", completed: "completedExtraLots" },
+      envelopebreaking: { pending: "pendingEnvelopeLots", completed: "completedEnvelopeLots" },
+      box: { pending: "pendingBoxLots", completed: "completedBoxLots" },
+    };
+
+    if (selectedDropdownLot !== "all" && selectedDropdownLot !== null && moduleToLotKey[step.key] && pipelineStepStatus) {
+      const keys = moduleToLotKey[step.key];
+      const pendingLots = pipelineStepStatus[keys.pending] || [];
+      const completedLots = pipelineStepStatus[keys.completed] || [];
+      const lotNum = Number(selectedDropdownLot);
+      
+      const isLotPending = pendingLots.includes(lotNum);
+      const isLotCompleted = completedLots.includes(lotNum) && !isLotPending;
+      
+      if (isLotCompleted) return false;
+    }
+
     // Selectable if not completed, or completed but outdated (needs re-run)
     const outdated = isStepOutdated(step);
     
@@ -3347,30 +3378,7 @@ const loadGeneratedTemplateReports = async () => {
       key: "select",
       width: 100,
       render: (_, record) => {
-          // Determine if a completed step is actually outdated (so it should remain selectable)
-          let isOutdated = false;
-          if (pipelineStepStatus) {
-            const keyMap = {
-              duplicate: "duplicatePending",
-              enhancement: "enhancementPending",
-              extra: "extraPending",
-              envelopebreaking: "envelopePending",
-              box: "boxPending",
-            };
-            const pendingFlag = keyMap[record.key];
-            if (pendingFlag && pipelineStepStatus[pendingFlag]) {
-                if (record.key === "box") {
-                  isOutdated = (availableLots || []).some(
-                    lot => lotReportStatus[lot.lotNo] && lot.minStep < 6
-                  );
-                } else {
-                  isOutdated = record.status === "completed" || record.report;
-                }
-            }
-          }
-
-          // If step is completed and NOT outdated, hide selection checkbox
-          if (record.status === "completed" && !isOutdated) {
+          if (!isStepSelectable(record)) {
             return <Text type="secondary">—</Text>;
           }
 
@@ -3537,12 +3545,21 @@ const loadGeneratedTemplateReports = async () => {
           enhancement: { pending: "pendingEnhancementLots", completed: "completedEnhancementLots" },
           extra: { pending: "pendingExtraLots", completed: "completedExtraLots" },
           envelopebreaking: { pending: "pendingEnvelopeLots", completed: "completedEnvelopeLots" },
+          box: { pending: "pendingBoxLots", completed: "completedBoxLots" },
         };
 
         if (moduleToLotKey[record.key] && pipelineStepStatus && status !== "in-progress") {
           const keys = moduleToLotKey[record.key];
-          const pendingLots = pipelineStepStatus[keys.pending] || [];
-          const completedLots = pipelineStepStatus[keys.completed] || [];
+          let pendingLots = pipelineStepStatus[keys.pending] || [];
+          let completedLots = pipelineStepStatus[keys.completed] || [];
+          
+          const globalCompletedLots = completedLots; // Keep reference to check if lot has completed data
+          
+          if (selectedDropdownLot !== "all" && selectedDropdownLot !== null) {
+            const lotNum = Number(selectedDropdownLot);
+            pendingLots = pendingLots.filter(l => l === lotNum);
+            completedLots = completedLots.filter(l => l === lotNum);
+          }
           
           if (pendingLots.length > 0 || completedLots.length > 0) {
              const tags = [];
@@ -3550,7 +3567,34 @@ const loadGeneratedTemplateReports = async () => {
                tags.push(<Tag color="green" key="completed">Completed Lots - {completedLots.join(", ")}</Tag>);
              }
              if (pendingLots.length > 0) {
-               tags.push(<Tag color="orange" key="pending" icon={<ExclamationCircleOutlined />}>Outdated Lots - {pendingLots.join(", ")}</Tag>);
+               const truePending = [];
+               const outdated = [];
+               
+               pendingLots.forEach(lot => {
+                 if (record.key === "box") {
+                   if (lotReportStatus && lotReportStatus[lot]) {
+                     outdated.push(lot);
+                   } else {
+                     truePending.push(lot);
+                   }
+                 } else {
+                   const lotInfo = (availableLots || []).find(l => l.lotNo === lot);
+                   const isOldLot = lotInfo ? lotInfo.minStep > 0 : false;
+                   
+                   if (globalCompletedLots.includes(lot) || ((record.status === "completed" || record.report) && isOldLot)) {
+                     outdated.push(lot);
+                   } else {
+                     truePending.push(lot);
+                   }
+                 }
+               });
+
+               if (outdated.length > 0) {
+                 tags.push(<Tag color="orange" key="outdated" icon={<ExclamationCircleOutlined />}>Outdated Lots - {outdated.join(", ")}</Tag>);
+               }
+               if (truePending.length > 0) {
+                 tags.push(<Tag color="processing" key="pending" >Pending Lots - {truePending.join(", ")}</Tag>);
+               }
              }
              return <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-start' }}>{tags}</div>;
           }
@@ -3564,13 +3608,6 @@ const loadGeneratedTemplateReports = async () => {
           );
         }
 
-        if (record.key === "box" && currentCompletedLots > 0 && currentCompletedLots < currentTotalLots) {
-          return (
-            <Tooltip title={`${currentCompletedLots} out of ${currentTotalLots} lots have generated reports. Some data might be outdated if recent changes were made.`}>
-              <Tag color="orange">{currentCompletedLots}/{currentTotalLots} Lots completed</Tag>
-            </Tooltip>
-          );
-        }
 
         return <Tag color={colorMap[displayStatus] || "default"}>{displayStatus}</Tag>;
       },
@@ -3582,7 +3619,7 @@ const loadGeneratedTemplateReports = async () => {
       render: (_, record) => {
         const moduleTemplates = getTemplatesForModuleKey(record.key);
         const hasTemplates = moduleTemplates.length > 0;
-        const isReady = record.status === "completed";
+        const isReady = record.status === "completed" || (record.key === "box" && record.completedLots > 0);
         const isBoxBreaking = record.key === "box";
 
         // Compute outdated info for Templates column badge
@@ -3729,69 +3766,7 @@ const loadGeneratedTemplateReports = async () => {
         );
       },
     },
-    {
-      title: "Report",
-      dataIndex: "report",
-      key: "report",
-      render: (url, record) => {
-        if (record.key === "box") {
-          if (!record.completedLots || record.completedLots === 0) {
-            return <Text type="secondary">—</Text>;
-          }
-          return (
-            <Button
-              type="link"
-              onClick={() => openLotWisePanel("box")}
-              style={{ padding: 0 }}
-            >
-              View Lot Reports
-            </Button>
-          );
-        }
-        const versions = reportVersions[record.key] || [];
-        if (versions.length === 0) {
-          return url ? (
-            <a href={url} target="_blank" rel="noopener noreferrer" className="text-blue-500">
-              Download
-            </a>
-          ) : (
-            <Text type="secondary">—</Text>
-          );
-        }
-
-        return (
-          <Select
-            placeholder="Download"
-            size="small"
-            style={{ width: 140 }}
-            value={undefined}
-            onChange={(fileName) => {
-              const fileUrl = `${url3}/${projectId}/${fileName}`;
-              const link = document.createElement("a");
-              link.href = fileUrl;
-              link.download = fileName;
-              link.target = "_blank";
-              document.body.appendChild(link);
-              link.click();
-              document.body.removeChild(link);
-            }}
-            options={versions.map((v) => ({
-              value: v.fileName,
-              label: v.version > 0 ? `v${v.version} (${v.generatedAt})` : `Latest (${v.generatedAt})`,
-            }))}
-          />
-        );
-      },
-    },
-    // {
-    //   title: "Actions",
-    //   key: "actions",
-    //   width: 120,
-    //   render: (_, record) => {
-    //     const hasData = record.report || record.status === "completed";
-    //     return 
-    //   },
-    // },
+  
   ];
 
   // Check if module has data
@@ -4427,42 +4402,82 @@ Object.keys(groupedTpl).forEach((templateKey) => {
             const boxHasRemaining = availableCount > 0 && completedCount < availableCount;
             const canStartByData = hasPendingPipelineChanges || hasAnyPendingStep || configChanged || boxHasRemaining;
 
-            const hasModulePendingData = selectedModules.some(m => {
-              const keyMap = {
-                duplicate: "duplicatePending",
-                enhancement: "enhancementPending",
-                extra: "extraPending",
-                envelopebreaking: "envelopePending",
-                box: "boxPending"
-              };
-              const flag = keyMap[m];
-
-              const lotListKeyMap = {
+            // First, filter the selected modules to only those that ACTUALLY have pending data
+            const modulesWithPendingData = selectedModules.filter(m => {
+              const listKey = {
                 duplicate: "pendingDuplicateLots",
                 enhancement: "pendingEnhancementLots",
                 extra: "pendingExtraLots",
                 envelopebreaking: "pendingEnvelopeLots",
                 box: "pendingBoxLots"
+              }[m];
+
+              if (selectedDropdownLot !== "all" && selectedDropdownLot !== null) {
+                return pipelineStepStatus?.[listKey]?.includes(Number(selectedDropdownLot));
+              } else {
+                if (m === "box") {
+                  const avCount = (availableLots && availableLots.length) || 0;
+                  const compCount = Object.values(lotReportStatus || {}).filter(Boolean).length;
+                  return (avCount > 0 && compCount < avCount) || pipelineStepStatus?.boxPending;
+                }
+                return pipelineStepStatus?.[listKey]?.length > 0;
+              }
+            });
+
+            // If no selected modules have pending data (and no config change), the button should be disabled
+            if (modulesWithPendingData.length === 0) {
+              return false;
+            }
+
+            // For the modules that DO have pending data, ensure they are all ready (or virtually ready)
+            const hasModulePendingData = modulesWithPendingData.every(m => {
+              const lotListKeyMap = {
+                duplicate: "readyDuplicateLots",
+                enhancement: "readyEnhancementLots",
+                extra: "readyExtraLots",
+                envelopebreaking: "readyEnvelopeLots",
+                box: "readyBoxLots"
               };
               const listKey = lotListKeyMap[m];
 
+              const dependencies = {
+                enhancement: "duplicate",
+                extra: "enhancement",
+                envelopebreaking: "extra",
+                box: "envelopebreaking"
+              };
+              const dep = dependencies[m];
+              const isDepSelected = dep && selectedModules.includes(dep);
+
               if (selectedDropdownLot !== "all" && selectedDropdownLot !== null) {
-                if (listKey && pipelineStepStatus && Array.isArray(pipelineStepStatus[listKey])) {
-                  return pipelineStepStatus[listKey].includes(Number(selectedDropdownLot));
+                const lotNum = Number(selectedDropdownLot);
+                if (listKey && pipelineStepStatus) {
+                  const readyLots = pipelineStepStatus[listKey] || [];
+                  if (readyLots.includes(lotNum)) return true;
+                  return isDepSelected;
                 }
               } else {
-                if (listKey && pipelineStepStatus && Array.isArray(pipelineStepStatus[listKey])) {
-                  return pipelineStepStatus[listKey].length > 0;
+                if (listKey && pipelineStepStatus) {
+                  const pendingKey = listKey.replace("ready", "pending");
+                  const pendingLots = pipelineStepStatus[pendingKey] || [];
+                  const readyLots = pipelineStepStatus[listKey] || [];
+                  
+                  if (pendingLots.length > 0 && pendingLots.some(lot => {
+                    if (readyLots.includes(lot)) return false;
+                    if (isDepSelected) return false;
+                    return true;
+                  })) {
+                    return false;
+                  }
+                  
+                  return true;
                 }
               }
 
               if (m === "box") {
-                const avCount = (availableLots && availableLots.length) || 0;
-                const compCount = Object.values(lotReportStatus || {}).filter(Boolean).length;
-                const hasRemainingLots = avCount > 0 && compCount < avCount;
-                return hasRemainingLots || (pipelineStepStatus && pipelineStepStatus[flag]);
+                return true; // Box breaking logic is handled by standard pending check if it reached here
               }
-              return !flag || (pipelineStepStatus && pipelineStepStatus[flag]);
+              return true;
             });
             
             return (
@@ -4523,7 +4538,16 @@ Object.keys(groupedTpl).forEach((templateKey) => {
                   style={{ width: 90 }}
                   placeholder="Select Lot"
                   value={selectedDropdownLot}
-                  onChange={(val) => setSelectedDropdownLot(val)}
+                  onChange={(val) => {
+                    setSelectedDropdownLot(val);
+                    if (val !== "all") {
+                      setSelectedLotTab(Number(val));
+                    } else if (dropdownLots && dropdownLots.length > 0) {
+                      setSelectedLotTab(dropdownLots[0]);
+                    } else {
+                      setSelectedLotTab(null);
+                    }
+                  }}
                 >
                   <Select.Option value="all">All Lots</Select.Option>
                   {dropdownLots.map((lotNo) => (
@@ -4551,22 +4575,42 @@ Object.keys(groupedTpl).forEach((templateKey) => {
                 loading={loadingModules}
                 rowKey="key"
                 onRow={(record) => {
-                  const keyMap = {
-                    duplicate: "duplicatePending",
-                    enhancement: "enhancementPending",
-                    extra: "extraPending",
-                    envelopebreaking: "envelopePending",
-                    box: "boxPending"
+                  const moduleToLotKey = {
+                    duplicate: { pending: "pendingDuplicateLots", completed: "completedDuplicateLots" },
+                    enhancement: { pending: "pendingEnhancementLots", completed: "completedEnhancementLots" },
+                    extra: { pending: "pendingExtraLots", completed: "completedExtraLots" },
+                    envelopebreaking: { pending: "pendingEnvelopeLots", completed: "completedEnvelopeLots" },
+                    box: { pending: "pendingBoxLots", completed: "completedBoxLots" },
                   };
-                  const pendingFlag = keyMap[record.key];
-                  const isPending = (pendingFlag && pipelineStepStatus && pipelineStepStatus[pendingFlag]);
-                  const isOutdated = isPending && (record.status === "completed" || record.report || (record.key === "box" && record.completedLots > 0));
 
-                  if (isOutdated) {
-                    return {
-                      style: { background: "#fffbe6" }
-                    };
-                  }
+                  if (selectedDropdownLot !== "all" && selectedDropdownLot !== null && moduleToLotKey[record.key] && pipelineStepStatus) {
+                    const keys = moduleToLotKey[record.key];
+                    const pendingLots = pipelineStepStatus[keys.pending] || [];
+                    const lotNum = Number(selectedDropdownLot);
+                    
+                    let isLotOutdated = false;
+                    
+                    if (pendingLots.includes(lotNum)) {
+                      if (record.key === "box") {
+                        if (lotReportStatus && lotReportStatus[lotNum]) {
+                          isLotOutdated = true;
+                        }
+                      } else {
+                        const globalCompletedLots = pipelineStepStatus[keys.completed] || [];
+                        const lotInfo = (availableLots || []).find(l => l.lotNo === lotNum);
+                        const isOldLot = lotInfo ? lotInfo.minStep > 0 : false;
+                        
+                        if (globalCompletedLots.includes(lotNum) || ((record.status === "completed" || record.report) && isOldLot)) {
+                          isLotOutdated = true;
+                        }
+                      }
+                    }
+                    
+                    if (isLotOutdated) {
+                      return { style: { background: "#fffbe6" } };
+                    }
+                  } 
+
                   return {};
                 }}
               />
@@ -4695,7 +4739,11 @@ Object.keys(groupedTpl).forEach((templateKey) => {
             projectId={projectId}
             url3={url3}
             loadingLots={loadingLots}
-            availableLots={availableLots}
+            availableLots={
+              selectedDropdownLot !== "all" && selectedDropdownLot !== null
+                ? availableLots.filter((lot) => Number(lot.lotNo) === Number(selectedDropdownLot))
+                : availableLots
+            }
             selectedLotTab={selectedLotTab}
             setSelectedLotTab={setSelectedLotTab}
             getTemplatesForModuleKey={getTemplatesForModuleKey}
@@ -4825,7 +4873,9 @@ Object.keys(groupedTpl).forEach((templateKey) => {
         }
         .pipeline-panel-title {
           display: flex;
-          flex-direction: column;
+          flex-direction: row;
+          justify-content: space-between;
+          align-items: center;
           gap: 8px;
           width: 100%;
         }
@@ -4836,7 +4886,7 @@ Object.keys(groupedTpl).forEach((templateKey) => {
         }
         .pipeline-panel-actions .ant-btn {
           white-space: nowrap;
-          flex: 1 1 auto;
+          flex: none;
         }
         .ant-tabs-tab.ant-tabs-tab-active {
           background-color: #f0f5ff !important;

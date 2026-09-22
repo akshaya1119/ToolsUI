@@ -136,18 +136,20 @@ const EnvLotReportsManager = ({
                 </Text>
               </div>
             </div>
-            <Button
-              type="primary"
-              size="small"
-              icon={<DownloadOutlined />}
-              onClick={() => onDownload(latestReport)}
-              style={{ 
-                borderRadius: 4,
-                boxShadow: "0 2px 4px rgba(22, 119, 255, 0.15)"
-              }}
-            >
-              Download
-            </Button>
+            {onDownload && (
+              <Button
+                type="primary"
+                size="small"
+                icon={<DownloadOutlined />}
+                onClick={() => onDownload(latestReport)}
+                style={{ 
+                  borderRadius: 4,
+                  boxShadow: "0 2px 4px rgba(22, 119, 255, 0.15)"
+                }}
+              >
+                Download
+              </Button>
+            )}
           </div>
         </div>
 
@@ -197,13 +199,15 @@ const EnvLotReportsManager = ({
                         {formatDateTime(report.generatedAt)}
                       </Text>
                     </div>
-                    <Button
-                      type="text"
-                      size="small"
-                      icon={<DownloadOutlined />}
-                      onClick={() => onDownload(report)}
-                      style={{ fontSize: "10px", color: "#1677ff" }}
-                    />
+                    {onDownload && (
+                      <Button
+                        type="text"
+                        size="small"
+                        icon={<DownloadOutlined />}
+                        onClick={() => onDownload(report)}
+                        style={{ fontSize: "10px", color: "#1677ff" }}
+                      />
+                    )}
                   </div>
                 ))}
               </div>
@@ -264,16 +268,18 @@ const EnvLotReportsManager = ({
       key: "actions",
       width: 120,
       render: (_, record) => (
-        <Tooltip title="Download Report">
-          <Button
-            type="primary"
-            size="small"
-            icon={<DownloadOutlined />}
-            onClick={() => onDownload(record)}
-          >
-            Download
-          </Button>
-        </Tooltip>
+        onDownload && (
+          <Tooltip title="Download Report">
+            <Button
+              type="primary"
+              size="small"
+              icon={<DownloadOutlined />}
+              onClick={() => onDownload(record)}
+            >
+              Download
+            </Button>
+          </Tooltip>
+        )
       ),
     },
   ];

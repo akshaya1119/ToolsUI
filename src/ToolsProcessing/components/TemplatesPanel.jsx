@@ -51,13 +51,7 @@ const TemplatesPanel = ({
             >
               Generate All
             </Button>
-            <Button
-              size="small"
-              onClick={handleDownloadAllTemplates}
-              loading={bulkDownloading}
-            >
-              Download All
-            </Button>
+
             <Button size="small" onClick={onClose}>
               Close
             </Button>
@@ -137,7 +131,6 @@ const TemplatesPanel = ({
                       <EnvLotReportsManager
                         reports={envLotReports}
                         templateId={templateId}
-                        onDownload={handleDownloadEnvLotReport}
                         onDelete={handleDeleteEnvLotReport}
                         compact={true}
                         activeKey={expandedReportsTemplates.has(templateId) ? ['reports'] : []}
