@@ -181,7 +181,7 @@ export default function NodalCenterList() {
       // By default, dynamic fields are NOT visible, only standard fields are
       if (visibleColumns.length === 0) {
         const activeColumns = currentFields.filter(col => {
-          const dataIndex = col.charAt(0).toLowerCase() + col.slice(1);
+          const dataIndex = col === "NRQuantity" ? "nrQuantity" : (col.charAt(0).toLowerCase() + col.slice(1));
           return processedData.some(item => item[dataIndex] !== null && item[dataIndex] !== undefined && item[dataIndex] !== '');
         });
         setVisibleColumns(activeColumns.length > 0 ? activeColumns : currentFields);
@@ -446,7 +446,9 @@ export default function NodalCenterList() {
     .filter(col => visibleColumns.includes(col))
     .map(col => {
       const isStandardField = currentFields.includes(col);
-      const dataIndex = isStandardField ? (col.charAt(0).toLowerCase() + col.slice(1)) : col;
+      const dataIndex = isStandardField
+        ? (col === "NRQuantity" ? "nrQuantity" : (col.charAt(0).toLowerCase() + col.slice(1)))
+        : col;
 
       const colDef = {
         title: col,
@@ -520,7 +522,11 @@ export default function NodalCenterList() {
 
   const isEditing = (record) => record.id === editingKey;
   const edit = (record) => {
-    form.setFieldsValue({ ...record });
+    form.setFieldsValue({
+      ...record,
+      nrQuantity: record.nrQuantity ?? record.nRQuantity ?? record.NRQuantity,
+      nRQuantity: record.nrQuantity ?? record.nRQuantity ?? record.NRQuantity,
+    });
     setEditingKey(record.id);
   };
   const cancel = () => {
@@ -529,6 +535,13 @@ export default function NodalCenterList() {
   const save = async (key) => {
     try {
       const row = await form.validateFields();
+      if (row.nrQuantity !== undefined) {
+        row.nRQuantity = row.nrQuantity;
+        row.NRQuantity = row.nrQuantity;
+      } else if (row.nRQuantity !== undefined) {
+        row.nrQuantity = row.nRQuantity;
+        row.NRQuantity = row.nRQuantity;
+      }
 
       if (activeTab === "3") {
         const newData = [...tempData];
@@ -561,7 +574,10 @@ export default function NodalCenterList() {
         }
       }
     } catch (errInfo) {
-      console.log('Validate Failed:', errInfo);
+      console.log('Validate/Save Failed:', errInfo);
+      if (errInfo?.response?.data) {
+        showToast(errInfo.response?.data?.message || errInfo.response?.data || "Failed to update record", "error");
+      }
     }
   };
 
@@ -966,14 +982,13 @@ export default function NodalCenterList() {
   };
 
   const renderMergeTab = () => {
-    const hasCriticalErrors = reports?.errors?.length > 0;
-
     const tempColumns = allTempColumnsList
       .filter(col => visibleTempColumns.includes(col))
       .map(col => {
+        const dataIndex = col === "NRQuantity" ? "nrQuantity" : (col.charAt(0).toLowerCase() + col.slice(1));
         const colDef = {
           title: col,
-          dataIndex: col.charAt(0).toLowerCase() + col.slice(1),
+          dataIndex: dataIndex,
           key: col,
           sorter: true,
           filteredValue: tempColumnFilters[col] ? [tempColumnFilters[col]] : null,
@@ -1005,10 +1020,17 @@ export default function NodalCenterList() {
           filterIcon: (filtered) => (
             <SearchOutlined style={{ color: filtered ? '#1890ff' : undefined }} />
           ),
+          onCell: (record) => ({
+            record,
+            inputType: ['NRQuantity', 'CollegeCode'].includes(col) ? 'number' : 'text',
+            dataIndex: dataIndex,
+            title: col,
+            editing: isEditing(record),
+          }),
         };
 
         if (col === "NRQuantity") {
-          colDef.render = (val) => <Tag color="blue">{val}</Tag>;
+          colDef.render = (val, record) => <Tag color="blue">{val ?? record?.nrQuantity ?? record?.nRQuantity}</Tag>;
         }
 
         if (["CourseName", "SubjectName", "CollegeName"].includes(col)) {
@@ -1167,7 +1189,7 @@ export default function NodalCenterList() {
             return (
               <Form.Item
                 key={field}
-                name={field.charAt(0).toLowerCase() + field.slice(1)}
+                name={field === "NRQuantity" ? "nrQuantity" : (field.charAt(0).toLowerCase() + field.slice(1))}
                 label={field}
                 rules={[{ required: isRequired, message: `Please enter ${field}` }]}
               >
