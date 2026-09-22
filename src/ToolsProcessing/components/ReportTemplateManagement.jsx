@@ -21,14 +21,11 @@ const formatDateTimeToIST = (dateVal) => {
   if (!dateVal) return '-';
   try {
     let s = String(dateVal);
-    if (!s.endsWith('Z') && !s.includes('+') && !s.match(/-\d{2}:\d{2}$/)) {
-      if (s.includes(' ') && !s.includes('T')) s = s.replace(' ', 'T');
-      s += 'Z';
-    }
+    if (s.includes(' ') && !s.includes('T')) s = s.replace(' ', 'T');
     const d = new Date(s);
     if (isNaN(d.getTime())) return '-';
     return d.toLocaleString('en-IN', {
-      timeZone: 'Asia/Kolkata', day: '2-digit', month: '2-digit', year: 'numeric',
+      day: '2-digit', month: '2-digit', year: 'numeric',
       hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true,
     });
   } catch { return '-'; }
