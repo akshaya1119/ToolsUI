@@ -277,10 +277,12 @@ const ReportTemplateManagement = ({
           return true;
         });
 
-      // Group: for box breaking use "module||lot", for others use "module"
+      // Group: for box breaking use "module||lot", for others use "module||lot" when lot available
       const groupMap = new Map();
       filtered.forEach(r => {
-        const lotNum = extractLotFromFilename(r.reportName || r.fileName || '');
+        // Prefer DB lot value, fall back to extracting from filename
+        const dbLot = r.lot != null && r.lot > 0 ? r.lot : null;
+        const lotNum = dbLot || extractLotFromFilename(r.reportName || r.fileName || '');
         const groupKey = lotNum
           ? `${r.module}||lot-${lotNum}`
           : `${r.module}`;

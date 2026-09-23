@@ -4080,8 +4080,8 @@ const loadGeneratedTemplateReports = async () => {
 
     const moduleIdToNameMap = {
       1: "Duplicate Tool",
-      2: "Extra Configuration",
-      3: "Envelope Breaking",
+      2: "Envelope Setup and Enhancement",
+      3: "Extra Configuration",
       4: "Envelope Breaking",
       5: "Box Breaking",
       6: "Envelope Summary",
