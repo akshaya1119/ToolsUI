@@ -203,14 +203,19 @@ const ProcessingPipeline = () => {
   const [reportsLoading, setReportsLoading] = useState(false);
   const [generatedTemplateReports, setGeneratedTemplateReports] = useState([]);
   const [reportVersions, setReportVersions] = useState({});
+  const [excelReports, setExcelReports] = useState([]);
 
   const loadReportVersions = async () => {
     if (!projectId) return;
     try {
-      const res = await API.get(`/EnvelopeBreakages/Reports/AllVersions?projectId=${projectId}`);
-      setReportVersions(res.data || {});
+      const [allVerRes, excelRes] = await Promise.all([
+        API.get(`/EnvelopeBreakages/Reports/AllVersions?projectId=${projectId}`).catch(() => ({ data: {} })),
+        API.get(`/ExcelReports/ByProject/${projectId}`).catch(() => ({ data: [] }))
+      ]);
+      setReportVersions(allVerRes.data || {});
+      setExcelReports(excelRes.data || []);
     } catch (err) {
-      console.error("Failed to load report versions", err);
+      console.error("Failed to load report versions or excel reports", err);
     }
   };
 
@@ -4070,86 +4075,109 @@ const loadGeneratedTemplateReports = async () => {
   }
 
   const combinedReportData = useMemo(() => {
-  const list = [];
-  let keyId = 0;
+    const list = [];
+    let keyId = 0;
 
-  Object.keys(reportVersions || {}).forEach((moduleKey) => {
-    const versions = reportVersions[moduleKey] || [];
+    const moduleIdToNameMap = {
+      1: "Duplicate Tool",
+      2: "Extra Configuration",
+      3: "Envelope Breaking",
+      4: "Envelope Breaking",
+      5: "Box Breaking",
+      6: "Envelope Summary",
+      7: "Catch Summary Report"
+    };
 
-    const grouped = {};
+    if (excelReports && excelReports.length > 0) {
+      const groupedExcel = {};
+      excelReports.forEach((er) => {
+        const rawPath = er.filePath || er.FilePath || "";
+        const fileName = rawPath ? rawPath.split(/[/\\]/).pop() : `Report_${er.id || er.Id}.xlsx`;
+        const baseName = fileName.replace(/[_-]?v\d+(?=\.[^.]+$)/i, '');
+        const groupKey = `${er.moduleId || er.ModuleId}_${er.lot || er.Lot || 0}_${baseName}`;
+        if (!groupedExcel[groupKey]) {
+          groupedExcel[groupKey] = [];
+        }
+        groupedExcel[groupKey].push({ ...er, fileName, baseName, rawPath });
+      });
 
-    versions.forEach((v) => {
-  const baseName = v.fileName
-    .replace(/[_-]?v\d+(?=\.[^.]+$)/i, '');
+      Object.keys(groupedExcel).forEach((groupKey) => {
+        const sortedVers = [...groupedExcel[groupKey]].sort(
+          (a, b) => Number(b.version || b.Version || 0) - Number(a.version || a.Version || 0) || new Date(b.generatedAt || b.GeneratedAt || 0) - new Date(a.generatedAt || a.GeneratedAt || 0)
+        );
+        const latestVer = Number(sortedVers[0]?.version || sortedVers[0]?.Version || 0);
 
-  if (!grouped[baseName]) {
-    grouped[baseName] = [];
-  }
+        sortedVers.forEach((er) => {
+          const curVer = Number(er.version || er.Version || 0);
+          const modId = er.moduleId || er.ModuleId;
+          const lotVal = er.lot || er.Lot;
+          const genAt = er.generatedAt || er.GeneratedAt;
+          const genBy = er.generatedByUserId || er.GeneratedByUserId;
+          const statusVal = er.status ?? er.Status;
 
-  grouped[baseName].push(v);
-});
+          list.push({
+            key: `excel-report-${er.id || er.Id}`,
+            type: "Report",
+            id: er.id || er.Id,
+            module: moduleIdToNameMap[modId] || "General Report",
+            templateName: "-",
+            reportName: er.baseName + (curVer > 0 ? ` (v${curVer})` : ""),
+            fileName: er.fileName,
+            filePath: er.rawPath,
+            lot: lotVal,
+            versions: [
+              {
+                id: er.id || er.Id,
+                version: curVer > 0 ? `v${curVer}` : "Latest",
+                generatedOn: genAt,
+                generatedByUserId: genBy,
+                status: (curVer === latestVer || statusVal) ? "Latest" : "Previous",
+                fileUrl: `${import.meta.env.VITE_API_URL}/ExcelReports/Download/${er.id || er.Id}`,
+                filePath: er.rawPath
+              }
+            ]
+          });
+        });
+      });
+    } else {
+      Object.keys(reportVersions || {}).forEach((moduleKey) => {
+        const versions = reportVersions[moduleKey] || [];
+        const grouped = {};
+        versions.forEach((v) => {
+          const baseName = v.fileName.replace(/[_-]?v\d+(?=\.[^.]+$)/i, '');
+          if (!grouped[baseName]) grouped[baseName] = [];
+          grouped[baseName].push(v);
+        });
 
-    Object.keys(grouped).forEach((baseName) => {
-  const fileVersions = [...grouped[baseName]].sort(
-    (a, b) =>
-      Number(b.version || 0) -
-      Number(a.version || 0)
-  );
+        Object.keys(grouped).forEach((baseName) => {
+          const fileVersions = [...grouped[baseName]].sort(
+            (a, b) => Number(b.version || 0) - Number(a.version || 0)
+          );
+          const latestVersion = Number(fileVersions[0]?.version || 0);
 
-  const latestVersion = Number(
-    fileVersions[0]?.version || 0
-  );
-
-  fileVersions.forEach((fv) => {
-    const currentVersion = Number(
-      fv.version || 0
-    );
-
-    list.push({
-      key: `report-${keyId++}`,
-
-      type: "Report",
-
-      module:
-        moduleKeyToNameMap[moduleKey] ||
-        moduleKey,
-
-      templateName: "-",
-
-      reportName:
-        baseName +
-        (
-          currentVersion > 0
-            ? ` (v${currentVersion})`
-            : ""
-        ),
-
-      versions: [
-        {
-          version:
-            currentVersion > 0
-              ? `v${currentVersion}`
-              : "Latest",
-
-          generatedOn:
-            fv.generatedAt,
-
-          generatedBy:
-            fv.generatedBy || "-",
-
-          status:
-            currentVersion === latestVersion
-              ? "Latest"
-              : "Previous",
-
-          fileUrl:
-            `${url3}/${projectId}/${fv.fileName}`,
-        },
-      ],
-    });
-  });
-});
-  });
+          fileVersions.forEach((fv) => {
+            const currentVersion = Number(fv.version || 0);
+            list.push({
+              key: `report-${keyId++}`,
+              type: "Report",
+              module: moduleKeyToNameMap[moduleKey] || moduleKey,
+              templateName: "-",
+              reportName: baseName + (currentVersion > 0 ? ` (v${currentVersion})` : ""),
+              versions: [
+                {
+                  version: currentVersion > 0 ? `v${currentVersion}` : "Latest",
+                  generatedOn: fv.generatedAt,
+                  generatedBy: fv.generatedBy || "-",
+                  generatedByUserId: fv.generatedByUserId,
+                  status: currentVersion === latestVersion ? "Latest" : "Previous",
+                  fileUrl: `${url3}/${projectId}/${fv.fileName}`,
+                },
+              ],
+            });
+          });
+        });
+      });
+    }
     const allTemplateReports = [
   ...(envLotReports || []),
   ...(generatedTemplateReports || []),
@@ -4330,7 +4358,7 @@ Object.keys(groupedTpl).forEach((templateKey) => {
     });
 
     return list;
-  }, [reportVersions, envLotReports, generatedTemplateReports, projectId, templateOptions, allModules]);
+  }, [reportVersions, excelReports, envLotReports, generatedTemplateReports, projectId, templateOptions, allModules]);
 
   return (
     <ErrorBoundary>
@@ -4424,13 +4452,8 @@ Object.keys(groupedTpl).forEach((templateKey) => {
               }
             });
 
-            // If no selected modules have pending data (and no config change), the button should be disabled
-            if (modulesWithPendingData.length === 0) {
-              return false;
-            }
-
             // For the modules that DO have pending data, ensure they are all ready (or virtually ready)
-            const hasModulePendingData = modulesWithPendingData.every(m => {
+            const hasModulePendingData = modulesWithPendingData.length > 0 && modulesWithPendingData.every(m => {
               const lotListKeyMap = {
                 duplicate: "readyDuplicateLots",
                 enhancement: "readyEnhancementLots",
@@ -4449,7 +4472,7 @@ Object.keys(groupedTpl).forEach((templateKey) => {
 
               const getEffectiveDependency = (mod) => {
                 let currentDep = dependencies[mod];
-                while (currentDep && !steps.some(s => s.key === currentDep)) {
+                while (currentDep && allModules && !allModules.some(s => s.key === currentDep || s.name?.toLowerCase().includes(currentDep))) {
                   currentDep = dependencies[currentDep];
                 }
                 return currentDep;
@@ -4484,7 +4507,7 @@ Object.keys(groupedTpl).forEach((templateKey) => {
               }
 
               if (m === "box") {
-                return true; // Box breaking logic is handled by standard pending check if it reached here
+                return true;
               }
               return true;
             });
@@ -4953,6 +4976,6 @@ Object.keys(groupedTpl).forEach((templateKey) => {
       </div>
     </ErrorBoundary>
   );
-};
-
+;
+}
 export default ProcessingPipeline;
