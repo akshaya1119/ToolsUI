@@ -37,6 +37,14 @@ export const CONFLICT_TYPE_CONFIG = {
     accent: "#adc6ff",
     resolveKind: "select",
   },
+  unassigned_catch_nodal: {
+    title: "Catch List Missing in Nodal",
+    groupLabel: "College/Centre/Nodal Mapping Conflicts",
+    color: "#fa8c16",
+    background: "#fff7e6",
+    accent: "#ffd591",
+    resolveKind: "select",
+  },
   required_field_empty: {
     title: "Required Field Missing",
     groupLabel: "Required Field Conflicts",
