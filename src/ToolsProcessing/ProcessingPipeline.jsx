@@ -4115,13 +4115,21 @@ const loadGeneratedTemplateReports = async () => {
           const genBy = er.generatedByUserId || er.GeneratedByUserId;
           const statusVal = er.status ?? er.Status;
 
+          const formattedReportName = er.fileName
+            ? (er.fileName.includes('_v')
+                ? er.fileName
+                : (curVer > 0 && er.fileName.includes('.')
+                    ? `${er.fileName.substring(0, er.fileName.lastIndexOf('.'))}_v${curVer}${er.fileName.substring(er.fileName.lastIndexOf('.'))}`
+                    : er.fileName))
+            : `${er.baseName}_v${curVer}.xlsx`;
+
           list.push({
             key: `excel-report-${er.id || er.Id}`,
             type: "Report",
             id: er.id || er.Id,
             module: moduleIdToNameMap[modId] || "General Report",
             templateName: "-",
-            reportName: er.baseName + (curVer > 0 ? ` (v${curVer})` : ""),
+            reportName: formattedReportName,
             fileName: er.fileName,
             filePath: er.rawPath,
             lot: lotVal,
@@ -4162,7 +4170,8 @@ const loadGeneratedTemplateReports = async () => {
               type: "Report",
               module: moduleKeyToNameMap[moduleKey] || moduleKey,
               templateName: "-",
-              reportName: baseName + (currentVersion > 0 ? ` (v${currentVersion})` : ""),
+              reportName: fv.fileName || baseName,
+              fileName: fv.fileName,
               versions: [
                 {
                   version: currentVersion > 0 ? `v${currentVersion}` : "Latest",
@@ -4978,6 +4987,6 @@ Object.keys(groupedTpl).forEach((templateKey) => {
       </div>
     </ErrorBoundary>
   );
-;
-}
+};
+
 export default ProcessingPipeline;
