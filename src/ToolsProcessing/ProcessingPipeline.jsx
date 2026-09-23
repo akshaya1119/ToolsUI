@@ -4856,7 +4856,9 @@ Object.keys(groupedTpl).forEach((templateKey) => {
           if (version?.fileUrl) {
             const link = document.createElement("a");
             link.href = version.fileUrl;
-            link.download = report?.reportName || 'Report';
+            let dn = report?.reportName || 'Report';
+            if (!dn.toLowerCase().endsWith('.xlsx')) dn += '.xlsx';
+            link.download = dn;
             link.target = "_blank";
             document.body.appendChild(link);
             link.click();

@@ -525,7 +525,9 @@ const ReportTemplateManagement = ({
     const version = latestRow?.versions?.[0];
     if (!version?.fileUrl) { message.error('Download URL not available.'); return; }
     const link = document.createElement('a');
-    link.href = version.fileUrl; link.download = latestRow.reportName || 'report'; link.target = '_blank';
+    let dn = latestRow.reportName || 'report';
+    if (!dn.toLowerCase().endsWith('.xlsx')) dn += '.xlsx';
+    link.href = version.fileUrl; link.download = dn; link.target = '_blank';
     document.body.appendChild(link); link.click(); document.body.removeChild(link);
     message.success('Download started.');
   };
@@ -534,7 +536,9 @@ const ReportTemplateManagement = ({
   const handleDownloadReportVersion = (versionObj, reportName) => {
     if (!versionObj?.fileUrl) { message.error('Download URL not available for this version.'); return; }
     const link = document.createElement('a');
-    link.href = versionObj.fileUrl; link.download = reportName || 'report'; link.target = '_blank';
+    let dn = reportName || 'report';
+    if (!dn.toLowerCase().endsWith('.xlsx')) dn += '.xlsx';
+    link.href = versionObj.fileUrl; link.download = dn; link.target = '_blank';
     document.body.appendChild(link); link.click(); document.body.removeChild(link);
     message.success('Download started.');
   };
