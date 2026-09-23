@@ -114,6 +114,7 @@ const getConflictKey = (item) => {
     getValue(item, "collegeName", "CollegeName"),
     getValue(item, "collegeCode", "CollegeCode"),
     getValue(item, "collegeKeyType", "CollegeKeyType"),
+    getValue(item, "gender", "Gender"),
     getValue(item, "field", "Field"),
     getValue(item, "uniqueField", "UniqueField"),
     ...toArray(getValue(item, "rowIds", "RowIds")),
@@ -197,7 +198,7 @@ const normalizeConflict = (item) => {
   if (conflictType === "center_multiple_nodals") {
     details.sourceField = "CenterCode";
     details.sourceValue = centreCode;
-    details.valuesForSelection = nodalCodes;
+    details.valuesForSelection = (nodalCodes && nodalCodes.length > 0) ? nodalCodes : (conflictingValues && conflictingValues.length > 0 ? conflictingValues : []);
     details.summary = details.summary || `Centre ${centreCode} is linked with multiple nodal codes.`;
     return details;
   }
@@ -205,7 +206,7 @@ const normalizeConflict = (item) => {
   if (conflictType === "college_multiple_nodals") {
     details.sourceField = collegeKeyType === "CollegeCode" ? "CollegeCode" : "CollegeName";
     details.sourceValue = collegeCode || collegeName;
-    details.valuesForSelection = nodalCodes;
+    details.valuesForSelection = (nodalCodes && nodalCodes.length > 0) ? nodalCodes : (conflictingValues && conflictingValues.length > 0 ? conflictingValues : []);
     details.summary = details.summary || `College ${collegeCode || collegeName} is linked with multiple nodal codes.`;
     return details;
   }
@@ -213,8 +214,16 @@ const normalizeConflict = (item) => {
   if (conflictType === "college_multiple_centers") {
     details.sourceField = collegeKeyType === "CollegeCode" ? "CollegeCode" : "CollegeName";
     details.sourceValue = collegeCode || collegeName;
-    details.valuesForSelection = centerCodes;
+    details.valuesForSelection = centerCodes.length ? centerCodes : (conflictingValues && conflictingValues.length > 0 ? conflictingValues : []);
     details.summary = details.summary || `College ${collegeCode || collegeName} is linked with multiple exam centres.`;
+    return details;
+  }
+
+  if (conflictType === "unassigned_catch_nodal") {
+    details.sourceField = collegeKeyType === "CollegeCode" ? "CollegeCode" : "CollegeName";
+    details.sourceValue = collegeCode || collegeName;
+    details.valuesForSelection = centerCodes.length ? centerCodes : (conflictingValues && conflictingValues.length > 0 ? conflictingValues : []);
+    details.summary = details.summary || `College ${collegeCode || collegeName} is missing from Nodal List.`;
     return details;
   }
 
@@ -343,18 +352,34 @@ const renderActionCell = (conflict, selectedValue, loading, onSelectionChange, o
       : null;
 
   if (conflict.resolveKind === "select") {
+    const rawOptions = conflict.valuesForSelection || [];
+    const options = Array.from(new Set(rawOptions.map(String).filter(Boolean))).map((value) => ({
+      value,
+      label: value,
+    }));
+
+    const placeholder =
+      conflict.conflictType === "zero_nr_quantity"
+        ? "Select or type NRQuantity"
+        : conflict.conflictType === "center_multiple_nodals" || conflict.conflictType === "college_multiple_nodals"
+        ? "Select or type Nodal"
+        : conflict.conflictType === "college_multiple_centers" || conflict.conflictType === "unassigned_catch_nodal"
+        ? "Select or type Center"
+        : "Select or type value";
+
     return (
       <Space direction="vertical" size={6}>
         <AutoComplete
           size="small"
           style={{ width: 160 }}
-          placeholder={conflict.conflictType === "zero_nr_quantity" ? "Select or type NRQuantity" : "Select or type value"}
+          placeholder={placeholder}
           value={normalizedSelectedValue}
           onChange={(value) => onSelectionChange(conflict.key, value)}
-          options={(conflict.valuesForSelection || []).map((value) => ({
-            value,
-            label: value,
-          }))}
+          options={options}
+          filterOption={(inputValue, option) =>
+            String(option?.value ?? "").toLowerCase().includes(String(inputValue || "").toLowerCase())
+          }
+          allowClear
         />
         {zeroQuantityHelp ? <Text type="secondary" style={{ fontSize: 11 }}>{zeroQuantityHelp}</Text> : null}
         <Space wrap size={[4, 4]}>
