@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from "react";
-import { Typography, Card, Tabs, Upload, Button, Select, Table, Tag, Row, Col, Popover, Checkbox, Tooltip, Input, Form, Modal, Popconfirm, Space, InputNumber, Alert, Spin } from "antd";
-import { UploadOutlined, DownOutlined, UpOutlined, CheckCircleOutlined, CloseCircleOutlined, SettingOutlined, SearchOutlined, DeleteOutlined } from "@ant-design/icons";
+import React, { useState, useEffect, useMemo } from "react";
+import { Typography, Card, Tabs, Upload, Button, Select, Table, Tag, Row, Col, Popover, Checkbox, Tooltip, Input, Form, Modal, Popconfirm, Space, InputNumber, Alert, Badge, Radio } from "antd";
+import { UploadOutlined, CheckCircleOutlined, SettingOutlined, SearchOutlined, DeleteOutlined, WarningOutlined } from "@ant-design/icons";
 import * as XLSX from "xlsx-js-style";
 import API from "../hooks/api";
 import { useToast } from "../hooks/useToast";
 import useStore from "../stores/ProjectData";
+import DataImportConflictReport from "../components/DataImportConflictReport";
 
 const { Title, Text } = Typography;
 const { TabPane } = Tabs;
@@ -78,10 +79,32 @@ export default function NodalCenterList() {
   const [tempColumnFilters, setTempColumnFilters] = useState({});
   const [visibleTempColumns, setVisibleTempColumns] = useState(allTempColumnsList);
   const [reports, setReports] = useState(null);
+  const [allNodalRecords, setAllNodalRecords] = useState([]);
   const [loadingReports, setLoadingReports] = useState(false);
   const [merging, setMerging] = useState(false);
   const [pushingToMain, setPushingToMain] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
+  const [isGenderModalVisible, setIsGenderModalVisible] = useState(false);
+  const [genderDetectedValues, setGenderDetectedValues] = useState([]);
+  const [genderChoice, setGenderChoice] = useState("ALL");
+  const [mergeBy, setMergeBy] = useState(() => {
+    return localStorage.getItem(`mergeBy_${projectId}`) || "CollegeCode";
+  });
+
+  useEffect(() => {
+    if (projectId) {
+      const saved = localStorage.getItem(`mergeBy_${projectId}`);
+      if (saved) setMergeBy(saved);
+    }
+  }, [projectId]);
+
+  const handleMergeByChange = (val) => {
+    setMergeBy(val);
+    if (projectId) {
+      localStorage.setItem(`mergeBy_${projectId}`, val);
+    }
+    setIsDirty(true);
+  };
 
   const catchListFields = [
     "CatchNo", "CollegeCode", "CollegeName", "PaperCode", "CourseName", "SubjectName", "NRQuantity", "ExamDate", "ExamTime",
@@ -121,10 +144,10 @@ export default function NodalCenterList() {
   }, [searchText]);
 
   useEffect(() => {
-    if (projectId && activeTab === "3") {
-      fetchReports();
+    if (projectId && (activeTab === "3" || activeTab === "4")) {
+      fetchReports(mergeBy);
     }
-  }, [projectId, activeTab]);
+  }, [projectId, activeTab, mergeBy]);
 
   const fetchAvailableDbFields = async () => {
     try {
@@ -217,11 +240,21 @@ export default function NodalCenterList() {
     }
   };
 
-  const fetchReports = async () => {
+  const fetchReports = async (currentMergeBy = mergeBy) => {
     setLoadingReports(true);
     try {
-      const res = await API.get(`/Merging/Reports/${projectId}`);
+      const [res, nodalRes] = await Promise.all([
+        API.get(`/Merging/Reports/${projectId}`, {
+          params: { mergeBy: currentMergeBy }
+        }),
+        API.get(`/NodalLists/${projectId}`, {
+          params: { pageNo: 1, pageSize: 5000 }
+        }).catch(() => null)
+      ]);
       setReports(res.data);
+      if (nodalRes?.data?.items) {
+        setAllNodalRecords(nodalRes.data.items);
+      }
     } catch (err) {
       showToast("Failed to fetch reports", "error");
     } finally {
@@ -229,62 +262,134 @@ export default function NodalCenterList() {
     }
   };
 
+  const navigateToNodalListWithSearch = (searchVal) => {
+    setActiveTab("2");
+    setVisibleColumns([]);
+    setPagination({ current: 1, pageSize: 10, total: 0 });
+    setSorter({ field: null, order: null });
+    setColumnFilters({});
+    setSearchText(String(searchVal || ""));
+    setLocalSearch(String(searchVal || ""));
+  };
+
+  const navigateToCatchListWithSearch = (searchVal) => {
+    setActiveTab("1");
+    setVisibleColumns([]);
+    setPagination({ current: 1, pageSize: 10, total: 0 });
+    setSorter({ field: null, order: null });
+    setColumnFilters({});
+    setSearchText(String(searchVal || ""));
+    setLocalSearch(String(searchVal || ""));
+  };
+
   const handleMergePreview = async () => {
     setMerging(true);
     try {
-      await API.post(`/Merging/MergeToTemporary/${projectId}`);
+      // 1. Run validation before merge
+      const [reportRes, nodalRes] = await Promise.all([
+        API.get(`/Merging/Reports/${projectId}`, {
+          params: { mergeBy }
+        }),
+        API.get(`/NodalLists/${projectId}`, {
+          params: { pageNo: 1, pageSize: 5000 }
+        }).catch(() => null)
+      ]);
+      const reportData = reportRes.data;
+      setReports(reportData);
+      if (nodalRes?.data?.items) {
+        setAllNodalRecords(nodalRes.data.items);
+      }
+
+      // 2. Strictly block merge if Rule 1 failed (one college -> one center, one center -> one nodal)
+      if (reportData.rule1Passed === false || (reportData.rule1Errors && reportData.rule1Errors.length > 0)) {
+        showToast("Rule 1 validation failed: Merging blocked. Switched to Conflict Report tab.", "error");
+        setActiveTab("4");
+        setMerging(false);
+        return;
+      }
+
+      // 3. Rule 1 passed, proceed with merge
+      await API.post(`/Merging/MergeToTemporary/${projectId}?mergeBy=${encodeURIComponent(mergeBy)}`);
       showToast("Merged to temporary data successfully", "success");
       setIsDirty(false);
-      await Promise.all([fetchTempData(), fetchReports()]);
+      await Promise.all([fetchTempData(), fetchReports(mergeBy)]);
     } catch (err) {
-      showToast("Merge failed", "error");
+      const errErrors = err.response?.data?.errors;
+      const errMsg = err.response?.data?.message || err.response?.data || "Merge failed";
+      if (errErrors && errErrors.length > 0) {
+        showToast(errMsg, "error");
+        if (err.response?.data) {
+          setReports(prev => ({
+            ...prev,
+            rule1Passed: false,
+            rule1Errors: errErrors,
+            multiCenterDetails: err.response.data.multiCenterDetails || prev?.multiCenterDetails,
+            multiNodalDetails: err.response.data.multiNodalDetails || prev?.multiNodalDetails,
+            rule1CollegeCodes: err.response.data.rule1CollegeCodes || prev?.rule1CollegeCodes,
+            rule1CenterCodes: err.response.data.rule1CenterCodes || prev?.rule1CenterCodes,
+          }));
+        }
+        try {
+          const nodalRes = await API.get(`/NodalLists/${projectId}`, { params: { pageNo: 1, pageSize: 5000 } });
+          if (nodalRes?.data?.items) {
+            setAllNodalRecords(nodalRes.data.items);
+          }
+        } catch { }
+        setActiveTab("4");
+      } else {
+        showToast(errMsg, "error");
+      }
     } finally {
       setMerging(false);
     }
   };
 
   const confirmPushToMain = () => {
-    const hasCriticalErrors = reports?.errors?.length > 0;
+    const hasCriticalErrors = reports?.rule1Passed === false || (reports?.rule1Errors && reports.rule1Errors.length > 0);
+    const hasRule2Errors = reports?.rule2Passed === false || (reports?.rule2Errors && reports.rule2Errors.length > 0);
+
     if (hasCriticalErrors) {
-      Modal.confirm({
-        title: 'Errors Found',
+      Modal.error({
+        title: 'Rule 1 Validation Failed (Cannot Push)',
         content: (
           <div>
-            <p>The following issues were found during validation. Are you sure you want to proceed?</p>
-            <ul className="pl-4 mt-2 max-h-60 overflow-y-auto text-sm">
-              {reports.errors.map((err, i) => <li key={i} className="text-red-600 mb-1">{err}</li>)}
-            </ul>
-            <div className="mt-4 flex gap-2 flex-wrap">
-              {!reports.allCollegeCodesAssigned && reports.rule1CollegeCodes?.length > 0 && (
-                <Button size="small" onClick={() => {
-                  setTempPagination(prev => ({ ...prev, current: 1 }));
-                  setTempColumnFilters(prev => ({ ...prev, CollegeCode: reports.rule1CollegeCodes[0] }));
-                  Modal.destroyAll();
-                }}>Fix Missing College Codes</Button>
-              )}
-              {!reports.rule2Passed && (reports.rule2CollegeCodes?.length > 0 || reports.rule2CenterCodes?.length > 0) && (
-                <Button size="small" onClick={() => {
-                  setTempPagination(prev => ({ ...prev, current: 1 }));
-                  if (reports.rule2CollegeCodes?.length > 0) {
-                    setTempColumnFilters(prev => ({ ...prev, CollegeCode: reports.rule2CollegeCodes[0] }));
-                  } else if (reports.rule2CenterCodes?.length > 0) {
-                    setTempColumnFilters(prev => ({ ...prev, CenterCode: reports.rule2CenterCodes[0] }));
-                  }
-                  Modal.destroyAll();
-                }}>Fix Issues</Button>
-              )}
+            <p>Pushing to main NR Data is strictly blocked because Rule 1 validation failed (one college must belong to one center, and one center to one nodal code).</p>
+            <p className="mt-2 text-sm text-gray-600">Please review and resolve the conflicts in the Conflict Report tab first.</p>
+            <div className="mt-4">
+              <Button type="primary" danger onClick={() => { Modal.destroyAll(); setActiveTab("4"); }}>
+                Open Conflict Report
+              </Button>
+            </div>
+          </div>
+        ),
+        okText: 'Close',
+      });
+      return;
+    }
+
+    if (hasRule2Errors) {
+      Modal.confirm({
+        title: 'Rule 2 Notice: Missing Nodal Assignments',
+        content: (
+          <div>
+            <p>Some Catch List items are missing from the Nodal List. Are you sure you want to proceed with pushing to main NR Data?</p>
+            <div className="mt-3">
+              <Button size="small" onClick={() => { Modal.destroyAll(); setActiveTab("4"); }}>
+                Review in Conflict Report
+              </Button>
             </div>
           </div>
         ),
         okText: 'Proceed Anyway',
         cancelText: 'Cancel',
         okButtonProps: { danger: true },
-        width: 600,
+        width: 500,
         onOk: handlePushToMain,
       });
-    } else {
-      handlePushToMain();
+      return;
     }
+
+    handlePushToMain();
   };
 
   const handlePushToMain = async () => {
@@ -384,6 +489,61 @@ export default function NodalCenterList() {
     });
   };
 
+  const executeUpload = async (genderResolutionChoice = null) => {
+    setUploading(true);
+
+    try {
+      const genderHeader = mapping["Gender"];
+      const mappedData = fileData.map((row) => {
+        const newRow = {};
+        // Map ONLY fields explicitly added by user in the mapping UI
+        Object.keys(mapping).forEach((modelField) => {
+          const fileHeader = mapping[modelField];
+          if (fileHeader && row[fileHeader] !== undefined) {
+            newRow[modelField] = row[fileHeader];
+          }
+        });
+
+        // Apply gender normalization when uploading Nodal List
+        if (activeTab === "2") {
+          const rawVal = genderHeader ? row[genderHeader] : newRow["Gender"];
+          const strVal = rawVal !== undefined && rawVal !== null ? String(rawVal).trim() : "";
+          const lower = strVal.toLowerCase();
+
+          if (lower === "male" || lower === "m") {
+            newRow["Gender"] = "MALE";
+          } else if (lower === "female" || lower === "f") {
+            newRow["Gender"] = "FEMALE";
+          } else if (genderResolutionChoice) {
+            newRow["Gender"] = genderResolutionChoice;
+          } else if (!newRow["Gender"]) {
+            newRow["Gender"] = "ALL";
+          }
+        }
+
+        return newRow;
+      });
+
+      const endpoint = activeTab === "1" ? "/CatchLists/Upload" : "/NodalLists/Upload";
+
+      const response = await API.post(endpoint, {
+        projectId: projectId,
+        data: mappedData,
+      });
+
+      showToast(response.data.message || "Upload successful", "success");
+      resetUploadState();
+      setIsUploadSectionVisible(false);
+      fetchExistingData();
+      setIsDirty(true);
+    } catch (error) {
+      console.error(error);
+      showToast(error.response?.data?.message || "Upload failed", "error");
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const handleUpload = async () => {
     if (!projectId) {
       showToast("Project ID is missing", "error");
@@ -403,41 +563,40 @@ export default function NodalCenterList() {
       }
     }
 
-    setUploading(true);
+    // When uploading Nodal List, check for non-standard gender values
+    if (activeTab === "2") {
+      const genderHeader = mapping["Gender"];
+      const nonStandardMap = {};
+      let nonStandardCount = 0;
 
-    try {
-      const mappedData = fileData.map(row => {
-        const newRow = {};
-        // Map ONLY fields explicitly added by user in the mapping UI
-        Object.keys(mapping).forEach(modelField => {
-          const fileHeader = mapping[modelField];
-          if (fileHeader && row[fileHeader] !== undefined) {
-            newRow[modelField] = row[fileHeader];
-          }
-        });
+      fileData.forEach((row) => {
+        const rawVal = genderHeader ? row[genderHeader] : undefined;
+        const strVal = rawVal !== undefined && rawVal !== null ? String(rawVal).trim() : "";
+        const lower = strVal.toLowerCase();
 
-        return newRow;
+        const isMale = lower === "male" || lower === "m";
+        const isFemale = lower === "female" || lower === "f";
+
+        if (!isMale && !isFemale) {
+          const displayVal = strVal || "(Empty / Unspecified)";
+          nonStandardMap[displayVal] = (nonStandardMap[displayVal] || 0) + 1;
+          nonStandardCount++;
+        }
       });
 
-      const endpoint = activeTab === "1" ? "/CatchLists/Upload" : "/NodalLists/Upload";
-
-      const response = await API.post(endpoint, {
-        projectId: projectId,
-        data: mappedData
-      });
-
-      showToast(response.data.message || "Upload successful", "success");
-      resetUploadState();
-      setIsUploadSectionVisible(false);
-      resetUploadState();
-      fetchExistingData();
-      setIsDirty(true);
-    } catch (error) {
-      console.error(error);
-      showToast(error.response?.data?.message || "Upload failed", "error");
-    } finally {
-      setUploading(false);
+      if (nonStandardCount > 0) {
+        const detected = Object.entries(nonStandardMap).map(([val, count]) => ({
+          value: val,
+          count,
+        }));
+        setGenderDetectedValues(detected);
+        setGenderChoice("ALL");
+        setIsGenderModalVisible(true);
+        return;
+      }
     }
+
+    await executeUpload();
   };
 
   const allAvailableColumns = [...currentFields, ...dynamicFields];
@@ -583,12 +742,21 @@ export default function NodalCenterList() {
 
   const handleDelete = async (key) => {
     try {
-      const endpoint = activeTab === "1" ? `/CatchLists/${key}` : `/NodalLists/${key}`;
+      const endpoint = activeTab === "1" 
+        ? `/CatchLists/${key}` 
+        : activeTab === "2" 
+          ? `/NodalLists/${key}` 
+          : `/TemporaryNrDatas/${key}`;
       await API.delete(endpoint);
       showToast("Record deleted successfully", "success");
       setSelectedRowKeys(prev => prev.filter(k => k !== key));
       setIsDirty(true);
-      fetchExistingData();
+      if (activeTab === "3") {
+        fetchTempData();
+        fetchReports();
+      } else {
+        fetchExistingData();
+      }
     } catch (error) {
       console.error(error);
       showToast(error.response?.data?.message || error.response?.data || "Failed to delete record", "error");
@@ -598,12 +766,21 @@ export default function NodalCenterList() {
   const handleDeleteSelected = async () => {
     if (!selectedRowKeys.length) return;
     try {
-      const endpoint = activeTab === "1" ? `/CatchLists/batch-delete` : `/NodalLists/batch-delete`;
+      const endpoint = activeTab === "1" 
+        ? `/CatchLists/batch-delete` 
+        : activeTab === "2" 
+          ? `/NodalLists/batch-delete` 
+          : `/TemporaryNrDatas/batch-delete`;
       const res = await API.post(endpoint, selectedRowKeys);
       showToast(res.data?.message || `${selectedRowKeys.length} records deleted successfully`, "success");
       setSelectedRowKeys([]);
       setIsDirty(true);
-      fetchExistingData();
+      if (activeTab === "3") {
+        fetchTempData();
+        fetchReports();
+      } else {
+        fetchExistingData();
+      }
     } catch (error) {
       console.error(error);
       showToast(error.response?.data?.message || error.response?.data || "Failed to delete selected records", "error");
@@ -612,12 +789,21 @@ export default function NodalCenterList() {
 
   const handleDeleteAll = async () => {
     try {
-      const endpoint = activeTab === "1" ? `/CatchLists/deleteAll/${projectId}` : `/NodalLists/deleteAll/${projectId}`;
+      const endpoint = activeTab === "1" 
+        ? `/CatchLists/deleteAll/${projectId}` 
+        : activeTab === "2" 
+          ? `/NodalLists/deleteAll/${projectId}` 
+          : `/TemporaryNrDatas/deleteAll/${projectId}`;
       const res = await API.delete(endpoint);
       showToast(res.data?.message || "All records deleted successfully", "success");
       setSelectedRowKeys([]);
       setIsDirty(true);
-      fetchExistingData();
+      if (activeTab === "3") {
+        fetchTempData();
+        fetchReports();
+      } else {
+        fetchExistingData();
+      }
     } catch (error) {
       console.error(error);
       showToast(error.response?.data?.message || error.response?.data || "Failed to delete records", "error");
@@ -1059,30 +1245,77 @@ export default function NodalCenterList() {
             </Popconfirm>
           </Space>
         ) : (
-          <Typography.Link disabled={editingKey !== ''} onClick={() => edit(record)}>
-            Edit
-          </Typography.Link>
+          <Space size="middle">
+            <Typography.Link disabled={editingKey !== ''} onClick={() => edit(record)}>
+              Edit
+            </Typography.Link>
+            <Popconfirm
+              title="Are you sure you want to delete this record?"
+              onConfirm={() => handleDelete(record.id)}
+              okText="Yes"
+              cancelText="No"
+              disabled={editingKey !== ''}
+            >
+              <Typography.Link
+                type="danger"
+                disabled={editingKey !== ''}
+              >
+                Delete
+              </Typography.Link>
+            </Popconfirm>
+          </Space>
         );
       },
     });
 
     const handleRule1Click = () => {
-      if (!reports?.allCollegeCodesAssigned && reports?.rule1Colleges?.length > 0) {
+      const searchTarget = reports?.rule1CenterCodes?.[0] || reports?.rule1CollegeCodes?.[0];
+      if (searchTarget) {
         setActiveTab("2");
-        setSearchText(reports.rule1Colleges[0]);
+        setSearchText(searchTarget);
+        setLocalSearch(searchTarget);
       }
     };
 
     const handleRule2Click = () => {
-      if (!reports?.rule2Passed && reports?.rule2Colleges?.length > 0) {
-        setActiveTab("2");
-        setSearchText(reports.rule2Colleges[0]);
+      if (!reports?.rule2Passed && reports?.rule2CollegeCodes?.length > 0) {
+        setActiveTab("1");
+        setSearchText(reports.rule2CollegeCodes[0]);
+        setLocalSearch(reports.rule2CollegeCodes[0]);
       }
     };
 
     return (
       <div className="flex flex-col gap-4">
         <Card className="shadow-sm border-gray-200">
+          {reports && reports.rule1Passed === false && (
+            <Alert
+              type="warning"
+              showIcon
+              message="Rule 1 Validation Conflicts Detected"
+              description="One college code must belong to one center, and one center to one nodal code. Please review and correct values in the Conflict Report tab."
+              action={
+                <Button type="primary" size="small" onClick={() => setActiveTab("4")}>
+                  View Conflict Report
+                </Button>
+              }
+              className="mb-4"
+            />
+          )}
+          {reports && reports.rule1Passed && reports.rule2Passed === false && (
+            <Alert
+              type="warning"
+              showIcon
+              message="Rule 2 Notice: Incomplete Nodal Assignments"
+              description="Some Catch List items are not mapped in the Nodal List."
+              action={
+                <Button size="small" onClick={() => setActiveTab("4")}>
+                  View Conflict Report
+                </Button>
+              }
+              className="mb-4"
+            />
+          )}
 
 
           <div className="flex justify-between items-center mb-4">
@@ -1090,7 +1323,21 @@ export default function NodalCenterList() {
               <Typography.Title level={5} className="mb-0">Preview Data</Typography.Title>
               <Tag color="blue">{tempPagination.total} Records</Tag>
             </div>
-            <div className="flex gap-2 items-center">
+            <div className="flex gap-2 items-center flex-wrap">
+              <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 px-2.5 py-1 rounded-md">
+                <span className="text-xs font-semibold text-gray-600">Merge By:</span>
+                <Select
+                  value={mergeBy}
+                  onChange={handleMergeByChange}
+                  size="small"
+                  style={{ width: 170 }}
+                  options={[
+                    { label: "College Code", value: "CollegeCode" },
+                    { label: "College Name", value: "CollegeName" },
+                  ]}
+                />
+              </div>
+
               <Button type="primary" onClick={handleMergePreview} loading={merging} disabled={!isDirty && tempData.length > 0}>
                 {tempData.length > 0 ? "Regenerate Preview" : "Generate Preview"}
               </Button>
@@ -1121,13 +1368,39 @@ export default function NodalCenterList() {
                 style={{ width: 250 }}
                 allowClear
               />
+              {selectedRowKeys.length > 0 && (
+                <Popconfirm
+                  title={`Are you sure you want to delete ${selectedRowKeys.length} selected preview record(s)?`}
+                  onConfirm={handleDeleteSelected}
+                  okText="Yes, Delete"
+                  cancelText="Cancel"
+                  okButtonProps={{ danger: true }}
+                >
+                  <Button danger icon={<DeleteOutlined />}>
+                    Delete Selected ({selectedRowKeys.length})
+                  </Button>
+                </Popconfirm>
+              )}
+              {tempPagination.total > 0 && (
+                <Popconfirm
+                  title={`Are you sure you want to delete ALL (${tempPagination.total}) preview records for this project?`}
+                  onConfirm={handleDeleteAll}
+                  okText="Yes, Delete All"
+                  cancelText="Cancel"
+                  okButtonProps={{ danger: true }}
+                >
+                  <Button danger type="primary" icon={<DeleteOutlined />}>
+                    Delete All
+                  </Button>
+                </Popconfirm>
+              )}
               <Button
                 type="primary"
                 onClick={confirmPushToMain}
                 loading={pushingToMain}
                 disabled={tempData.length === 0}
               >
-                Proceed to Merge
+                Push into main NR Data
               </Button>
             </div>
           </div>
@@ -1137,6 +1410,10 @@ export default function NodalCenterList() {
                 body: {
                   cell: EditableCell,
                 },
+              }}
+              rowSelection={{
+                selectedRowKeys,
+                onChange: (keys) => setSelectedRowKeys(keys),
               }}
               dataSource={tempData}
               columns={tempColumns}
@@ -1150,6 +1427,304 @@ export default function NodalCenterList() {
             />
           </Form>
         </Card>
+      </div>
+    );
+  };
+
+  const [conflictSelections, setConflictSelections] = useState({});
+
+  const handleConflictSelectionChange = (conflictKey, value) => {
+    setConflictSelections((prev) => ({
+      ...prev,
+      [conflictKey]: value,
+    }));
+  };
+
+  const handleResolveConflict = async (conflict, selectedValue) => {
+    const normalizedValue =
+      selectedValue === undefined || selectedValue === null
+        ? ""
+        : String(selectedValue).trim();
+
+    if (normalizedValue === "") {
+      showToast("Please enter or select a value before saving.", "warning");
+      return;
+    }
+
+    try {
+      if (conflict.conflictType === "college_multiple_centers") {
+        try {
+          await API.post("/NodalLists/resolve-college-center", {
+            projectId: Number(projectId),
+            collegeCode: Number(conflict.collegeCode),
+            gender: conflict.gender || "ALL",
+            correctCenterCode: Number(normalizedValue),
+          });
+        } catch {
+          let rowsToUpdate = conflict.records || [];
+          if (!rowsToUpdate.length) {
+            const res = await API.get(`/NodalLists/${projectId}?pageNo=1&pageSize=5000&search=${conflict.collegeCode}`);
+            const items = res.data?.items || res.data || [];
+            rowsToUpdate = items.filter((x) => {
+              if (String(x.collegeCode) !== String(conflict.collegeCode)) return false;
+              if (conflict.gender && conflict.gender !== "ALL") {
+                return String(x.gender || "").trim().toUpperCase() === conflict.gender.trim().toUpperCase();
+              }
+              return true;
+            });
+          }
+          await Promise.all(
+            rowsToUpdate.map((r) =>
+              API.put(`/NodalLists/${r.id}`, {
+                ...r,
+                examCenterCode: Number(normalizedValue),
+              })
+            )
+          );
+        }
+        showToast(`Resolved: College ${conflict.collegeCode} assigned to Center ${normalizedValue}`, "success");
+      } else if (conflict.conflictType === "center_multiple_nodals") {
+        try {
+          await API.post("/NodalLists/resolve-center-nodal", {
+            projectId: Number(projectId),
+            centerCode: Number(conflict.centreCode),
+            correctNodalCode: Number(normalizedValue),
+          });
+        } catch {
+          let rowsToUpdate = conflict.records || [];
+          if (!rowsToUpdate.length) {
+            const res = await API.get(`/NodalLists/${projectId}?pageNo=1&pageSize=5000&search=${conflict.centreCode}`);
+            const items = res.data?.items || res.data || [];
+            rowsToUpdate = items.filter((x) => String(x.examCenterCode) === String(conflict.centreCode));
+          }
+          await Promise.all(
+            rowsToUpdate.map((r) =>
+              API.put(`/NodalLists/${r.id}`, {
+                ...r,
+                nodalCode: Number(normalizedValue),
+              })
+            )
+          );
+        }
+        showToast(`Resolved: Center ${conflict.centreCode} assigned to Nodal ${normalizedValue}`, "success");
+      } else if (conflict.conflictType === "unassigned_catch_nodal") {
+        await API.post("/NodalLists", {
+          projectId: Number(projectId),
+          collegeCode: Number(conflict.collegeCode || conflict.key) || 0,
+          collegeName: conflict.collegeName || "",
+          examCenterCode: Number(normalizedValue),
+          nodalCode: 1,
+          gender: "ALL",
+          status: true,
+        });
+        showToast(`Added College ${conflict.collegeCode || conflict.key} to Nodal List`, "success");
+      }
+
+      setConflictSelections((prev) => {
+        const updated = { ...prev };
+        delete updated[conflict.key];
+        return updated;
+      });
+
+      await fetchReports(mergeBy);
+    } catch (err) {
+      console.error(err);
+      showToast(err.response?.data?.message || "Failed to resolve conflict", "error");
+    }
+  };
+
+  const handleIgnoreConflict = (conflict) => {
+    setConflictSelections((prev) => {
+      const updated = { ...prev };
+      delete updated[conflict.key];
+      return updated;
+    });
+    showToast("Conflict ignored", "info");
+  };
+
+  const formattedConflictErrors = useMemo(() => {
+    if (!reports) return [];
+    const errors = [];
+
+    // Helper: find distinct exam center codes in allNodalRecords
+    const allKnownCenterCodes = Array.from(
+      new Set(allNodalRecords.map((x) => String(x.examCenterCode || "")).filter(Boolean))
+    );
+
+    // 1. College Multiple Centers (Rule 1)
+    if (reports.multiCenterDetails && reports.multiCenterDetails.length > 0) {
+      reports.multiCenterDetails.forEach((item) => {
+        const itemGender = item.gender && item.gender !== "ALL" ? item.gender.trim().toUpperCase() : null;
+        let matching = item.records || [];
+        let centers = (item.centerCodes || []).map(String).filter(Boolean);
+        if (!centers.length) {
+          matching = allNodalRecords.filter((x) => {
+            if (String(x.collegeCode) !== String(item.collegeCode)) return false;
+            if (itemGender) {
+              return String(x.gender || "").trim().toUpperCase() === itemGender;
+            }
+            return true;
+          });
+          centers = Array.from(
+            new Set(matching.map((x) => String(x.examCenterCode || "")).filter(Boolean))
+          );
+        }
+        errors.push({
+          conflictType: "college_multiple_centers",
+          collegeCode: item.collegeCode,
+          collegeName: item.collegeNames?.[0] || "",
+          collegeKeyType: "CollegeCode",
+          gender: item.gender || (itemGender || "ALL"),
+          centerCodes: centers,
+          conflictingValues: centers,
+          nodalCodes: (item.nodalCodes || []).map(String),
+          summary: `College ${item.collegeCode}${itemGender ? ` (${itemGender})` : ""} is linked with multiple exam centres (${centers.join(", ")}).`,
+          records: matching,
+          status: "pending",
+        });
+      });
+    } else if (reports.rule1Errors && reports.rule1Errors.length > 0) {
+      reports.rule1Errors.forEach((err, idx) => {
+        if (err.includes("Multiple exam centers for same college")) {
+          const content = err.replace(/^Rule\s*1\s*Failed:\s*Multiple\s*exam\s*centers[^-]*-\s*/i, "");
+          const subErrors = content.split(";").map((s) => s.trim()).filter(Boolean);
+
+          subErrors.forEach((subErr) => {
+            const match = subErr.match(/College\s+(\w+)\s*(?:\((.*?)\))?\s*assigned to\s+(\d+)\s*centers/i);
+            const colCode = match ? match[1] : (reports.rule1CollegeCodes?.[idx] || "");
+            const rawGender = match && match[2] ? match[2].trim() : null;
+            const gender = rawGender && rawGender.toUpperCase() !== "ALL" ? rawGender.toUpperCase() : null;
+
+            const matching = allNodalRecords.filter((x) => {
+              if (String(x.collegeCode) !== String(colCode)) return false;
+              if (gender) {
+                return String(x.gender || "").trim().toUpperCase() === gender;
+              }
+              return true;
+            });
+            const centers = Array.from(
+              new Set(matching.map((x) => String(x.examCenterCode || "")).filter(Boolean))
+            );
+
+            errors.push({
+              conflictType: "college_multiple_centers",
+              collegeCode: colCode,
+              collegeKeyType: "CollegeCode",
+              gender: gender || "ALL",
+              centerCodes: centers,
+              conflictingValues: centers,
+              records: matching,
+              summary: `College ${colCode}${gender ? ` (${gender})` : ""} assigned to ${centers.length || match?.[3] || 2} centers` + (centers.length > 0 ? ` [${centers.join(", ")}]` : ""),
+              status: "pending",
+            });
+          });
+        }
+      });
+    }
+
+    // 2. Center Multiple Nodals (Rule 1)
+    if (reports.multiNodalDetails && reports.multiNodalDetails.length > 0) {
+      reports.multiNodalDetails.forEach((item) => {
+        let nodals = (item.nodalCodes || []).map(String).filter(Boolean);
+        let matching = item.records || [];
+        if (!nodals.length) {
+          matching = allNodalRecords.filter(
+            (x) => String(x.examCenterCode) === String(item.centerCode)
+          );
+          nodals = Array.from(
+            new Set(matching.map((x) => String(x.nodalCode || "")).filter(Boolean))
+          );
+        }
+        errors.push({
+          conflictType: "center_multiple_nodals",
+          centreCode: String(item.centerCode),
+          nodalCodes: nodals,
+          conflictingValues: nodals,
+          summary: `Centre ${item.centerCode} is linked with multiple nodal codes (${nodals.join(", ")}).`,
+          records: matching,
+          status: "pending",
+        });
+      });
+    } else if (reports.rule1Errors && reports.rule1Errors.length > 0) {
+      reports.rule1Errors.forEach((err, idx) => {
+        if (err.includes("Multiple nodal codes for same exam center")) {
+          const content = err.replace(/^Rule\s*1\s*Failed:\s*Multiple\s*nodal\s*codes[^-]*-\s*/i, "");
+          const subErrors = content.split(";").map((s) => s.trim()).filter(Boolean);
+
+          subErrors.forEach((subErr) => {
+            const match = subErr.match(/Center\s+(\w+)\s*assigned to\s+(\d+)\s*nodal codes/i);
+            const centerCode = match ? match[1] : (reports.rule1CenterCodes?.[idx] || "");
+            const matching = allNodalRecords.filter(
+              (x) => String(x.examCenterCode) === String(centerCode)
+            );
+            const nodals = Array.from(
+              new Set(matching.map((x) => String(x.nodalCode || "")).filter(Boolean))
+            );
+            errors.push({
+              conflictType: "center_multiple_nodals",
+              centreCode: String(centerCode),
+              nodalCodes: nodals,
+              conflictingValues: nodals,
+              records: matching,
+              summary: `Center ${centerCode} assigned to ${nodals.length || match?.[2] || 2} nodal codes` + (nodals.length > 0 ? ` [${nodals.join(", ")}]` : ""),
+              status: "pending",
+            });
+          });
+        }
+      });
+    }
+
+    // 3. Unassigned Catch Items (Rule 2)
+    if (reports.unassignedDetails && reports.unassignedDetails.length > 0) {
+      reports.unassignedDetails.forEach((item) => {
+        errors.push({
+          conflictType: "unassigned_catch_nodal",
+          collegeCode: item.collegeCode,
+          collegeName: item.collegeName || "",
+          collegeKeyType: "CollegeCode",
+          catchNos: item.catchNos || [],
+          centerCodes: allKnownCenterCodes,
+          conflictingValues: allKnownCenterCodes,
+          summary: item.description || `Catch List items for College ${item.collegeCode || item.key} missing from Nodal List.`,
+          status: "pending",
+        });
+      });
+    } else if (reports.rule2CollegeCodes && reports.rule2CollegeCodes.length > 0) {
+      reports.rule2CollegeCodes.forEach((code) => {
+        errors.push({
+          conflictType: "unassigned_catch_nodal",
+          collegeCode: code,
+          collegeKeyType: "CollegeCode",
+          centerCodes: allKnownCenterCodes,
+          conflictingValues: allKnownCenterCodes,
+          summary: `College code '${code}' missing from Nodal List.`,
+          status: "pending",
+        });
+      });
+    }
+
+    return errors;
+  }, [reports, allNodalRecords]);
+
+  const renderConflicts = () => {
+    if (!reports) {
+      return <Typography.Text type="secondary">Click "Generate Preview" to check for conflicts.</Typography.Text>;
+    }
+
+    if (formattedConflictErrors.length === 0) {
+      return <Typography.Text type="success">No conflicts found</Typography.Text>;
+    }
+
+    return (
+      <div className="py-2">
+        <DataImportConflictReport
+          conflicts={{ errors: formattedConflictErrors }}
+          conflictSelections={conflictSelections}
+          onSelectionChange={handleConflictSelectionChange}
+          onResolve={handleResolveConflict}
+          onIgnore={handleIgnoreConflict}
+          loading={loadingReports}
+        />
       </div>
     );
   };
@@ -1172,6 +1747,20 @@ export default function NodalCenterList() {
         </TabPane>
         <TabPane tab="Merge & Preview" key="3">
           {renderMergeTab()}
+        </TabPane>
+        <TabPane
+          tab={
+            formattedConflictErrors.length > 0 ? (
+              <Badge count={formattedConflictErrors.length} style={{ backgroundColor: "#faad14" }} offset={[10, 0]} size="small">
+                <span>Conflict Report</span>
+              </Badge>
+            ) : (
+              "Conflict Report"
+            )
+          }
+          key="4"
+        >
+          {renderConflicts()}
         </TabPane>
       </Tabs>
       <Modal
@@ -1198,6 +1787,80 @@ export default function NodalCenterList() {
             );
           })}
         </Form>
+      </Modal>
+      <Modal
+        title="Gender Values Detected in Upload"
+        open={isGenderModalVisible}
+        onCancel={() => setIsGenderModalVisible(false)}
+        footer={[
+          <Button key="cancel" onClick={() => setIsGenderModalVisible(false)}>
+            Cancel
+          </Button>,
+          <Button
+            key="submit"
+            type="primary"
+            loading={uploading}
+            onClick={async () => {
+              setIsGenderModalVisible(false);
+              await executeUpload(genderChoice);
+            }}
+          >
+            Apply & Upload
+          </Button>,
+        ]}
+        width={540}
+      >
+        <div className="py-2">
+          <p className="text-sm text-slate-600 mb-3">
+            The uploaded Nodal List contains values in the <strong>Gender</strong> column that are not specifically <strong>Male</strong> or <strong>Female</strong>:
+          </p>
+
+          <div className="bg-slate-50 border border-slate-200 rounded p-3 mb-4 max-h-36 overflow-y-auto">
+            <div className="text-xs font-semibold text-slate-500 mb-2">Detected Values & Row Counts:</div>
+            <Space wrap size={[6, 6]}>
+              {genderDetectedValues.map((item, idx) => (
+                <Tag key={idx} color="default" className="text-slate-700 bg-white border-slate-300">
+                  <span className="font-medium">{item.value}</span>: {item.count} row(s)
+                </Tag>
+              ))}
+            </Space>
+          </div>
+
+          <div className="text-sm font-semibold text-slate-700 mb-2">
+            How would you like to treat these records?
+          </div>
+
+          <Radio.Group
+            value={genderChoice}
+            onChange={(e) => setGenderChoice(e.target.value)}
+            className="flex flex-col gap-2.5"
+          >
+            <Radio value="ALL" className="items-start">
+              <div>
+                <span className="font-medium text-slate-800">Treat as Male + Female (ALL)</span>
+                <div className="text-xs text-slate-500">
+                  Both male and female candidates will be assigned to this center (recommended).
+                </div>
+              </div>
+            </Radio>
+            <Radio value="MALE" className="items-start">
+              <div>
+                <span className="font-medium text-slate-800">Change to Male (MALE)</span>
+                <div className="text-xs text-slate-500">
+                  Treat all these records as male candidates only.
+                </div>
+              </div>
+            </Radio>
+            <Radio value="FEMALE" className="items-start">
+              <div>
+                <span className="font-medium text-slate-800">Change to Female (FEMALE)</span>
+                <div className="text-xs text-slate-500">
+                  Treat all these records as female candidates only.
+                </div>
+              </div>
+            </Radio>
+          </Radio.Group>
+        </div>
       </Modal>
     </div>
   );
