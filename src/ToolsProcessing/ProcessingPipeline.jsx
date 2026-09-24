@@ -84,6 +84,9 @@ const ProcessingPipeline = () => {
   const staleEnvLotIds = useStore((state) => state.staleEnvLotIds);
   const removeStaleEnvLotIds = useStore((state) => state.removeStaleEnvLotIds);
   const projectId = useStore((state) => state.projectId);
+  const globalSelectedLot = useStore((state) => state.selectedLot);
+  const selectedDropdownLot = globalSelectedLot !== null && globalSelectedLot !== undefined && globalSelectedLot !== "" ? String(globalSelectedLot) : "all";
+
   useEffect(() => {
     if (projectId && !isLoadingData) {
       if (!isConfigured) {
@@ -109,7 +112,6 @@ const ProcessingPipeline = () => {
   const [selectedBatch, setSelectedBatch] = useState(1);
   const [loadingBatches, setLoadingBatches] = useState(false);
   const [dropdownLots, setDropdownLots] = useState([]);
-  const [selectedDropdownLot, setSelectedDropdownLot] = useState("all");
 
   useEffect(() => {
     if (projectId) {
@@ -124,11 +126,21 @@ const ProcessingPipeline = () => {
       const data = res.data || [];
       const validLots = data.filter(lot => lot.lotNo > 0).map(lot => lot.lotNo);
       setDropdownLots(validLots);
-      setSelectedDropdownLot("all");
+      window.dispatchEvent(new Event("refreshLots"));
     } catch (err) {
       console.error("Failed to fetch lots for dropdown", err);
     }
   };
+
+  useEffect(() => {
+    if (selectedDropdownLot !== "all" && selectedDropdownLot !== null) {
+      setSelectedLotTab(Number(selectedDropdownLot));
+    } else if (dropdownLots && dropdownLots.length > 0) {
+      setSelectedLotTab(dropdownLots[0]);
+    } else {
+      setSelectedLotTab(null);
+    }
+  }, [selectedDropdownLot, dropdownLots]);
 
   const loadBatches = async () => {
     try {
@@ -2233,6 +2245,7 @@ const loadGeneratedTemplateReports = async () => {
       }
 
       setAvailableLots(lots);
+      window.dispatchEvent(new Event("refreshLots"));
       // Set first lot as default selected tab
       if (lots.length > 0) {
         setSelectedLotTab(lots[0].lotNo);
@@ -4080,8 +4093,8 @@ const loadGeneratedTemplateReports = async () => {
 
     const moduleIdToNameMap = {
       1: "Duplicate Tool",
-      2: "Extra Configuration",
-      3: "Envelope Breaking",
+      2: "Envelope Setup and Enhancement",
+      3: "Extra Configuration",
       4: "Envelope Breaking",
       5: "Box Breaking",
       6: "Envelope Summary",
@@ -4094,11 +4107,18 @@ const loadGeneratedTemplateReports = async () => {
         const rawPath = er.filePath || er.FilePath || "";
         const fileName = rawPath ? rawPath.split(/[/\\]/).pop() : `Report_${er.id || er.Id}.xlsx`;
         const baseName = fileName.replace(/[_-]?v\d+(?=\.[^.]+$)/i, '');
-        const groupKey = `${er.moduleId || er.ModuleId}_${er.lot || er.Lot || 0}_${baseName}`;
+        const fnLower = (fileName || rawPath).toLowerCase();
+        let modId = er.moduleId || er.ModuleId;
+        if (fnLower.includes("enhancement")) {
+          modId = 2;
+        } else if (fnLower.includes("extra")) {
+          modId = 3;
+        }
+        const groupKey = `${modId}_${er.lot || er.Lot || 0}_${baseName}`;
         if (!groupedExcel[groupKey]) {
           groupedExcel[groupKey] = [];
         }
-        groupedExcel[groupKey].push({ ...er, fileName, baseName, rawPath });
+        groupedExcel[groupKey].push({ ...er, fileName, baseName, rawPath, normalizedModuleId: modId });
       });
 
       Object.keys(groupedExcel).forEach((groupKey) => {
@@ -4109,7 +4129,13 @@ const loadGeneratedTemplateReports = async () => {
 
         sortedVers.forEach((er) => {
           const curVer = Number(er.version || er.Version || 0);
-          const modId = er.moduleId || er.ModuleId;
+          let modId = er.normalizedModuleId || er.moduleId || er.ModuleId;
+          const fnLower = (er.fileName || er.rawPath || "").toLowerCase();
+          if (fnLower.includes("enhancement")) {
+            modId = 2;
+          } else if (fnLower.includes("extra")) {
+            modId = 3;
+          }
           const lotVal = er.lot || er.Lot;
           const genAt = er.generatedAt || er.GeneratedAt;
           const genBy = er.generatedByUserId || er.GeneratedByUserId;
@@ -4571,34 +4597,7 @@ Object.keys(groupedTpl).forEach((templateKey) => {
         >
           <Card
             size="small"
-            title={
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <span>Enabled Modules Status & Reports</span>
-                <Select
-                  size="small"
-                  style={{ width: 90 }}
-                  placeholder="Select Lot"
-                  value={selectedDropdownLot}
-                  onChange={(val) => {
-                    setSelectedDropdownLot(val);
-                    if (val !== "all") {
-                      setSelectedLotTab(Number(val));
-                    } else if (dropdownLots && dropdownLots.length > 0) {
-                      setSelectedLotTab(dropdownLots[0]);
-                    } else {
-                      setSelectedLotTab(null);
-                    }
-                  }}
-                >
-                  <Select.Option value="all">All Lots</Select.Option>
-                  {dropdownLots.map((lotNo) => (
-                    <Select.Option key={lotNo} value={lotNo}>
-                      Lot {lotNo}
-                    </Select.Option>
-                  ))}
-                </Select>
-              </div>
-            }
+            title={<span>Enabled Modules Status & Reports</span>}
             className="pipeline-table-card"
             style={{
               marginBottom: 12,
@@ -4861,6 +4860,7 @@ Object.keys(groupedTpl).forEach((templateKey) => {
         apiBaseUrl={import.meta.env.VITE_API_URL}
         rptApiUrl={import.meta.env.VITE_RPT_API_URL}
         envLotReports={envLotReports}
+        availableLots={availableLots}
         onDownload={(version, report) => {
           if (version?.fileUrl) {
             const link = document.createElement("a");
