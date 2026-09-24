@@ -334,7 +334,16 @@ const renderResolvedFieldValues = (conflict) => {
     );
   }
 
-  return renderValueTags(conflict.valuesForSelection, conflict.key);
+  const values = conflict.valuesForSelection;
+  if (!values?.length) {
+    return <Text type="secondary">-</Text>;
+  }
+  
+  return (
+    <Text style={{ fontSize: 11 }}>
+      {conflict.field ? `${conflict.field}: ` : ""}{values.join(", ")}
+    </Text>
+  );
 };
 
 const renderActionCell = (conflict, selectedValue, loading, onSelectionChange, onResolve, onIgnore) => {
@@ -448,7 +457,7 @@ const renderActionCell = (conflict, selectedValue, loading, onSelectionChange, o
   return <Text type="secondary">Review only</Text>;
 };
 
-const buildColumns = (conflictSelections, onSelectionChange, onResolve, onIgnore, loading, resolvedFieldLabel) => [
+const buildColumns = (conflictSelections, onSelectionChange, onResolve, onIgnore, loading) => [
   {
     title: "Summary",
     key: "conflict",
@@ -487,7 +496,7 @@ const buildColumns = (conflictSelections, onSelectionChange, onResolve, onIgnore
     render: (_, conflict) => renderMetaTags(conflict),
   },
   {
-    title: resolvedFieldLabel || "Resolved Field",
+    title: "Conflicting Fields",
     key: "resolvedField",
     width: 240,
     render: (_, conflict) => renderResolvedFieldValues(conflict),
@@ -565,8 +574,7 @@ const DataImportConflictReport = ({
                       onSelectionChange,
                       onResolve,
                       onIgnore,
-                      loading,
-                      typeItems[0]?.targetField
+                      loading
                     )}
                     dataSource={typeItems}
                     rowKey="key"
