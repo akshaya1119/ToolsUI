@@ -227,10 +227,10 @@ export default function NodalCenterList() {
   }, [searchText]);
 
   useEffect(() => {
-    if (projectId && (activeTab === "3" || activeTab === "4")) {
+    if (projectId) {
       fetchReports(mergeBy);
     }
-  }, [projectId, activeTab, mergeBy]);
+  }, [projectId, mergeBy]);
 
   const fetchAvailableDbFields = async () => {
     try {
@@ -365,25 +365,28 @@ export default function NodalCenterList() {
       setIsDirty(false);
       await Promise.all([fetchTempData(), fetchReports(mergeBy)]);
     } catch (err) {
-      const errErrors = err.response?.data?.errors;
-      const errMsg = err.response?.data?.message || err.response?.data || "Merge failed";
-      if (errErrors && errErrors.length > 0) {
-        showToast(errMsg, "error");
-        if (err.response?.data) {
-          setReports(prev => ({
-            ...prev,
-            rule1Passed: false,
-            rule1Errors: errErrors,
-            multiCenterDetails: err.response.data.multiCenterDetails || prev?.multiCenterDetails,
-            multiNodalDetails: err.response.data.multiNodalDetails || prev?.multiNodalDetails,
-            rule1CollegeCodes: err.response.data.rule1CollegeCodes || prev?.rule1CollegeCodes,
-            rule1CenterCodes: err.response.data.rule1CenterCodes || prev?.rule1CenterCodes,
-          }));
-        }
-        setActiveTab("3");
-      } else {
-        showToast(errMsg, "error");
+      const errData = err.response?.data;
+      const errErrors = errData?.errors || errData?.rule2Errors;
+      const errMsg = errData?.message || (typeof err.response?.data === 'string' ? err.response?.data : "Merge failed");
+      showToast(errMsg, "error");
+
+      if (errData) {
+        setReports(prev => ({
+          ...prev,
+          rule1Passed: errData.rule1Passed !== undefined ? errData.rule1Passed : prev?.rule1Passed,
+          rule2Passed: errData.rule2Passed !== undefined ? errData.rule2Passed : prev?.rule2Passed,
+          rule1Errors: errData.rule1Errors || prev?.rule1Errors,
+          rule2Errors: errData.rule2Errors || prev?.rule2Errors,
+          multiCenterDetails: errData.multiCenterDetails || prev?.multiCenterDetails,
+          multiNodalDetails: errData.multiNodalDetails || prev?.multiNodalDetails,
+          rule1CollegeCodes: errData.rule1CollegeCodes || prev?.rule1CollegeCodes,
+          rule1CenterCodes: errData.rule1CenterCodes || prev?.rule1CenterCodes,
+          rule2CollegeCodes: errData.rule2CollegeCodes || prev?.rule2CollegeCodes,
+          unassignedDetails: errData.unassignedDetails || prev?.unassignedDetails,
+          unassignedCount: errData.unassignedDetails?.length || prev?.unassignedCount,
+        }));
       }
+      setActiveTab("3");
     } finally {
       setMerging(false);
     }
@@ -745,6 +748,7 @@ export default function NodalCenterList() {
       addForm.resetFields();
       setIsDirty(true);
       fetchExistingData();
+      fetchReports(mergeBy);
     } catch (err) {
       if (err.errorFields) return; // Validation failed
       showToast(err.response?.data || "Failed to add record", "error");
@@ -804,6 +808,7 @@ export default function NodalCenterList() {
           setEditingKey('');
           showToast("Data updated successfully", "success");
           setIsDirty(true);
+          fetchReports(mergeBy);
         }
       }
     } catch (errInfo) {
@@ -827,9 +832,10 @@ export default function NodalCenterList() {
       setIsDirty(true);
       if (activeTab === "3") {
         fetchTempData();
-        fetchReports();
+        fetchReports(mergeBy);
       } else {
         fetchExistingData();
+        fetchReports(mergeBy);
       }
     } catch (error) {
       console.error(error);
@@ -1592,16 +1598,36 @@ export default function NodalCenterList() {
         }
         showToast(`Resolved: Center ${conflict.centreCode} assigned to Nodal ${normalizedValue}`, "success");
       } else if (conflict.conflictType === "unassigned_catch_nodal") {
-        await API.post("/NodalLists", {
-          projectId: Number(projectId),
-          collegeCode: Number(conflict.collegeCode || conflict.key) || 0,
-          collegeName: conflict.collegeName || "",
-          examCenterCode: Number(normalizedValue),
-          nodalCode: 1,
-          gender: "ALL",
-          status: true,
-        });
-        showToast(`Added College ${conflict.collegeCode || conflict.key} to Nodal List`, "success");
+        const rawCodeStr = String(conflict.collegeCode || conflict.key || "").trim();
+        const extractedCodeMatch = rawCodeStr.match(/^(\d+)/);
+        const collegeCodeInt = extractedCodeMatch ? Number(extractedCodeMatch[1]) : (Number(rawCodeStr) || 0);
+
+        try {
+          await API.post("/NodalLists/resolve-college-center", {
+            projectId: Number(projectId),
+            collegeCode: collegeCodeInt,
+            collegeName: conflict.collegeName || (collegeCodeInt ? `College ${collegeCodeInt}` : "Unknown College"),
+            gender: conflict.gender || "ALL",
+            correctCenterCode: Number(normalizedValue),
+            correctCenterName: conflict.examCenterName || conflict.centerName || `Center ${normalizedValue}`,
+            nodalCode: Number(normalizedValue) || 1,
+            nodalName: conflict.nodalName || `Nodal ${normalizedValue}`,
+          });
+        } catch (resolveErr) {
+          // If resolve-college-center returns 404 because no record exists yet, create the NodalList record
+          await API.post("/NodalLists", {
+            projectId: Number(projectId),
+            collegeCode: collegeCodeInt,
+            collegeName: conflict.collegeName || (collegeCodeInt ? `College ${collegeCodeInt}` : "Unknown College"),
+            examCenterCode: Number(normalizedValue),
+            examCenterName: conflict.examCenterName || conflict.centerName || `Center ${normalizedValue}`,
+            nodalCode: Number(normalizedValue) || 1,
+            nodalName: conflict.nodalName || `Nodal ${normalizedValue}`,
+            gender: conflict.gender || "ALL",
+            status: true,
+          });
+        }
+        showToast(`Assigned College ${collegeCodeInt || rawCodeStr} to Exam Center ${normalizedValue}`, "success");
       } else {
         // Fallback for dynamic / default conflicts
         const conflictId = conflict.dcId || conflict.id || conflict.rawItem?.dcId || conflict.rawItem?.id;
@@ -1803,11 +1829,13 @@ export default function NodalCenterList() {
   }, [reports, allNodalRecords, resolvedKeys]);
 
   const bothRulesPassed = useMemo(() => {
-    if (!reports) return true;
+    if (!reports) return false;
     if (reports.rule1Passed === false) return false;
     if (reports.rule2Passed === false) return false;
     if (reports.rule1Errors && reports.rule1Errors.length > 0) return false;
     if (reports.rule2Errors && reports.rule2Errors.length > 0) return false;
+    if (reports.rule2CollegeCodes && reports.rule2CollegeCodes.length > 0) return false;
+    if (reports.unassignedDetails && reports.unassignedDetails.length > 0) return false;
     return true;
   }, [reports]);
 
