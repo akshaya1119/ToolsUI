@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Typography, Card, Tabs, Upload, Button, Select, Table, Tag, Row, Col, Popover, Checkbox, Tooltip, Input, Form, Modal, Popconfirm, Space, InputNumber, Alert, Badge, Radio } from "antd";
+import { Typography, Card, Tabs, Upload, Button, Select, Table, Tag, Row, Col, Popover, Checkbox, Tooltip, Input, Form, Modal, Popconfirm, Space, InputNumber, Alert, Badge, Radio, Collapse } from "antd";
 import { UploadOutlined, CheckCircleOutlined, SettingOutlined, SearchOutlined, DeleteOutlined, WarningOutlined } from "@ant-design/icons";
 import * as XLSX from "xlsx-js-style";
 import API from "../hooks/api";
@@ -1412,9 +1412,9 @@ export default function NodalCenterList() {
                 />
               </div>
 
-              <Tooltip title={!bothRulesPassed ? "Generate Preview is disabled until all Rule 1 and Rule 2 validation conflicts are resolved in Conflict Report." : (!isDirty && tempData.length > 0 ? "Preview data is up to date." : "")}>
+              <Tooltip title={reports?.dynamicConflicts?.length > 0 ? "Resolve all dynamic conflicts before generating a preview" : ""}>
                 <span>
-                  <Button type="primary" onClick={handleMergePreview} loading={merging} disabled={!bothRulesPassed || (!isDirty && tempData.length > 0)}>
+                  <Button type="primary" onClick={handleMergePreview} loading={merging} disabled={(!isDirty && tempData.length > 0) || (reports?.dynamicConflicts?.length > 0)}>
                     {tempData.length > 0 ? "Regenerate Preview" : "Generate Preview"}
                   </Button>
                 </span>
@@ -1649,14 +1649,24 @@ export default function NodalCenterList() {
         return updated;
       });
 
-      if (level1Fields.length > 0 && level2Fields.length > 0) {
-        try {
-          await API.post(`/Merging/CheckDynamicRule1/${projectId}`, {
-            level1: level1Fields,
-            level2: level2Fields,
-            level3: level3Fields
-          });
-        } catch {}
+      const statusRes = await API.get(`/Merging/CheckAllConflictsResolved/${projectId}`);
+      if (statusRes.data?.allResolved) {
+        if (level1Fields.length > 0 && level2Fields.length > 0) {
+          console.log("Auto-running CheckDynamicRule1 from backend status...");
+          try {
+            await API.post(`/Merging/CheckDynamicRule1/${projectId}`, {
+              level1: level1Fields,
+              level2: level2Fields,
+              level3: level3Fields
+            });
+            console.log("Auto-run successful");
+          } catch (e) {
+            console.error("Auto-run failed", e);
+          }
+        } else {
+          console.log("Skipping auto-run: Level 1 and Level 2 fields are required but missing.");
+          showToast("Could not auto-run validation: Level 1 and Level 2 fields are missing. Please run manually.", "info");
+        }
       }
 
       await fetchReports(mergeBy);
@@ -1824,57 +1834,84 @@ export default function NodalCenterList() {
   };
 
   const renderConflicts = () => {
-    const dynamicRuleUi = (
+    const dynamicRuleContent = (
+      <div className="flex gap-4 mt-2 items-end flex-wrap">
+        <div>
+          <div className="text-xs mb-1">Level 1 (e.g. College Code)</div>
+          <Select
+            mode="multiple"
+            allowClear
+            placeholder="Select Level 1 fields"
+            style={{ minWidth: 200 }}
+            value={level1Fields}
+            onChange={handleLevel1Change}
+            options={allAvailableColumns.map((c) => ({ label: c, value: c }))}
+          />
+        </div>
+        <div>
+          <div className="text-xs mb-1">Level 2 (e.g. Exam Center)</div>
+          <Select
+            mode="multiple"
+            allowClear
+            placeholder="Select Level 2 fields"
+            style={{ minWidth: 200 }}
+            value={level2Fields}
+            onChange={handleLevel2Change}
+            options={allAvailableColumns.map((c) => ({ label: c, value: c }))}
+          />
+        </div>
+        <div>
+          <div className="text-xs mb-1">Level 3 (Optional, e.g. Nodal Code)</div>
+          <Select
+            mode="multiple"
+            allowClear
+            placeholder="Select Level 3 fields"
+            style={{ minWidth: 200 }}
+            value={level3Fields}
+            onChange={handleLevel3Change}
+            options={allAvailableColumns.map((c) => ({ label: c, value: c }))}
+          />
+        </div>
+        <Tooltip title={formattedConflictErrors.some(c => c.dcId !== undefined) ? "Resolve all dynamic conflicts first to run validation" : ""}>
+          <span>
+            <Button
+              type="primary"
+              loading={dynamicRuleLoading}
+              onClick={handleCheckDynamicRule1}
+              disabled={formattedConflictErrors.some(c => c.dcId !== undefined)}
+            >
+              Run Validation
+            </Button>
+          </span>
+        </Tooltip>
+      </div>
+    );
+
+    const dynamicRuleUiOpen = (
       <Card size="small" className="mb-4 shadow-sm">
         <Typography.Text strong>Dynamic 1:1:1 Validation</Typography.Text>
-        <div className="flex gap-4 mt-2 items-end flex-wrap">
-          <div>
-            <div className="text-xs mb-1">Level 1 (e.g. College Code)</div>
-            <Select
-              mode="multiple"
-              allowClear
-              placeholder="Select Level 1 fields"
-              style={{ minWidth: 200 }}
-              value={level1Fields}
-              onChange={handleLevel1Change}
-              options={allAvailableColumns.map(c => ({ label: c, value: c }))}
-            />
-          </div>
-          <div>
-            <div className="text-xs mb-1">Level 2 (e.g. Exam Center)</div>
-            <Select
-              mode="multiple"
-              allowClear
-              placeholder="Select Level 2 fields"
-              style={{ minWidth: 200 }}
-              value={level2Fields}
-              onChange={handleLevel2Change}
-              options={allAvailableColumns.map(c => ({ label: c, value: c }))}
-            />
-          </div>
-          <div>
-            <div className="text-xs mb-1">Level 3 (Optional, e.g. Nodal Code)</div>
-            <Select
-              mode="multiple"
-              allowClear
-              placeholder="Select Level 3 fields"
-              style={{ minWidth: 200 }}
-              value={level3Fields}
-              onChange={handleLevel3Change}
-              options={allAvailableColumns.map(c => ({ label: c, value: c }))}
-            />
-          </div>
-          <Button type="primary" loading={dynamicRuleLoading} onClick={handleCheckDynamicRule1}>
-            Run Validation
-          </Button>
-        </div>
+        {dynamicRuleContent}
       </Card>
+    );
+
+    const dynamicRuleUiCollapsible = (
+      <Collapse
+        size="small"
+        className="mb-4 shadow-sm"
+        items={[
+          {
+            key: "1",
+            label: "Dynamic 1:1:1 Validation",
+            children: dynamicRuleContent,
+          },
+        ]}
+      />
     );
 
     if (!reports) {
       return (
         <div>
-          {dynamicRuleUi}
+          {dynamicRuleUiOpen}
           <Typography.Text type="secondary">Click "Generate Preview" to check for standard conflicts.</Typography.Text>
         </div>
       );
@@ -1883,7 +1920,7 @@ export default function NodalCenterList() {
     if (formattedConflictErrors.length === 0) {
       return (
         <div>
-          {dynamicRuleUi}
+          {dynamicRuleUiOpen}
           <Typography.Text type="success">No conflicts found</Typography.Text>
         </div>
       );
@@ -1891,7 +1928,6 @@ export default function NodalCenterList() {
 
     return (
       <div className="py-2">
-        {dynamicRuleUi}
         <DataImportConflictReport
           conflicts={{ errors: formattedConflictErrors }}
           conflictSelections={conflictSelections}
@@ -1899,6 +1935,9 @@ export default function NodalCenterList() {
           onResolve={handleResolveConflict}
           onIgnore={handleIgnoreConflict}
           loading={loadingReports || dynamicRuleLoading}
+          extraTabContent={{
+            "Other Conflicts": dynamicRuleUiCollapsible,
+          }}
         />
       </div>
     );
