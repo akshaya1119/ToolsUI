@@ -483,6 +483,7 @@ const DataImportConflictReport = ({
   onResolve,
   onIgnore,
   loading,
+  extraTabContent,
 }) => {
   if (!conflicts) {
     return <Text type="secondary">Click "Load Conflict" to see conflicts.</Text>;
@@ -504,6 +505,14 @@ const DataImportConflictReport = ({
     return acc;
   }, {});
 
+  if (extraTabContent) {
+    Object.keys(extraTabContent).forEach((key) => {
+      if (!groupedConflicts[key]) {
+        groupedConflicts[key] = [];
+      }
+    });
+  }
+
   return (
     <Space direction="vertical" size={16} style={{ width: "100%" }}>
       <Tabs
@@ -511,42 +520,47 @@ const DataImportConflictReport = ({
           key: groupLabel,
           label: `${groupLabel} (${items.length})`,
           children: (
-            <Collapse
-              size="small"
-              defaultActiveKey={Array.from(new Set(items.map((item) => item.meta.title))).slice(0, 1)}
-              items={Object.entries(
-                items.reduce((acc, conflict) => {
-                  const typeKey = conflict.meta.title;
-                  if (!acc[typeKey]) {
-                    acc[typeKey] = [];
-                  }
-                  acc[typeKey].push(conflict);
-                  return acc;
-                }, {})
-              ).map(([typeLabel, typeItems]) => ({
-                key: typeLabel,
-                label: `${typeLabel} (${typeItems.length})`,
-                children: (
-                  <Table
-                    loading={loading}
-                    columns={buildColumns(
-                      conflictSelections,
-                      onSelectionChange,
-                      onResolve,
-                      onIgnore,
-                      loading
-                    )}
-                    dataSource={typeItems}
-                    rowKey="key"
-                    pagination={false}
-                    size="small"
-                    scroll={{ x: 1180 }}
-                    rowClassName={() => "compact-conflict-row"}
-                    style={{ width: "100%" }}
-                  />
-                ),
-              }))}
-            />
+            <div className="flex flex-col gap-4">
+              {extraTabContent && extraTabContent[groupLabel]}
+              {items.length > 0 && (
+                <Collapse
+                  size="small"
+                  defaultActiveKey={Array.from(new Set(items.map((item) => item.meta.title))).slice(0, 1)}
+                  items={Object.entries(
+                    items.reduce((acc, conflict) => {
+                      const typeKey = conflict.meta.title;
+                      if (!acc[typeKey]) {
+                        acc[typeKey] = [];
+                      }
+                      acc[typeKey].push(conflict);
+                      return acc;
+                    }, {})
+                  ).map(([typeLabel, typeItems]) => ({
+                    key: typeLabel,
+                    label: `${typeLabel} (${typeItems.length})`,
+                    children: (
+                      <Table
+                        loading={loading}
+                        columns={buildColumns(
+                          conflictSelections,
+                          onSelectionChange,
+                          onResolve,
+                          onIgnore,
+                          loading
+                        )}
+                        dataSource={typeItems}
+                        rowKey="key"
+                        pagination={false}
+                        size="small"
+                        scroll={{ x: 1180 }}
+                        rowClassName={() => "compact-conflict-row"}
+                        style={{ width: "100%" }}
+                      />
+                    ),
+                  }))}
+                />
+              )}
+            </div>
           ),
         }))}
       />
