@@ -525,7 +525,7 @@ const DataImportConflictReport = ({
               {items.length > 0 && (
                 <Collapse
                   size="small"
-                  defaultActiveKey={Array.from(new Set(items.map((item) => item.meta.title))).slice(0, 1)}
+                  activeKey={Array.from(new Set(items.map((item) => item.meta.title)))}
                   items={Object.entries(
                     items.reduce((acc, conflict) => {
                       const typeKey = conflict.meta.title;
