@@ -1412,9 +1412,13 @@ export default function NodalCenterList() {
                 />
               </div>
 
-              <Button type="primary" onClick={handleMergePreview} loading={merging} disabled={!isDirty && tempData.length > 0}>
-                {tempData.length > 0 ? "Regenerate Preview" : "Generate Preview"}
-              </Button>
+              <Tooltip title={!bothRulesPassed ? "Generate Preview is disabled until all Rule 1 and Rule 2 validation conflicts are resolved in Conflict Report." : (!isDirty && tempData.length > 0 ? "Preview data is up to date." : "")}>
+                <span>
+                  <Button type="primary" onClick={handleMergePreview} loading={merging} disabled={!bothRulesPassed || (!isDirty && tempData.length > 0)}>
+                    {tempData.length > 0 ? "Regenerate Preview" : "Generate Preview"}
+                  </Button>
+                </span>
+              </Tooltip>
 
               <Popover
                 content={
@@ -1787,6 +1791,15 @@ export default function NodalCenterList() {
 
     return errors;
   }, [reports, allNodalRecords, resolvedKeys]);
+
+  const bothRulesPassed = useMemo(() => {
+    if (!reports) return true;
+    if (reports.rule1Passed === false) return false;
+    if (reports.rule2Passed === false) return false;
+    if (reports.rule1Errors && reports.rule1Errors.length > 0) return false;
+    if (reports.rule2Errors && reports.rule2Errors.length > 0) return false;
+    return true;
+  }, [reports]);
 
   const handleCheckDynamicRule1 = async () => {
     if (!level1Fields.length || !level2Fields.length) {
