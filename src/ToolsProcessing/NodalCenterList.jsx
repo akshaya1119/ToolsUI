@@ -96,12 +96,90 @@ export default function NodalCenterList() {
     return localStorage.getItem(`mergeBy_${projectId}`) || "CollegeCode";
   });
 
+  const handleLevel1Change = (vals) => {
+    setLevel1Fields(vals);
+    if (projectId) localStorage.setItem(`dynamicL1_${projectId}`, JSON.stringify(vals));
+  };
+
+  const handleLevel2Change = (vals) => {
+    setLevel2Fields(vals);
+    if (projectId) localStorage.setItem(`dynamicL2_${projectId}`, JSON.stringify(vals));
+  };
+
+  const handleLevel3Change = (vals) => {
+    setLevel3Fields(vals);
+    if (projectId) localStorage.setItem(`dynamicL3_${projectId}`, JSON.stringify(vals));
+  };
+
   useEffect(() => {
     if (projectId) {
       const saved = localStorage.getItem(`mergeBy_${projectId}`);
       if (saved) setMergeBy(saved);
+
+      try {
+        const savedL1 = localStorage.getItem(`dynamicL1_${projectId}`);
+        const savedL2 = localStorage.getItem(`dynamicL2_${projectId}`);
+        const savedL3 = localStorage.getItem(`dynamicL3_${projectId}`);
+
+        if (savedL1) setLevel1Fields(JSON.parse(savedL1));
+        if (savedL2) setLevel2Fields(JSON.parse(savedL2));
+        if (savedL3) setLevel3Fields(JSON.parse(savedL3));
+      } catch {}
     }
   }, [projectId]);
+
+  useEffect(() => {
+    if (reports?.dynamicConflicts?.length > 0) {
+      let extractedL1 = null;
+      let extractedL2 = null;
+      let extractedL3 = null;
+
+      reports.dynamicConflicts.forEach((dc) => {
+        try {
+          const unique = JSON.parse(dc.uniqueField || dc.UniqueField);
+          const conflict = JSON.parse(dc.conflictingField || dc.ConflictingField);
+          if (unique?.fields && conflict?.fields) {
+            const confStr = conflict.fields.join(",").toLowerCase();
+            if (confStr.includes("examcentercode") || confStr.includes("center")) {
+              extractedL1 = unique.fields;
+              extractedL2 = conflict.fields;
+            } else if (confStr.includes("nodalcode") || confStr.includes("nodal")) {
+              extractedL2 = unique.fields;
+              extractedL3 = conflict.fields;
+            } else if (!extractedL1) {
+              extractedL1 = unique.fields;
+              extractedL2 = conflict.fields;
+            }
+          }
+        } catch {}
+      });
+
+      if (extractedL1 && extractedL1.length > 0 && level1Fields.length === 0) {
+        setLevel1Fields(extractedL1);
+        if (projectId) localStorage.setItem(`dynamicL1_${projectId}`, JSON.stringify(extractedL1));
+      }
+      if (extractedL2 && extractedL2.length > 0 && level2Fields.length === 0) {
+        setLevel2Fields(extractedL2);
+        if (projectId) localStorage.setItem(`dynamicL2_${projectId}`, JSON.stringify(extractedL2));
+      }
+      if (extractedL3 && extractedL3.length > 0 && level3Fields.length === 0) {
+        setLevel3Fields(extractedL3);
+        if (projectId) localStorage.setItem(`dynamicL3_${projectId}`, JSON.stringify(extractedL3));
+      }
+    } else if (level1Fields.length === 0 && level2Fields.length === 0 && level3Fields.length === 0) {
+      const defaultL1 = ["CollegeName", "Gender"];
+      const defaultL2 = ["ExamCenterCode"];
+      const defaultL3 = ["NodalCode"];
+      setLevel1Fields(defaultL1);
+      setLevel2Fields(defaultL2);
+      setLevel3Fields(defaultL3);
+      if (projectId) {
+        localStorage.setItem(`dynamicL1_${projectId}`, JSON.stringify(defaultL1));
+        localStorage.setItem(`dynamicL2_${projectId}`, JSON.stringify(defaultL2));
+        localStorage.setItem(`dynamicL3_${projectId}`, JSON.stringify(defaultL3));
+      }
+    }
+  }, [reports, projectId]);
 
   const handleMergeByChange = (val) => {
     setMergeBy(val);
@@ -248,18 +326,10 @@ export default function NodalCenterList() {
   const fetchReports = async (currentMergeBy = mergeBy) => {
     setLoadingReports(true);
     try {
-      const [res, nodalRes] = await Promise.all([
-        API.get(`/Merging/Reports/${projectId}`, {
-          params: { mergeBy: currentMergeBy }
-        }),
-        API.get(`/NodalLists/${projectId}`, {
-          params: { pageNo: 1, pageSize: 5000 }
-        }).catch(() => null)
-      ]);
+      const res = await API.get(`/Merging/Reports/${projectId}`, {
+        params: { mergeBy: currentMergeBy }
+      });
       setReports(res.data);
-      if (nodalRes?.data?.items) {
-        setAllNodalRecords(nodalRes.data.items);
-      }
     } catch (err) {
       showToast("Failed to fetch reports", "error");
     } finally {
@@ -290,30 +360,6 @@ export default function NodalCenterList() {
   const handleMergePreview = async () => {
     setMerging(true);
     try {
-      // 1. Run validation before merge
-      const [reportRes, nodalRes] = await Promise.all([
-        API.get(`/Merging/Reports/${projectId}`, {
-          params: { mergeBy }
-        }),
-        API.get(`/NodalLists/${projectId}`, {
-          params: { pageNo: 1, pageSize: 5000 }
-        }).catch(() => null)
-      ]);
-      const reportData = reportRes.data;
-      setReports(reportData);
-      if (nodalRes?.data?.items) {
-        setAllNodalRecords(nodalRes.data.items);
-      }
-
-      // 2. Strictly block merge if Rule 1 failed (one college -> one center, one center -> one nodal)
-      if (reportData.rule1Passed === false || (reportData.rule1Errors && reportData.rule1Errors.length > 0)) {
-        showToast("Rule 1 validation failed: Merging blocked. Switched to Conflict Report tab.", "error");
-        setActiveTab("4");
-        setMerging(false);
-        return;
-      }
-
-      // 3. Rule 1 passed, proceed with merge
       await API.post(`/Merging/MergeToTemporary/${projectId}?mergeBy=${encodeURIComponent(mergeBy)}`);
       showToast("Merged to temporary data successfully", "success");
       setIsDirty(false);
@@ -334,13 +380,7 @@ export default function NodalCenterList() {
             rule1CenterCodes: err.response.data.rule1CenterCodes || prev?.rule1CenterCodes,
           }));
         }
-        try {
-          const nodalRes = await API.get(`/NodalLists/${projectId}`, { params: { pageNo: 1, pageSize: 5000 } });
-          if (nodalRes?.data?.items) {
-            setAllNodalRecords(nodalRes.data.items);
-          }
-        } catch { }
-        setActiveTab("4");
+        setActiveTab("3");
       } else {
         showToast(errMsg, "error");
       }
@@ -361,7 +401,7 @@ export default function NodalCenterList() {
             <p>Pushing to main NR Data is strictly blocked because Rule 1 validation failed (one college must belong to one center, and one center to one nodal code).</p>
             <p className="mt-2 text-sm text-gray-600">Please review and resolve the conflicts in the Conflict Report tab first.</p>
             <div className="mt-4">
-              <Button type="primary" danger onClick={() => { Modal.destroyAll(); setActiveTab("4"); }}>
+              <Button type="primary" danger onClick={() => { Modal.destroyAll(); setActiveTab("3"); }}>
                 Open Conflict Report
               </Button>
             </div>
@@ -379,7 +419,7 @@ export default function NodalCenterList() {
           <div>
             <p>Some Catch List items are missing from the Nodal List. Are you sure you want to proceed with pushing to main NR Data?</p>
             <div className="mt-3">
-              <Button size="small" onClick={() => { Modal.destroyAll(); setActiveTab("4"); }}>
+              <Button size="small" onClick={() => { Modal.destroyAll(); setActiveTab("3"); }}>
                 Review in Conflict Report
               </Button>
             </div>
@@ -747,10 +787,10 @@ export default function NodalCenterList() {
 
   const handleDelete = async (key) => {
     try {
-      const endpoint = activeTab === "1" 
-        ? `/CatchLists/${key}` 
-        : activeTab === "2" 
-          ? `/NodalLists/${key}` 
+      const endpoint = activeTab === "1"
+        ? `/CatchLists/${key}`
+        : activeTab === "2"
+          ? `/NodalLists/${key}`
           : `/TemporaryNrDatas/${key}`;
       await API.delete(endpoint);
       showToast("Record deleted successfully", "success");
@@ -771,10 +811,10 @@ export default function NodalCenterList() {
   const handleDeleteSelected = async () => {
     if (!selectedRowKeys.length) return;
     try {
-      const endpoint = activeTab === "1" 
-        ? `/CatchLists/batch-delete` 
-        : activeTab === "2" 
-          ? `/NodalLists/batch-delete` 
+      const endpoint = activeTab === "1"
+        ? `/CatchLists/batch-delete`
+        : activeTab === "2"
+          ? `/NodalLists/batch-delete`
           : `/TemporaryNrDatas/batch-delete`;
       const res = await API.post(endpoint, selectedRowKeys);
       showToast(res.data?.message || `${selectedRowKeys.length} records deleted successfully`, "success");
@@ -794,10 +834,10 @@ export default function NodalCenterList() {
 
   const handleDeleteAll = async () => {
     try {
-      const endpoint = activeTab === "1" 
-        ? `/CatchLists/deleteAll/${projectId}` 
-        : activeTab === "2" 
-          ? `/NodalLists/deleteAll/${projectId}` 
+      const endpoint = activeTab === "1"
+        ? `/CatchLists/deleteAll/${projectId}`
+        : activeTab === "2"
+          ? `/NodalLists/deleteAll/${projectId}`
           : `/TemporaryNrDatas/deleteAll/${projectId}`;
       const res = await API.delete(endpoint);
       showToast(res.data?.message || "All records deleted successfully", "success");
@@ -1437,6 +1477,7 @@ export default function NodalCenterList() {
   };
 
   const [conflictSelections, setConflictSelections] = useState({});
+  const [resolvedKeys, setResolvedKeys] = useState(new Set());
 
   const handleConflictSelectionChange = (conflictKey, value) => {
     setConflictSelections((prev) => ({
@@ -1454,6 +1495,11 @@ export default function NodalCenterList() {
     if (normalizedValue === "") {
       showToast("Please enter or select a value before saving.", "warning");
       return;
+    }
+
+    const cKey = String(conflict.key || conflict.dcId || conflict.id || "");
+    if (cKey) {
+      setResolvedKeys((prev) => new Set([...prev, cKey]));
     }
 
     try {
@@ -1523,6 +1569,45 @@ export default function NodalCenterList() {
           status: true,
         });
         showToast(`Added College ${conflict.collegeCode || conflict.key} to Nodal List`, "success");
+      } else {
+        // Fallback for dynamic / default conflicts
+        const conflictId = conflict.dcId || conflict.id || conflict.rawItem?.dcId || conflict.rawItem?.id;
+        const targetField = conflict.field || "NodalCode";
+        const matchField = conflict.uniqueField || "ExamCenterCode";
+        const matchValue = conflict.uniqueValue || conflict.summary || "";
+
+        if (conflictId) {
+          try {
+            await API.post("/Merging/ResolveDynamicConflict", {
+              projectId: Number(projectId),
+              conflictId: Number(conflictId),
+              targetField: String(targetField),
+              targetValue: String(normalizedValue),
+              matchField: String(matchField),
+              matchValue: String(matchValue),
+            });
+            showToast(`Resolved conflict for ${matchValue}`, "success");
+          } catch (e) {
+            console.error("Failed to resolve dynamic conflict on backend", e);
+          }
+        } else {
+          // Fallback legacy row update if no conflictId
+          const codeMatch = (conflict.uniqueValue || conflict.summary || "").match(/(\d+)/);
+          const targetCode = codeMatch ? Number(codeMatch[1]) : 0;
+          if (targetCode > 0) {
+            const res = await API.get(`/NodalLists/${projectId}?pageNo=1&pageSize=5000&search=${targetCode}`);
+            const items = res.data?.items || res.data || [];
+            await Promise.all(
+              items.map((r) =>
+                API.put(`/NodalLists/${r.id ?? r.Id}`, {
+                  ...r,
+                  nodalCode: Number(normalizedValue) || r.nodalCode,
+                  examCenterCode: Number(normalizedValue) || r.examCenterCode,
+                })
+              )
+            );
+          }
+        }
       }
 
       setConflictSelections((prev) => {
@@ -1530,6 +1615,16 @@ export default function NodalCenterList() {
         delete updated[conflict.key];
         return updated;
       });
+
+      if (level1Fields.length > 0 && level2Fields.length > 0) {
+        try {
+          await API.post(`/Merging/CheckDynamicRule1/${projectId}`, {
+            level1: level1Fields,
+            level2: level2Fields,
+            level3: level3Fields
+          });
+        } catch {}
+      }
 
       await fetchReports(mergeBy);
     } catch (err) {
@@ -1539,6 +1634,10 @@ export default function NodalCenterList() {
   };
 
   const handleIgnoreConflict = (conflict) => {
+    const cKey = String(conflict.key || conflict.dcId || conflict.id || "");
+    if (cKey) {
+      setResolvedKeys((prev) => new Set([...prev, cKey]));
+    }
     setConflictSelections((prev) => {
       const updated = { ...prev };
       delete updated[conflict.key];
@@ -1553,6 +1652,9 @@ export default function NodalCenterList() {
 
     if (reports.dynamicConflicts && reports.dynamicConflicts.length > 0) {
       reports.dynamicConflicts.forEach((dc) => {
+        const idKey = String(dc.id || dc.Id || "");
+        if (idKey && resolvedKeys.has(idKey)) return;
+
         try {
           const unique = JSON.parse(dc.uniqueField || dc.UniqueField);
           const conflict = JSON.parse(dc.conflictingField || dc.ConflictingField);
@@ -1564,11 +1666,14 @@ export default function NodalCenterList() {
             conflictType: "default",
             summary: `${uniqueKeys} (${unique.value}) is linked with multiple ${conflictKeys} values (${conflict.values.join(", ")}).`,
             status: "pending",
-            key: dc.id,
+            key: dc.id || dc.Id,
+            dcId: dc.id || dc.Id,
+            id: dc.id || dc.Id,
             uniqueField: uniqueKeys,
             field: conflictKeys,
             conflictingValues: conflict.values,
-            valuesForSelection: conflict.values
+            valuesForSelection: conflict.values,
+            uniqueValue: unique.value,
           });
         } catch (e) {
           // fallback if parsing fails
@@ -1583,7 +1688,7 @@ export default function NodalCenterList() {
     }
 
     return errors;
-  }, [reports, allNodalRecords]);
+  }, [reports, allNodalRecords, resolvedKeys]);
 
   const handleCheckDynamicRule1 = async () => {
     if (!level1Fields.length || !level2Fields.length) {
@@ -1620,7 +1725,7 @@ export default function NodalCenterList() {
               placeholder="Select Level 1 fields"
               style={{ minWidth: 200 }}
               value={level1Fields}
-              onChange={setLevel1Fields}
+              onChange={handleLevel1Change}
               options={allAvailableColumns.map(c => ({ label: c, value: c }))}
             />
           </div>
@@ -1632,7 +1737,7 @@ export default function NodalCenterList() {
               placeholder="Select Level 2 fields"
               style={{ minWidth: 200 }}
               value={level2Fields}
-              onChange={setLevel2Fields}
+              onChange={handleLevel2Change}
               options={allAvailableColumns.map(c => ({ label: c, value: c }))}
             />
           </div>
@@ -1644,7 +1749,7 @@ export default function NodalCenterList() {
               placeholder="Select Level 3 fields"
               style={{ minWidth: 200 }}
               value={level3Fields}
-              onChange={setLevel3Fields}
+              onChange={handleLevel3Change}
               options={allAvailableColumns.map(c => ({ label: c, value: c }))}
             />
           </div>
@@ -1682,7 +1787,7 @@ export default function NodalCenterList() {
           onSelectionChange={handleConflictSelectionChange}
           onResolve={handleResolveConflict}
           onIgnore={handleIgnoreConflict}
-          loading={loadingReports}
+          loading={loadingReports || dynamicRuleLoading}
         />
       </div>
     );
@@ -1704,9 +1809,6 @@ export default function NodalCenterList() {
         <TabPane tab="Add Nodal List" key="2">
           {renderUploadSection("Upload Nodal List")}
         </TabPane>
-        <TabPane tab="Merge & Preview" key="3">
-          {renderMergeTab()}
-        </TabPane>
         <TabPane
           tab={
             formattedConflictErrors.length > 0 ? (
@@ -1717,9 +1819,12 @@ export default function NodalCenterList() {
               "Conflict Report"
             )
           }
-          key="4"
+          key="3"
         >
           {renderConflicts()}
+        </TabPane>
+        <TabPane tab="Merge & Preview" key="4">
+          {renderMergeTab()}
         </TabPane>
       </Tabs>
       <Modal
