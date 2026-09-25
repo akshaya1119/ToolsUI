@@ -413,23 +413,35 @@ export default function NodalCenterList() {
     }
 
     if (hasRule2Errors) {
-      Modal.confirm({
-        title: 'Rule 2 Notice: Missing Nodal Assignments',
+      Modal.error({
+        title: 'Rule 2 Validation Failed (Cannot Push)',
         content: (
           <div>
-            <p>Some Catch List items are missing from the Nodal List. Are you sure you want to proceed with pushing to main NR Data?</p>
-            <div className="mt-3">
-              <Button size="small" onClick={() => { Modal.destroyAll(); setActiveTab("3"); }}>
+            <p className="font-semibold text-red-600">Pushing to main NR Data is strictly blocked because some colleges are not assigned to an exam center.</p>
+            <p className="mt-2 text-sm text-gray-600">Every college must be assigned an exam center before pushing to main NR Data.</p>
+            {reports?.rule2CollegeCodes && reports.rule2CollegeCodes.length > 0 && (
+              <div className="mt-3 p-2 bg-red-50 border border-red-200 rounded text-xs text-red-800 max-h-32 overflow-y-auto">
+                <strong>Unassigned Colleges ({reports.rule2CollegeCodes.length}):</strong>
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {reports.rule2CollegeCodes.map(code => (
+                    <span key={code} className="bg-red-100 text-red-800 px-1.5 py-0.5 rounded font-mono">
+                      {code}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+            <div className="mt-4 flex gap-2">
+              <Button type="primary" danger onClick={() => { Modal.destroyAll(); setActiveTab("3"); }}>
                 Review in Conflict Report
+              </Button>
+              <Button onClick={() => { Modal.destroyAll(); setActiveTab("2"); }}>
+                Go to Nodal List
               </Button>
             </div>
           </div>
         ),
-        okText: 'Proceed Anyway',
-        cancelText: 'Cancel',
-        okButtonProps: { danger: true },
-        width: 500,
-        onOk: handlePushToMain,
+        okText: 'Close',
       });
       return;
     }
@@ -446,7 +458,24 @@ export default function NodalCenterList() {
       setReports(null);
       setIsDirty(false);
     } catch (err) {
-      showToast("Push failed", "error");
+      const errMsg = err.response?.data?.message || err.response?.data || "Push failed";
+      showToast(errMsg, "error");
+      if (err.response?.data?.rule2Passed === false || err.response?.data?.rule2Failed) {
+        Modal.error({
+          title: 'Rule 2 Validation Failed (Cannot Push)',
+          content: (
+            <div>
+              <p className="text-red-600 font-semibold">{errMsg}</p>
+              {err.response?.data?.errors && (
+                <ul className="mt-2 text-xs text-gray-700 list-disc pl-4">
+                  {err.response.data.errors.map((e, idx) => <li key={idx}>{e}</li>)}
+                </ul>
+              )}
+            </div>
+          ),
+          okText: 'Close',
+        });
+      }
     } finally {
       setPushingToMain(false);
     }
@@ -1349,12 +1378,12 @@ export default function NodalCenterList() {
           )}
           {reports && reports.rule1Passed && reports.rule2Passed === false && (
             <Alert
-              type="warning"
+              type="error"
               showIcon
-              message="Rule 2 Notice: Incomplete Nodal Assignments"
-              description="Some Catch List items are not mapped in the Nodal List."
+              message="Rule 2 Error: Missing Exam Center Assignments"
+              description="Every college must be assigned an exam center. Pushing to main NR Data is strictly blocked until all colleges are assigned an exam center."
               action={
-                <Button size="small" onClick={() => setActiveTab("4")}>
+                <Button type="primary" danger size="small" onClick={() => setActiveTab("3")}>
                   View Conflict Report
                 </Button>
               }
@@ -1650,6 +1679,75 @@ export default function NodalCenterList() {
     if (!reports) return [];
     const errors = [];
 
+    // Rule 1: Multi-center details
+    if (reports.multiCenterDetails && reports.multiCenterDetails.length > 0) {
+      reports.multiCenterDetails.forEach((mc, idx) => {
+        const key = `mc_${mc.collegeCode}_${idx}`;
+        if (resolvedKeys.has(key)) return;
+        errors.push({
+          conflictType: "college_multiple_centers",
+          summary: mc.description || `College ${mc.collegeCode} assigned to multiple exam centers`,
+          collegeCode: mc.collegeCode,
+          collegeName: mc.collegeNames?.join(", "),
+          centerCodes: mc.centerCodes,
+          conflictingValues: mc.centerCodes,
+          key: key,
+          id: key,
+          status: "pending"
+        });
+      });
+    }
+
+    // Rule 1: Multi-nodal details
+    if (reports.multiNodalDetails && reports.multiNodalDetails.length > 0) {
+      reports.multiNodalDetails.forEach((mn, idx) => {
+        const key = `mn_${mn.centerCode}_${idx}`;
+        if (resolvedKeys.has(key)) return;
+        errors.push({
+          conflictType: "center_multiple_nodals",
+          summary: mn.description || `Center ${mn.centerCode} assigned to multiple nodal codes`,
+          centreCode: mn.centerCode,
+          nodalCodes: mn.nodalCodes,
+          conflictingValues: mn.nodalCodes,
+          key: key,
+          id: key,
+          status: "pending"
+        });
+      });
+    }
+
+    // Rule 2: Unassigned colleges missing exam center assignments
+    if (reports.unassignedDetails && reports.unassignedDetails.length > 0) {
+      reports.unassignedDetails.forEach((ud, idx) => {
+        const key = `rule2_${ud.collegeCode}_${idx}`;
+        if (resolvedKeys.has(key)) return;
+        errors.push({
+          conflictType: "unassigned_catch_nodal",
+          summary: ud.description || `College ${ud.collegeCode} (${ud.collegeName}) is missing an Exam Center assignment in Nodal List.`,
+          collegeCode: ud.collegeCode,
+          collegeName: ud.collegeName,
+          catchNos: ud.catchNos,
+          key: key,
+          id: key,
+          status: "pending"
+        });
+      });
+    } else if (reports.rule2CollegeCodes && reports.rule2CollegeCodes.length > 0 && reports.rule2Passed === false) {
+      reports.rule2CollegeCodes.forEach((code, idx) => {
+        const key = `rule2_code_${code}_${idx}`;
+        if (resolvedKeys.has(key)) return;
+        errors.push({
+          conflictType: "unassigned_catch_nodal",
+          summary: `College ${code} is missing an Exam Center assignment in Nodal List.`,
+          collegeCode: code,
+          key: key,
+          id: key,
+          status: "pending"
+        });
+      });
+    }
+
+    // Dynamic Rule 1 conflicts
     if (reports.dynamicConflicts && reports.dynamicConflicts.length > 0) {
       reports.dynamicConflicts.forEach((dc) => {
         const idKey = String(dc.id || dc.Id || "");
