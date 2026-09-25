@@ -1802,6 +1802,15 @@ export default function NodalCenterList() {
     return errors;
   }, [reports, allNodalRecords, resolvedKeys]);
 
+  const bothRulesPassed = useMemo(() => {
+    if (!reports) return true;
+    if (reports.rule1Passed === false) return false;
+    if (reports.rule2Passed === false) return false;
+    if (reports.rule1Errors && reports.rule1Errors.length > 0) return false;
+    if (reports.rule2Errors && reports.rule2Errors.length > 0) return false;
+    return true;
+  }, [reports]);
+
   const handleCheckDynamicRule1 = async () => {
     if (!level1Fields.length || !level2Fields.length) {
       showToast("Please select at least Level 1 and Level 2 fields.", "warning");
