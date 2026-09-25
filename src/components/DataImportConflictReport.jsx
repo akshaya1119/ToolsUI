@@ -146,9 +146,15 @@ const normalizeConflict = (item) => {
   const status = (getValue(item, "status", "Status") || CONFLICT_STATUS.PENDING).toLowerCase();
   const minNrQuantity = getValue(item, "minNrQuantity", "MinNrQuantity");
   const maxNrQuantity = getValue(item, "maxNrQuantity", "MaxNrQuantity");
+  const dcId = getValue(item, "dcId", "DcId", "id", "Id");
+  const uniqueValue = getValue(item, "uniqueValue", "UniqueValue");
 
   const details = {
     key: getConflictKey(item),
+    dcId,
+    id: getValue(item, "id", "Id"),
+    uniqueValue,
+    rawItem: item,
     conflictType,
     canIgnore,
     status,
@@ -346,11 +352,9 @@ const renderResolvedFieldValues = (conflict) => {
   );
 };
 
-const renderActionCell = (conflict, selectedValue, loading, onSelectionChange, onResolve, onIgnore) => {
-  const isIgnored = conflict.status === CONFLICT_STATUS.IGNORED;
-  const canRenderIgnore = typeof onIgnore === "function";
+const renderActionCell = (conflict, selectedValue, loading, onSelectionChange, onResolve) => {
   const normalizedSelectedValue =
-    selectedValue === undefined || selectedValue === null ? undefined : String(selectedValue);
+    selectedValue === undefined || selectedValue === null ? "" : String(selectedValue);
   const zeroQuantityHelp =
     conflict.conflictType === "zero_nr_quantity" &&
     conflict.minNrQuantity !== undefined &&
@@ -360,24 +364,30 @@ const renderActionCell = (conflict, selectedValue, loading, onSelectionChange, o
       ? `Min: ${conflict.minNrQuantity}, Max: ${conflict.maxNrQuantity}`
       : null;
 
-  if (conflict.resolveKind === "select") {
-    const rawOptions = conflict.valuesForSelection || [];
-    const options = Array.from(new Set(rawOptions.map(String).filter(Boolean))).map((value) => ({
-      value,
-      label: value,
-    }));
+  const rawOptions = [
+    ...(conflict.valuesForSelection || []),
+    ...(conflict.conflictingValues || []),
+    ...(conflict.centerCodes || []),
+    ...(conflict.nodalCodes || []),
+  ];
 
-    const placeholder =
-      conflict.conflictType === "zero_nr_quantity"
-        ? "Select or type NRQuantity"
-        : conflict.conflictType === "center_multiple_nodals" || conflict.conflictType === "college_multiple_nodals"
-        ? "Select or type Nodal"
-        : conflict.conflictType === "college_multiple_centers" || conflict.conflictType === "unassigned_catch_nodal"
-        ? "Select or type Center"
-        : "Select or type value";
+  const options = Array.from(new Set(rawOptions.map(String).filter(Boolean))).map((value) => ({
+    value,
+    label: value,
+  }));
 
-    return (
-      <Space direction="vertical" size={6}>
+  const placeholder =
+    conflict.conflictType === "zero_nr_quantity"
+      ? "Select or type NRQuantity"
+      : conflict.conflictType === "center_multiple_nodals" || conflict.conflictType === "college_multiple_nodals"
+      ? "Select or type Nodal"
+      : conflict.conflictType === "college_multiple_centers" || conflict.conflictType === "unassigned_catch_nodal"
+      ? "Select or type Center"
+      : "Select or type value";
+
+  return (
+    <Space direction="vertical" size={4} style={{ width: "100%" }}>
+      <Space wrap size={[4, 4]}>
         <AutoComplete
           size="small"
           style={{ width: 160 }}
@@ -390,71 +400,20 @@ const renderActionCell = (conflict, selectedValue, loading, onSelectionChange, o
           }
           allowClear
         />
-        {zeroQuantityHelp ? <Text type="secondary" style={{ fontSize: 11 }}>{zeroQuantityHelp}</Text> : null}
-        <Space wrap size={[4, 4]}>
-          <Button
-            type="primary"
-            size="small"
-            icon={<CheckCircleOutlined />}
-            disabled={normalizedSelectedValue === undefined || normalizedSelectedValue.trim() === ""}
-            loading={loading}
-            onClick={() => onResolve(conflict, normalizedSelectedValue.trim())}
-          >
-            Resolve
-          </Button>
-          {canRenderIgnore && (
-            <Button size="small" disabled={isIgnored} onClick={() => onIgnore(conflict)}>
-              {isIgnored ? "Ignored" : "Ignore"}
-            </Button>
-          )}
-        </Space>
-      </Space>
-    );
-  }
-
-  if (conflict.resolveKind === "input") {
-    return (
-      <Space direction="vertical" size={6}>
-        <Input
+        <Button
+          type="primary"
           size="small"
-          style={{ width: 160 }}
-          placeholder={`Enter ${conflict.targetField}`}
-          value={selectedValue}
-          onChange={(event) => onSelectionChange(conflict.key, event.target.value)}
-        />
-        <Space wrap size={[4, 4]}>
-          <Button
-            type="primary"
-            size="small"
-            icon={<CheckCircleOutlined />}
-            disabled={selectedValue === undefined || selectedValue === null || String(selectedValue).trim() === ""}
-            loading={loading}
-            onClick={() => onResolve(conflict, String(selectedValue).trim())}
-          >
-            Resolve
-          </Button>
-          {canRenderIgnore && (
-            <Button size="small" disabled={isIgnored} onClick={() => onIgnore(conflict)}>
-              {isIgnored ? "Ignored" : "Ignore"}
-            </Button>
-          )}
-        </Space>
-      </Space>
-    );
-  }
-
-  if (canRenderIgnore) {
-    return (
-      <Space wrap size={[4, 4]}>
-        <Text type="secondary">Review only</Text>
-        <Button size="small" disabled={isIgnored} onClick={() => onIgnore(conflict)}>
-          {isIgnored ? "Ignored" : "Ignore"}
+          icon={<CheckCircleOutlined />}
+          disabled={!normalizedSelectedValue || normalizedSelectedValue.trim() === ""}
+          loading={loading}
+          onClick={() => onResolve(conflict, normalizedSelectedValue.trim())}
+        >
+          Resolve
         </Button>
       </Space>
-    );
-  }
-
-  return <Text type="secondary">Review only</Text>;
+      {zeroQuantityHelp ? <Text type="secondary" style={{ fontSize: 11 }}>{zeroQuantityHelp}</Text> : null}
+    </Space>
+  );
 };
 
 const buildColumns = (conflictSelections, onSelectionChange, onResolve, onIgnore, loading) => [
@@ -569,6 +528,7 @@ const DataImportConflictReport = ({
                 label: `${typeLabel} (${typeItems.length})`,
                 children: (
                   <Table
+                    loading={loading}
                     columns={buildColumns(
                       conflictSelections,
                       onSelectionChange,
