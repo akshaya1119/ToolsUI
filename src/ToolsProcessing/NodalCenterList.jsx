@@ -1695,9 +1695,12 @@ export default function NodalCenterList() {
       } else {
         // Fallback for dynamic / default conflicts
         const conflictId = conflict.dcId || conflict.id || conflict.rawItem?.dcId || conflict.rawItem?.id;
-        const targetField = conflict.field || (targetType === "nodal" ? "NodalCode" : "ExamCenterCode");
+        const targetField = conflict.field || "NodalCode";
         const matchField = conflict.uniqueField || "ExamCenterCode";
         const matchValue = conflict.uniqueValue || conflict.summary || "";
+        const targetValueStr = isObj
+          ? String(selectedValue.nodalCode || selectedValue.centerCode || "")
+          : String(selectedValue || "").trim();
 
         if (conflictId) {
           try {
@@ -1705,27 +1708,29 @@ export default function NodalCenterList() {
               projectId: Number(projectId),
               conflictId: Number(conflictId),
               targetField: String(targetField),
-              targetValue: String(normalizedValue),
+              targetValue: String(targetValueStr),
               matchField: String(matchField),
               matchValue: String(matchValue),
             });
             showToast(`Resolved conflict for ${matchValue}`, "success");
           } catch (e) {
             console.error("Failed to resolve dynamic conflict on backend", e);
+            showToast("Failed to resolve dynamic conflict", "error");
           }
         } else {
           // Fallback legacy row update if no conflictId
           const codeMatch = (conflict.uniqueValue || conflict.summary || "").match(/(\d+)/);
           const targetCode = codeMatch ? Number(codeMatch[1]) : 0;
-          if (targetCode > 0) {
+          const targetValNum = Number(targetValueStr) || 0;
+          if (targetCode > 0 && targetValNum > 0) {
             const res = await API.get(`/NodalLists/${projectId}?pageNo=1&pageSize=5000&search=${targetCode}`);
             const items = res.data?.items || res.data || [];
             await Promise.all(
               items.map((r) =>
                 API.put(`/NodalLists/${r.id ?? r.Id}`, {
                   ...r,
-                  nodalCode: targetType === "nodal" ? (valNum || r.nodalCode) : r.nodalCode,
-                  examCenterCode: targetType === "centre" ? (valNum || r.examCenterCode) : r.examCenterCode,
+                  nodalCode: targetField.toLowerCase().includes("nodal") ? targetValNum : r.nodalCode,
+                  examCenterCode: targetField.toLowerCase().includes("center") ? targetValNum : r.examCenterCode,
                 })
               )
             );
