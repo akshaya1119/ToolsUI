@@ -668,8 +668,10 @@ const renderActionCell = (conflict, selectedValue, loading, onSelectionChange, o
     );
   }
 
-  const normalizedSelectedValue =
-    selectedValue === undefined || selectedValue === null ? "" : String(selectedValue);
+  const isObjectValue = selectedValue && typeof selectedValue === "object";
+  const normalizedSelectedValue = isObjectValue ? String(selectedValue.value || "") : (selectedValue === undefined || selectedValue === null ? "" : String(selectedValue));
+  const selectedNameValue = isObjectValue ? (selectedValue.name || "") : "";
+
   const zeroQuantityHelp =
     conflict.conflictType === "zero_nr_quantity" &&
     conflict.minNrQuantity !== undefined &&
@@ -698,30 +700,62 @@ const renderActionCell = (conflict, selectedValue, loading, onSelectionChange, o
       ? "Select or type Nodal"
       : conflict.conflictType === "college_multiple_centers" || conflict.conflictType === "unassigned_catch_nodal"
       ? "Select or type Center"
-      : "Select or type value";
+      : "Select or type code";
+
+  const isDynamicRule1 = conflict.dcId !== undefined || conflict.conflictType === "default";
+  const tf = (conflict.field || conflict.targetField || "").toLowerCase();
+  const needsNameField = isDynamicRule1 && (tf.includes("nodal") || tf.includes("center") || tf.includes("college"));
+  const isNewValue = normalizedSelectedValue && normalizedSelectedValue.trim() !== "" && !options.some(o => o.value === normalizedSelectedValue.trim());
+  const showNameField = needsNameField && isNewValue;
+  const namePlaceholder = tf.includes("nodal") ? "Type Nodal Name" : tf.includes("center") ? "Type Center Name" : "Type College Name";
+
+  const handleValChange = (val) => {
+    if (needsNameField) {
+      onSelectionChange(conflict.key, { value: val, name: selectedNameValue });
+    } else {
+      onSelectionChange(conflict.key, val);
+    }
+  };
+
+  const handleNameChange = (e) => {
+    onSelectionChange(conflict.key, { value: normalizedSelectedValue, name: e.target.value });
+  };
+
+  const canResolve = showNameField 
+    ? (normalizedSelectedValue.trim() !== "" && selectedNameValue.trim() !== "")
+    : (normalizedSelectedValue.trim() !== "");
 
   return (
     <Space direction="vertical" size={4} style={{ width: "100%" }}>
       <Space wrap size={[4, 4]}>
         <AutoComplete
           size="small"
-          style={{ width: 160 }}
+          style={{ width: 140 }}
           placeholder={placeholder}
           value={normalizedSelectedValue}
-          onChange={(value) => onSelectionChange(conflict.key, value)}
+          onChange={handleValChange}
           options={options}
           filterOption={(inputValue, option) =>
             String(option?.value ?? "").toLowerCase().includes(String(inputValue || "").toLowerCase())
           }
           allowClear
         />
+        {showNameField && (
+          <Input 
+            size="small" 
+            style={{ width: 140 }} 
+            placeholder={namePlaceholder} 
+            value={selectedNameValue} 
+            onChange={handleNameChange} 
+          />
+        )}
         <Button
           type="primary"
           size="small"
           icon={<CheckCircleOutlined />}
-          disabled={!normalizedSelectedValue || normalizedSelectedValue.trim() === ""}
+          disabled={!canResolve}
           loading={loading}
-          onClick={() => onResolve(conflict, normalizedSelectedValue.trim())}
+          onClick={() => onResolve(conflict, isObjectValue ? selectedValue : normalizedSelectedValue.trim())}
         >
           Resolve
         </Button>
