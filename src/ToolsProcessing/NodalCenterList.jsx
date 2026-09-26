@@ -98,88 +98,24 @@ export default function NodalCenterList() {
 
   const handleLevel1Change = (vals) => {
     setLevel1Fields(vals);
-    if (projectId) localStorage.setItem(`dynamicL1_${projectId}`, JSON.stringify(vals));
   };
 
   const handleLevel2Change = (vals) => {
     setLevel2Fields(vals);
-    if (projectId) localStorage.setItem(`dynamicL2_${projectId}`, JSON.stringify(vals));
   };
 
   const handleLevel3Change = (vals) => {
     setLevel3Fields(vals);
-    if (projectId) localStorage.setItem(`dynamicL3_${projectId}`, JSON.stringify(vals));
   };
 
   useEffect(() => {
     if (projectId) {
       const saved = localStorage.getItem(`mergeBy_${projectId}`);
       if (saved) setMergeBy(saved);
-
-      try {
-        const savedL1 = localStorage.getItem(`dynamicL1_${projectId}`);
-        const savedL2 = localStorage.getItem(`dynamicL2_${projectId}`);
-        const savedL3 = localStorage.getItem(`dynamicL3_${projectId}`);
-
-        if (savedL1) setLevel1Fields(JSON.parse(savedL1));
-        if (savedL2) setLevel2Fields(JSON.parse(savedL2));
-        if (savedL3) setLevel3Fields(JSON.parse(savedL3));
-      } catch {}
     }
   }, [projectId]);
 
-  useEffect(() => {
-    if (reports?.dynamicConflicts?.length > 0) {
-      let extractedL1 = null;
-      let extractedL2 = null;
-      let extractedL3 = null;
 
-      reports.dynamicConflicts.forEach((dc) => {
-        try {
-          const unique = JSON.parse(dc.uniqueField || dc.UniqueField);
-          const conflict = JSON.parse(dc.conflictingField || dc.ConflictingField);
-          if (unique?.fields && conflict?.fields) {
-            const confStr = conflict.fields.join(",").toLowerCase();
-            if (confStr.includes("examcentercode") || confStr.includes("center")) {
-              extractedL1 = unique.fields;
-              extractedL2 = conflict.fields;
-            } else if (confStr.includes("nodalcode") || confStr.includes("nodal")) {
-              extractedL2 = unique.fields;
-              extractedL3 = conflict.fields;
-            } else if (!extractedL1) {
-              extractedL1 = unique.fields;
-              extractedL2 = conflict.fields;
-            }
-          }
-        } catch {}
-      });
-
-      if (extractedL1 && extractedL1.length > 0 && level1Fields.length === 0) {
-        setLevel1Fields(extractedL1);
-        if (projectId) localStorage.setItem(`dynamicL1_${projectId}`, JSON.stringify(extractedL1));
-      }
-      if (extractedL2 && extractedL2.length > 0 && level2Fields.length === 0) {
-        setLevel2Fields(extractedL2);
-        if (projectId) localStorage.setItem(`dynamicL2_${projectId}`, JSON.stringify(extractedL2));
-      }
-      if (extractedL3 && extractedL3.length > 0 && level3Fields.length === 0) {
-        setLevel3Fields(extractedL3);
-        if (projectId) localStorage.setItem(`dynamicL3_${projectId}`, JSON.stringify(extractedL3));
-      }
-    } else if (level1Fields.length === 0 && level2Fields.length === 0 && level3Fields.length === 0) {
-      const defaultL1 = ["CollegeName", "Gender"];
-      const defaultL2 = ["ExamCenterCode"];
-      const defaultL3 = ["NodalCode"];
-      setLevel1Fields(defaultL1);
-      setLevel2Fields(defaultL2);
-      setLevel3Fields(defaultL3);
-      if (projectId) {
-        localStorage.setItem(`dynamicL1_${projectId}`, JSON.stringify(defaultL1));
-        localStorage.setItem(`dynamicL2_${projectId}`, JSON.stringify(defaultL2));
-        localStorage.setItem(`dynamicL3_${projectId}`, JSON.stringify(defaultL3));
-      }
-    }
-  }, [reports, projectId]);
 
   const handleMergeByChange = (val) => {
     setMergeBy(val);
@@ -193,7 +129,7 @@ export default function NodalCenterList() {
     "CatchNo", "CollegeCode", "CollegeName", "PaperCode", "CourseName", "SubjectName", "NRQuantity", "ExamDate", "ExamTime",
     "Transgender", "Male", "Female", "Semester", "CenterCode", "CenterName"
   ];
-  const requiredCatchListFields = ["CatchNo", "CenterCode"];
+  const requiredCatchListFields = ["CatchNo", "CenterCode", "NRQuantity"];
 
   const nodalListFields = [
     "CollegeCode", "CollegeName", "ExamCenterCode", "ExamCenterName",
