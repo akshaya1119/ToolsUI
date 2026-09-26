@@ -48,6 +48,8 @@ export default function NodalCenterList() {
   const [fileData, setFileData] = useState([]);
   const [mapping, setMapping] = useState({});
   const [uploading, setUploading] = useState(false);
+  const [isZeroModalVisible, setIsZeroModalVisible] = useState(false);
+  const [zeroDetails, setZeroDetails] = useState({ collegeZeroCount: 0, centerZeroCount: 0, totalRows: 0, fieldName: "" });
 
   const [existingData, setExistingData] = useState([]);
   const [loadingData, setLoadingData] = useState(false);
@@ -112,10 +114,71 @@ export default function NodalCenterList() {
     if (projectId) {
       const saved = localStorage.getItem(`mergeBy_${projectId}`);
       if (saved) setMergeBy(saved);
+
+      try {
+        const savedL1 = localStorage.getItem(`dynamicL1_${projectId}`);
+        const savedL2 = localStorage.getItem(`dynamicL2_${projectId}`);
+        const savedL3 = localStorage.getItem(`dynamicL3_${projectId}`);
+
+        if (savedL1) setLevel1Fields(JSON.parse(savedL1));
+        if (savedL2) setLevel2Fields(JSON.parse(savedL2));
+        if (savedL3) setLevel3Fields(JSON.parse(savedL3));
+      } catch { }
     }
   }, [projectId]);
 
+  useEffect(() => {
+    if (reports?.dynamicConflicts?.length > 0) {
+      let extractedL1 = null;
+      let extractedL2 = null;
+      let extractedL3 = null;
 
+      reports.dynamicConflicts.forEach((dc) => {
+        try {
+          const unique = JSON.parse(dc.uniqueField || dc.UniqueField);
+          const conflict = JSON.parse(dc.conflictingField || dc.ConflictingField);
+          if (unique?.fields && conflict?.fields) {
+            const confStr = conflict.fields.join(",").toLowerCase();
+            if (confStr.includes("examcentercode") || confStr.includes("center")) {
+              extractedL1 = unique.fields;
+              extractedL2 = conflict.fields;
+            } else if (confStr.includes("nodalcode") || confStr.includes("nodal")) {
+              extractedL2 = unique.fields;
+              extractedL3 = conflict.fields;
+            } else if (!extractedL1) {
+              extractedL1 = unique.fields;
+              extractedL2 = conflict.fields;
+            }
+          }
+        } catch { }
+      });
+
+      if (extractedL1 && extractedL1.length > 0 && level1Fields.length === 0) {
+        setLevel1Fields(extractedL1);
+        if (projectId) localStorage.setItem(`dynamicL1_${projectId}`, JSON.stringify(extractedL1));
+      }
+      if (extractedL2 && extractedL2.length > 0 && level2Fields.length === 0) {
+        setLevel2Fields(extractedL2);
+        if (projectId) localStorage.setItem(`dynamicL2_${projectId}`, JSON.stringify(extractedL2));
+      }
+      if (extractedL3 && extractedL3.length > 0 && level3Fields.length === 0) {
+        setLevel3Fields(extractedL3);
+        if (projectId) localStorage.setItem(`dynamicL3_${projectId}`, JSON.stringify(extractedL3));
+      }
+    } else if (level1Fields.length === 0 && level2Fields.length === 0 && level3Fields.length === 0) {
+      const defaultL1 = ["CollegeName", "Gender"];
+      const defaultL2 = ["ExamCenterCode"];
+      const defaultL3 = ["NodalCode"];
+      setLevel1Fields(defaultL1);
+      setLevel2Fields(defaultL2);
+      setLevel3Fields(defaultL3);
+      if (projectId) {
+        localStorage.setItem(`dynamicL1_${projectId}`, JSON.stringify(defaultL1));
+        localStorage.setItem(`dynamicL2_${projectId}`, JSON.stringify(defaultL2));
+        localStorage.setItem(`dynamicL3_${projectId}`, JSON.stringify(defaultL3));
+      }
+    }
+  }, [reports, projectId]);
 
   const handleMergeByChange = (val) => {
     setMergeBy(val);
@@ -142,6 +205,16 @@ export default function NodalCenterList() {
 
   useEffect(() => {
     if (projectId) {
+      setTempData([]);
+      setExistingData([]);
+      setPagination({ current: 1, pageSize: 10, total: 0 });
+      setTempPagination({ current: 1, pageSize: 10, total: 0 });
+      setColumnFilters({});
+      setTempColumnFilters({});
+      setSearchText("");
+      setLocalSearch("");
+      setSelectedRowKeys([]);
+      setReports(null);
       fetchAvailableDbFields();
     }
   }, [projectId]);
@@ -171,19 +244,23 @@ export default function NodalCenterList() {
   const fetchAvailableDbFields = async () => {
     try {
       const res = await API.get("/Fields");
-      // res.data is likely an array of { fieldId, name } or similar
       const fields = res.data.map(f => f.name || f.Name || f);
       setAvailableDbFields(fields);
     } catch (error) {
-      console.error(error);
-      showToast("Failed to fetch available fields", "error");
+      console.error("Failed to fetch available fields", error);
     }
   };
 
   useEffect(() => {
-    // Reset added fields to just required fields when tab changes
+    // Reset state parameters when tab changes
     setAddedFields([...currentRequiredFields]);
     setSelectedRowKeys([]);
+    setSearchText("");
+    setLocalSearch("");
+    setColumnFilters({});
+    setTempColumnFilters({});
+    setPagination(prev => ({ ...prev, current: 1 }));
+    setTempPagination(prev => ({ ...prev, current: 1 }));
   }, [activeTab]);
 
   const fetchExistingData = async () => {
@@ -253,7 +330,7 @@ export default function NodalCenterList() {
       setTempData(res.data.items || []);
       setTempPagination(prev => ({ ...prev, total: res.data.totalCount || 0 }));
     } catch (err) {
-      showToast("Failed to fetch temporary data", "error");
+      console.error("Failed to fetch temporary data", err);
     } finally {
       setLoadingTemp(false);
     }
@@ -303,7 +380,7 @@ export default function NodalCenterList() {
       setReports(res.data);
       await fetchAllNodalRecords();
     } catch (err) {
-      showToast("Failed to fetch reports", "error");
+      console.error("Failed to fetch reports", err);
     } finally {
       setLoadingReports(false);
     }
@@ -334,7 +411,7 @@ export default function NodalCenterList() {
     try {
       const res = await API.post(`/Merging/MergeToTemporary/${projectId}?mergeBy=${encodeURIComponent(mergeBy)}`);
       if (res.data?.rule2Passed === false) {
-        showToast(res.data?.message || "Data merged to temporary table, but Rule 2 validation failed.", "warning");
+        showToast(res.data?.message || "Data merged to temporary table", "warning");
       } else {
         showToast("Merged to temporary data successfully", "success");
       }
@@ -407,8 +484,7 @@ export default function NodalCenterList() {
         title: 'Rule 2 Validation Failed (Cannot Push)',
         content: (
           <div>
-            <p className="font-semibold text-red-600">Pushing to main NR Data is strictly blocked because some colleges are not assigned to an exam center.</p>
-            <p className="mt-2 text-sm text-gray-600">Every college must be assigned an exam center before pushing to main NR Data.</p>
+            <p className="text-sm text-gray-700">Some colleges are not assigned to an exam center. Please assign them before pushing.</p>
             {currentReports?.rule2CollegeCodes && currentReports.rule2CollegeCodes.length > 0 && (
               <div className="mt-3 p-2 bg-red-50 border border-red-200 rounded text-xs text-red-800 max-h-32 overflow-y-auto">
                 <strong>Unassigned Colleges ({currentReports.rule2CollegeCodes.length}):</strong>
@@ -627,6 +703,44 @@ export default function NodalCenterList() {
       }
     }
 
+    // Check for partial zero / missing values in Catch List upload (activeTab === "1")
+    if (activeTab === "1") {
+      const collegeHeader = mapping["CollegeCode"];
+      const centerHeader = mapping["CenterCode"];
+      const totalRows = fileData.length;
+
+      let collegeZeroCount = 0;
+      let centerZeroCount = 0;
+
+      fileData.forEach((row) => {
+        const rawColl = collegeHeader ? row[collegeHeader] : undefined;
+        const strColl = rawColl !== undefined && rawColl !== null ? String(rawColl).trim() : "";
+        if (!strColl || strColl === "0") collegeZeroCount++;
+
+        const rawCent = centerHeader ? row[centerHeader] : undefined;
+        const strCent = rawCent !== undefined && rawCent !== null ? String(rawCent).trim() : "";
+        if (!strCent || strCent === "0") centerZeroCount++;
+      });
+
+      const isPartialCollegeZero = collegeZeroCount > 0 && collegeZeroCount < totalRows;
+      const isPartialCenterZero = centerZeroCount > 0 && centerZeroCount < totalRows;
+
+      if (isPartialCollegeZero || isPartialCenterZero) {
+        let fieldNames = [];
+        if (isPartialCollegeZero) fieldNames.push(`College Code (${collegeZeroCount} of ${totalRows} rows are 0/blank)`);
+        if (isPartialCenterZero) fieldNames.push(`Center Code (${centerZeroCount} of ${totalRows} rows are 0/blank)`);
+
+        setZeroDetails({
+          collegeZeroCount,
+          centerZeroCount,
+          totalRows,
+          fieldName: fieldNames.join(", "),
+        });
+        setIsZeroModalVisible(true);
+        return;
+      }
+    }
+
     // When uploading Nodal List, check for non-standard gender values
     if (activeTab === "2") {
       const genderHeader = mapping["Gender"];
@@ -774,14 +888,24 @@ export default function NodalCenterList() {
     }
   };
 
-  const isEditing = (record) => record.id === editingKey;
+  const isEditing = (record) => (record.id ?? record.Id) === editingKey;
   const edit = (record) => {
+    const recId = record.id ?? record.Id;
     form.setFieldsValue({
       ...record,
       nrQuantity: record.nrQuantity ?? record.nRQuantity ?? record.NRQuantity,
       nRQuantity: record.nrQuantity ?? record.nRQuantity ?? record.NRQuantity,
+      collegeCode: record.collegeCode ?? record.CollegeCode,
+      centerCode: record.centerCode ?? record.CenterCode,
+      nodalCode: record.nodalCode ?? record.NodalCode,
+      collegeName: record.collegeName ?? record.CollegeName,
+      courseName: record.courseName ?? record.CourseName,
+      subjectName: record.subjectName ?? record.SubjectName,
+      catchNo: record.catchNo ?? record.CatchNo,
+      examDate: record.examDate ?? record.ExamDate,
+      examTime: record.examTime ?? record.ExamTime,
     });
-    setEditingKey(record.id);
+    setEditingKey(recId);
   };
   const cancel = () => {
     setEditingKey('');
@@ -797,25 +921,52 @@ export default function NodalCenterList() {
         row.NRQuantity = row.nRQuantity;
       }
 
-      if (activeTab === "3") {
+      if (activeTab === "3" || activeTab === "4") {
         const newData = [...tempData];
-        const index = newData.findIndex((item) => key === item.id);
+        const index = newData.findIndex((item) => (item.id ?? item.Id) === key);
         if (index > -1) {
           const item = newData[index];
-          const updatedItem = { ...item, ...row };
+          const updatedItem = {
+            ...item,
+            ...row,
+            id: key,
+            Id: key,
+            collegeCode: row.collegeCode !== undefined ? Number(row.collegeCode) : (item.collegeCode ?? item.CollegeCode ?? 0),
+            CollegeCode: row.collegeCode !== undefined ? Number(row.collegeCode) : (item.collegeCode ?? item.CollegeCode ?? 0),
+            centerCode: row.centerCode !== undefined ? (row.centerCode !== null ? String(row.centerCode) : null) : (item.centerCode !== undefined ? (item.centerCode !== null ? String(item.centerCode) : null) : (item.CenterCode !== undefined ? (item.CenterCode !== null ? String(item.CenterCode) : null) : null)),
+            CenterCode: row.centerCode !== undefined ? (row.centerCode !== null ? String(row.centerCode) : null) : (item.centerCode !== undefined ? (item.centerCode !== null ? String(item.centerCode) : null) : (item.CenterCode !== undefined ? (item.CenterCode !== null ? String(item.CenterCode) : null) : null)),
+            nodalCode: row.nodalCode !== undefined ? (row.nodalCode !== null ? String(row.nodalCode) : null) : (item.nodalCode !== undefined ? (item.nodalCode !== null ? String(item.nodalCode) : null) : (item.NodalCode !== undefined ? (item.NodalCode !== null ? String(item.NodalCode) : null) : null)),
+            NodalCode: row.nodalCode !== undefined ? (row.nodalCode !== null ? String(row.nodalCode) : null) : (item.nodalCode !== undefined ? (item.nodalCode !== null ? String(item.nodalCode) : null) : (item.NodalCode !== undefined ? (item.NodalCode !== null ? String(item.NodalCode) : null) : null)),
+            nrQuantity: row.nrQuantity !== undefined ? Number(row.nrQuantity) : (item.nrQuantity ?? item.NRQuantity ?? 0),
+            NRQuantity: row.nrQuantity !== undefined ? Number(row.nrQuantity) : (item.nrQuantity ?? item.NRQuantity ?? 0),
+            collegeName: row.collegeName !== undefined ? row.collegeName : (item.collegeName ?? item.CollegeName),
+            CollegeName: row.collegeName !== undefined ? row.collegeName : (item.collegeName ?? item.CollegeName),
+            courseName: row.courseName !== undefined ? row.courseName : (item.courseName ?? item.CourseName),
+            CourseName: row.courseName !== undefined ? row.courseName : (item.courseName ?? item.CourseName),
+            subjectName: row.subjectName !== undefined ? row.subjectName : (item.subjectName ?? item.SubjectName),
+            SubjectName: row.subjectName !== undefined ? row.subjectName : (item.subjectName ?? item.SubjectName),
+            catchNo: row.catchNo !== undefined ? (row.catchNo !== null ? String(row.catchNo) : null) : (item.catchNo !== undefined ? (item.catchNo !== null ? String(item.catchNo) : null) : (item.CatchNo !== undefined ? (item.CatchNo !== null ? String(item.CatchNo) : null) : null)),
+            CatchNo: row.catchNo !== undefined ? (row.catchNo !== null ? String(row.catchNo) : null) : (item.catchNo !== undefined ? (item.catchNo !== null ? String(item.catchNo) : null) : (item.CatchNo !== undefined ? (item.CatchNo !== null ? String(item.CatchNo) : null) : null)),
+            examDate: row.examDate !== undefined ? row.examDate : (item.examDate ?? item.ExamDate),
+            ExamDate: row.examDate !== undefined ? row.examDate : (item.examDate ?? item.ExamDate),
+            examTime: row.examTime !== undefined ? row.examTime : (item.examTime ?? item.ExamTime),
+            ExamTime: row.examTime !== undefined ? row.examTime : (item.examTime ?? item.ExamTime),
+          };
           await API.put(`/TemporaryNrDatas/${key}`, updatedItem);
           newData.splice(index, 1, updatedItem);
           setTempData(newData);
           setEditingKey('');
           showToast("Record updated successfully", "success");
+          setIsDirty(true);
+          fetchReports(mergeBy);
         }
       } else {
         const newData = [...existingData];
-        const index = newData.findIndex((item) => key === item.id);
+        const index = newData.findIndex((item) => (item.id ?? item.Id) === key);
 
         if (index > -1) {
           const item = newData[index];
-          const updatedItem = { ...item, ...row };
+          const updatedItem = { ...item, ...row, id: key, Id: key };
 
           const endpoint = activeTab === "1" ? `/CatchLists/${key}` : `/NodalLists/${key}`;
           await API.put(endpoint, updatedItem);
@@ -847,7 +998,7 @@ export default function NodalCenterList() {
       showToast("Record deleted successfully", "success");
       setSelectedRowKeys(prev => prev.filter(k => k !== key));
       setIsDirty(true);
-      if (activeTab === "3") {
+      if (activeTab === "3" || activeTab === "4") {
         fetchTempData();
         fetchReports(mergeBy);
       } else {
@@ -872,7 +1023,7 @@ export default function NodalCenterList() {
       showToast(res.data?.message || `${selectedRowKeys.length} records deleted successfully`, "success");
       setSelectedRowKeys([]);
       setIsDirty(true);
-      if (activeTab === "3") {
+      if (activeTab === "3" || activeTab === "4") {
         fetchTempData();
         fetchReports();
       } else {
@@ -895,7 +1046,7 @@ export default function NodalCenterList() {
       showToast(res.data?.message || "All records deleted successfully", "success");
       setSelectedRowKeys([]);
       setIsDirty(true);
-      if (activeTab === "3") {
+      if (activeTab === "3" || activeTab === "4") {
         fetchTempData();
         fetchReports();
       } else {
@@ -949,9 +1100,10 @@ export default function NodalCenterList() {
     width: 120,
     render: (_, record) => {
       const editable = isEditing(record);
+      const recId = record.id ?? record.Id;
       return editable ? (
         <Space size="middle">
-          <Typography.Link onClick={() => save(record.id)}>Save</Typography.Link>
+          <Typography.Link onClick={() => save(recId)}>Save</Typography.Link>
           <Popconfirm title="Sure to cancel?" onConfirm={cancel}>
             <a>Cancel</a>
           </Popconfirm>
@@ -967,7 +1119,7 @@ export default function NodalCenterList() {
           </Typography.Link>
           <Popconfirm
             title="Are you sure you want to delete this record?"
-            onConfirm={() => handleDelete(record.id)}
+            onConfirm={() => handleDelete(recId)}
             okText="Yes"
             cancelText="No"
             disabled={editingKey !== '' || tempData.length > 0}
@@ -1406,9 +1558,10 @@ export default function NodalCenterList() {
       width: 120,
       render: (_, record) => {
         const editable = isEditing(record);
+        const recId = record.id ?? record.Id;
         return editable ? (
           <Space size="middle">
-            <Typography.Link onClick={() => save(record.id)}>Save</Typography.Link>
+            <Typography.Link onClick={() => save(recId)}>Save</Typography.Link>
             <Popconfirm title="Sure to cancel?" onConfirm={cancel}>
               <a>Cancel</a>
             </Popconfirm>
@@ -1420,7 +1573,7 @@ export default function NodalCenterList() {
             </Typography.Link>
             <Popconfirm
               title="Are you sure you want to delete this record?"
-              onConfirm={() => handleDelete(record.id)}
+              onConfirm={() => handleDelete(recId)}
               okText="Yes"
               cancelText="No"
               disabled={editingKey !== ''}
@@ -1476,7 +1629,7 @@ export default function NodalCenterList() {
               type="error"
               showIcon
               message="Rule 2 Error: Missing Exam Center Assignments"
-              description="Every college must be assigned an exam center. Pushing to main NR Data is strictly blocked until all colleges are assigned an exam center."
+              description="Every college must be assigned an exam center."
               action={
                 <Button type="primary" danger size="small" onClick={() => setActiveTab("3")}>
                   View Conflict Report
@@ -1890,7 +2043,6 @@ export default function NodalCenterList() {
           summary: ud.description || `College ${ud.collegeCode} (${ud.collegeName}) is missing an Exam Center assignment in Nodal List.`,
           collegeCode: ud.collegeCode,
           collegeName: ud.collegeName,
-          catchNos: ud.catchNos,
           centerCodes: ud.centerCodes || [],
           centerNames: ud.centerNames || [],
           conflictingValues: ud.centerCodes || [],
@@ -2166,23 +2318,33 @@ export default function NodalCenterList() {
         onCancel={() => { setIsAddModalVisible(false); addForm.resetFields(); }}
         confirmLoading={addingRecord}
         okText="Add Record"
+        width={720}
+        centered
+        destroyOnClose
       >
-        <Form form={addForm} layout="vertical">
-          {currentFields.map(field => {
-            const isNumber = ['NRQuantity', 'Transgender', 'Male', 'Female', 'CollegeCode', 'NodalCode', 'ExamCenterCode'].includes(field);
-            const isRequired = currentRequiredFields.includes(field);
-            return (
-              <Form.Item
-                key={field}
-                name={field === "NRQuantity" ? "nrQuantity" : (field.charAt(0).toLowerCase() + field.slice(1))}
-                label={field}
-                rules={[{ required: isRequired, message: `Please enter ${field}` }]}
-              >
-                {isNumber ? <InputNumber style={{ width: '100%' }} /> : <Input />}
-              </Form.Item>
-            );
-          })}
-        </Form>
+        <div style={{ maxHeight: 'calc(80vh - 180px)', overflowY: 'auto', overflowX: 'hidden', paddingRight: 6 }}>
+          <Form form={addForm} layout="vertical">
+            <Row gutter={[16, 0]}>
+              {currentFields.map(field => {
+                const isNumber = ['NRQuantity', 'Transgender', 'Male', 'Female', 'CollegeCode', 'NodalCode', 'ExamCenterCode'].includes(field);
+                const isRequired = currentRequiredFields.includes(field);
+                const isFullWidth = ["CollegeName", "CenterName", "ExamCenterName", "NodalName", "SubjectName"].includes(field);
+                return (
+                  <Col span={isFullWidth ? 24 : 12} key={field}>
+                    <Form.Item
+                      name={field === "NRQuantity" ? "nrQuantity" : (field.charAt(0).toLowerCase() + field.slice(1))}
+                      label={field}
+                      rules={[{ required: isRequired, message: `Please enter ${field}` }]}
+                      style={{ marginBottom: 12 }}
+                    >
+                      {isNumber ? <InputNumber style={{ width: '100%' }} /> : <Input />}
+                    </Form.Item>
+                  </Col>
+                );
+              })}
+            </Row>
+          </Form>
+        </div>
       </Modal>
       <Modal
         title="Gender Values Detected in Upload"
@@ -2258,6 +2420,67 @@ export default function NodalCenterList() {
           </Radio.Group>
         </div>
       </Modal>
+
+      <Modal
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#d97706' }}>
+            <WarningOutlined style={{ fontSize: 20 }} />
+            <span>Missing / Zero Values Detected in Upload</span>
+          </div>
+        }
+        open={isZeroModalVisible}
+        onCancel={() => setIsZeroModalVisible(false)}
+        footer={[
+          <Button 
+            key="cancel" 
+            onClick={() => {
+              setIsZeroModalVisible(false);
+              showToast("Upload cancelled. Please update your Excel file and re-upload.", "info");
+            }}
+          >
+            Cancel (Upload Updated Excel)
+          </Button>,
+          <Button
+            key="submit"
+            type="primary"
+            loading={uploading}
+            onClick={async () => {
+              setIsZeroModalVisible(false);
+              await executeUpload();
+            }}
+          >
+            Proceed & Upload (Fill Values in App)
+          </Button>,
+        ]}
+        width={560}
+      >
+        <div style={{ padding: '12px 0' }}>
+          <Alert
+            message="Attention: Partial Zero / Missing Values"
+            description={
+              <span>
+                Some records in your Excel file have zero or blank code values while other records have valid codes:<br />
+                <strong style={{ color: '#b45309' }}>{zeroDetails.fieldName}</strong>
+              </span>
+            }
+            type="warning"
+            showIcon
+            style={{ marginBottom: 16 }}
+          />
+          <Typography.Paragraph style={{ fontSize: 13, color: '#475569', marginBottom: 12 }}>
+            • If <strong>ALL</strong> records in the file have 0/blank for a field, the system automatically adjusts.<br />
+            • Since only <strong>SOME</strong> records have missing/zero values, please choose how you would like to proceed:
+          </Typography.Paragraph>
+          <div style={{ background: '#f8fafc', padding: 12, borderRadius: 6, border: '1px solid #e2e8f0', fontSize: 13 }}>
+            <div style={{ marginBottom: 8 }}>
+              <strong>Option 1: Fill in Application</strong> — Click <em>Proceed & Upload</em> to upload now. You can edit the zero values directly in the <strong>Merge & Preview</strong> tab or resolve them in the <strong>Conflict Report</strong> tab.
+            </div>
+            <div>
+              <strong>Option 2: Re-upload Excel</strong> — Click <em>Cancel</em>, update your Excel file with valid values for those rows, and upload again.
+            </div>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
-}
+  }

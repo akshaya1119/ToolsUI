@@ -778,11 +778,6 @@ const buildColumns = (conflictSelections, onSelectionChange, onResolve, onIgnore
           <Text strong style={{ lineHeight: 1.45, fontSize: 13, display: "block", wordBreak: "break-word", color: "#0f172a" }}>
             {conflict.summary}
           </Text>
-          {shouldShowCatchNos(conflict) && (
-            <Text style={{ fontSize: 11, lineHeight: 1.3, color: "#475569", display: "block", wordBreak: "break-word" }}>
-              Catch Nos: {formatCatchNosLabel(conflict.catchNos)}
-            </Text>
-          )}
         </Space>
       );
     },
