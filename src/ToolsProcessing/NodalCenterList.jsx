@@ -323,6 +323,41 @@ export default function NodalCenterList() {
     }
   };
 
+  const fetchAllNodalRecords = async () => {
+    if (!projectId) return;
+    try {
+      const res = await API.get(`/NodalLists/${projectId}?pageNo=1&pageSize=5000`);
+      const items = res.data?.items || res.data || [];
+      setAllNodalRecords(items);
+    } catch (err) {
+      console.error("Error fetching all nodal records:", err);
+    }
+  };
+
+  const centerNodalOptions = useMemo(() => {
+    const map = new Map();
+    (allNodalRecords || []).forEach((r) => {
+      const cCode = r.examCenterCode || r.centerCode;
+      const cName = r.examCenterName || r.centerName || (cCode ? `Center ${cCode}` : "");
+      const nCode = r.nodalCode;
+      const nName = r.nodalName || (nCode ? `Nodal ${nCode}` : "");
+      if (cCode || nCode) {
+        const key = `${cCode}_${nCode}`;
+        if (!map.has(key)) {
+          map.set(key, {
+            centerCode: cCode ? String(cCode) : "",
+            centerName: cName,
+            nodalCode: nCode ? String(nCode) : "",
+            nodalName: nName,
+            label: `Center: ${cCode || "-"} (${cName || "-"}) | Nodal: ${nCode || "-"} (${nName || "-"})`,
+            value: key,
+          });
+        }
+      }
+    });
+    return Array.from(map.values());
+  }, [allNodalRecords]);
+
   const fetchReports = async (currentMergeBy = mergeBy) => {
     setLoadingReports(true);
     try {
@@ -330,6 +365,7 @@ export default function NodalCenterList() {
         params: { mergeBy: currentMergeBy }
       });
       setReports(res.data);
+      await fetchAllNodalRecords();
     } catch (err) {
       showToast("Failed to fetch reports", "error");
     } finally {
@@ -1526,14 +1562,67 @@ export default function NodalCenterList() {
   };
 
   const handleResolveConflict = async (conflict, selectedValue) => {
-    const normalizedValue =
-      selectedValue === undefined || selectedValue === null
-        ? ""
-        : String(selectedValue).trim();
+    const isObj = typeof selectedValue === "object" && selectedValue !== null;
 
-    if (normalizedValue === "") {
-      showToast("Please enter or select a value before saving.", "warning");
+    const centerCodeStr = isObj ? String(selectedValue.centerCode ?? "").trim() : String(selectedValue ?? "").trim();
+    let centerNameStr = isObj ? String(selectedValue.centerName ?? "").trim() : "";
+    const nodalCodeStr = isObj ? String(selectedValue.nodalCode ?? "").trim() : centerCodeStr;
+    let nodalNameStr = isObj ? String(selectedValue.nodalName ?? "").trim() : "";
+
+    const centerCodeNum = Number(centerCodeStr) || 0;
+    const nodalCodeNum = Number(nodalCodeStr) || centerCodeNum || 1;
+
+    if (!centerCodeNum && !nodalCodeNum && (!selectedValue || String(selectedValue).trim() === "")) {
+      showToast("Please enter or select a Center or Nodal code before saving.", "warning");
       return;
+    }
+
+    // Comprehensive resolution of centerNameStr if missing
+    if (!centerNameStr && centerCodeNum > 0) {
+      const recMatch = (conflict.records || []).find(
+        (r) => Number(r.examCenterCode || r.ExamCenterCode || r.centerCode || 0) === centerCodeNum
+      );
+      if (recMatch && (recMatch.examCenterName || recMatch.ExamCenterName || recMatch.centerName)) {
+        centerNameStr = recMatch.examCenterName || recMatch.ExamCenterName || recMatch.centerName;
+      }
+      if (!centerNameStr && conflict.centerCodes && conflict.centerNames) {
+        const idx = conflict.centerCodes.findIndex((c) => Number(c) === centerCodeNum);
+        if (idx !== -1 && conflict.centerNames[idx]) {
+          centerNameStr = conflict.centerNames[idx];
+        }
+      }
+      if (!centerNameStr && allNodalRecords && allNodalRecords.length > 0) {
+        const nodalMatch = allNodalRecords.find(
+          (n) => Number(n.examCenterCode || n.ExamCenterCode || 0) === centerCodeNum
+        );
+        if (nodalMatch && (nodalMatch.examCenterName || nodalMatch.ExamCenterName)) {
+          centerNameStr = nodalMatch.examCenterName || nodalMatch.ExamCenterName;
+        }
+      }
+    }
+
+    // Comprehensive resolution of nodalNameStr if missing
+    if (!nodalNameStr && nodalCodeNum > 0) {
+      const recMatch = (conflict.records || []).find(
+        (r) => Number(r.nodalCode || r.NodalCode || 0) === nodalCodeNum
+      );
+      if (recMatch && (recMatch.nodalName || recMatch.NodalName)) {
+        nodalNameStr = recMatch.nodalName || recMatch.NodalName;
+      }
+      if (!nodalNameStr && conflict.nodalCodes && conflict.nodalNames) {
+        const idx = conflict.nodalCodes.findIndex((n) => Number(n) === nodalCodeNum);
+        if (idx !== -1 && conflict.nodalNames[idx]) {
+          nodalNameStr = conflict.nodalNames[idx];
+        }
+      }
+      if (!nodalNameStr && allNodalRecords && allNodalRecords.length > 0) {
+        const nodalMatch = allNodalRecords.find(
+          (n) => Number(n.nodalCode || n.NodalCode || 0) === nodalCodeNum
+        );
+        if (nodalMatch && (nodalMatch.nodalName || nodalMatch.NodalName)) {
+          nodalNameStr = nodalMatch.nodalName || nodalMatch.NodalName;
+        }
+      }
     }
 
     const cKey = String(conflict.key || conflict.dcId || conflict.id || "");
@@ -1542,43 +1631,48 @@ export default function NodalCenterList() {
     }
 
     try {
-      if (conflict.conflictType === "college_multiple_centers") {
+      if (conflict.conflictType === "college_multiple_centers" || conflict.conflictType === "unassigned_catch_nodal") {
+        const rawCodeStr = String(conflict.collegeCode || conflict.key || "").trim();
+        const extractedCodeMatch = rawCodeStr.match(/^(\d+)/);
+        const collegeCodeInt = extractedCodeMatch ? Number(extractedCodeMatch[1]) : (Number(rawCodeStr) || 0);
+
+        const finalCenterName = centerNameStr || conflict.examCenterName || conflict.centerName || `Center ${centerCodeNum}`;
+        const finalNodalName = nodalNameStr || conflict.nodalName || `Nodal ${nodalCodeNum}`;
+
         try {
           await API.post("/NodalLists/resolve-college-center", {
             projectId: Number(projectId),
-            collegeCode: Number(conflict.collegeCode),
+            collegeCode: collegeCodeInt,
+            collegeName: conflict.collegeName || (collegeCodeInt ? `College ${collegeCodeInt}` : "Unknown College"),
             gender: conflict.gender || "ALL",
-            correctCenterCode: Number(normalizedValue),
+            correctCenterCode: centerCodeNum,
+            correctCenterName: finalCenterName,
+            nodalCode: nodalCodeNum,
+            nodalName: finalNodalName,
           });
-        } catch {
-          let rowsToUpdate = conflict.records || [];
-          if (!rowsToUpdate.length) {
-            const res = await API.get(`/NodalLists/${projectId}?pageNo=1&pageSize=5000&search=${conflict.collegeCode}`);
-            const items = res.data?.items || res.data || [];
-            rowsToUpdate = items.filter((x) => {
-              if (String(x.collegeCode) !== String(conflict.collegeCode)) return false;
-              if (conflict.gender && conflict.gender !== "ALL") {
-                return String(x.gender || "").trim().toUpperCase() === conflict.gender.trim().toUpperCase();
-              }
-              return true;
-            });
-          }
-          await Promise.all(
-            rowsToUpdate.map((r) =>
-              API.put(`/NodalLists/${r.id}`, {
-                ...r,
-                examCenterCode: Number(normalizedValue),
-              })
-            )
-          );
+        } catch (resolveErr) {
+          // If resolve-college-center returns 404 because no record exists yet, create the NodalList record
+          await API.post("/NodalLists", {
+            projectId: Number(projectId),
+            collegeCode: collegeCodeInt,
+            collegeName: conflict.collegeName || (collegeCodeInt ? `College ${collegeCodeInt}` : "Unknown College"),
+            examCenterCode: centerCodeNum,
+            examCenterName: finalCenterName,
+            nodalCode: nodalCodeNum,
+            nodalName: finalNodalName,
+            gender: conflict.gender || "ALL",
+            status: true,
+          });
         }
-        showToast(`Resolved: College ${conflict.collegeCode} assigned to Center ${normalizedValue}`, "success");
+        showToast(`Assigned College ${collegeCodeInt || rawCodeStr} to Center ${centerCodeNum} & Nodal ${nodalCodeNum}`, "success");
       } else if (conflict.conflictType === "center_multiple_nodals") {
+        const finalNodalName = nodalNameStr || `Nodal ${nodalCodeNum}`;
         try {
           await API.post("/NodalLists/resolve-center-nodal", {
             projectId: Number(projectId),
             centerCode: Number(conflict.centreCode),
-            correctNodalCode: Number(normalizedValue),
+            correctNodalCode: nodalCodeNum,
+            correctNodalName: finalNodalName,
           });
         } catch {
           let rowsToUpdate = conflict.records || [];
@@ -1591,47 +1685,17 @@ export default function NodalCenterList() {
             rowsToUpdate.map((r) =>
               API.put(`/NodalLists/${r.id}`, {
                 ...r,
-                nodalCode: Number(normalizedValue),
+                nodalCode: nodalCodeNum,
+                nodalName: finalNodalName || r.nodalName,
               })
             )
           );
         }
-        showToast(`Resolved: Center ${conflict.centreCode} assigned to Nodal ${normalizedValue}`, "success");
-      } else if (conflict.conflictType === "unassigned_catch_nodal") {
-        const rawCodeStr = String(conflict.collegeCode || conflict.key || "").trim();
-        const extractedCodeMatch = rawCodeStr.match(/^(\d+)/);
-        const collegeCodeInt = extractedCodeMatch ? Number(extractedCodeMatch[1]) : (Number(rawCodeStr) || 0);
-
-        try {
-          await API.post("/NodalLists/resolve-college-center", {
-            projectId: Number(projectId),
-            collegeCode: collegeCodeInt,
-            collegeName: conflict.collegeName || (collegeCodeInt ? `College ${collegeCodeInt}` : "Unknown College"),
-            gender: conflict.gender || "ALL",
-            correctCenterCode: Number(normalizedValue),
-            correctCenterName: conflict.examCenterName || conflict.centerName || `Center ${normalizedValue}`,
-            nodalCode: Number(normalizedValue) || 1,
-            nodalName: conflict.nodalName || `Nodal ${normalizedValue}`,
-          });
-        } catch (resolveErr) {
-          // If resolve-college-center returns 404 because no record exists yet, create the NodalList record
-          await API.post("/NodalLists", {
-            projectId: Number(projectId),
-            collegeCode: collegeCodeInt,
-            collegeName: conflict.collegeName || (collegeCodeInt ? `College ${collegeCodeInt}` : "Unknown College"),
-            examCenterCode: Number(normalizedValue),
-            examCenterName: conflict.examCenterName || conflict.centerName || `Center ${normalizedValue}`,
-            nodalCode: Number(normalizedValue) || 1,
-            nodalName: conflict.nodalName || `Nodal ${normalizedValue}`,
-            gender: conflict.gender || "ALL",
-            status: true,
-          });
-        }
-        showToast(`Assigned College ${collegeCodeInt || rawCodeStr} to Exam Center ${normalizedValue}`, "success");
+        showToast(`Resolved: Center ${conflict.centreCode} assigned to Nodal ${nodalCodeNum}`, "success");
       } else {
         // Fallback for dynamic / default conflicts
         const conflictId = conflict.dcId || conflict.id || conflict.rawItem?.dcId || conflict.rawItem?.id;
-        const targetField = conflict.field || "NodalCode";
+        const targetField = conflict.field || (targetType === "nodal" ? "NodalCode" : "ExamCenterCode");
         const matchField = conflict.uniqueField || "ExamCenterCode";
         const matchValue = conflict.uniqueValue || conflict.summary || "";
 
@@ -1660,8 +1724,8 @@ export default function NodalCenterList() {
               items.map((r) =>
                 API.put(`/NodalLists/${r.id ?? r.Id}`, {
                   ...r,
-                  nodalCode: Number(normalizedValue) || r.nodalCode,
-                  examCenterCode: Number(normalizedValue) || r.examCenterCode,
+                  nodalCode: targetType === "nodal" ? (valNum || r.nodalCode) : r.nodalCode,
+                  examCenterCode: targetType === "centre" ? (valNum || r.examCenterCode) : r.examCenterCode,
                 })
               )
             );
@@ -1730,6 +1794,10 @@ export default function NodalCenterList() {
           collegeCode: mc.collegeCode,
           collegeName: mc.collegeNames?.join(", "),
           centerCodes: mc.centerCodes,
+          centerNames: mc.centerNames || [],
+          nodalCodes: mc.nodalCodes || [],
+          nodalNames: mc.nodalNames || [],
+          records: mc.records || [],
           conflictingValues: mc.centerCodes,
           key: key,
           id: key,
@@ -1747,7 +1815,10 @@ export default function NodalCenterList() {
           conflictType: "center_multiple_nodals",
           summary: mn.description || `Center ${mn.centerCode} assigned to multiple nodal codes`,
           centreCode: mn.centerCode,
-          nodalCodes: mn.nodalCodes,
+          centerNames: mn.centerNames || [],
+          nodalCodes: mn.nodalCodes || [],
+          nodalNames: mn.nodalNames || [],
+          records: mn.records || [],
           conflictingValues: mn.nodalCodes,
           key: key,
           id: key,
@@ -1767,6 +1838,9 @@ export default function NodalCenterList() {
           collegeCode: ud.collegeCode,
           collegeName: ud.collegeName,
           catchNos: ud.catchNos,
+          centerCodes: ud.centerCodes || [],
+          centerNames: ud.centerNames || [],
+          conflictingValues: ud.centerCodes || [],
           key: key,
           id: key,
           status: "pending"
@@ -1963,6 +2037,7 @@ export default function NodalCenterList() {
           onResolve={handleResolveConflict}
           onIgnore={handleIgnoreConflict}
           loading={loadingReports || dynamicRuleLoading}
+          centerNodalOptions={centerNodalOptions}
           extraTabContent={{
             "Other Conflicts": dynamicRuleUiCollapsible,
           }}
