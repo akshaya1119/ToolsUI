@@ -396,8 +396,12 @@ export default function NodalCenterList() {
   const handleMergePreview = async () => {
     setMerging(true);
     try {
-      await API.post(`/Merging/MergeToTemporary/${projectId}?mergeBy=${encodeURIComponent(mergeBy)}`);
-      showToast("Merged to temporary data successfully", "success");
+      const res = await API.post(`/Merging/MergeToTemporary/${projectId}?mergeBy=${encodeURIComponent(mergeBy)}`);
+      if (res.data?.rule2Passed === false) {
+        showToast(res.data?.message || "Data merged to temporary table, but Rule 2 validation failed.", "warning");
+      } else {
+        showToast("Merged to temporary data successfully", "success");
+      }
       setIsDirty(false);
       await Promise.all([fetchTempData(), fetchReports(mergeBy)]);
     } catch (err) {
@@ -428,9 +432,20 @@ export default function NodalCenterList() {
     }
   };
 
-  const confirmPushToMain = () => {
-    const hasCriticalErrors = reports?.rule1Passed === false || (reports?.rule1Errors && reports.rule1Errors.length > 0);
-    const hasRule2Errors = reports?.rule2Passed === false || (reports?.rule2Errors && reports.rule2Errors.length > 0);
+  const confirmPushToMain = async () => {
+    let currentReports = reports;
+    try {
+      const res = await API.get(`/Merging/Reports/${projectId}`, {
+        params: { mergeBy }
+      });
+      currentReports = res.data;
+      setReports(res.data);
+    } catch (e) {
+      console.error("Error fetching latest reports before push:", e);
+    }
+
+    const hasCriticalErrors = currentReports?.rule1Passed === false || (currentReports?.rule1Errors && currentReports.rule1Errors.length > 0);
+    const hasRule2Errors = currentReports?.rule2Passed === false || (currentReports?.rule2Errors && currentReports.rule2Errors.length > 0);
 
     if (hasCriticalErrors) {
       Modal.error({
@@ -458,11 +473,11 @@ export default function NodalCenterList() {
           <div>
             <p className="font-semibold text-red-600">Pushing to main NR Data is strictly blocked because some colleges are not assigned to an exam center.</p>
             <p className="mt-2 text-sm text-gray-600">Every college must be assigned an exam center before pushing to main NR Data.</p>
-            {reports?.rule2CollegeCodes && reports.rule2CollegeCodes.length > 0 && (
+            {currentReports?.rule2CollegeCodes && currentReports.rule2CollegeCodes.length > 0 && (
               <div className="mt-3 p-2 bg-red-50 border border-red-200 rounded text-xs text-red-800 max-h-32 overflow-y-auto">
-                <strong>Unassigned Colleges ({reports.rule2CollegeCodes.length}):</strong>
+                <strong>Unassigned Colleges ({currentReports.rule2CollegeCodes.length}):</strong>
                 <div className="mt-1 flex flex-wrap gap-1">
-                  {reports.rule2CollegeCodes.map(code => (
+                  {currentReports.rule2CollegeCodes.map(code => (
                     <span key={code} className="bg-red-100 text-red-800 px-1.5 py-0.5 rounded font-mono">
                       {code}
                     </span>
