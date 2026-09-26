@@ -1971,7 +1971,7 @@ export default function NodalCenterList() {
         }
       }
 
-      await fetchReports(mergeBy);
+      await Promise.all([fetchReports(mergeBy), fetchTempData()]);
     } catch (err) {
       console.error(err);
       showToast(err.response?.data?.message || "Failed to resolve conflict", "error");
@@ -2037,6 +2037,9 @@ export default function NodalCenterList() {
 
     if (reports.unassignedDetails && reports.unassignedDetails.length > 0) {
       reports.unassignedDetails.forEach((ud, idx) => {
+        if (ud.collegeCode === "Unknown" || ud.collegeCode === "0" || !ud.collegeCode || (ud.description && ud.description.includes("Missing College/Center Code"))) {
+          return;
+        }
         const key = `rule2_${ud.collegeCode}_${idx}`;
         errors.push({
           conflictType: "unassigned_catch_nodal",
@@ -2053,6 +2056,7 @@ export default function NodalCenterList() {
       });
     } else if (reports.rule2CollegeCodes && reports.rule2CollegeCodes.length > 0 && reports.rule2Passed === false) {
       reports.rule2CollegeCodes.forEach((code, idx) => {
+        if (code === "Unknown" || code === "0" || !code) return;
         const key = `rule2_code_${code}_${idx}`;
         errors.push({
           conflictType: "unassigned_catch_nodal",
@@ -2111,8 +2115,10 @@ export default function NodalCenterList() {
     if (reports.rule2Passed === false) return false;
     if (reports.rule1Errors && reports.rule1Errors.length > 0) return false;
     if (reports.rule2Errors && reports.rule2Errors.length > 0) return false;
-    if (reports.rule2CollegeCodes && reports.rule2CollegeCodes.length > 0) return false;
-    if (reports.unassignedDetails && reports.unassignedDetails.length > 0) return false;
+    const validRule2Codes = (reports.rule2CollegeCodes || []).filter(c => c && c !== "Unknown" && c !== "0");
+    if (validRule2Codes.length > 0) return false;
+    const validUnassignedDetails = (reports.unassignedDetails || []).filter(ud => ud.collegeCode && ud.collegeCode !== "Unknown" && ud.collegeCode !== "0" && !(ud.description && ud.description.includes("Missing College/Center Code")));
+    if (validUnassignedDetails.length > 0) return false;
     return true;
   }, [reports]);
 
