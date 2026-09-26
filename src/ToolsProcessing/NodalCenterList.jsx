@@ -1699,8 +1699,9 @@ export default function NodalCenterList() {
         const matchField = conflict.uniqueField || "ExamCenterCode";
         const matchValue = conflict.uniqueValue || conflict.summary || "";
         const targetValueStr = isObj
-          ? String(selectedValue.nodalCode || selectedValue.centerCode || "")
+          ? String(selectedValue.nodalCode || selectedValue.centerCode || selectedValue.value || "")
           : String(selectedValue || "").trim();
+        const targetNameStr = isObj ? String(selectedValue.name || "") : "";
 
         if (conflictId) {
           try {
@@ -1709,6 +1710,7 @@ export default function NodalCenterList() {
               conflictId: Number(conflictId),
               targetField: String(targetField),
               targetValue: String(targetValueStr),
+              targetName: String(targetNameStr),
               matchField: String(matchField),
               matchValue: String(matchValue),
             });
