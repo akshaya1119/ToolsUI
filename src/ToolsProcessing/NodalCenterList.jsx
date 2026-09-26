@@ -1971,7 +1971,7 @@ export default function NodalCenterList() {
         }
       }
 
-      await fetchReports(mergeBy);
+      await Promise.all([fetchReports(mergeBy), fetchTempData()]);
     } catch (err) {
       console.error(err);
       showToast(err.response?.data?.message || "Failed to resolve conflict", "error");
