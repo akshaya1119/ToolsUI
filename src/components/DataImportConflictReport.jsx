@@ -1,5 +1,5 @@
 import React from "react";
-import { AutoComplete, Button, Collapse, Empty, Input, Radio, Select, Space, Table, Tabs, Tag, Typography } from "antd";
+import { AutoComplete, Button, Collapse, Empty, Input, Radio, Select, Space, Table, Tabs, Tag, Tooltip, Typography } from "antd";
 import { CheckCircleOutlined } from "@ant-design/icons";
 import {
   CONFLICT_STATUS,
@@ -282,17 +282,30 @@ const renderMetaTags = (conflict) => {
   ].filter(Boolean);
 
   if (!metaItems.length) {
-    return <Text type="secondary">No extra details</Text>;
+    return <Text type="secondary">-</Text>;
   }
 
   return (
-    <Space wrap size={[4, 4]}>
-      {metaItems.map((label) => (
-        <Tag key={`${conflict.key}-${label}`} style={{ marginInlineEnd: 0, paddingInline: 5, lineHeight: "16px", fontSize: 11 }}>
-          {label}
-        </Tag>
+    <div style={{ display: "flex", flexDirection: "column", gap: 3, maxWidth: "100%", overflow: "hidden" }}>
+      {metaItems.map((label, idx) => (
+        <Tooltip key={`${conflict.key}-${idx}`} title={label} placement="topLeft">
+          <Tag style={{
+            marginInlineEnd: 0,
+            paddingInline: 6,
+            paddingBlock: 2,
+            fontSize: 11,
+            maxWidth: "100%",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            display: "block",
+            boxSizing: "border-box"
+          }}>
+            {label}
+          </Tag>
+        </Tooltip>
       ))}
-    </Space>
+    </div>
   );
 };
 
@@ -302,13 +315,26 @@ const renderValueTags = (values, key) => {
   }
 
   return (
-    <Space wrap size={[4, 4]}>
-      {values.map((value) => (
-        <Tag key={`${key}-${value}`} bordered style={{ marginInlineEnd: 0, paddingInline: 5, lineHeight: "16px", fontSize: 11 }}>
-          {value}
-        </Tag>
+    <div style={{ display: "flex", flexDirection: "column", gap: 3, maxWidth: "100%", overflow: "hidden" }}>
+      {values.map((value, idx) => (
+        <Tooltip key={`${key}-${idx}`} title={value} placement="topLeft">
+          <Tag bordered style={{
+            marginInlineEnd: 0,
+            paddingInline: 6,
+            paddingBlock: 2,
+            fontSize: 11,
+            maxWidth: "100%",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            display: "block",
+            boxSizing: "border-box"
+          }}>
+            {value}
+          </Tag>
+        </Tooltip>
       ))}
-    </Space>
+    </div>
   );
 };
 
@@ -325,7 +351,7 @@ const renderResolvedFieldValues = (conflict) => {
     ].filter(Boolean);
 
     return (
-      <Space direction="vertical" size={4}>
+      <Space direction="vertical" size={4} style={{ maxWidth: "100%", overflow: "hidden" }}>
         <Tag key={`${conflict.key}-${currentValue.label}-${currentValue.value}`} bordered style={{ marginInlineEnd: 0, width: "fit-content", paddingInline: 5, lineHeight: "16px", fontSize: 11 }}>
           {currentValue.label}: {currentValue.value}
         </Tag>
@@ -352,24 +378,39 @@ const renderResolvedFieldValues = (conflict) => {
     const catchCenterNames = toArray(conflict.centerNames || []);
 
     return (
-      <Space direction="vertical" size={4} style={{ width: "100%" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 3, maxWidth: "100%", overflow: "hidden" }}>
         {catchCenterCodes.length > 0 ? (
           <div>
             <Text style={{ fontSize: 11, fontWeight: 600, color: "#334155", display: "block", marginBottom: 2 }}>
               Catch List Center Data:
             </Text>
-            <Space wrap size={[2, 2]}>
-              {catchCenterCodes.map((code, idx) => (
-                <Tag key={idx} color="blue" style={{ fontSize: 11, padding: "2px 6px" }}>
-                  Center {code} {catchCenterNames[idx] ? `- ${catchCenterNames[idx]}` : ""}
-                </Tag>
-              ))}
-            </Space>
+            <div style={{ display: "flex", flexDirection: "column", gap: 3, maxWidth: "100%" }}>
+              {catchCenterCodes.map((code, idx) => {
+                const centerText = `Center ${code} ${catchCenterNames[idx] ? `- ${catchCenterNames[idx]}` : ""}`;
+                return (
+                  <Tooltip key={idx} title={centerText} placement="topLeft">
+                    <Tag color="blue" style={{
+                      fontSize: 11,
+                      padding: "2px 6px",
+                      maxWidth: "100%",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                      display: "block",
+                      margin: 0,
+                      boxSizing: "border-box"
+                    }}>
+                      {centerText}
+                    </Tag>
+                  </Tooltip>
+                );
+              })}
+            </div>
           </div>
         ) : (
           <Text type="secondary" style={{ fontSize: 11 }}>Missing in Nodal List</Text>
         )}
-      </Space>
+      </div>
     );
   }
 
@@ -379,7 +420,7 @@ const renderResolvedFieldValues = (conflict) => {
   }
 
   return (
-    <Text style={{ fontSize: 11 }}>
+    <Text style={{ fontSize: 11, wordBreak: "break-word" }}>
       {conflict.field ? `${conflict.field}: ` : ""}{values.join(", ")}
     </Text>
   );
@@ -501,7 +542,7 @@ const renderActionCell = (conflict, selectedValue, loading, onSelectionChange, o
       if (opt.nodalCode && !nodalOptionsMap.has(String(opt.nodalCode))) {
         nodalOptionsMap.set(String(opt.nodalCode), {
           value: String(opt.nodalCode),
-          label: opt.nodalName ? `${opt.nodalCode} - ${opt.nodalName}` : String(opt.nodalCode),
+          label: opt.nodalName ? `${opt.nodalName} - ${opt.nodalName}` : String(opt.nodalCode),
           nodalName: opt.nodalName || "",
         });
       }
@@ -535,83 +576,81 @@ const renderActionCell = (conflict, selectedValue, loading, onSelectionChange, o
     };
 
     return (
-      <Space direction="vertical" size={4} style={{ width: "100%" }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-            <Text style={{ fontSize: 10, color: "#475569", width: 42, flexShrink: 0, fontWeight: 600 }}>Center:</Text>
-            {isCenterMultipleNodals ? (
-              <Input
-                size="small"
-                style={{ width: "100%" }}
-                value={centerCodeVal ? (finalCenterNameVal ? `${centerCodeVal} - ${finalCenterNameVal}` : centerCodeVal) : (conflict.centreCode ? `${conflict.centreCode}` : "")}
-                disabled
-              />
-            ) : (
-              <AutoComplete
-                size="small"
-                style={{ width: "100%" }}
-                placeholder="Center Code"
-                value={centerCodeVal}
-                onChange={(val) => {
-                  const opt = centerOptionsMap.get(String(val));
-                  const newCenterName = opt ? opt.centerName : (String(val) === String(currentSelectionObj.centerCode) ? currentSelectionObj.centerName : "");
-                  onSelectionChange(conflict.key, {
-                    ...currentSelectionObj,
-                    centerCode: val,
-                    centerName: newCenterName,
-                  });
-                }}
-                onSelect={(val, option) => {
-                  const opt = centerOptionsMap.get(String(val));
-                  const newCenterName = option?.centerName || opt?.centerName || currentSelectionObj.centerName || "";
-                  onSelectionChange(conflict.key, {
-                    ...currentSelectionObj,
-                    centerCode: val,
-                    centerName: newCenterName,
-                  });
-                }}
-                options={Array.from(centerOptionsMap.values())}
-                filterOption={(input, option) =>
-                  String(option?.label ?? "").toLowerCase().includes(String(input || "").toLowerCase()) ||
-                  String(option?.value ?? "").toLowerCase().includes(String(input || "").toLowerCase())
-                }
-                allowClear
-              />
-            )}
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-            <Text style={{ fontSize: 10, color: "#475569", width: 42, flexShrink: 0, fontWeight: 600 }}>Nodal:</Text>
+      <div style={{ display: "flex", flexDirection: "column", gap: 4, width: "100%", maxWidth: 190 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <Text style={{ fontSize: 10, color: "#475569", width: 38, flexShrink: 0, fontWeight: 600 }}>Center:</Text>
+          {isCenterMultipleNodals ? (
+            <Input
+              size="small"
+              style={{ width: "100%", fontSize: 11 }}
+              value={centerCodeVal ? (finalCenterNameVal ? `${centerCodeVal} - ${finalCenterNameVal}` : centerCodeVal) : (conflict.centreCode ? `${conflict.centreCode}` : "")}
+              disabled
+            />
+          ) : (
             <AutoComplete
               size="small"
-              style={{ width: "100%" }}
-              placeholder="Nodal Code"
-              value={nodalCodeVal}
+              style={{ width: "100%", fontSize: 11 }}
+              placeholder="Center"
+              value={centerCodeVal}
               onChange={(val) => {
-                const opt = nodalOptionsMap.get(String(val));
-                const newNodalName = opt ? opt.nodalName : (String(val) === String(currentSelectionObj.nodalCode) ? currentSelectionObj.nodalName : "");
+                const opt = centerOptionsMap.get(String(val));
+                const newCenterName = opt ? opt.centerName : (String(val) === String(currentSelectionObj.centerCode) ? currentSelectionObj.centerName : "");
                 onSelectionChange(conflict.key, {
                   ...currentSelectionObj,
-                  nodalCode: val,
-                  nodalName: newNodalName,
+                  centerCode: val,
+                  centerName: newCenterName,
                 });
               }}
               onSelect={(val, option) => {
-                const opt = nodalOptionsMap.get(String(val));
-                const newNodalName = option?.nodalName || opt?.nodalName || currentSelectionObj.nodalName || "";
+                const opt = centerOptionsMap.get(String(val));
+                const newCenterName = option?.centerName || opt?.centerName || currentSelectionObj.centerName || "";
                 onSelectionChange(conflict.key, {
                   ...currentSelectionObj,
-                  nodalCode: val,
-                  nodalName: newNodalName,
+                  centerCode: val,
+                  centerName: newCenterName,
                 });
               }}
-              options={Array.from(nodalOptionsMap.values())}
+              options={Array.from(centerOptionsMap.values())}
               filterOption={(input, option) =>
                 String(option?.label ?? "").toLowerCase().includes(String(input || "").toLowerCase()) ||
                 String(option?.value ?? "").toLowerCase().includes(String(input || "").toLowerCase())
               }
               allowClear
             />
-          </div>
+          )}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <Text style={{ fontSize: 10, color: "#475569", width: 38, flexShrink: 0, fontWeight: 600 }}>Nodal:</Text>
+          <AutoComplete
+            size="small"
+            style={{ width: "100%", fontSize: 11 }}
+            placeholder="Nodal"
+            value={nodalCodeVal}
+            onChange={(val) => {
+              const opt = nodalOptionsMap.get(String(val));
+              const newNodalName = opt ? opt.nodalName : (String(val) === String(currentSelectionObj.nodalCode) ? currentSelectionObj.nodalCode : "");
+              onSelectionChange(conflict.key, {
+                ...currentSelectionObj,
+                nodalCode: val,
+                nodalName: newNodalName,
+              });
+            }}
+            onSelect={(val, option) => {
+              const opt = nodalOptionsMap.get(String(val));
+              const newNodalName = option?.nodalName || opt?.nodalName || currentSelectionObj.nodalName || "";
+              onSelectionChange(conflict.key, {
+                ...currentSelectionObj,
+                nodalCode: val,
+                nodalName: newNodalName,
+              });
+            }}
+            options={Array.from(nodalOptionsMap.values())}
+            filterOption={(input, option) =>
+              String(option?.label ?? "").toLowerCase().includes(String(input || "").toLowerCase()) ||
+              String(option?.value ?? "").toLowerCase().includes(String(input || "").toLowerCase())
+            }
+            allowClear
+          />
         </div>
 
         <Button
@@ -621,11 +660,11 @@ const renderActionCell = (conflict, selectedValue, loading, onSelectionChange, o
           disabled={isDisableResolve}
           loading={loading}
           onClick={() => onResolve(conflict, currentSelectionObj)}
-          style={{ marginTop: 2, alignSelf: "flex-start" }}
+          style={{ marginTop: 2, width: "100%" }}
         >
           Resolve
         </Button>
-      </Space>
+      </div>
     );
   }
 
@@ -730,13 +769,17 @@ const buildColumns = (conflictSelections, onSelectionChange, onResolve, onIgnore
   {
     title: "Summary",
     key: "conflict",
-    width: 320,
+    width: 340,
+    onCell: () => ({ style: { minWidth: 280, width: 340 } }),
+    onHeaderCell: () => ({ style: { minWidth: 280, width: 340 } }),
     render: (_, conflict) => {
       return (
-        <Space direction="vertical" size={4}>
-          <Text strong style={{ lineHeight: 1.2, fontSize: 13 }}>{conflict.summary}</Text>
+        <Space direction="vertical" size={4} style={{ width: "100%" }}>
+          <Text strong style={{ lineHeight: 1.45, fontSize: 13, display: "block", wordBreak: "break-word", color: "#0f172a" }}>
+            {conflict.summary}
+          </Text>
           {shouldShowCatchNos(conflict) && (
-            <Text style={{ fontSize: 11, lineHeight: 1.15, color: "rgba(0, 0, 0, 0.72)" }}>
+            <Text style={{ fontSize: 11, lineHeight: 1.3, color: "#475569", display: "block", wordBreak: "break-word" }}>
               Catch Nos: {formatCatchNosLabel(conflict.catchNos)}
             </Text>
           )}
@@ -747,12 +790,14 @@ const buildColumns = (conflictSelections, onSelectionChange, onResolve, onIgnore
   {
     title: "Status",
     key: "status",
-    width: 90,
+    width: 80,
+    onCell: () => ({ style: { minWidth: 70, width: 80 } }),
+    onHeaderCell: () => ({ style: { minWidth: 70, width: 80 } }),
     render: (_, conflict) => {
       const statusConfig = STATUS_TAG_CONFIG[conflict.status] || STATUS_TAG_CONFIG[CONFLICT_STATUS.PENDING];
 
       return (
-        <Tag color={statusConfig.color} style={{ marginInlineEnd: 0, paddingInline: 5, lineHeight: "16px", fontSize: 11 }}>
+        <Tag color={statusConfig.color} style={{ marginInlineEnd: 0, paddingInline: 6, paddingBlock: 2, lineHeight: "16px", fontSize: 11 }}>
           {statusConfig.label}
         </Tag>
       );
@@ -761,13 +806,17 @@ const buildColumns = (conflictSelections, onSelectionChange, onResolve, onIgnore
   {
     title: "Details",
     key: "details",
-    width: 260,
+    width: 220,
+    onCell: () => ({ style: { minWidth: 180, width: 220 } }),
+    onHeaderCell: () => ({ style: { minWidth: 180, width: 220 } }),
     render: (_, conflict) => renderMetaTags(conflict),
   },
   {
     title: "Conflicting Fields",
     key: "resolvedField",
-    width: 260,
+    width: 230,
+    onCell: () => ({ style: { minWidth: 190, width: 230 } }),
+    onHeaderCell: () => ({ style: { minWidth: 190, width: 230 } }),
     render: (_, conflict) =>
       renderResolvedFieldValues(
         conflict,
@@ -779,7 +828,9 @@ const buildColumns = (conflictSelections, onSelectionChange, onResolve, onIgnore
   {
     title: "Action",
     key: "action",
-    width: 270,
+    width: 200,
+    onCell: () => ({ style: { minWidth: 180, width: 200 } }),
+    onHeaderCell: () => ({ style: { minWidth: 180, width: 200 } }),
     render: (_, conflict) =>
       renderActionCell(
         conflict,
@@ -870,7 +921,8 @@ const DataImportConflictReport = ({
                         rowKey="key"
                         pagination={false}
                         size="small"
-                        scroll={{ x: 1230 }}
+                        tableLayout="fixed"
+                        scroll={{ x: 1070 }}
                         rowClassName={() => "compact-conflict-row"}
                         style={{ width: "100%" }}
                       />
@@ -885,36 +937,57 @@ const DataImportConflictReport = ({
       <style>
         {`
           .ant-collapse-small > .ant-collapse-item > .ant-collapse-header {
-            padding: 8px 10px !important;
-            font-size: 12px;
+            padding: 10px 14px !important;
+            font-size: 13px;
+            font-weight: 600;
+            background-color: #f8fafc;
           }
 
           .ant-collapse-small > .ant-collapse-item > .ant-collapse-content > .ant-collapse-content-box {
-            padding: 6px 0 0 0 !important;
+            padding: 8px 0 0 0 !important;
           }
 
           .compact-conflict-row > td {
-            padding: 6px 8px !important;
+            padding: 12px 14px !important;
             vertical-align: top;
+            word-break: break-word !important;
+            overflow-wrap: break-word !important;
+            white-space: normal !important;
           }
 
-          .compact-conflict-row .ant-space-vertical {
-            gap: 2px !important;
+          .compact-conflict-row > td:first-child {
+            width: 360px !important;
+            min-width: 320px !important;
           }
 
           .compact-conflict-row .ant-typography {
             margin-bottom: 0;
+            word-break: break-word !important;
+            overflow-wrap: break-word !important;
+            white-space: normal !important;
           }
 
           .compact-conflict-row .ant-btn-sm {
-            height: 22px;
-            padding: 0 7px;
-            font-size: 11px;
+            height: 26px;
+            padding: 0 10px;
+            font-size: 12px;
           }
 
           .compact-conflict-row .ant-select-sm,
           .compact-conflict-row .ant-input-sm {
-            font-size: 11px;
+            font-size: 12px;
+          }
+
+          .ant-table-wrapper .ant-table-thead > tr > th {
+            background-color: #f1f5f9 !important;
+            font-weight: 600 !important;
+            color: #334155 !important;
+            font-size: 12px !important;
+          }
+
+          .ant-table-wrapper .ant-table-thead > tr > th:first-child {
+            width: 360px !important;
+            min-width: 320px !important;
           }
         `}
       </style>

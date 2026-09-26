@@ -193,13 +193,13 @@ export default function NodalCenterList() {
     "CatchNo", "CollegeCode", "CollegeName", "PaperCode", "CourseName", "SubjectName", "NRQuantity", "ExamDate", "ExamTime",
     "Transgender", "Male", "Female", "Semester", "CenterCode", "CenterName"
   ];
-  const requiredCatchListFields = ["CatchNo", "CollegeName", "CenterCode", "CenterName"];
+  const requiredCatchListFields = ["CatchNo", "CenterCode"];
 
   const nodalListFields = [
     "CollegeCode", "CollegeName", "ExamCenterCode", "ExamCenterName",
     "Gender", "NodalCode", "NodalName"
   ];
-  const requiredNodalListFields = ["NodalCode", "NodalName", "CollegeName", "ExamCenterCode", "ExamCenterName"];
+  const requiredNodalListFields = ["NodalCode", "NodalName", "ExamCenterCode", "ExamCenterName"];
 
   const currentFields = activeTab === "1" ? catchListFields : nodalListFields;
   const currentRequiredFields = activeTab === "1" ? requiredCatchListFields : requiredNodalListFields;
@@ -396,8 +396,12 @@ export default function NodalCenterList() {
   const handleMergePreview = async () => {
     setMerging(true);
     try {
-      await API.post(`/Merging/MergeToTemporary/${projectId}?mergeBy=${encodeURIComponent(mergeBy)}`);
-      showToast("Merged to temporary data successfully", "success");
+      const res = await API.post(`/Merging/MergeToTemporary/${projectId}?mergeBy=${encodeURIComponent(mergeBy)}`);
+      if (res.data?.rule2Passed === false) {
+        showToast(res.data?.message || "Data merged to temporary table, but Rule 2 validation failed.", "warning");
+      } else {
+        showToast("Merged to temporary data successfully", "success");
+      }
       setIsDirty(false);
       await Promise.all([fetchTempData(), fetchReports(mergeBy)]);
     } catch (err) {
@@ -428,9 +432,20 @@ export default function NodalCenterList() {
     }
   };
 
-  const confirmPushToMain = () => {
-    const hasCriticalErrors = reports?.rule1Passed === false || (reports?.rule1Errors && reports.rule1Errors.length > 0);
-    const hasRule2Errors = reports?.rule2Passed === false || (reports?.rule2Errors && reports.rule2Errors.length > 0);
+  const confirmPushToMain = async () => {
+    let currentReports = reports;
+    try {
+      const res = await API.get(`/Merging/Reports/${projectId}`, {
+        params: { mergeBy }
+      });
+      currentReports = res.data;
+      setReports(res.data);
+    } catch (e) {
+      console.error("Error fetching latest reports before push:", e);
+    }
+
+    const hasCriticalErrors = currentReports?.rule1Passed === false || (currentReports?.rule1Errors && currentReports.rule1Errors.length > 0);
+    const hasRule2Errors = currentReports?.rule2Passed === false || (currentReports?.rule2Errors && currentReports.rule2Errors.length > 0);
 
     if (hasCriticalErrors) {
       Modal.error({
@@ -458,11 +473,11 @@ export default function NodalCenterList() {
           <div>
             <p className="font-semibold text-red-600">Pushing to main NR Data is strictly blocked because some colleges are not assigned to an exam center.</p>
             <p className="mt-2 text-sm text-gray-600">Every college must be assigned an exam center before pushing to main NR Data.</p>
-            {reports?.rule2CollegeCodes && reports.rule2CollegeCodes.length > 0 && (
+            {currentReports?.rule2CollegeCodes && currentReports.rule2CollegeCodes.length > 0 && (
               <div className="mt-3 p-2 bg-red-50 border border-red-200 rounded text-xs text-red-800 max-h-32 overflow-y-auto">
-                <strong>Unassigned Colleges ({reports.rule2CollegeCodes.length}):</strong>
+                <strong>Unassigned Colleges ({currentReports.rule2CollegeCodes.length}):</strong>
                 <div className="mt-1 flex flex-wrap gap-1">
-                  {reports.rule2CollegeCodes.map(code => (
+                  {currentReports.rule2CollegeCodes.map(code => (
                     <span key={code} className="bg-red-100 text-red-800 px-1.5 py-0.5 rounded font-mono">
                       {code}
                     </span>
@@ -618,8 +633,8 @@ export default function NodalCenterList() {
         });
 
         // Apply gender normalization when uploading Nodal List
-        if (activeTab === "2") {
-          const rawVal = genderHeader ? row[genderHeader] : newRow["Gender"];
+        if (activeTab === "2" && genderHeader) {
+          const rawVal = row[genderHeader];
           const strVal = rawVal !== undefined && rawVal !== null ? String(rawVal).trim() : "";
           const lower = strVal.toLowerCase();
 
@@ -629,7 +644,7 @@ export default function NodalCenterList() {
             newRow["Gender"] = "FEMALE";
           } else if (genderResolutionChoice) {
             newRow["Gender"] = genderResolutionChoice;
-          } else if (!newRow["Gender"]) {
+          } else {
             newRow["Gender"] = "ALL";
           }
         }
@@ -679,33 +694,36 @@ export default function NodalCenterList() {
     // When uploading Nodal List, check for non-standard gender values
     if (activeTab === "2") {
       const genderHeader = mapping["Gender"];
-      const nonStandardMap = {};
-      let nonStandardCount = 0;
+      
+      if (genderHeader) {
+        const nonStandardMap = {};
+        let nonStandardCount = 0;
 
-      fileData.forEach((row) => {
-        const rawVal = genderHeader ? row[genderHeader] : undefined;
-        const strVal = rawVal !== undefined && rawVal !== null ? String(rawVal).trim() : "";
-        const lower = strVal.toLowerCase();
+        fileData.forEach((row) => {
+          const rawVal = row[genderHeader];
+          const strVal = rawVal !== undefined && rawVal !== null ? String(rawVal).trim() : "";
+          const lower = strVal.toLowerCase();
 
-        const isMale = lower === "male" || lower === "m";
-        const isFemale = lower === "female" || lower === "f";
+          const isMale = lower === "male" || lower === "m";
+          const isFemale = lower === "female" || lower === "f";
 
-        if (!isMale && !isFemale) {
-          const displayVal = strVal || "(Empty / Unspecified)";
-          nonStandardMap[displayVal] = (nonStandardMap[displayVal] || 0) + 1;
-          nonStandardCount++;
+          if (!isMale && !isFemale) {
+            const displayVal = strVal || "(Empty / Unspecified)";
+            nonStandardMap[displayVal] = (nonStandardMap[displayVal] || 0) + 1;
+            nonStandardCount++;
+          }
+        });
+
+        if (nonStandardCount > 0) {
+          const detected = Object.entries(nonStandardMap).map(([val, count]) => ({
+            value: val,
+            count,
+          }));
+          setGenderDetectedValues(detected);
+          setGenderChoice("ALL");
+          setIsGenderModalVisible(true);
+          return;
         }
-      });
-
-      if (nonStandardCount > 0) {
-        const detected = Object.entries(nonStandardMap).map(([val, count]) => ({
-          value: val,
-          count,
-        }));
-        setGenderDetectedValues(detected);
-        setGenderChoice("ALL");
-        setIsGenderModalVisible(true);
-        return;
       }
     }
 
@@ -713,6 +731,29 @@ export default function NodalCenterList() {
   };
 
   const allAvailableColumns = [...currentFields, ...dynamicFields];
+
+  const columnWidthMap = {
+    CatchNo: 110,
+    CollegeCode: 110,
+    CollegeName: 200,
+    PaperCode: 100,
+    CourseName: 180,
+    SubjectName: 180,
+    NRQuantity: 100,
+    ExamDate: 110,
+    ExamTime: 100,
+    Transgender: 110,
+    Male: 80,
+    Female: 90,
+    Semester: 100,
+    CenterCode: 110,
+    CenterName: 180,
+    ExamCenterCode: 130,
+    ExamCenterName: 200,
+    Gender: 90,
+    NodalCode: 110,
+    NodalName: 180,
+  };
 
   const baseColumns = allAvailableColumns
     .filter(col => visibleColumns.includes(col))
@@ -722,12 +763,16 @@ export default function NodalCenterList() {
         ? (col === "NRQuantity" ? "nrQuantity" : (col.charAt(0).toLowerCase() + col.slice(1)))
         : col;
 
+      const colWidth = columnWidthMap[col] || 120;
       const colDef = {
         title: col,
         dataIndex: dataIndex,
         key: col,
         sorter: true,
         editable: isStandardField,
+        width: colWidth,
+        onHeaderCell: () => ({ style: { width: colWidth, minWidth: colWidth } }),
+        onCell: () => ({ style: { width: colWidth, minWidth: colWidth } }),
         filterDropdown: ({ setSelectedKeys, selectedKeys, confirm, clearFilters }) => (
           <div style={{ padding: 8 }}>
             <Input
@@ -926,10 +971,46 @@ export default function NodalCenterList() {
     }
   };
 
+  const checkboxColumn = {
+    title: (
+      <Checkbox
+        checked={existingData.length > 0 && selectedRowKeys.length === existingData.length}
+        indeterminate={selectedRowKeys.length > 0 && selectedRowKeys.length < existingData.length}
+        onChange={(e) => {
+          if (e.target.checked) {
+            setSelectedRowKeys(existingData.map((r) => r.id));
+          } else {
+            setSelectedRowKeys([]);
+          }
+        }}
+      />
+    ),
+    dataIndex: '__checkbox__',
+    key: '__checkbox__',
+    width: 40,
+    onHeaderCell: () => ({ style: { width: 40, minWidth: 40, maxWidth: 40, padding: '8px 6px' } }),
+    onCell: () => ({ style: { width: 40, minWidth: 40, maxWidth: 40, padding: '8px 6px' } }),
+    render: (_, record) => (
+      <Checkbox
+        checked={selectedRowKeys.includes(record.id)}
+        onChange={(e) => {
+          if (e.target.checked) {
+            setSelectedRowKeys((prev) => [...prev, record.id]);
+          } else {
+            setSelectedRowKeys((prev) => prev.filter((k) => k !== record.id));
+          }
+        }}
+      />
+    ),
+  };
+
+  baseColumns.unshift(checkboxColumn);
+
   baseColumns.push({
     title: 'Action',
     dataIndex: 'operation',
     fixed: 'right',
+    width: 120,
     render: (_, record) => {
       const editable = isEditing(record);
       return editable ? (
@@ -1246,15 +1327,12 @@ export default function NodalCenterList() {
                 cell: EditableCell,
               },
             }}
-            rowSelection={{
-              selectedRowKeys,
-              onChange: (keys) => setSelectedRowKeys(keys),
-            }}
             dataSource={existingData}
             columns={mergedColumns}
             loading={loadingData}
             rowKey="id"
             size="small"
+            tableLayout="fixed"
             scroll={{ x: 'max-content' }}
             pagination={pagination}
             onChange={handleTableChange}
@@ -1288,11 +1366,14 @@ export default function NodalCenterList() {
       .filter(col => visibleTempColumns.includes(col))
       .map(col => {
         const dataIndex = col === "NRQuantity" ? "nrQuantity" : (col.charAt(0).toLowerCase() + col.slice(1));
+        const tempColWidth = columnWidthMap[col] || 120;
         const colDef = {
           title: col,
           dataIndex: dataIndex,
           key: col,
           sorter: true,
+          width: tempColWidth,
+          onHeaderCell: () => ({ style: { width: tempColWidth, minWidth: tempColWidth } }),
           filteredValue: tempColumnFilters[col] ? [tempColumnFilters[col]] : null,
           filterDropdown: ({ setSelectedKeys, selectedKeys, confirm, clearFilters }) => (
             <div style={{ padding: 8 }}>
@@ -1328,6 +1409,7 @@ export default function NodalCenterList() {
             dataIndex: dataIndex,
             title: col,
             editing: isEditing(record),
+            style: { width: tempColWidth, minWidth: tempColWidth },
           }),
         };
 
@@ -1347,10 +1429,45 @@ export default function NodalCenterList() {
         return colDef;
       });
 
+    const tempCheckboxCol = {
+      title: (
+        <Checkbox
+          checked={tempData.length > 0 && selectedRowKeys.length === tempData.length}
+          indeterminate={selectedRowKeys.length > 0 && selectedRowKeys.length < tempData.length}
+          onChange={(e) => {
+            if (e.target.checked) {
+              setSelectedRowKeys(tempData.map((r) => r.id));
+            } else {
+              setSelectedRowKeys([]);
+            }
+          }}
+        />
+      ),
+      dataIndex: '__checkbox__',
+      key: '__checkbox__',
+      width: 40,
+      onHeaderCell: () => ({ style: { width: 40, minWidth: 40, maxWidth: 40, padding: '8px 6px' } }),
+      onCell: () => ({ style: { width: 40, minWidth: 40, maxWidth: 40, padding: '8px 6px' } }),
+      render: (_, record) => (
+        <Checkbox
+          checked={selectedRowKeys.includes(record.id)}
+          onChange={(e) => {
+            if (e.target.checked) {
+              setSelectedRowKeys((prev) => [...prev, record.id]);
+            } else {
+              setSelectedRowKeys((prev) => prev.filter((k) => k !== record.id));
+            }
+          }}
+        />
+      ),
+    };
+    tempColumns.unshift(tempCheckboxCol);
+
     tempColumns.push({
       title: 'Action',
       dataIndex: 'operation',
       fixed: 'right',
+      width: 120,
       render: (_, record) => {
         const editable = isEditing(record);
         return editable ? (
@@ -1450,6 +1567,8 @@ export default function NodalCenterList() {
                   options={[
                     { label: "College Code", value: "CollegeCode" },
                     { label: "College Name", value: "CollegeName" },
+                    { label: "Center Code", value: "CenterCode" },
+                    { label: "Center Name", value: "CenterName" }
                   ]}
                 />
               </div>
@@ -1531,15 +1650,12 @@ export default function NodalCenterList() {
                   cell: EditableCell,
                 },
               }}
-              rowSelection={{
-                selectedRowKeys,
-                onChange: (keys) => setSelectedRowKeys(keys),
-              }}
               dataSource={tempData}
               columns={tempColumns}
               loading={loadingTemp}
               rowKey="id"
               size="small"
+              tableLayout="fixed"
               scroll={{ x: 'max-content' }}
               pagination={tempPagination}
               onChange={handleTempTableChange}
@@ -1790,11 +1906,9 @@ export default function NodalCenterList() {
     if (!reports) return [];
     const errors = [];
 
-    // Rule 1: Multi-center details
     if (reports.multiCenterDetails && reports.multiCenterDetails.length > 0) {
       reports.multiCenterDetails.forEach((mc, idx) => {
         const key = `mc_${mc.collegeCode}_${idx}`;
-        if (resolvedKeys.has(key)) return;
         errors.push({
           conflictType: "college_multiple_centers",
           summary: mc.description || `College ${mc.collegeCode} assigned to multiple exam centers`,
@@ -1808,16 +1922,14 @@ export default function NodalCenterList() {
           conflictingValues: mc.centerCodes,
           key: key,
           id: key,
-          status: "pending"
+          status: resolvedKeys.has(key) ? "resolved" : "pending"
         });
       });
     }
 
-    // Rule 1: Multi-nodal details
     if (reports.multiNodalDetails && reports.multiNodalDetails.length > 0) {
       reports.multiNodalDetails.forEach((mn, idx) => {
         const key = `mn_${mn.centerCode}_${idx}`;
-        if (resolvedKeys.has(key)) return;
         errors.push({
           conflictType: "center_multiple_nodals",
           summary: mn.description || `Center ${mn.centerCode} assigned to multiple nodal codes`,
@@ -1829,16 +1941,14 @@ export default function NodalCenterList() {
           conflictingValues: mn.nodalCodes,
           key: key,
           id: key,
-          status: "pending"
+          status: resolvedKeys.has(key) ? "resolved" : "pending"
         });
       });
     }
 
-    // Rule 2: Unassigned colleges missing exam center assignments
     if (reports.unassignedDetails && reports.unassignedDetails.length > 0) {
       reports.unassignedDetails.forEach((ud, idx) => {
         const key = `rule2_${ud.collegeCode}_${idx}`;
-        if (resolvedKeys.has(key)) return;
         errors.push({
           conflictType: "unassigned_catch_nodal",
           summary: ud.description || `College ${ud.collegeCode} (${ud.collegeName}) is missing an Exam Center assignment in Nodal List.`,
@@ -1850,29 +1960,27 @@ export default function NodalCenterList() {
           conflictingValues: ud.centerCodes || [],
           key: key,
           id: key,
-          status: "pending"
+          status: resolvedKeys.has(key) ? "resolved" : "pending"
         });
       });
     } else if (reports.rule2CollegeCodes && reports.rule2CollegeCodes.length > 0 && reports.rule2Passed === false) {
       reports.rule2CollegeCodes.forEach((code, idx) => {
         const key = `rule2_code_${code}_${idx}`;
-        if (resolvedKeys.has(key)) return;
         errors.push({
           conflictType: "unassigned_catch_nodal",
           summary: `College ${code} is missing an Exam Center assignment in Nodal List.`,
           collegeCode: code,
           key: key,
           id: key,
-          status: "pending"
+          status: resolvedKeys.has(key) ? "resolved" : "pending"
         });
       });
     }
 
-    // Dynamic Rule 1 conflicts
     if (reports.dynamicConflicts && reports.dynamicConflicts.length > 0) {
       reports.dynamicConflicts.forEach((dc) => {
         const idKey = String(dc.id || dc.Id || "");
-        if (idKey && resolvedKeys.has(idKey)) return;
+        const isResolved = resolvedKeys.has(idKey) || dc.status === 0 || dc.Status === 0;
 
         try {
           const unique = JSON.parse(dc.uniqueField || dc.UniqueField);
@@ -1884,7 +1992,7 @@ export default function NodalCenterList() {
           errors.push({
             conflictType: "default",
             summary: `${uniqueKeys} (${unique.value}) is linked with multiple ${conflictKeys} values (${conflict.values.join(", ")}).`,
-            status: "pending",
+            status: isResolved ? "resolved" : "pending",
             key: dc.id || dc.Id,
             dcId: dc.id || dc.Id,
             id: dc.id || dc.Id,
@@ -1899,7 +2007,7 @@ export default function NodalCenterList() {
           errors.push({
             conflictType: "default",
             summary: `Dynamic Conflict: ${dc.uniqueField || dc.UniqueField} -> ${dc.conflictingField || dc.ConflictingField}`,
-            status: "pending",
+            status: isResolved ? "resolved" : "pending",
             key: dc.id,
           });
         }
@@ -1937,6 +2045,20 @@ export default function NodalCenterList() {
     } catch (err) {
       console.error(err);
       showToast(err.response?.data?.message || "Failed to run dynamic validation", "error");
+    } finally {
+      setDynamicRuleLoading(false);
+    }
+  };
+
+  const handleClearDynamicConflicts = async () => {
+    setDynamicRuleLoading(true);
+    try {
+      await API.delete(`/Merging/ClearDynamicRule1/${projectId}`);
+      showToast("Dynamic conflicts cleared successfully.", "success");
+      await fetchReports(mergeBy);
+    } catch (err) {
+      console.error(err);
+      showToast(err.response?.data?.message || "Failed to clear dynamic conflicts", "error");
     } finally {
       setDynamicRuleLoading(false);
     }
@@ -1993,6 +2115,19 @@ export default function NodalCenterList() {
             </Button>
           </span>
         </Tooltip>
+        {reports?.dynamicConflicts?.length > 0 && (
+          <Popconfirm
+            title="Are you sure you want to delete all dynamic conflicts?"
+            onConfirm={handleClearDynamicConflicts}
+            okText="Yes, Clear"
+            cancelText="Cancel"
+            okButtonProps={{ danger: true }}
+          >
+            <Button danger loading={dynamicRuleLoading}>
+              Clear Conflicts
+            </Button>
+          </Popconfirm>
+        )}
       </div>
     );
 
@@ -2046,7 +2181,7 @@ export default function NodalCenterList() {
           loading={loadingReports || dynamicRuleLoading}
           centerNodalOptions={centerNodalOptions}
           extraTabContent={{
-            "Other Conflicts": dynamicRuleUiCollapsible,
+            "Rule 1 conflict": dynamicRuleUiCollapsible,
           }}
         />
       </div>
@@ -2062,6 +2197,7 @@ export default function NodalCenterList() {
         onChange={handleTabChange}
         className="bg-white p-4 rounded-lg shadow-sm border border-gray-200"
         tabBarStyle={{ paddingLeft: '16px', marginBottom: 0 }}
+        destroyInactiveTabPane={true}
       >
         <TabPane tab="Add Catch List" key="1">
           {renderUploadSection("Upload Catch List")}
