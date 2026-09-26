@@ -239,8 +239,7 @@ export default function NodalCenterList() {
       const fields = res.data.map(f => f.name || f.Name || f);
       setAvailableDbFields(fields);
     } catch (error) {
-      console.error(error);
-      showToast("Failed to fetch available fields", "error");
+      console.error("Failed to fetch available fields", error);
     }
   };
 
@@ -317,7 +316,7 @@ export default function NodalCenterList() {
       setTempData(res.data.items || []);
       setTempPagination(prev => ({ ...prev, total: res.data.totalCount || 0 }));
     } catch (err) {
-      showToast("Failed to fetch temporary data", "error");
+      console.error("Failed to fetch temporary data", err);
     } finally {
       setLoadingTemp(false);
     }
@@ -367,7 +366,7 @@ export default function NodalCenterList() {
       setReports(res.data);
       await fetchAllNodalRecords();
     } catch (err) {
-      showToast("Failed to fetch reports", "error");
+      console.error("Failed to fetch reports", err);
     } finally {
       setLoadingReports(false);
     }
@@ -398,7 +397,7 @@ export default function NodalCenterList() {
     try {
       const res = await API.post(`/Merging/MergeToTemporary/${projectId}?mergeBy=${encodeURIComponent(mergeBy)}`);
       if (res.data?.rule2Passed === false) {
-        showToast(res.data?.message || "Data merged to temporary table, but Rule 2 validation failed.", "warning");
+        showToast(res.data?.message || "Data merged to temporary table", "warning");
       } else {
         showToast("Merged to temporary data successfully", "success");
       }
@@ -471,8 +470,7 @@ export default function NodalCenterList() {
         title: 'Rule 2 Validation Failed (Cannot Push)',
         content: (
           <div>
-            <p className="font-semibold text-red-600">Pushing to main NR Data is strictly blocked because some colleges are not assigned to an exam center.</p>
-            <p className="mt-2 text-sm text-gray-600">Every college must be assigned an exam center before pushing to main NR Data.</p>
+            <p className="text-sm text-gray-700">Some colleges are not assigned to an exam center. Please assign them before pushing.</p>
             {currentReports?.rule2CollegeCodes && currentReports.rule2CollegeCodes.length > 0 && (
               <div className="mt-3 p-2 bg-red-50 border border-red-200 rounded text-xs text-red-800 max-h-32 overflow-y-auto">
                 <strong>Unassigned Colleges ({currentReports.rule2CollegeCodes.length}):</strong>
@@ -808,14 +806,24 @@ export default function NodalCenterList() {
     }
   };
 
-  const isEditing = (record) => record.id === editingKey;
+  const isEditing = (record) => (record.id ?? record.Id) === editingKey;
   const edit = (record) => {
+    const recId = record.id ?? record.Id;
     form.setFieldsValue({
       ...record,
       nrQuantity: record.nrQuantity ?? record.nRQuantity ?? record.NRQuantity,
       nRQuantity: record.nrQuantity ?? record.nRQuantity ?? record.NRQuantity,
+      collegeCode: record.collegeCode ?? record.CollegeCode,
+      centerCode: record.centerCode ?? record.CenterCode,
+      nodalCode: record.nodalCode ?? record.NodalCode,
+      collegeName: record.collegeName ?? record.CollegeName,
+      courseName: record.courseName ?? record.CourseName,
+      subjectName: record.subjectName ?? record.SubjectName,
+      catchNo: record.catchNo ?? record.CatchNo,
+      examDate: record.examDate ?? record.ExamDate,
+      examTime: record.examTime ?? record.ExamTime,
     });
-    setEditingKey(record.id);
+    setEditingKey(recId);
   };
   const cancel = () => {
     setEditingKey('');
@@ -831,25 +839,52 @@ export default function NodalCenterList() {
         row.NRQuantity = row.nRQuantity;
       }
 
-      if (activeTab === "3") {
+      if (activeTab === "3" || activeTab === "4") {
         const newData = [...tempData];
-        const index = newData.findIndex((item) => key === item.id);
+        const index = newData.findIndex((item) => (item.id ?? item.Id) === key);
         if (index > -1) {
           const item = newData[index];
-          const updatedItem = { ...item, ...row };
+          const updatedItem = {
+            ...item,
+            ...row,
+            id: key,
+            Id: key,
+            collegeCode: row.collegeCode !== undefined ? Number(row.collegeCode) : item.collegeCode,
+            CollegeCode: row.collegeCode !== undefined ? Number(row.collegeCode) : item.CollegeCode,
+            centerCode: row.centerCode !== undefined ? Number(row.centerCode) : item.centerCode,
+            CenterCode: row.centerCode !== undefined ? Number(row.centerCode) : item.CenterCode,
+            nodalCode: row.nodalCode !== undefined ? Number(row.nodalCode) : item.nodalCode,
+            NodalCode: row.nodalCode !== undefined ? Number(row.nodalCode) : item.NodalCode,
+            nrQuantity: row.nrQuantity !== undefined ? Number(row.nrQuantity) : item.nrQuantity,
+            NRQuantity: row.nrQuantity !== undefined ? Number(row.nrQuantity) : item.NRQuantity,
+            collegeName: row.collegeName !== undefined ? row.collegeName : (item.collegeName ?? item.CollegeName),
+            CollegeName: row.collegeName !== undefined ? row.collegeName : (item.collegeName ?? item.CollegeName),
+            courseName: row.courseName !== undefined ? row.courseName : (item.courseName ?? item.CourseName),
+            CourseName: row.courseName !== undefined ? row.courseName : (item.courseName ?? item.CourseName),
+            subjectName: row.subjectName !== undefined ? row.subjectName : (item.subjectName ?? item.SubjectName),
+            SubjectName: row.subjectName !== undefined ? row.subjectName : (item.subjectName ?? item.SubjectName),
+            catchNo: row.catchNo !== undefined ? row.catchNo : (item.catchNo ?? item.CatchNo),
+            CatchNo: row.catchNo !== undefined ? row.catchNo : (item.catchNo ?? item.CatchNo),
+            examDate: row.examDate !== undefined ? row.examDate : (item.examDate ?? item.ExamDate),
+            ExamDate: row.examDate !== undefined ? row.examDate : (item.examDate ?? item.ExamDate),
+            examTime: row.examTime !== undefined ? row.examTime : (item.examTime ?? item.ExamTime),
+            ExamTime: row.examTime !== undefined ? row.examTime : (item.examTime ?? item.ExamTime),
+          };
           await API.put(`/TemporaryNrDatas/${key}`, updatedItem);
           newData.splice(index, 1, updatedItem);
           setTempData(newData);
           setEditingKey('');
           showToast("Record updated successfully", "success");
+          setIsDirty(true);
+          fetchReports(mergeBy);
         }
       } else {
         const newData = [...existingData];
-        const index = newData.findIndex((item) => key === item.id);
+        const index = newData.findIndex((item) => (item.id ?? item.Id) === key);
 
         if (index > -1) {
           const item = newData[index];
-          const updatedItem = { ...item, ...row };
+          const updatedItem = { ...item, ...row, id: key, Id: key };
 
           const endpoint = activeTab === "1" ? `/CatchLists/${key}` : `/NodalLists/${key}`;
           await API.put(endpoint, updatedItem);
@@ -881,7 +916,7 @@ export default function NodalCenterList() {
       showToast("Record deleted successfully", "success");
       setSelectedRowKeys(prev => prev.filter(k => k !== key));
       setIsDirty(true);
-      if (activeTab === "3") {
+      if (activeTab === "3" || activeTab === "4") {
         fetchTempData();
         fetchReports(mergeBy);
       } else {
@@ -906,7 +941,7 @@ export default function NodalCenterList() {
       showToast(res.data?.message || `${selectedRowKeys.length} records deleted successfully`, "success");
       setSelectedRowKeys([]);
       setIsDirty(true);
-      if (activeTab === "3") {
+      if (activeTab === "3" || activeTab === "4") {
         fetchTempData();
         fetchReports();
       } else {
@@ -929,7 +964,7 @@ export default function NodalCenterList() {
       showToast(res.data?.message || "All records deleted successfully", "success");
       setSelectedRowKeys([]);
       setIsDirty(true);
-      if (activeTab === "3") {
+      if (activeTab === "3" || activeTab === "4") {
         fetchTempData();
         fetchReports();
       } else {
@@ -947,9 +982,10 @@ export default function NodalCenterList() {
     fixed: 'right',
     render: (_, record) => {
       const editable = isEditing(record);
+      const recId = record.id ?? record.Id;
       return editable ? (
         <Space size="middle">
-          <Typography.Link onClick={() => save(record.id)}>Save</Typography.Link>
+          <Typography.Link onClick={() => save(recId)}>Save</Typography.Link>
           <Popconfirm title="Sure to cancel?" onConfirm={cancel}>
             <a>Cancel</a>
           </Popconfirm>
@@ -965,7 +1001,7 @@ export default function NodalCenterList() {
           </Typography.Link>
           <Popconfirm
             title="Are you sure you want to delete this record?"
-            onConfirm={() => handleDelete(record.id)}
+            onConfirm={() => handleDelete(recId)}
             okText="Yes"
             cancelText="No"
             disabled={editingKey !== '' || tempData.length > 0}
@@ -1368,9 +1404,10 @@ export default function NodalCenterList() {
       fixed: 'right',
       render: (_, record) => {
         const editable = isEditing(record);
+        const recId = record.id ?? record.Id;
         return editable ? (
           <Space size="middle">
-            <Typography.Link onClick={() => save(record.id)}>Save</Typography.Link>
+            <Typography.Link onClick={() => save(recId)}>Save</Typography.Link>
             <Popconfirm title="Sure to cancel?" onConfirm={cancel}>
               <a>Cancel</a>
             </Popconfirm>
@@ -1382,7 +1419,7 @@ export default function NodalCenterList() {
             </Typography.Link>
             <Popconfirm
               title="Are you sure you want to delete this record?"
-              onConfirm={() => handleDelete(record.id)}
+              onConfirm={() => handleDelete(recId)}
               okText="Yes"
               cancelText="No"
               disabled={editingKey !== ''}
@@ -2107,23 +2144,33 @@ export default function NodalCenterList() {
         onCancel={() => { setIsAddModalVisible(false); addForm.resetFields(); }}
         confirmLoading={addingRecord}
         okText="Add Record"
+        width={720}
+        centered
+        destroyOnClose
       >
-        <Form form={addForm} layout="vertical">
-          {currentFields.map(field => {
-            const isNumber = ['NRQuantity', 'Transgender', 'Male', 'Female', 'CollegeCode', 'NodalCode', 'ExamCenterCode'].includes(field);
-            const isRequired = currentRequiredFields.includes(field);
-            return (
-              <Form.Item
-                key={field}
-                name={field === "NRQuantity" ? "nrQuantity" : (field.charAt(0).toLowerCase() + field.slice(1))}
-                label={field}
-                rules={[{ required: isRequired, message: `Please enter ${field}` }]}
-              >
-                {isNumber ? <InputNumber style={{ width: '100%' }} /> : <Input />}
-              </Form.Item>
-            );
-          })}
-        </Form>
+        <div style={{ maxHeight: 'calc(80vh - 180px)', overflowY: 'auto', overflowX: 'hidden', paddingRight: 6 }}>
+          <Form form={addForm} layout="vertical">
+            <Row gutter={[16, 0]}>
+              {currentFields.map(field => {
+                const isNumber = ['NRQuantity', 'Transgender', 'Male', 'Female', 'CollegeCode', 'NodalCode', 'ExamCenterCode'].includes(field);
+                const isRequired = currentRequiredFields.includes(field);
+                const isFullWidth = ["CollegeName", "CenterName", "ExamCenterName", "NodalName", "SubjectName"].includes(field);
+                return (
+                  <Col span={isFullWidth ? 24 : 12} key={field}>
+                    <Form.Item
+                      name={field === "NRQuantity" ? "nrQuantity" : (field.charAt(0).toLowerCase() + field.slice(1))}
+                      label={field}
+                      rules={[{ required: isRequired, message: `Please enter ${field}` }]}
+                      style={{ marginBottom: 12 }}
+                    >
+                      {isNumber ? <InputNumber style={{ width: '100%' }} /> : <Input />}
+                    </Form.Item>
+                  </Col>
+                );
+              })}
+            </Row>
+          </Form>
+        </div>
       </Modal>
       <Modal
         title="Gender Values Detected in Upload"
