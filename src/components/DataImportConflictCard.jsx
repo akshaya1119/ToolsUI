@@ -98,12 +98,6 @@ const DataImportConflictCard = ({
           </Space>
         )}
 
-        {conflict.catchNos?.length > 0 && (
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            Catch Nos: {conflict.catchNos.join(", ")}
-          </Text>
-        )}
-
         {conflict.resolveKind === "select" && (
           <Space direction="vertical" size={6}>
             <AutoComplete

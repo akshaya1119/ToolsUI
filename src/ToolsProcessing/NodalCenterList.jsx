@@ -48,6 +48,8 @@ export default function NodalCenterList() {
   const [fileData, setFileData] = useState([]);
   const [mapping, setMapping] = useState({});
   const [uploading, setUploading] = useState(false);
+  const [isZeroModalVisible, setIsZeroModalVisible] = useState(false);
+  const [zeroDetails, setZeroDetails] = useState({ collegeZeroCount: 0, centerZeroCount: 0, totalRows: 0, fieldName: "" });
 
   const [existingData, setExistingData] = useState([]);
   const [loadingData, setLoadingData] = useState(false);
@@ -124,7 +126,7 @@ export default function NodalCenterList() {
         if (savedL1) setLevel1Fields(JSON.parse(savedL1));
         if (savedL2) setLevel2Fields(JSON.parse(savedL2));
         if (savedL3) setLevel3Fields(JSON.parse(savedL3));
-      } catch {}
+      } catch { }
     }
   }, [projectId]);
 
@@ -151,7 +153,7 @@ export default function NodalCenterList() {
               extractedL2 = conflict.fields;
             }
           }
-        } catch {}
+        } catch { }
       });
 
       if (extractedL1 && extractedL1.length > 0 && level1Fields.length === 0) {
@@ -206,6 +208,16 @@ export default function NodalCenterList() {
 
   useEffect(() => {
     if (projectId) {
+      setTempData([]);
+      setExistingData([]);
+      setPagination({ current: 1, pageSize: 10, total: 0 });
+      setTempPagination({ current: 1, pageSize: 10, total: 0 });
+      setColumnFilters({});
+      setTempColumnFilters({});
+      setSearchText("");
+      setLocalSearch("");
+      setSelectedRowKeys([]);
+      setReports(null);
       fetchAvailableDbFields();
     }
   }, [projectId]);
@@ -235,7 +247,6 @@ export default function NodalCenterList() {
   const fetchAvailableDbFields = async () => {
     try {
       const res = await API.get("/Fields");
-      // res.data is likely an array of { fieldId, name } or similar
       const fields = res.data.map(f => f.name || f.Name || f);
       setAvailableDbFields(fields);
     } catch (error) {
@@ -244,9 +255,15 @@ export default function NodalCenterList() {
   };
 
   useEffect(() => {
-    // Reset added fields to just required fields when tab changes
+    // Reset state parameters when tab changes
     setAddedFields([...currentRequiredFields]);
     setSelectedRowKeys([]);
+    setSearchText("");
+    setLocalSearch("");
+    setColumnFilters({});
+    setTempColumnFilters({});
+    setPagination(prev => ({ ...prev, current: 1 }));
+    setTempPagination(prev => ({ ...prev, current: 1 }));
   }, [activeTab]);
 
   const fetchExistingData = async () => {
@@ -689,6 +706,44 @@ export default function NodalCenterList() {
       }
     }
 
+    // Check for partial zero / missing values in Catch List upload (activeTab === "1")
+    if (activeTab === "1") {
+      const collegeHeader = mapping["CollegeCode"];
+      const centerHeader = mapping["CenterCode"];
+      const totalRows = fileData.length;
+
+      let collegeZeroCount = 0;
+      let centerZeroCount = 0;
+
+      fileData.forEach((row) => {
+        const rawColl = collegeHeader ? row[collegeHeader] : undefined;
+        const strColl = rawColl !== undefined && rawColl !== null ? String(rawColl).trim() : "";
+        if (!strColl || strColl === "0") collegeZeroCount++;
+
+        const rawCent = centerHeader ? row[centerHeader] : undefined;
+        const strCent = rawCent !== undefined && rawCent !== null ? String(rawCent).trim() : "";
+        if (!strCent || strCent === "0") centerZeroCount++;
+      });
+
+      const isPartialCollegeZero = collegeZeroCount > 0 && collegeZeroCount < totalRows;
+      const isPartialCenterZero = centerZeroCount > 0 && centerZeroCount < totalRows;
+
+      if (isPartialCollegeZero || isPartialCenterZero) {
+        let fieldNames = [];
+        if (isPartialCollegeZero) fieldNames.push(`College Code (${collegeZeroCount} of ${totalRows} rows are 0/blank)`);
+        if (isPartialCenterZero) fieldNames.push(`Center Code (${centerZeroCount} of ${totalRows} rows are 0/blank)`);
+
+        setZeroDetails({
+          collegeZeroCount,
+          centerZeroCount,
+          totalRows,
+          fieldName: fieldNames.join(", "),
+        });
+        setIsZeroModalVisible(true);
+        return;
+      }
+    }
+
     // When uploading Nodal List, check for non-standard gender values
     if (activeTab === "2") {
       const genderHeader = mapping["Gender"];
@@ -849,22 +904,22 @@ export default function NodalCenterList() {
             ...row,
             id: key,
             Id: key,
-            collegeCode: row.collegeCode !== undefined ? Number(row.collegeCode) : item.collegeCode,
-            CollegeCode: row.collegeCode !== undefined ? Number(row.collegeCode) : item.CollegeCode,
-            centerCode: row.centerCode !== undefined ? Number(row.centerCode) : item.centerCode,
-            CenterCode: row.centerCode !== undefined ? Number(row.centerCode) : item.CenterCode,
-            nodalCode: row.nodalCode !== undefined ? Number(row.nodalCode) : item.nodalCode,
-            NodalCode: row.nodalCode !== undefined ? Number(row.nodalCode) : item.NodalCode,
-            nrQuantity: row.nrQuantity !== undefined ? Number(row.nrQuantity) : item.nrQuantity,
-            NRQuantity: row.nrQuantity !== undefined ? Number(row.nrQuantity) : item.NRQuantity,
+            collegeCode: row.collegeCode !== undefined ? Number(row.collegeCode) : (item.collegeCode ?? item.CollegeCode ?? 0),
+            CollegeCode: row.collegeCode !== undefined ? Number(row.collegeCode) : (item.collegeCode ?? item.CollegeCode ?? 0),
+            centerCode: row.centerCode !== undefined ? (row.centerCode !== null ? String(row.centerCode) : null) : (item.centerCode !== undefined ? (item.centerCode !== null ? String(item.centerCode) : null) : (item.CenterCode !== undefined ? (item.CenterCode !== null ? String(item.CenterCode) : null) : null)),
+            CenterCode: row.centerCode !== undefined ? (row.centerCode !== null ? String(row.centerCode) : null) : (item.centerCode !== undefined ? (item.centerCode !== null ? String(item.centerCode) : null) : (item.CenterCode !== undefined ? (item.CenterCode !== null ? String(item.CenterCode) : null) : null)),
+            nodalCode: row.nodalCode !== undefined ? (row.nodalCode !== null ? String(row.nodalCode) : null) : (item.nodalCode !== undefined ? (item.nodalCode !== null ? String(item.nodalCode) : null) : (item.NodalCode !== undefined ? (item.NodalCode !== null ? String(item.NodalCode) : null) : null)),
+            NodalCode: row.nodalCode !== undefined ? (row.nodalCode !== null ? String(row.nodalCode) : null) : (item.nodalCode !== undefined ? (item.nodalCode !== null ? String(item.nodalCode) : null) : (item.NodalCode !== undefined ? (item.NodalCode !== null ? String(item.NodalCode) : null) : null)),
+            nrQuantity: row.nrQuantity !== undefined ? Number(row.nrQuantity) : (item.nrQuantity ?? item.NRQuantity ?? 0),
+            NRQuantity: row.nrQuantity !== undefined ? Number(row.nrQuantity) : (item.nrQuantity ?? item.NRQuantity ?? 0),
             collegeName: row.collegeName !== undefined ? row.collegeName : (item.collegeName ?? item.CollegeName),
             CollegeName: row.collegeName !== undefined ? row.collegeName : (item.collegeName ?? item.CollegeName),
             courseName: row.courseName !== undefined ? row.courseName : (item.courseName ?? item.CourseName),
             CourseName: row.courseName !== undefined ? row.courseName : (item.courseName ?? item.CourseName),
             subjectName: row.subjectName !== undefined ? row.subjectName : (item.subjectName ?? item.SubjectName),
             SubjectName: row.subjectName !== undefined ? row.subjectName : (item.subjectName ?? item.SubjectName),
-            catchNo: row.catchNo !== undefined ? row.catchNo : (item.catchNo ?? item.CatchNo),
-            CatchNo: row.catchNo !== undefined ? row.catchNo : (item.catchNo ?? item.CatchNo),
+            catchNo: row.catchNo !== undefined ? (row.catchNo !== null ? String(row.catchNo) : null) : (item.catchNo !== undefined ? (item.catchNo !== null ? String(item.catchNo) : null) : (item.CatchNo !== undefined ? (item.CatchNo !== null ? String(item.CatchNo) : null) : null)),
+            CatchNo: row.catchNo !== undefined ? (row.catchNo !== null ? String(row.catchNo) : null) : (item.catchNo !== undefined ? (item.catchNo !== null ? String(item.catchNo) : null) : (item.CatchNo !== undefined ? (item.CatchNo !== null ? String(item.CatchNo) : null) : null)),
             examDate: row.examDate !== undefined ? row.examDate : (item.examDate ?? item.ExamDate),
             ExamDate: row.examDate !== undefined ? row.examDate : (item.examDate ?? item.ExamDate),
             examTime: row.examTime !== undefined ? row.examTime : (item.examTime ?? item.ExamTime),
@@ -1475,7 +1530,7 @@ export default function NodalCenterList() {
               type="error"
               showIcon
               message="Rule 2 Error: Missing Exam Center Assignments"
-              description="Every college must be assigned an exam center. Pushing to main NR Data is strictly blocked until all colleges are assigned an exam center."
+              description="Every college must be assigned an exam center."
               action={
                 <Button type="primary" danger size="small" onClick={() => setActiveTab("3")}>
                   View Conflict Report
@@ -1894,7 +1949,6 @@ export default function NodalCenterList() {
           summary: ud.description || `College ${ud.collegeCode} (${ud.collegeName}) is missing an Exam Center assignment in Nodal List.`,
           collegeCode: ud.collegeCode,
           collegeName: ud.collegeName,
-          catchNos: ud.catchNos,
           centerCodes: ud.centerCodes || [],
           centerNames: ud.centerNames || [],
           conflictingValues: ud.centerCodes || [],
@@ -2244,6 +2298,67 @@ export default function NodalCenterList() {
               </div>
             </Radio>
           </Radio.Group>
+        </div>
+      </Modal>
+
+      <Modal
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#d97706' }}>
+            <WarningOutlined style={{ fontSize: 20 }} />
+            <span>Missing / Zero Values Detected in Upload</span>
+          </div>
+        }
+        open={isZeroModalVisible}
+        onCancel={() => setIsZeroModalVisible(false)}
+        footer={[
+          <Button 
+            key="cancel" 
+            onClick={() => {
+              setIsZeroModalVisible(false);
+              showToast("Upload cancelled. Please update your Excel file and re-upload.", "info");
+            }}
+          >
+            Cancel (Upload Updated Excel)
+          </Button>,
+          <Button
+            key="submit"
+            type="primary"
+            loading={uploading}
+            onClick={async () => {
+              setIsZeroModalVisible(false);
+              await executeUpload();
+            }}
+          >
+            Proceed & Upload (Fill Values in App)
+          </Button>,
+        ]}
+        width={560}
+      >
+        <div style={{ padding: '12px 0' }}>
+          <Alert
+            message="Attention: Partial Zero / Missing Values"
+            description={
+              <span>
+                Some records in your Excel file have zero or blank code values while other records have valid codes:<br />
+                <strong style={{ color: '#b45309' }}>{zeroDetails.fieldName}</strong>
+              </span>
+            }
+            type="warning"
+            showIcon
+            style={{ marginBottom: 16 }}
+          />
+          <Typography.Paragraph style={{ fontSize: 13, color: '#475569', marginBottom: 12 }}>
+            • If <strong>ALL</strong> records in the file have 0/blank for a field, the system automatically adjusts.<br />
+            • Since only <strong>SOME</strong> records have missing/zero values, please choose how you would like to proceed:
+          </Typography.Paragraph>
+          <div style={{ background: '#f8fafc', padding: 12, borderRadius: 6, border: '1px solid #e2e8f0', fontSize: 13 }}>
+            <div style={{ marginBottom: 8 }}>
+              <strong>Option 1: Fill in Application</strong> — Click <em>Proceed & Upload</em> to upload now. You can edit the zero values directly in the <strong>Merge & Preview</strong> tab or resolve them in the <strong>Conflict Report</strong> tab.
+            </div>
+            <div>
+              <strong>Option 2: Re-upload Excel</strong> — Click <em>Cancel</em>, update your Excel file with valid values for those rows, and upload again.
+            </div>
+          </div>
         </div>
       </Modal>
     </div>
