@@ -15,7 +15,7 @@ export const CONFLICT_TYPE_CONFIG = {
   },
   center_multiple_nodals: {
     title: "Centre to Multiple Nodals",
-    groupLabel: "Rule 2 Conflict",
+    groupLabel: "Rule 1 conflict",
     color: "#fa8c16",
     background: "#fff7e6",
     accent: "#ffd591",
@@ -31,7 +31,7 @@ export const CONFLICT_TYPE_CONFIG = {
   },
   college_multiple_centers: {
     title: "College to Multiple Centres",
-    groupLabel: "Rule 2 Conflict",
+    groupLabel: "Rule 1 conflict",
     color: "#2f54eb",
     background: "#f0f5ff",
     accent: "#adc6ff",
@@ -72,6 +72,14 @@ export const CONFLICT_TYPE_CONFIG = {
   default: {
     title: "Conflict",
     groupLabel: "Rule 1 conflict",
+    color: "#595959",
+    background: "#fafafa",
+    accent: "#d9d9d9",
+    resolveKind: "manual",
+  },
+  rule2_dynamic: {
+    title: "Rule 2 Conflict (Dynamic)",
+    groupLabel: "Rule 2 Conflict",
     color: "#595959",
     background: "#fafafa",
     accent: "#d9d9d9",
