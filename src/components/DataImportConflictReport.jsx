@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { AutoComplete, Button, Collapse, Empty, Input, Radio, Select, Space, Table, Tabs, Tag, Tooltip, Typography } from "antd";
 import { CheckCircleOutlined } from "@ant-design/icons";
 import {
@@ -858,28 +858,46 @@ const DataImportConflictReport = ({
     return <Empty description="No conflicts found" image={Empty.PRESENTED_IMAGE_SIMPLE} />;
   }
 
-  const normalizedConflicts = rawErrors.map(normalizeConflict);
-  const groupedConflicts = normalizedConflicts.reduce((acc, conflict) => {
-    const groupKey = conflict.groupLabel;
-    if (!acc[groupKey]) {
-      acc[groupKey] = [];
-    }
-    acc[groupKey].push(conflict);
-    return acc;
-  }, {});
-
-  if (extraTabContent) {
-    Object.keys(extraTabContent).forEach((key) => {
-      if (!groupedConflicts[key]) {
-        groupedConflicts[key] = [];
+  const groupedConflicts = React.useMemo(() => {
+    const normalizedConflicts = rawErrors.map(normalizeConflict);
+    const result = normalizedConflicts.reduce((acc, conflict) => {
+      const groupKey = conflict.groupLabel;
+      if (!acc[groupKey]) {
+        acc[groupKey] = [];
       }
-    });
-  }
+      acc[groupKey].push(conflict);
+      return acc;
+    }, {});
+
+    if (extraTabContent) {
+      Object.keys(extraTabContent).forEach((key) => {
+        if (!result[key]) {
+          result[key] = [];
+        }
+      });
+    }
+    return result;
+  }, [rawErrors, extraTabContent ? Object.keys(extraTabContent).join(",") : ""]);
+
+  const sortedEntries = React.useMemo(() => Object.entries(groupedConflicts).sort(([labelA], [labelB]) => {
+    if (labelA === "Rule 1 conflict") return -1;
+    if (labelB === "Rule 1 conflict") return 1;
+    if (labelA === "Rule 2 Conflict") return -1;
+    if (labelB === "Rule 2 Conflict") return 1;
+    return labelA.localeCompare(labelB);
+  }), [groupedConflicts]);
+
+  const [activeTab, setActiveTab] = useState(() => {
+    return sortedEntries.find(([_, items]) => items.length > 0)?.[0] || sortedEntries[0]?.[0];
+  });
 
   return (
     <Space direction="vertical" size={16} style={{ width: "100%" }}>
       <Tabs
-        items={Object.entries(groupedConflicts).map(([groupLabel, items]) => ({
+        activeKey={activeTab || sortedEntries[0]?.[0]}
+        onChange={setActiveTab}
+        items={sortedEntries
+          .map(([groupLabel, items]) => ({
           key: groupLabel,
           label: `${groupLabel} (${items.length})`,
           children: (
