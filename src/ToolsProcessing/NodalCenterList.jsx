@@ -2073,7 +2073,7 @@ export default function NodalCenterList() {
     const dynamicRuleContent = (
       <div className="flex gap-4 mt-2 items-end flex-wrap">
         <div>
-          <div className="text-xs mb-1">Level 1 (e.g. College Code)</div>
+          <div className="text-xs mb-1">Level 1</div>
           <Select
             mode="multiple"
             allowClear
@@ -2085,7 +2085,7 @@ export default function NodalCenterList() {
           />
         </div>
         <div>
-          <div className="text-xs mb-1">Level 2 (e.g. Exam Center)</div>
+          <div className="text-xs mb-1">Level 2</div>
           <Select
             mode="multiple"
             allowClear
@@ -2097,7 +2097,7 @@ export default function NodalCenterList() {
           />
         </div>
         <div>
-          <div className="text-xs mb-1">Level 3 (Optional, e.g. Nodal Code)</div>
+          <div className="text-xs mb-1">Level 3 (Optional)</div>
           <Select
             mode="multiple"
             allowClear
