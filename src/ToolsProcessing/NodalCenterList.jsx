@@ -115,70 +115,11 @@ export default function NodalCenterList() {
       const saved = localStorage.getItem(`mergeBy_${projectId}`);
       if (saved) setMergeBy(saved);
 
-      try {
-        const savedL1 = localStorage.getItem(`dynamicL1_${projectId}`);
-        const savedL2 = localStorage.getItem(`dynamicL2_${projectId}`);
-        const savedL3 = localStorage.getItem(`dynamicL3_${projectId}`);
 
-        if (savedL1) setLevel1Fields(JSON.parse(savedL1));
-        if (savedL2) setLevel2Fields(JSON.parse(savedL2));
-        if (savedL3) setLevel3Fields(JSON.parse(savedL3));
-      } catch { }
     }
   }, [projectId]);
 
-  useEffect(() => {
-    if (reports?.dynamicConflicts?.length > 0) {
-      let extractedL1 = null;
-      let extractedL2 = null;
-      let extractedL3 = null;
 
-      reports.dynamicConflicts.forEach((dc) => {
-        try {
-          const unique = JSON.parse(dc.uniqueField || dc.UniqueField);
-          const conflict = JSON.parse(dc.conflictingField || dc.ConflictingField);
-          if (unique?.fields && conflict?.fields) {
-            const confStr = conflict.fields.join(",").toLowerCase();
-            if (confStr.includes("examcentercode") || confStr.includes("center")) {
-              extractedL1 = unique.fields;
-              extractedL2 = conflict.fields;
-            } else if (confStr.includes("nodalcode") || confStr.includes("nodal")) {
-              extractedL2 = unique.fields;
-              extractedL3 = conflict.fields;
-            } else if (!extractedL1) {
-              extractedL1 = unique.fields;
-              extractedL2 = conflict.fields;
-            }
-          }
-        } catch { }
-      });
-
-      if (extractedL1 && extractedL1.length > 0 && level1Fields.length === 0) {
-        setLevel1Fields(extractedL1);
-        if (projectId) localStorage.setItem(`dynamicL1_${projectId}`, JSON.stringify(extractedL1));
-      }
-      if (extractedL2 && extractedL2.length > 0 && level2Fields.length === 0) {
-        setLevel2Fields(extractedL2);
-        if (projectId) localStorage.setItem(`dynamicL2_${projectId}`, JSON.stringify(extractedL2));
-      }
-      if (extractedL3 && extractedL3.length > 0 && level3Fields.length === 0) {
-        setLevel3Fields(extractedL3);
-        if (projectId) localStorage.setItem(`dynamicL3_${projectId}`, JSON.stringify(extractedL3));
-      }
-    } else if (level1Fields.length === 0 && level2Fields.length === 0 && level3Fields.length === 0) {
-      const defaultL1 = ["CollegeName", "Gender"];
-      const defaultL2 = ["ExamCenterCode"];
-      const defaultL3 = ["NodalCode"];
-      setLevel1Fields(defaultL1);
-      setLevel2Fields(defaultL2);
-      setLevel3Fields(defaultL3);
-      if (projectId) {
-        localStorage.setItem(`dynamicL1_${projectId}`, JSON.stringify(defaultL1));
-        localStorage.setItem(`dynamicL2_${projectId}`, JSON.stringify(defaultL2));
-        localStorage.setItem(`dynamicL3_${projectId}`, JSON.stringify(defaultL3));
-      }
-    }
-  }, [reports, projectId]);
 
   const handleMergeByChange = (val) => {
     setMergeBy(val);
@@ -1995,45 +1936,6 @@ export default function NodalCenterList() {
     if (!reports) return [];
     const errors = [];
 
-    if (reports.multiCenterDetails && reports.multiCenterDetails.length > 0) {
-      reports.multiCenterDetails.forEach((mc, idx) => {
-        const key = `mc_${mc.collegeCode}_${idx}`;
-        errors.push({
-          conflictType: "college_multiple_centers",
-          summary: mc.description || `College ${mc.collegeCode} assigned to multiple exam centers`,
-          collegeCode: mc.collegeCode,
-          collegeName: mc.collegeNames?.join(", "),
-          centerCodes: mc.centerCodes,
-          centerNames: mc.centerNames || [],
-          nodalCodes: mc.nodalCodes || [],
-          nodalNames: mc.nodalNames || [],
-          records: mc.records || [],
-          conflictingValues: mc.centerCodes,
-          key: key,
-          id: key,
-          status: resolvedKeys.has(key) ? "resolved" : "pending"
-        });
-      });
-    }
-
-    if (reports.multiNodalDetails && reports.multiNodalDetails.length > 0) {
-      reports.multiNodalDetails.forEach((mn, idx) => {
-        const key = `mn_${mn.centerCode}_${idx}`;
-        errors.push({
-          conflictType: "center_multiple_nodals",
-          summary: mn.description || `Center ${mn.centerCode} assigned to multiple nodal codes`,
-          centreCode: mn.centerCode,
-          centerNames: mn.centerNames || [],
-          nodalCodes: mn.nodalCodes || [],
-          nodalNames: mn.nodalNames || [],
-          records: mn.records || [],
-          conflictingValues: mn.nodalCodes,
-          key: key,
-          id: key,
-          status: resolvedKeys.has(key) ? "resolved" : "pending"
-        });
-      });
-    }
 
     if (reports.unassignedDetails && reports.unassignedDetails.length > 0) {
       reports.unassignedDetails.forEach((ud, idx) => {
@@ -2069,20 +1971,26 @@ export default function NodalCenterList() {
       });
     }
 
-    if (reports.dynamicConflicts && reports.dynamicConflicts.length > 0) {
-      reports.dynamicConflicts.forEach((dc) => {
+    const processDbConflicts = (conflictsList, fallbackRuleTab) => {
+      if (!conflictsList || conflictsList.length === 0) return;
+      conflictsList.forEach((dc) => {
+        const uniqueField = dc.uniqueField || dc.UniqueField;
+        if (uniqueField && (uniqueField.startsWith("Rule1_") || uniqueField.startsWith("Rule2_"))) {
+            return; // these are already handled via multiCenterDetails, etc.
+        }
+
         const idKey = String(dc.id || dc.Id || "");
         const isResolved = resolvedKeys.has(idKey) || dc.status === 0 || dc.Status === 0;
 
         try {
-          const unique = JSON.parse(dc.uniqueField || dc.UniqueField);
+          const unique = JSON.parse(uniqueField);
           const conflict = JSON.parse(dc.conflictingField || dc.ConflictingField);
 
           const uniqueKeys = unique.fields.join(", ");
           const conflictKeys = conflict.fields.join(", ");
 
           errors.push({
-            conflictType: "default",
+            conflictType: fallbackRuleTab === 2 ? "rule2_dynamic" : "default",
             summary: `${uniqueKeys} (${unique.value}) is linked with multiple ${conflictKeys} values (${conflict.values.join(", ")}).`,
             status: isResolved ? "resolved" : "pending",
             key: dc.id || dc.Id,
@@ -2097,14 +2005,17 @@ export default function NodalCenterList() {
         } catch (e) {
           // fallback if parsing fails
           errors.push({
-            conflictType: "default",
-            summary: `Dynamic Conflict: ${dc.uniqueField || dc.UniqueField} -> ${dc.conflictingField || dc.ConflictingField}`,
+            conflictType: fallbackRuleTab === 2 ? "rule2_dynamic" : "default",
+            summary: `Dynamic Conflict: ${uniqueField} -> ${dc.conflictingField || dc.ConflictingField}`,
             status: isResolved ? "resolved" : "pending",
             key: dc.id,
           });
         }
       });
-    }
+    };
+
+    processDbConflicts(reports.dbRule1Conflicts, 1);
+    processDbConflicts(reports.dbRule2Conflicts, 2);
 
     return errors;
   }, [reports, allNodalRecords, resolvedKeys]);
@@ -2209,19 +2120,7 @@ export default function NodalCenterList() {
             </Button>
           </span>
         </Tooltip>
-        {reports?.dynamicConflicts?.length > 0 && (
-          <Popconfirm
-            title="Are you sure you want to delete all dynamic conflicts?"
-            onConfirm={handleClearDynamicConflicts}
-            okText="Yes, Clear"
-            cancelText="Cancel"
-            okButtonProps={{ danger: true }}
-          >
-            <Button danger loading={dynamicRuleLoading}>
-              Clear Conflicts
-            </Button>
-          </Popconfirm>
-        )}
+
       </div>
     );
 
@@ -2241,6 +2140,21 @@ export default function NodalCenterList() {
             key: "1",
             label: "Dynamic 1:1:1 Validation",
             children: dynamicRuleContent,
+            extra: reports?.dbRule1Conflicts?.length > 0 ? (
+              <div onClick={(e) => e.stopPropagation()}>
+                <Popconfirm
+                  title="Are you sure you want to delete all dynamic conflicts?"
+                  onConfirm={handleClearDynamicConflicts}
+                  okText="Yes, Clear"
+                  cancelText="Cancel"
+                  okButtonProps={{ danger: true }}
+                >
+                  <Button danger size="small" loading={dynamicRuleLoading}>
+                    Clear Conflicts
+                  </Button>
+                </Popconfirm>
+              </div>
+            ) : null,
           },
         ]}
       />
