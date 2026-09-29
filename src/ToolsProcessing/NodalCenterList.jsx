@@ -575,7 +575,10 @@ export default function NodalCenterList() {
 
     try {
       const genderHeader = mapping["Gender"];
-      const mappedData = fileData.map((row) => {
+      const mappedData = [];
+      const failedData = [];
+
+      fileData.forEach((row) => {
         const newRow = {};
         // Map ONLY fields explicitly added by user in the mapping UI
         Object.keys(mapping).forEach((modelField) => {
@@ -602,8 +605,46 @@ export default function NodalCenterList() {
           }
         }
 
-        return newRow;
+        // Validate required fields
+        let isValid = true;
+        for (let reqField of currentRequiredFields) {
+          const val = newRow[reqField];
+          if (val === undefined || val === null || String(val).trim() === "") {
+            isValid = false;
+            break;
+          }
+        }
+
+        if (activeTab === "1") {
+          const qty = newRow["NRQuantity"];
+          if (qty === undefined || qty === null || isNaN(Number(qty)) || Number(qty) <= 0) {
+            isValid = false;
+          }
+        }
+
+        if (isValid) {
+          mappedData.push(newRow);
+        } else {
+          failedData.push(row);
+        }
       });
+
+      if (mappedData.length === 0) {
+        showToast("No valid records found to upload after validating required fields.", "error");
+        if (failedData.length > 0) {
+          try {
+            const ws = XLSX.utils.json_to_sheet(failedData);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Skipped_Records");
+            XLSX.writeFile(wb, "Skipped_Due_To_Missing_Fields.xlsx");
+            showToast(`Downloaded ${failedData.length} skipped records as Excel.`, "warning");
+          } catch (e) {
+            console.error("Excel generation failed", e);
+          }
+        }
+        setUploading(false);
+        return;
+      }
 
       const endpoint = activeTab === "1" ? "/CatchLists/Upload" : "/NodalLists/Upload";
 
@@ -612,7 +653,22 @@ export default function NodalCenterList() {
         data: mappedData,
       });
 
-      showToast(response.data.message || "Upload successful", "success");
+      const backendFailed = response.data.failedRecords || response.data.FailedRecords || [];
+      const totalFailed = [...failedData, ...backendFailed];
+
+      if (totalFailed.length > 0) {
+        showToast(`Uploaded successfully but ${totalFailed.length} records were skipped due to missing required fields. Downloading Excel...`, "warning");
+        try {
+          const ws = XLSX.utils.json_to_sheet(totalFailed);
+          const wb = XLSX.utils.book_new();
+          XLSX.utils.book_append_sheet(wb, ws, "Failed_Records");
+          XLSX.writeFile(wb, "Failed_Records.xlsx");
+        } catch (e) {
+          console.error("Excel generation failed", e);
+        }
+      } else {
+        showToast(response.data.message || "Upload successful", "success");
+      }
       resetUploadState();
       setIsUploadSectionVisible(false);
       fetchExistingData();
