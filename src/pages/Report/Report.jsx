@@ -91,11 +91,12 @@ const Report = () => {
       const response = await API.get('/Projects/UserId');
 
       // 3. Combine
-      const combinedProjects = response.data.map((project) => {
-        const projData = allProjects.find(p => p.projectId === project.projectId) || {};
+      const combinedProjects = (response.data || []).map((project) => {
+        const pId = Number(project.projectId ?? project.id);
+        const projData = (allProjects || []).find(p => Number(p.projectId ?? p.id) === pId) || {};
         return {
           id: project.projectId,
-          name: projData.name || 'Unknown Project',
+          name: projData.name || projData.projectName || 'Unknown Project',
         };
       });
 
@@ -130,19 +131,48 @@ const Report = () => {
 
   const loadEnabledModules = async (projectId) => {
     try {
-      const cfgRes = await API.get(`/ProjectConfigs/ByProject/${projectId}`);
-      const cfg = Array.isArray(cfgRes.data) ? cfgRes.data[0] : cfgRes.data;
-      let moduleEntries = cfg?.modules || [];
+      let cfgRes;
+      try {
+        cfgRes = await API.get(`/ProjectConfigs/ByProject/${projectId}`);
+      } catch {
+        cfgRes = await API.get(`/ProjectConfigs/${projectId}`);
+      }
+      const cfg = Array.isArray(cfgRes?.data) ? cfgRes.data[0] : cfgRes?.data;
+      let rawModules = cfg?.modules || cfg?.Modules || [];
+      if (typeof rawModules === "string") {
+        try {
+          rawModules = JSON.parse(rawModules);
+        } catch {
+          rawModules = rawModules.split(",").map((s) => s.trim());
+        }
+      }
+      let moduleEntries = Array.isArray(rawModules) ? [...rawModules] : [];
 
-      if (moduleEntries.length && typeof moduleEntries[0] === "number") {
-        const modsRes = await API.get(`/Modules`);
-        const allMods = modsRes.data || [];
-        const idToName = new Map(allMods.map((m) => [m.id, m.name]));
+      const modsRes = await API.get(`/Modules`).catch(() => ({ data: [] }));
+      const allMods = modsRes.data || [];
+      const idToName = new Map();
+      allMods.forEach((m) => {
+        if (m?.id != null) {
+          idToName.set(String(m.id), m.name);
+          idToName.set(Number(m.id), m.name);
+        }
+        if (m?.name) {
+          idToName.set(m.name.toLowerCase(), m.name);
+        }
+      });
+
+      const hasNumericIds = moduleEntries.some((id) => !isNaN(Number(id)) && String(id).trim() !== "");
+      if (hasNumericIds) {
         moduleEntries = moduleEntries
-          .sort((a, b) => a - b)
-          .map((id) => idToName.get(id))
+          .sort((a, b) => Number(a) - Number(b))
+          .map((id) => idToName.get(String(id)) || idToName.get(Number(id)) || id)
+          .filter(Boolean);
+      } else {
+        moduleEntries = moduleEntries
+          .map((n) => idToName.get(String(n).toLowerCase()) || n)
           .filter(Boolean);
       }
+
       setEnabledModuleNames(moduleEntries || []);
     } catch (err) {
       console.error("Failed to load enabled modules", err);

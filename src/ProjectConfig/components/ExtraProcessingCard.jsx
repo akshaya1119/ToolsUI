@@ -161,8 +161,8 @@ useEffect(() => {
           </div>
         }
       >
-        <Row style={{ marginBottom: 16 }}>
-          <Col span={24}>
+        <Row style={{ marginBottom: 16 }} gutter={[24, 8]}>
+          <Col>
             <Checkbox
               checked={extraProcessingConfig?.extraProcessingAsPerNR || false}
               onChange={(e) =>
@@ -176,6 +176,20 @@ useEffect(() => {
               Extra Processing as per NR
             </Checkbox>
           </Col>
+          {/* <Col>
+            <Checkbox
+              checked={extraProcessingConfig?.attachExtraForEachCatchForAllNodal || false}
+              onChange={(e) =>
+                setExtraProcessingConfig((prev) => ({
+                  ...(prev || {}),
+                  attachExtraForEachCatchForAllNodal: e.target.checked,
+                }))
+              }
+              disabled={!extraEnabled}
+            >
+              Attach extra for each catch for all nodal
+            </Checkbox>
+          </Col> */}
         </Row>
         <Row gutter={[16, 16]}>
           {extraTypes.filter((et) => {
@@ -322,6 +336,20 @@ useEffect(() => {
                                  <Radio value="same">Apply to all</Radio>
                                  <Radio value="different">Custom per nodal</Radio>
                                </Radio.Group>
+                             </div>
+                             <div style={{ borderTop: '1px dashed #d9d9d9', paddingTop: 6 }}>
+                               <Checkbox
+                                 checked={extraProcessingConfig?.attachExtraForEachCatchForAllNodal || false}
+                                 onChange={(e) =>
+                                   setExtraProcessingConfig((prev) => ({
+                                     ...(prev || {}),
+                                     attachExtraForEachCatchForAllNodal: e.target.checked,
+                                   }))
+                                 }
+                                 disabled={!extraEnabled}
+                               >
+                                 Attach extra for each catch for all nodal
+                               </Checkbox>
                              </div>
                            </Col>
                          </Row>

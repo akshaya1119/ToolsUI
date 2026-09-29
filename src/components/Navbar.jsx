@@ -60,13 +60,14 @@ export default function Navbar({ onToggleSidebar, onLogout, searchQuery, onSearc
             headers: { Authorization: `Bearer ${token}` }
           });
 
-          const combinedProjects = userProjRes.data.map((project) => {
-            const projData = projRes.data.find(p => p.projectId === project.projectId) || {};
+          const combinedProjects = (userProjRes.data || []).map((project) => {
+            const pId = Number(project.projectId ?? project.id);
+            const projData = (projRes.data || []).find(p => Number(p.projectId ?? p.id) === pId) || {};
             return {
               id: project.projectId,
-              name: projData.name || 'Unknown Project',
-              groupId: projData.groupId || project.groupId,
-              typeId: projData.typeId || project.typeId,
+              name: projData.name || projData.projectName || 'Unknown Project',
+              groupId: Number(projData.groupId ?? project.groupId),
+              typeId: Number(projData.typeId ?? project.typeId),
               isActive: project.isActive,
             };
           });
