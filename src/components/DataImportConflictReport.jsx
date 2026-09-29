@@ -1,5 +1,5 @@
-import React from "react";
-import { AutoComplete, Button, Collapse, Empty, Input, Radio, Select, Space, Table, Tabs, Tag, Typography } from "antd";
+import React, { useState, useEffect } from "react";
+import { AutoComplete, Button, Collapse, Empty, Input, InputNumber, Radio, Select, Space, Table, Tabs, Tag, Tooltip, Typography } from "antd";
 import { CheckCircleOutlined } from "@ant-design/icons";
 import {
   CONFLICT_STATUS,
@@ -265,6 +265,16 @@ const normalizeConflict = (item) => {
     return details;
   }
 
+  if (conflictType === "gender_quantity_mismatch") {
+    details.nrQuantity = getValue(item, "nrQuantity", "NRQuantity") ?? 0;
+    details.male = getValue(item, "male", "Male") ?? 0;
+    details.female = getValue(item, "female", "Female") ?? 0;
+    details.transgender = getValue(item, "transgender", "Transgender") ?? 0;
+    details.summary = details.summary || `Catch No ${catchNo || details.catchNo} (College ${collegeCode || details.collegeCode}): NR Quantity (${details.nrQuantity}) does not equal Male (${details.male}) + Female (${details.female}) + Transgender (${details.transgender}).`;
+    details.resolveKind = "gender_mismatch";
+    return details;
+  }
+
   details.resolveKind = "manual";
   details.summary = details.summary || getValue(item, "error", "Error") || "Review this conflict.";
   return details;
@@ -282,17 +292,30 @@ const renderMetaTags = (conflict) => {
   ].filter(Boolean);
 
   if (!metaItems.length) {
-    return <Text type="secondary">No extra details</Text>;
+    return <Text type="secondary">-</Text>;
   }
 
   return (
-    <Space wrap size={[4, 4]}>
-      {metaItems.map((label) => (
-        <Tag key={`${conflict.key}-${label}`} style={{ marginInlineEnd: 0, paddingInline: 5, lineHeight: "16px", fontSize: 11 }}>
-          {label}
-        </Tag>
+    <div style={{ display: "flex", flexDirection: "column", gap: 3, maxWidth: "100%", overflow: "hidden" }}>
+      {metaItems.map((label, idx) => (
+        <Tooltip key={`${conflict.key}-${idx}`} title={label} placement="topLeft">
+          <Tag style={{
+            marginInlineEnd: 0,
+            paddingInline: 6,
+            paddingBlock: 2,
+            fontSize: 11,
+            maxWidth: "100%",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            display: "block",
+            boxSizing: "border-box"
+          }}>
+            {label}
+          </Tag>
+        </Tooltip>
       ))}
-    </Space>
+    </div>
   );
 };
 
@@ -302,17 +325,39 @@ const renderValueTags = (values, key) => {
   }
 
   return (
-    <Space wrap size={[4, 4]}>
-      {values.map((value) => (
-        <Tag key={`${key}-${value}`} bordered style={{ marginInlineEnd: 0, paddingInline: 5, lineHeight: "16px", fontSize: 11 }}>
-          {value}
-        </Tag>
+    <div style={{ display: "flex", flexDirection: "column", gap: 3, maxWidth: "100%", overflow: "hidden" }}>
+      {values.map((value, idx) => (
+        <Tooltip key={`${key}-${idx}`} title={value} placement="topLeft">
+          <Tag bordered style={{
+            marginInlineEnd: 0,
+            paddingInline: 6,
+            paddingBlock: 2,
+            fontSize: 11,
+            maxWidth: "100%",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            display: "block",
+            boxSizing: "border-box"
+          }}>
+            {value}
+          </Tag>
+        </Tooltip>
       ))}
-    </Space>
+    </div>
   );
 };
 
 const renderResolvedFieldValues = (conflict) => {
+  if (conflict.conflictType === "gender_quantity_mismatch") {
+    return (
+      <Space direction="vertical" size={2} style={{ fontSize: 11 }}>
+        <div><Text type="secondary">NR Quantity:</Text> <Tag color="purple">{conflict.nrQuantity ?? 0}</Tag></div>
+        <div><Text type="secondary">Male / Female / Transgender:</Text> <Tag>{conflict.male ?? 0} / {conflict.female ?? 0} / {conflict.transgender ?? 0}</Tag></div>
+      </Space>
+    );
+  }
+
   if (conflict.conflictType === "zero_nr_quantity") {
     const currentValue = { label: "Current", value: "0" };
     const rangeValues = [
@@ -325,7 +370,7 @@ const renderResolvedFieldValues = (conflict) => {
     ].filter(Boolean);
 
     return (
-      <Space direction="vertical" size={4}>
+      <Space direction="vertical" size={4} style={{ maxWidth: "100%", overflow: "hidden" }}>
         <Tag key={`${conflict.key}-${currentValue.label}-${currentValue.value}`} bordered style={{ marginInlineEnd: 0, width: "fit-content", paddingInline: 5, lineHeight: "16px", fontSize: 11 }}>
           {currentValue.label}: {currentValue.value}
         </Tag>
@@ -352,24 +397,39 @@ const renderResolvedFieldValues = (conflict) => {
     const catchCenterNames = toArray(conflict.centerNames || []);
 
     return (
-      <Space direction="vertical" size={4} style={{ width: "100%" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 3, maxWidth: "100%", overflow: "hidden" }}>
         {catchCenterCodes.length > 0 ? (
           <div>
             <Text style={{ fontSize: 11, fontWeight: 600, color: "#334155", display: "block", marginBottom: 2 }}>
               Catch List Center Data:
             </Text>
-            <Space wrap size={[2, 2]}>
-              {catchCenterCodes.map((code, idx) => (
-                <Tag key={idx} color="blue" style={{ fontSize: 11, padding: "2px 6px" }}>
-                  Center {code} {catchCenterNames[idx] ? `- ${catchCenterNames[idx]}` : ""}
-                </Tag>
-              ))}
-            </Space>
+            <div style={{ display: "flex", flexDirection: "column", gap: 3, maxWidth: "100%" }}>
+              {catchCenterCodes.map((code, idx) => {
+                const centerText = `Center ${code} ${catchCenterNames[idx] ? `- ${catchCenterNames[idx]}` : ""}`;
+                return (
+                  <Tooltip key={idx} title={centerText} placement="topLeft">
+                    <Tag color="blue" style={{
+                      fontSize: 11,
+                      padding: "2px 6px",
+                      maxWidth: "100%",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                      display: "block",
+                      margin: 0,
+                      boxSizing: "border-box"
+                    }}>
+                      {centerText}
+                    </Tag>
+                  </Tooltip>
+                );
+              })}
+            </div>
           </div>
         ) : (
           <Text type="secondary" style={{ fontSize: 11 }}>Missing in Nodal List</Text>
         )}
-      </Space>
+      </div>
     );
   }
 
@@ -379,13 +439,89 @@ const renderResolvedFieldValues = (conflict) => {
   }
 
   return (
-    <Text style={{ fontSize: 11 }}>
+    <Text style={{ fontSize: 11, wordBreak: "break-word" }}>
       {conflict.field ? `${conflict.field}: ` : ""}{values.join(", ")}
     </Text>
   );
 };
 
 const renderActionCell = (conflict, selectedValue, loading, onSelectionChange, onResolve, centerNodalOptions = []) => {
+  if (conflict.conflictType === "gender_quantity_mismatch") {
+    const curVal = (typeof selectedValue === "object" && selectedValue !== null) ? selectedValue : {};
+    const nrQtyVal = curVal.nrQuantity !== undefined ? curVal.nrQuantity : (conflict.nrQuantity ?? 0);
+    const maleVal = curVal.male !== undefined ? curVal.male : (conflict.male ?? 0);
+    const femaleVal = curVal.female !== undefined ? curVal.female : (conflict.female ?? 0);
+    const transgenderVal = curVal.transgender !== undefined ? curVal.transgender : (conflict.transgender ?? 0);
+
+    const sumGender = Number(maleVal || 0) + Number(femaleVal || 0);
+    const isSumMatched = Number(nrQtyVal || 0) === sumGender;
+
+    const currentSelectionObj = {
+      nrQuantity: nrQtyVal,
+      male: maleVal,
+      female: femaleVal,
+      transgender: transgenderVal,
+      catchNo: conflict.catchNo,
+      collegeCode: conflict.collegeCode,
+    };
+
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 4, width: "100%", maxWidth: 220 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <div>
+            <Text style={{ fontSize: 10, color: "#475569", fontWeight: 600 }}>NR Quantity:</Text>
+            <InputNumber
+              size="small"
+              style={{ width: "100%", fontSize: 11 }}
+              min={0}
+              value={nrQtyVal}
+              onChange={(v) => onSelectionChange(conflict.key, { ...currentSelectionObj, nrQuantity: v })}
+            />
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
+            <div>
+              <Text style={{ fontSize: 10, color: "#475569", fontWeight: 600 }}>Male:</Text>
+              <InputNumber
+                size="small"
+                style={{ width: "100%", fontSize: 11 }}
+                min={0}
+                value={maleVal}
+                onChange={(v) => onSelectionChange(conflict.key, { ...currentSelectionObj, male: v })}
+              />
+            </div>
+            <div>
+              <Text style={{ fontSize: 10, color: "#475569", fontWeight: 600 }}>Female:</Text>
+              <InputNumber
+                size="small"
+                style={{ width: "100%", fontSize: 11 }}
+                min={0}
+                value={femaleVal}
+                onChange={(v) => onSelectionChange(conflict.key, { ...currentSelectionObj, female: v })}
+              />
+            </div>
+          </div>
+        </div>
+
+        {!isSumMatched && (
+          <Text type="danger" style={{ fontSize: 10 }}>
+            Sum ({sumGender}) != NR Qty ({nrQtyVal})
+          </Text>
+        )}
+
+        <Button
+          type="primary"
+          size="small"
+          icon={<CheckCircleOutlined />}
+          loading={loading}
+          onClick={() => onResolve(conflict, currentSelectionObj)}
+          style={{ marginTop: 2, width: "100%" }}
+        >
+          Update & Resolve
+        </Button>
+      </div>
+    );
+  }
+
   const isCenterNodalConflict =
     conflict.conflictType === "unassigned_catch_nodal" ||
     conflict.conflictType === "college_multiple_centers" ||
@@ -501,7 +637,7 @@ const renderActionCell = (conflict, selectedValue, loading, onSelectionChange, o
       if (opt.nodalCode && !nodalOptionsMap.has(String(opt.nodalCode))) {
         nodalOptionsMap.set(String(opt.nodalCode), {
           value: String(opt.nodalCode),
-          label: opt.nodalName ? `${opt.nodalCode} - ${opt.nodalName}` : String(opt.nodalCode),
+          label: opt.nodalName ? `${opt.nodalName} - ${opt.nodalName}` : String(opt.nodalCode),
           nodalName: opt.nodalName || "",
         });
       }
@@ -535,83 +671,81 @@ const renderActionCell = (conflict, selectedValue, loading, onSelectionChange, o
     };
 
     return (
-      <Space direction="vertical" size={4} style={{ width: "100%" }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-            <Text style={{ fontSize: 10, color: "#475569", width: 42, flexShrink: 0, fontWeight: 600 }}>Center:</Text>
-            {isCenterMultipleNodals ? (
-              <Input
-                size="small"
-                style={{ width: "100%" }}
-                value={centerCodeVal ? (finalCenterNameVal ? `${centerCodeVal} - ${finalCenterNameVal}` : centerCodeVal) : (conflict.centreCode ? `${conflict.centreCode}` : "")}
-                disabled
-              />
-            ) : (
-              <AutoComplete
-                size="small"
-                style={{ width: "100%" }}
-                placeholder="Center Code"
-                value={centerCodeVal}
-                onChange={(val) => {
-                  const opt = centerOptionsMap.get(String(val));
-                  const newCenterName = opt ? opt.centerName : (String(val) === String(currentSelectionObj.centerCode) ? currentSelectionObj.centerName : "");
-                  onSelectionChange(conflict.key, {
-                    ...currentSelectionObj,
-                    centerCode: val,
-                    centerName: newCenterName,
-                  });
-                }}
-                onSelect={(val, option) => {
-                  const opt = centerOptionsMap.get(String(val));
-                  const newCenterName = option?.centerName || opt?.centerName || currentSelectionObj.centerName || "";
-                  onSelectionChange(conflict.key, {
-                    ...currentSelectionObj,
-                    centerCode: val,
-                    centerName: newCenterName,
-                  });
-                }}
-                options={Array.from(centerOptionsMap.values())}
-                filterOption={(input, option) =>
-                  String(option?.label ?? "").toLowerCase().includes(String(input || "").toLowerCase()) ||
-                  String(option?.value ?? "").toLowerCase().includes(String(input || "").toLowerCase())
-                }
-                allowClear
-              />
-            )}
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-            <Text style={{ fontSize: 10, color: "#475569", width: 42, flexShrink: 0, fontWeight: 600 }}>Nodal:</Text>
+      <div style={{ display: "flex", flexDirection: "column", gap: 4, width: "100%", maxWidth: 190 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <Text style={{ fontSize: 10, color: "#475569", width: 38, flexShrink: 0, fontWeight: 600 }}>Center:</Text>
+          {isCenterMultipleNodals ? (
+            <Input
+              size="small"
+              style={{ width: "100%", fontSize: 11 }}
+              value={centerCodeVal ? (finalCenterNameVal ? `${centerCodeVal} - ${finalCenterNameVal}` : centerCodeVal) : (conflict.centreCode ? `${conflict.centreCode}` : "")}
+              disabled
+            />
+          ) : (
             <AutoComplete
               size="small"
-              style={{ width: "100%" }}
-              placeholder="Nodal Code"
-              value={nodalCodeVal}
+              style={{ width: "100%", fontSize: 11 }}
+              placeholder="Center"
+              value={centerCodeVal}
               onChange={(val) => {
-                const opt = nodalOptionsMap.get(String(val));
-                const newNodalName = opt ? opt.nodalName : (String(val) === String(currentSelectionObj.nodalCode) ? currentSelectionObj.nodalName : "");
+                const opt = centerOptionsMap.get(String(val));
+                const newCenterName = opt ? opt.centerName : (String(val) === String(currentSelectionObj.centerCode) ? currentSelectionObj.centerName : "");
                 onSelectionChange(conflict.key, {
                   ...currentSelectionObj,
-                  nodalCode: val,
-                  nodalName: newNodalName,
+                  centerCode: val,
+                  centerName: newCenterName,
                 });
               }}
               onSelect={(val, option) => {
-                const opt = nodalOptionsMap.get(String(val));
-                const newNodalName = option?.nodalName || opt?.nodalName || currentSelectionObj.nodalName || "";
+                const opt = centerOptionsMap.get(String(val));
+                const newCenterName = option?.centerName || opt?.centerName || currentSelectionObj.centerName || "";
                 onSelectionChange(conflict.key, {
                   ...currentSelectionObj,
-                  nodalCode: val,
-                  nodalName: newNodalName,
+                  centerCode: val,
+                  centerName: newCenterName,
                 });
               }}
-              options={Array.from(nodalOptionsMap.values())}
+              options={Array.from(centerOptionsMap.values())}
               filterOption={(input, option) =>
                 String(option?.label ?? "").toLowerCase().includes(String(input || "").toLowerCase()) ||
                 String(option?.value ?? "").toLowerCase().includes(String(input || "").toLowerCase())
               }
               allowClear
             />
-          </div>
+          )}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <Text style={{ fontSize: 10, color: "#475569", width: 38, flexShrink: 0, fontWeight: 600 }}>Nodal:</Text>
+          <AutoComplete
+            size="small"
+            style={{ width: "100%", fontSize: 11 }}
+            placeholder="Nodal"
+            value={nodalCodeVal}
+            onChange={(val) => {
+              const opt = nodalOptionsMap.get(String(val));
+              const newNodalName = opt ? opt.nodalName : (String(val) === String(currentSelectionObj.nodalCode) ? currentSelectionObj.nodalCode : "");
+              onSelectionChange(conflict.key, {
+                ...currentSelectionObj,
+                nodalCode: val,
+                nodalName: newNodalName,
+              });
+            }}
+            onSelect={(val, option) => {
+              const opt = nodalOptionsMap.get(String(val));
+              const newNodalName = option?.nodalName || opt?.nodalName || currentSelectionObj.nodalName || "";
+              onSelectionChange(conflict.key, {
+                ...currentSelectionObj,
+                nodalCode: val,
+                nodalName: newNodalName,
+              });
+            }}
+            options={Array.from(nodalOptionsMap.values())}
+            filterOption={(input, option) =>
+              String(option?.label ?? "").toLowerCase().includes(String(input || "").toLowerCase()) ||
+              String(option?.value ?? "").toLowerCase().includes(String(input || "").toLowerCase())
+            }
+            allowClear
+          />
         </div>
 
         <Button
@@ -621,16 +755,18 @@ const renderActionCell = (conflict, selectedValue, loading, onSelectionChange, o
           disabled={isDisableResolve}
           loading={loading}
           onClick={() => onResolve(conflict, currentSelectionObj)}
-          style={{ marginTop: 2, alignSelf: "flex-start" }}
+          style={{ marginTop: 2, width: "100%" }}
         >
           Resolve
         </Button>
-      </Space>
+      </div>
     );
   }
 
-  const normalizedSelectedValue =
-    selectedValue === undefined || selectedValue === null ? "" : String(selectedValue);
+  const isObjectValue = selectedValue && typeof selectedValue === "object";
+  const normalizedSelectedValue = isObjectValue ? String(selectedValue.value || "") : (selectedValue === undefined || selectedValue === null ? "" : String(selectedValue));
+  const selectedNameValue = isObjectValue ? (selectedValue.name || "") : "";
+
   const zeroQuantityHelp =
     conflict.conflictType === "zero_nr_quantity" &&
     conflict.minNrQuantity !== undefined &&
@@ -659,30 +795,62 @@ const renderActionCell = (conflict, selectedValue, loading, onSelectionChange, o
       ? "Select or type Nodal"
       : conflict.conflictType === "college_multiple_centers" || conflict.conflictType === "unassigned_catch_nodal"
       ? "Select or type Center"
-      : "Select or type value";
+      : "Select or type code";
+
+  const isDynamicRule1 = conflict.dcId !== undefined || conflict.conflictType === "default";
+  const tf = (conflict.field || conflict.targetField || "").toLowerCase();
+  const needsNameField = isDynamicRule1 && (tf.includes("nodal") || tf.includes("center") || tf.includes("college"));
+  const isNewValue = normalizedSelectedValue && normalizedSelectedValue.trim() !== "" && !options.some(o => o.value === normalizedSelectedValue.trim());
+  const showNameField = needsNameField && isNewValue;
+  const namePlaceholder = tf.includes("nodal") ? "Type Nodal Name" : tf.includes("center") ? "Type Center Name" : "Type College Name";
+
+  const handleValChange = (val) => {
+    if (needsNameField) {
+      onSelectionChange(conflict.key, { value: val, name: selectedNameValue });
+    } else {
+      onSelectionChange(conflict.key, val);
+    }
+  };
+
+  const handleNameChange = (e) => {
+    onSelectionChange(conflict.key, { value: normalizedSelectedValue, name: e.target.value });
+  };
+
+  const canResolve = showNameField 
+    ? (normalizedSelectedValue.trim() !== "" && selectedNameValue.trim() !== "")
+    : (normalizedSelectedValue.trim() !== "");
 
   return (
     <Space direction="vertical" size={4} style={{ width: "100%" }}>
       <Space wrap size={[4, 4]}>
         <AutoComplete
           size="small"
-          style={{ width: 160 }}
+          style={{ width: 140 }}
           placeholder={placeholder}
           value={normalizedSelectedValue}
-          onChange={(value) => onSelectionChange(conflict.key, value)}
+          onChange={handleValChange}
           options={options}
           filterOption={(inputValue, option) =>
             String(option?.value ?? "").toLowerCase().includes(String(inputValue || "").toLowerCase())
           }
           allowClear
         />
+        {showNameField && (
+          <Input 
+            size="small" 
+            style={{ width: 140 }} 
+            placeholder={namePlaceholder} 
+            value={selectedNameValue} 
+            onChange={handleNameChange} 
+          />
+        )}
         <Button
           type="primary"
           size="small"
           icon={<CheckCircleOutlined />}
-          disabled={!normalizedSelectedValue || normalizedSelectedValue.trim() === ""}
+          disabled={!canResolve}
           loading={loading}
-          onClick={() => onResolve(conflict, normalizedSelectedValue.trim())}
+          onClick={() => onResolve(conflict, isObjectValue ? selectedValue : normalizedSelectedValue.trim())}
         >
           Resolve
         </Button>
@@ -696,16 +864,15 @@ const buildColumns = (conflictSelections, onSelectionChange, onResolve, onIgnore
   {
     title: "Summary",
     key: "conflict",
-    width: 320,
+    width: 340,
+    onCell: () => ({ style: { minWidth: 280, width: 340 } }),
+    onHeaderCell: () => ({ style: { minWidth: 280, width: 340 } }),
     render: (_, conflict) => {
       return (
-        <Space direction="vertical" size={4}>
-          <Text strong style={{ lineHeight: 1.2, fontSize: 13 }}>{conflict.summary}</Text>
-          {shouldShowCatchNos(conflict) && (
-            <Text style={{ fontSize: 11, lineHeight: 1.15, color: "rgba(0, 0, 0, 0.72)" }}>
-              Catch Nos: {formatCatchNosLabel(conflict.catchNos)}
-            </Text>
-          )}
+        <Space direction="vertical" size={4} style={{ width: "100%" }}>
+          <Text strong style={{ lineHeight: 1.45, fontSize: 13, display: "block", wordBreak: "break-word", color: "#0f172a" }}>
+            {conflict.summary}
+          </Text>
         </Space>
       );
     },
@@ -713,12 +880,14 @@ const buildColumns = (conflictSelections, onSelectionChange, onResolve, onIgnore
   {
     title: "Status",
     key: "status",
-    width: 90,
+    width: 80,
+    onCell: () => ({ style: { minWidth: 70, width: 80 } }),
+    onHeaderCell: () => ({ style: { minWidth: 70, width: 80 } }),
     render: (_, conflict) => {
       const statusConfig = STATUS_TAG_CONFIG[conflict.status] || STATUS_TAG_CONFIG[CONFLICT_STATUS.PENDING];
 
       return (
-        <Tag color={statusConfig.color} style={{ marginInlineEnd: 0, paddingInline: 5, lineHeight: "16px", fontSize: 11 }}>
+        <Tag color={statusConfig.color} style={{ marginInlineEnd: 0, paddingInline: 6, paddingBlock: 2, lineHeight: "16px", fontSize: 11 }}>
           {statusConfig.label}
         </Tag>
       );
@@ -727,13 +896,17 @@ const buildColumns = (conflictSelections, onSelectionChange, onResolve, onIgnore
   {
     title: "Details",
     key: "details",
-    width: 260,
+    width: 220,
+    onCell: () => ({ style: { minWidth: 180, width: 220 } }),
+    onHeaderCell: () => ({ style: { minWidth: 180, width: 220 } }),
     render: (_, conflict) => renderMetaTags(conflict),
   },
   {
     title: "Conflicting Fields",
     key: "resolvedField",
-    width: 260,
+    width: 230,
+    onCell: () => ({ style: { minWidth: 190, width: 230 } }),
+    onHeaderCell: () => ({ style: { minWidth: 190, width: 230 } }),
     render: (_, conflict) =>
       renderResolvedFieldValues(
         conflict,
@@ -745,7 +918,9 @@ const buildColumns = (conflictSelections, onSelectionChange, onResolve, onIgnore
   {
     title: "Action",
     key: "action",
-    width: 270,
+    width: 200,
+    onCell: () => ({ style: { minWidth: 180, width: 200 } }),
+    onHeaderCell: () => ({ style: { minWidth: 180, width: 200 } }),
     render: (_, conflict) =>
       renderActionCell(
         conflict,
@@ -778,28 +953,48 @@ const DataImportConflictReport = ({
     return <Empty description="No conflicts found" image={Empty.PRESENTED_IMAGE_SIMPLE} />;
   }
 
-  const normalizedConflicts = rawErrors.map(normalizeConflict);
-  const groupedConflicts = normalizedConflicts.reduce((acc, conflict) => {
-    const groupKey = conflict.groupLabel;
-    if (!acc[groupKey]) {
-      acc[groupKey] = [];
-    }
-    acc[groupKey].push(conflict);
-    return acc;
-  }, {});
-
-  if (extraTabContent) {
-    Object.keys(extraTabContent).forEach((key) => {
-      if (!groupedConflicts[key]) {
-        groupedConflicts[key] = [];
+  const groupedConflicts = React.useMemo(() => {
+    const normalizedConflicts = rawErrors.map(normalizeConflict);
+    const result = normalizedConflicts.reduce((acc, conflict) => {
+      const groupKey = conflict.groupLabel;
+      if (!acc[groupKey]) {
+        acc[groupKey] = [];
       }
-    });
-  }
+      acc[groupKey].push(conflict);
+      return acc;
+    }, {});
+
+    if (extraTabContent) {
+      Object.keys(extraTabContent).forEach((key) => {
+        if (!result[key]) {
+          result[key] = [];
+        }
+      });
+    }
+    return result;
+  }, [rawErrors, extraTabContent ? Object.keys(extraTabContent).join(",") : ""]);
+
+  const sortedEntries = React.useMemo(() => Object.entries(groupedConflicts).sort(([labelA], [labelB]) => {
+    if (labelA === "Rule 1 conflict") return -1;
+    if (labelB === "Rule 1 conflict") return 1;
+    if (labelA === "Rule 2 Conflict") return -1;
+    if (labelB === "Rule 2 Conflict") return 1;
+    if (labelA === "Rule 3 Conflict") return -1;
+    if (labelB === "Rule 3 Conflict") return 1;
+    return labelA.localeCompare(labelB);
+  }), [groupedConflicts]);
+
+  const [activeTab, setActiveTab] = useState(() => {
+    return sortedEntries.find(([_, items]) => items.length > 0)?.[0] || sortedEntries[0]?.[0];
+  });
 
   return (
     <Space direction="vertical" size={16} style={{ width: "100%" }}>
       <Tabs
-        items={Object.entries(groupedConflicts).map(([groupLabel, items]) => ({
+        activeKey={activeTab || sortedEntries[0]?.[0]}
+        onChange={setActiveTab}
+        items={sortedEntries
+          .map(([groupLabel, items]) => ({
           key: groupLabel,
           label: `${groupLabel} (${items.length})`,
           children: (
@@ -836,7 +1031,8 @@ const DataImportConflictReport = ({
                         rowKey="key"
                         pagination={false}
                         size="small"
-                        scroll={{ x: 1230 }}
+                        tableLayout="fixed"
+                        scroll={{ x: 1070 }}
                         rowClassName={() => "compact-conflict-row"}
                         style={{ width: "100%" }}
                       />
@@ -851,36 +1047,57 @@ const DataImportConflictReport = ({
       <style>
         {`
           .ant-collapse-small > .ant-collapse-item > .ant-collapse-header {
-            padding: 8px 10px !important;
-            font-size: 12px;
+            padding: 10px 14px !important;
+            font-size: 13px;
+            font-weight: 600;
+            background-color: #f8fafc;
           }
 
           .ant-collapse-small > .ant-collapse-item > .ant-collapse-content > .ant-collapse-content-box {
-            padding: 6px 0 0 0 !important;
+            padding: 8px 0 0 0 !important;
           }
 
           .compact-conflict-row > td {
-            padding: 6px 8px !important;
+            padding: 12px 14px !important;
             vertical-align: top;
+            word-break: break-word !important;
+            overflow-wrap: break-word !important;
+            white-space: normal !important;
           }
 
-          .compact-conflict-row .ant-space-vertical {
-            gap: 2px !important;
+          .compact-conflict-row > td:first-child {
+            width: 360px !important;
+            min-width: 320px !important;
           }
 
           .compact-conflict-row .ant-typography {
             margin-bottom: 0;
+            word-break: break-word !important;
+            overflow-wrap: break-word !important;
+            white-space: normal !important;
           }
 
           .compact-conflict-row .ant-btn-sm {
-            height: 22px;
-            padding: 0 7px;
-            font-size: 11px;
+            height: 26px;
+            padding: 0 10px;
+            font-size: 12px;
           }
 
           .compact-conflict-row .ant-select-sm,
           .compact-conflict-row .ant-input-sm {
-            font-size: 11px;
+            font-size: 12px;
+          }
+
+          .ant-table-wrapper .ant-table-thead > tr > th {
+            background-color: #f1f5f9 !important;
+            font-weight: 600 !important;
+            color: #334155 !important;
+            font-size: 12px !important;
+          }
+
+          .ant-table-wrapper .ant-table-thead > tr > th:first-child {
+            width: 360px !important;
+            min-width: 320px !important;
           }
         `}
       </style>
