@@ -78,6 +78,8 @@ const ProjectDashboard = () => {
     const order = [];
     if (lowerNames.some((n) => n.includes("duplicate")))
       order.push({ key: "duplicate", title: "Duplicate Processing" });
+    if (lowerNames.some((n) => n.includes("enhancement") || n.includes("envelope setup")))
+      order.push({ key: "enhancement", title: "Enhancement Processing" });
     if (lowerNames.some((n) => n.includes("extra")))
       order.push({ key: "extra", title: "Extra Configuration" });
     if (lowerNames.some((n) => n.includes("envelope breaking")))
@@ -102,6 +104,7 @@ const ProjectDashboard = () => {
   const checkReportExistence = async (projectId) => {
     const fileNames = {
       duplicate: "DuplicateTool.xlsx",
+      enhancement: "EnvelopeSetupAndEnhancement.xlsx",
       extra: "ExtrasCalculation.xlsx",
       envelope: "EnvelopeBreaking.xlsx",
       box: "BoxBreaking.xlsx",
@@ -135,19 +138,48 @@ const ProjectDashboard = () => {
     if (!projectId) return;
     try {
       setLoadingModules(true);
-      const cfgRes = await API.get(`/ProjectConfigs/ByProject/${projectId}`);
-      const cfg = Array.isArray(cfgRes.data) ? cfgRes.data[0] : cfgRes.data;
-      let moduleEntries = cfg?.modules || [];
+      let cfgRes;
+      try {
+        cfgRes = await API.get(`/ProjectConfigs/ByProject/${projectId}`);
+      } catch {
+        cfgRes = await API.get(`/ProjectConfigs/${projectId}`);
+      }
+      const cfg = Array.isArray(cfgRes?.data) ? cfgRes.data[0] : cfgRes?.data;
+      let rawModules = cfg?.modules || cfg?.Modules || [];
+      if (typeof rawModules === "string") {
+        try {
+          rawModules = JSON.parse(rawModules);
+        } catch {
+          rawModules = rawModules.split(",").map((s) => s.trim());
+        }
+      }
+      let moduleEntries = Array.isArray(rawModules) ? [...rawModules] : [];
 
-      if (moduleEntries.length && typeof moduleEntries[0] === "number") {
-        const modsRes = await API.get(`/Modules`);
-        const allMods = modsRes.data || [];
-        const idToName = new Map(allMods.map((m) => [m.id, m.name]));
+      const modsRes = await API.get(`/Modules`).catch(() => ({ data: [] }));
+      const allMods = modsRes.data || [];
+      const idToName = new Map();
+      allMods.forEach((m) => {
+        if (m?.id != null) {
+          idToName.set(String(m.id), m.name);
+          idToName.set(Number(m.id), m.name);
+        }
+        if (m?.name) {
+          idToName.set(m.name.toLowerCase(), m.name);
+        }
+      });
+
+      const hasNumericIds = moduleEntries.some((id) => !isNaN(Number(id)) && String(id).trim() !== "");
+      if (hasNumericIds) {
         moduleEntries = moduleEntries
-          .sort((a, b) => a - b)
-          .map((id) => idToName.get(id))
+          .sort((a, b) => Number(a) - Number(b))
+          .map((id) => idToName.get(String(id)) || idToName.get(Number(id)) || id)
+          .filter(Boolean);
+      } else {
+        moduleEntries = moduleEntries
+          .map((n) => idToName.get(String(n).toLowerCase()) || n)
           .filter(Boolean);
       }
+
       setEnabledModuleNames(moduleEntries || []);
       const order = computeRunOrder(moduleEntries);
       const initialSteps = order.map((o) => ({

@@ -559,6 +559,23 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
       return normalize(v1) || normalize(v2);
     });
 
+    extraProcessingParsed.attachExtraForEachCatchForAllNodal = extrasConfig.some((item) => {
+      const v1 = item.AttachExtraForEachCatchForAllNodal;
+      const v2 = item.attachExtraForEachCatchForAllNodal;
+      const normalize = (v) => {
+        if (v === true || v === false) return v;
+        if (v === 1 || v === "1") return true;
+        if (v === 0 || v === "0") return false;
+        if (typeof v === "string") {
+          const s = v.toLowerCase();
+          if (s === "true") return true;
+          if (s === "false") return false;
+        }
+        return false;
+      };
+      return normalize(v1) || normalize(v2);
+    });
+
     parsedValues.extraProcessingConfig = JSON.parse(
       JSON.stringify(extraProcessingParsed),
     );
@@ -820,6 +837,40 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
 
           extraProcessingParsed[type] = config;
           extraSelections[type] = item.mode;
+        });
+
+        extraProcessingParsed.extraProcessingAsPerNR = extrasConfig.some((item) => {
+          const v1 = item.IsExtraProcessingAsPerNR;
+          const v2 = item.isExtraProcessingAsPerNR;
+          const normalize = (v) => {
+            if (v === true || v === false) return v;
+            if (v === 1 || v === "1") return true;
+            if (v === 0 || v === "0") return false;
+            if (typeof v === "string") {
+              const s = v.toLowerCase();
+              if (s === "true") return true;
+              if (s === "false") return false;
+            }
+            return false;
+          };
+          return normalize(v1) || normalize(v2);
+        });
+
+        extraProcessingParsed.attachExtraForEachCatchForAllNodal = extrasConfig.some((item) => {
+          const v1 = item.AttachExtraForEachCatchForAllNodal;
+          const v2 = item.attachExtraForEachCatchForAllNodal;
+          const normalize = (v) => {
+            if (v === true || v === false) return v;
+            if (v === 1 || v === "1") return true;
+            if (v === 0 || v === "0") return false;
+            if (typeof v === "string") {
+              const s = v.toLowerCase();
+              if (s === "true") return true;
+              if (s === "false") return false;
+            }
+            return false;
+          };
+          return normalize(v1) || normalize(v2);
         });
 
         parsedValues.extraProcessingConfig = JSON.parse(
