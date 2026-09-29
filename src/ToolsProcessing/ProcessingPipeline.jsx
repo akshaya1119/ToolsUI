@@ -611,7 +611,7 @@ const ProcessingPipeline = () => {
     // Real module-based steps — use specific substrings to avoid cross-matching
     if (lowerNames.some((n) => n.includes("duplicate")))
       order.push({ key: "duplicate", title: "Duplicate Processing" });
-    if (lowerNames.includes("envelope setup and enhancement"))
+    if (lowerNames.some((n) => n.includes("enhancement") || n.includes("envelope setup")))
       order.push({ key: "enhancement", title: "Enhancement Processing" });
     if (lowerNames.some((n) => n.includes("extra")))
       order.push({ key: "extra", title: "Extra Configuration" });
@@ -662,8 +662,13 @@ const ProcessingPipeline = () => {
     const loadEnabled = async () => {
       try {
         setLoadingModules(true);
-        const cfgRes = await API.get(`/ProjectConfigs/${projectId}`);
-        const cfg = Array.isArray(cfgRes.data) ? cfgRes.data[0] : cfgRes.data;
+        let cfgRes;
+        try {
+          cfgRes = await API.get(`/ProjectConfigs/ByProject/${projectId}`);
+        } catch {
+          cfgRes = await API.get(`/ProjectConfigs/${projectId}`);
+        }
+        const cfg = Array.isArray(cfgRes?.data) ? cfgRes.data[0] : cfgRes?.data;
 
         // Store full config for display
         setProjectConfig(cfg);
@@ -672,23 +677,45 @@ const ProcessingPipeline = () => {
         const extrasRes = await API.get(`/ExtrasConfigurations/ByProject/${projectId}`).catch(() => ({ data: [] }));
         setExtraConfigData(Array.isArray(extrasRes.data) ? extrasRes.data : []);
 
-        let moduleEntries = cfg?.modules || [];
+        let rawModules = cfg?.modules || cfg?.Modules || [];
+        if (typeof rawModules === "string") {
+          try {
+            rawModules = JSON.parse(rawModules);
+          } catch {
+            rawModules = rawModules.split(",").map((s) => s.trim());
+          }
+        }
+        let moduleEntries = Array.isArray(rawModules) ? [...rawModules] : [];
 
-        // If IDs, map to names
-        if (moduleEntries.length && typeof moduleEntries[0] === "number") {
-          const modsRes = await API.get(`/Modules`);
-          const allMods = modsRes.data || [];
-          setAllModules(allMods);
-          const idToName = new Map(allMods.map((m) => [m.id, m.name]));
+        // Fetch all modules once
+        const modsRes = await API.get(`/Modules`).catch(() => ({ data: [] }));
+        const allMods = modsRes.data || [];
+        setAllModules(allMods);
+
+        const idToName = new Map();
+        allMods.forEach((m) => {
+          if (m?.id != null) {
+            idToName.set(String(m.id), m.name);
+            idToName.set(Number(m.id), m.name);
+          }
+          if (m?.name) {
+            idToName.set(m.name.toLowerCase(), m.name);
+          }
+        });
+
+        const hasNumericIds = moduleEntries.some((id) => !isNaN(Number(id)) && String(id).trim() !== "");
+
+        if (hasNumericIds) {
           moduleEntries = moduleEntries
-            .sort((a, b) => a - b)                // Sort ascending
-            .map((id) => idToName.get(id))       // Map ID to name
+            .sort((a, b) => Number(a) - Number(b))
+            .map((id) => idToName.get(String(id)) || idToName.get(Number(id)) || id)
             .filter(Boolean);
         } else {
-          // If already names, still fetch all modules once for dependency resolution
-          const modsRes = await API.get(`/Modules`);
-          setAllModules(modsRes.data || []);
+          moduleEntries = moduleEntries
+            .map((n) => idToName.get(String(n).toLowerCase()) || n)
+            .filter(Boolean);
         }
+
         setEnabledModuleNames(moduleEntries || []);
         const order = computeRunOrder(moduleEntries);
         const initialSteps = order.map((o) => ({

@@ -9,6 +9,9 @@ import {
 import axios from "axios";
 import API from "../hooks/api";
 import { useLocation } from "react-router-dom";
+import { getCurrentUserRoleId } from "../hooks/useUserMap";
+
+const { Option } = Select;
 
 const Project = () => {
     const location = useLocation();
@@ -21,7 +24,7 @@ const Project = () => {
     const [modalVisible, setModalVisible] = useState(false);
     const [name, setName] = useState("");
     const [selectedProjectId, setSelectedProjectId] = useState(null);
-    const selectedProject = projectNames.find(p => p.projectId === selectedProjectId);
+    const selectedProject = projectNames.find(p => Number(p.projectId ?? p.id) === Number(selectedProjectId));
     const [selectedUserIds, setSelectedUserIds] = useState([]); // For multiple user selection
     const [selectedStatus, setSelectedStatus] = useState(null); // Preserve status when editing
     const token = localStorage.getItem("token");
@@ -35,18 +38,26 @@ const Project = () => {
     useEffect(() => {
         // Authorization check: Managers (RoleId 4) are not allowed to access Project Master
         const checkAuthorization = async () => {
+            const currentRoleId = getCurrentUserRoleId();
+            if (currentRoleId === 4) {
+                message.error("Managers are not authorized to access project master configuration.");
+                window.history.back();
+                return;
+            }
             try {
                 const res = await axios.get(`${url}/User`, {
                     headers: { Authorization: `Bearer ${token}` },
                 });
-                const currentUser = res.data.find(u => u.userId === parseInt(localStorage.getItem("userId") || "0"));
-                if (currentUser && currentUser.roleId === 4) {
+                const userList = Array.isArray(res.data) ? res.data : (res.data?.$values || []);
+                const currentUserId = parseInt(localStorage.getItem("userId") || "0");
+                const currentUser = userList.find(u => Number(u.userId ?? u.id) === currentUserId);
+                if (currentUser && Number(currentUser.roleId ?? currentUser.RoleId) === 4) {
                     message.error("Managers are not authorized to access project master configuration.");
                     window.history.back();
                     return;
                 }
             } catch (err) {
-                console.error("Failed to check authorization", err);
+                console.warn("ERP /User authorization check skipped due to error:", err?.message || err);
             }
         };
         
@@ -119,20 +130,43 @@ const Project = () => {
     const fetchProjectNames = async () => {
         try {
             const res = await axios.get(`${url}/Project`);
-            setProjectNames(res.data || []); // Ensure the data is an empty array if undefined
+            const data = Array.isArray(res.data) ? res.data : (res.data?.data || res.data?.$values || []);
+            setProjectNames(data || []);
+            if (data && data.length > 0) {
+                localStorage.setItem("cached_all_projects", JSON.stringify(data));
+            }
         } catch (err) {
             console.error("Failed to fetch project names", err);
+            try {
+                const cached = localStorage.getItem("cached_all_projects");
+                if (cached) setProjectNames(JSON.parse(cached));
+            } catch {}
         }
     };
 
-    // Fetch users with roleId 3
+    // Fetch users with roleId <= 3
     const getUsers = async () => {
         try {
-            const res = await axios.get(`${url}/User`, {
-                headers: { Authorization: `Bearer ${token}` },
-            });
-            const response = res.data.filter((r) => r.roleId <= 3); // Filter by roleId 3
-            setUsers(response || []); // Ensure the data is an empty array if undefined
+            let userList = [];
+            try {
+                const res = await axios.get(`${url}/User`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                });
+                userList = Array.isArray(res.data) ? res.data : (res.data?.$values || []);
+            } catch (erpErr) {
+                console.warn("Failed to fetch users from ERP /User API:", erpErr?.message || erpErr);
+                try {
+                    const cached = localStorage.getItem("cached_users");
+                    if (cached) userList = JSON.parse(cached);
+                } catch {}
+            }
+
+            if (userList && userList.length > 0) {
+                localStorage.setItem("cached_users", JSON.stringify(userList));
+            }
+
+            const response = userList.filter((r) => Number(r.roleId ?? r.RoleId) <= 3);
+            setUsers(response || []);
         } catch (err) {
             console.error("Failed to fetch users", err);
         }
@@ -150,8 +184,12 @@ const Project = () => {
     const handleEdit = (record) => {
         setEditingItem(record);
         setName(record.name);
-        setSelectedProjectId(record.projectId);
-        setSelectedUserIds(record.userAssigned || []);
+        setSelectedProjectId(Number(record.projectId));
+        let assigned = record.userAssigned || [];
+        if (typeof assigned === "string") {
+            try { assigned = JSON.parse(assigned); } catch { assigned = assigned.split(","); }
+        }
+        setSelectedUserIds((Array.isArray(assigned) ? assigned : []).map(id => !isNaN(Number(id)) ? Number(id) : id));
         setSelectedStatus(record.status);
         setModalVisible(true);
     };
@@ -184,8 +222,8 @@ const Project = () => {
 
         try {
             const payload = {
-                projectId: selectedProjectId,
-                userAssigned: selectedUserIds,
+                projectId: String(selectedProjectId),
+                userAssigned: selectedUserIds.map(String),
                 groupId: selectedProject?.groupId,
                 typeId: selectedProject?.typeId,
                 status: editingItem ? selectedStatus : false, // Preserve status on edit, default active on add
@@ -254,20 +292,31 @@ const Project = () => {
 
     // Merge projects, project names, and user names
     const mergedProjects = projects.map((proj) => {
-        const projectName = projectNames.find(p => p.projectId === proj.projectId);
-        const userNames = Array.isArray(proj.userAssigned) // Ensure userAssigned is an array
-            ? proj.userAssigned
+        const projId = Number(proj.projectId ?? proj.id);
+        const projectName = projectNames.find(p => Number(p.projectId ?? p.id) === projId);
+        
+        let assignedList = proj.userAssigned;
+        if (typeof assignedList === "string") {
+            try {
+                assignedList = JSON.parse(assignedList);
+            } catch {
+                assignedList = assignedList.split(",").map(s => s.trim());
+            }
+        }
+
+        const userNames = Array.isArray(assignedList) && assignedList.length > 0
+            ? assignedList
                 .map(userId => {
-                    const user = users.find(u => u.userId === userId);
-                    return user ? user.firstName : '-';
+                    const user = users.find(u => Number(u.userId ?? u.id) === Number(userId));
+                    return user?.firstName || user?.name || user?.userName || (userId ? `User ${userId}` : '-');
                 })
                 .join(', ') // Combine user names into a single string
             : 'No Users Assigned'; // Fallback if userAssigned is not an array or empty
 
         return {
             ...proj,
-            projectName: projectName ? projectName.name : 'Unknown Project', // If no project found, use 'Unknown Project'
-            userNames, // Join user names as a string
+            projectName: projectName?.name || projectName?.projectName || 'Unknown Project',
+            userNames,
         };
     });
 
@@ -352,7 +401,7 @@ const Project = () => {
                     style={{ width: "100%", marginTop: 4 }}
                     placeholder="Choose a project..."
                     onChange={setSelectedProjectId}
-                    value={selectedProjectId}
+                    value={selectedProjectId != null ? Number(selectedProjectId) : undefined}
                     showSearch
                     optionFilterProp="children"
                     filterOption={(input, option) =>
@@ -361,28 +410,34 @@ const Project = () => {
                 >
                     {projectNames
                         // filter out projects already added unless editing that same project
-                        .filter(
-                            (p) =>
-                                !createdProjectIds.includes(p.projectId) ||
-                                (editingItem && editingItem.projectId === p.projectId)
-                        )
-                        .map((p) => (
-                            <Select.Option key={p.projectId} value={p.projectId}>
-                                {p.name}
-                            </Select.Option>
-                        ))}
+                        .filter((p) => {
+                            const pId = Number(p.projectId ?? p.id);
+                            const isAlreadyCreated = createdProjectIds.some(cid => Number(cid) === pId);
+                            const isCurrentEditing = editingItem && Number(editingItem.projectId) === pId;
+                            return !isAlreadyCreated || isCurrentEditing;
+                        })
+                        .map((p) => {
+                            const pId = Number(p.projectId ?? p.id);
+                            return (
+                                <Select.Option key={pId} value={pId}>
+                                    {p.name || p.projectName}
+                                </Select.Option>
+                            );
+                        })}
                 </Select>
                 <Select
                     style={{ width: '100%', marginTop: 4 }}
                     placeholder="Select Users..."
-                    onChange={setSelectedUserIds}
-                    value={selectedUserIds}
+                    onChange={(vals) => setSelectedUserIds(vals)}
+                    value={selectedUserIds.map(v => !isNaN(Number(v)) ? Number(v) : v)}
                     mode="multiple" // Allow multiple selections
                 >
-                    <Option value="">Select Users...</Option>
-                    {users.map(u => (
-                        <Option key={u.userId} value={u.userId}>{u.firstName}</Option>
-                    ))}
+                    {users.map(u => {
+                        const uId = Number(u.userId ?? u.id);
+                        return (
+                            <Option key={uId} value={uId}>{u.firstName || u.name || `User ${uId}`}</Option>
+                        );
+                    })}
                 </Select>
             </Modal>
         </div>

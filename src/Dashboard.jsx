@@ -112,28 +112,53 @@ export default function Dashboard({ externalSearchQuery, onSearchQueryChange }) 
       let allProjects = [];
       const cachedProjects = localStorage.getItem("cached_all_projects");
       if (cachedProjects) {
-        allProjects = JSON.parse(cachedProjects);
-      } else {
-        const projRes = await axios.get(`${url}/Project`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        allProjects = projRes.data || [];
-        localStorage.setItem("cached_all_projects", JSON.stringify(allProjects));
+        try {
+          allProjects = JSON.parse(cachedProjects);
+        } catch { }
+      }
+
+      // Prepare promise to fetch fresh projects from ERP API
+      const fetchFreshProjectsPromise = axios.get(`${url}/Project`, {
+        headers: { Authorization: `Bearer ${token}` }
+      }).then(projRes => {
+        const freshList = projRes.data || [];
+        localStorage.setItem("cached_all_projects", JSON.stringify(freshList));
+        return freshList;
+      }).catch(err => {
+        console.warn("Could not fetch fresh projects from ERP API:", err);
+        return allProjects;
+      });
+
+      // If no cached projects, await the API call immediately
+      if (!allProjects || allProjects.length === 0) {
+        allProjects = await fetchFreshProjectsPromise;
       }
 
       // 2. Get user's active projects from Tools API
       const response = await API.get('/Projects/UserId');
+      const userProjects = response.data || [];
+
+      // If any user project is missing from allProjects (e.g. newly created), re-fetch fresh projects from ERP
+      const hasMissingProject = userProjects.some(project => {
+        const id = Number(project.projectId ?? project.id);
+        return !allProjects.some(p => Number(p.projectId ?? p.id) === id);
+      });
+
+      if (hasMissingProject) {
+        allProjects = await fetchFreshProjectsPromise;
+      }
 
       // 3. Combine user projects with their names from allProjects
-      const combinedProjects = response.data.map((project) => {
-        const projData = allProjects.find(p => p.projectId === project.projectId) || {};
+      const combinedProjects = userProjects.map((project) => {
+        const pId = Number(project.projectId ?? project.id);
+        const projData = allProjects.find(p => Number(p.projectId ?? p.id) === pId) || {};
         return {
           id: project.projectId,
-          name: projData.name || 'Unknown Project',
+          name: projData.name || projData.projectName || 'Unknown Project',
           timeAgo: project.timeAgo,
           loggedAt: project.loggedAt,
-          groupId: projData.groupId || project.groupId, 
-          typeId: projData.typeId || project.typeId,   
+          groupId: Number(projData.groupId ?? project.groupId), 
+          typeId: Number(projData.typeId ?? project.typeId),   
           isActive: project.isActive, // Get isActive from API response
         };
       });
@@ -207,17 +232,18 @@ export default function Dashboard({ externalSearchQuery, onSearchQueryChange }) 
     projects.forEach(p => {
       // Only count active projects (treat undefined/null as active for backward compatibility)
       if (p.isActive !== false) {
-        counts[p.groupId] = (counts[p.groupId] || 0) + 1;
+        const gid = Number(p.groupId);
+        counts[gid] = (counts[gid] || 0) + 1;
         
         // Track last accessed project in each group
         if (
-        !lastAccessed[p.groupId] ||
-        new Date(p.loggedAt) > new Date(lastAccessed[p.groupId].loggedAt)
-      ) {
-        lastAccessed[p.groupId] = p;
+          !lastAccessed[gid] ||
+          new Date(p.loggedAt) > new Date(lastAccessed[gid].loggedAt)
+        ) {
+          lastAccessed[gid] = p;
+        }
       }
-    }
-  });
+    });
   
   return {
     counts,
@@ -307,9 +333,9 @@ export default function Dashboard({ externalSearchQuery, onSearchQueryChange }) 
     
     // Search only within the selected group's projects
     return projects.filter(project => 
-      project.groupId === selectedGroupId &&
+      Number(project.groupId) === Number(selectedGroupId) &&
       project.isActive !== false && // Only show active projects
-      project.name.toLowerCase().includes(debouncedSearchQuery.toLowerCase())
+      (project.name || "").toLowerCase().includes(debouncedSearchQuery.toLowerCase())
     );
   }, [projects, selectedGroupId, debouncedSearchQuery, view]);
 
