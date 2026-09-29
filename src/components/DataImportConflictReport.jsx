@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { AutoComplete, Button, Collapse, Empty, Input, Radio, Select, Space, Table, Tabs, Tag, Tooltip, Typography } from "antd";
+import { AutoComplete, Button, Collapse, Empty, Input, InputNumber, Radio, Select, Space, Table, Tabs, Tag, Tooltip, Typography } from "antd";
 import { CheckCircleOutlined } from "@ant-design/icons";
 import {
   CONFLICT_STATUS,
@@ -265,6 +265,16 @@ const normalizeConflict = (item) => {
     return details;
   }
 
+  if (conflictType === "gender_quantity_mismatch") {
+    details.nrQuantity = getValue(item, "nrQuantity", "NRQuantity") ?? 0;
+    details.male = getValue(item, "male", "Male") ?? 0;
+    details.female = getValue(item, "female", "Female") ?? 0;
+    details.transgender = getValue(item, "transgender", "Transgender") ?? 0;
+    details.summary = details.summary || `Catch No ${catchNo || details.catchNo} (College ${collegeCode || details.collegeCode}): NR Quantity (${details.nrQuantity}) does not equal Male (${details.male}) + Female (${details.female}) + Transgender (${details.transgender}).`;
+    details.resolveKind = "gender_mismatch";
+    return details;
+  }
+
   details.resolveKind = "manual";
   details.summary = details.summary || getValue(item, "error", "Error") || "Review this conflict.";
   return details;
@@ -339,6 +349,15 @@ const renderValueTags = (values, key) => {
 };
 
 const renderResolvedFieldValues = (conflict) => {
+  if (conflict.conflictType === "gender_quantity_mismatch") {
+    return (
+      <Space direction="vertical" size={2} style={{ fontSize: 11 }}>
+        <div><Text type="secondary">NR Quantity:</Text> <Tag color="purple">{conflict.nrQuantity ?? 0}</Tag></div>
+        <div><Text type="secondary">Male / Female / Transgender:</Text> <Tag>{conflict.male ?? 0} / {conflict.female ?? 0} / {conflict.transgender ?? 0}</Tag></div>
+      </Space>
+    );
+  }
+
   if (conflict.conflictType === "zero_nr_quantity") {
     const currentValue = { label: "Current", value: "0" };
     const rangeValues = [
@@ -427,6 +446,82 @@ const renderResolvedFieldValues = (conflict) => {
 };
 
 const renderActionCell = (conflict, selectedValue, loading, onSelectionChange, onResolve, centerNodalOptions = []) => {
+  if (conflict.conflictType === "gender_quantity_mismatch") {
+    const curVal = (typeof selectedValue === "object" && selectedValue !== null) ? selectedValue : {};
+    const nrQtyVal = curVal.nrQuantity !== undefined ? curVal.nrQuantity : (conflict.nrQuantity ?? 0);
+    const maleVal = curVal.male !== undefined ? curVal.male : (conflict.male ?? 0);
+    const femaleVal = curVal.female !== undefined ? curVal.female : (conflict.female ?? 0);
+    const transgenderVal = curVal.transgender !== undefined ? curVal.transgender : (conflict.transgender ?? 0);
+
+    const sumGender = Number(maleVal || 0) + Number(femaleVal || 0);
+    const isSumMatched = Number(nrQtyVal || 0) === sumGender;
+
+    const currentSelectionObj = {
+      nrQuantity: nrQtyVal,
+      male: maleVal,
+      female: femaleVal,
+      transgender: transgenderVal,
+      catchNo: conflict.catchNo,
+      collegeCode: conflict.collegeCode,
+    };
+
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 4, width: "100%", maxWidth: 220 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <div>
+            <Text style={{ fontSize: 10, color: "#475569", fontWeight: 600 }}>NR Quantity:</Text>
+            <InputNumber
+              size="small"
+              style={{ width: "100%", fontSize: 11 }}
+              min={0}
+              value={nrQtyVal}
+              onChange={(v) => onSelectionChange(conflict.key, { ...currentSelectionObj, nrQuantity: v })}
+            />
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
+            <div>
+              <Text style={{ fontSize: 10, color: "#475569", fontWeight: 600 }}>Male:</Text>
+              <InputNumber
+                size="small"
+                style={{ width: "100%", fontSize: 11 }}
+                min={0}
+                value={maleVal}
+                onChange={(v) => onSelectionChange(conflict.key, { ...currentSelectionObj, male: v })}
+              />
+            </div>
+            <div>
+              <Text style={{ fontSize: 10, color: "#475569", fontWeight: 600 }}>Female:</Text>
+              <InputNumber
+                size="small"
+                style={{ width: "100%", fontSize: 11 }}
+                min={0}
+                value={femaleVal}
+                onChange={(v) => onSelectionChange(conflict.key, { ...currentSelectionObj, female: v })}
+              />
+            </div>
+          </div>
+        </div>
+
+        {!isSumMatched && (
+          <Text type="danger" style={{ fontSize: 10 }}>
+            Sum ({sumGender}) != NR Qty ({nrQtyVal})
+          </Text>
+        )}
+
+        <Button
+          type="primary"
+          size="small"
+          icon={<CheckCircleOutlined />}
+          loading={loading}
+          onClick={() => onResolve(conflict, currentSelectionObj)}
+          style={{ marginTop: 2, width: "100%" }}
+        >
+          Update & Resolve
+        </Button>
+      </div>
+    );
+  }
+
   const isCenterNodalConflict =
     conflict.conflictType === "unassigned_catch_nodal" ||
     conflict.conflictType === "college_multiple_centers" ||
@@ -884,6 +979,8 @@ const DataImportConflictReport = ({
     if (labelB === "Rule 1 conflict") return 1;
     if (labelA === "Rule 2 Conflict") return -1;
     if (labelB === "Rule 2 Conflict") return 1;
+    if (labelA === "Rule 3 Conflict") return -1;
+    if (labelB === "Rule 3 Conflict") return 1;
     return labelA.localeCompare(labelB);
   }), [groupedConflicts]);
 
