@@ -228,12 +228,12 @@ const DataImport = () => {
     setLoading(true);
     try {
       // Use localLotFilter if it's set, otherwise use selectedLot from store
-      const effectiveLot = localLotFilter && localLotFilter !== "" && localLotFilter !== "ALL" 
-        ? parseInt(localLotFilter, 10) 
-        : selectedLot && selectedLot !== "ALL" 
-          ? selectedLot 
+      const effectiveLot = localLotFilter && localLotFilter !== "" && localLotFilter !== "ALL"
+        ? parseInt(localLotFilter, 10)
+        : selectedLot && selectedLot !== "ALL"
+          ? selectedLot
           : null;
-      
+
       const lotParam = effectiveLot ? { lotNo: effectiveLot } : {};
       const res = await API.get(`/NRDatas/GetByProjectId/${projectId}`, {
         params: {
@@ -1075,10 +1075,12 @@ const DataImport = () => {
         let rowData = {};
         headers.forEach((header, index) => {
           const value = row[index];  // Define the value variable based on the current row's data
-          rowData[header] = value;
-
-          if (header === "ExamDate" && value) {
-            rowData[header] = parseDate(value); // Parse date if it's for "ExamDate"
+          const isDateField = header && (
+            header.toLowerCase().includes("date") ||
+            header.toLowerCase() === "examdate"
+          );
+          if (isDateField && value !== undefined && value !== null && value !== "") {
+            rowData[header] = parseDate(value); // Parse date if it's a date field
           }
         });
 
@@ -2150,45 +2152,45 @@ const DataImport = () => {
   const iconStyle = { color: PRIMARY_COLOR, marginRight: 6 };
 
   const parseDate = (value) => {
-    // If the value is a number, it's a date stored as a number in Excel
+    if (value === null || value === undefined || value === '') return value;
+
+    // 1. If the value is a number (Excel serial date)
     if (typeof value === 'number') {
-      // Excel stores dates as serial numbers, so convert it to a Date object
-      return new Date(Math.round((value - 25569) * 86400 * 1000)); // Convert Excel date to JS date
+      const dateObj = new Date(Math.round((value - 25569) * 86400 * 1000));
+      if (!isNaN(dateObj.getTime())) {
+        const day = String(dateObj.getUTCDate()).padStart(2, '0');
+        const month = String(dateObj.getUTCMonth() + 1).padStart(2, '0');
+        const year = dateObj.getUTCFullYear();
+        return `${day}-${month}-${year}`;
+      }
     }
 
-    // If the value is a string, try to parse it as a date
+    // 2. If the value is a string, handle common date formats explicitly
     if (typeof value === 'string') {
-      // Handle common formats like DD/MM/YYYY or DD-MM-YYYY
-      const parts = value.split(/[-/.]/);
+      const trimmed = value.trim();
+      const parts = trimmed.split(/[-/.]/);
       if (parts.length === 3) {
         let day, month, year;
         if (parts[2].length === 4) {
-          // DD/MM/YYYY
+          // Format: DD-MM-YYYY or DD/MM/YYYY
           day = parseInt(parts[0], 10);
           month = parseInt(parts[1], 10);
           year = parseInt(parts[2], 10);
         } else if (parts[0].length === 4) {
-          // YYYY/MM/DD
+          // Format: YYYY-MM-DD or YYYY/MM/DD
           year = parseInt(parts[0], 10);
           month = parseInt(parts[1], 10);
           day = parseInt(parts[2], 10);
         }
-        
-        if (day && month && year) {
-          const parsedDate = new Date(year, month - 1, day);
-          if (parsedDate.getFullYear() === year && parsedDate.getMonth() === month - 1 && parsedDate.getDate() === day) {
-            return parsedDate;
-          }
+
+        if (day >= 1 && day <= 31 && month >= 1 && month <= 12 && year > 1900) {
+          const paddedDay = String(day).padStart(2, '0');
+          const paddedMonth = String(month).padStart(2, '0');
+          return `${paddedDay}-${paddedMonth}-${year}`;
         }
-      }
-      
-      // Fallback to default Date.parse
-      if (Date.parse(value)) {
-        return new Date(value);  // If it's a valid date string, parse it
       }
     }
 
-    // If it's neither, return the value as-is
     return value;
   };
 
@@ -2268,7 +2270,7 @@ const DataImport = () => {
       >
         <Card
           title={
-            <div 
+            <div
               style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", userSelect: "none" }}
               onClick={() => setUploadSectionCollapsed(prev => !prev)}
             >
