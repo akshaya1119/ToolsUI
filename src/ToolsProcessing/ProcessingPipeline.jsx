@@ -2095,6 +2095,8 @@ const loadGeneratedTemplateReports = async () => {
     const pending = templates.filter((template) => {
       const templateId = resolveTemplateId(template);
       if (!templateId) return false;
+      const hasTemplateFile = (template.hasFileOnDisk !== false && template.HasFileOnDisk !== false) && !!(template.rptFilePath || template.RPTFilePath);
+      if (!hasTemplateFile) return false;
       const exists = templateReportStatus[templateId]?.exists;
       return !exists || isMappingNewerThanReport(templateId) || staleTemplateIds.has(templateId);
     });
@@ -2668,6 +2670,8 @@ const loadGeneratedTemplateReports = async () => {
     const templatesToGenerate = lotTemplates.filter((template) => {
       const templateId = resolveTemplateId(template);
       if (!templateId) return false;
+      const hasTemplateFile = (template.hasFileOnDisk !== false && template.HasFileOnDisk !== false) && !!(template.rptFilePath || template.RPTFilePath);
+      if (!hasTemplateFile) return false;
       const statusKey = `${lotNo}_${templateId}`;
       const status = lotTemplateStatus[statusKey];
       const isStale = staleLotIds.has(statusKey);
