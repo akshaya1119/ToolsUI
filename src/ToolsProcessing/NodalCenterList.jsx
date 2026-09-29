@@ -115,11 +115,11 @@ export default function NodalCenterList() {
       const saved = localStorage.getItem(`mergeBy_${projectId}`);
       if (saved) setMergeBy(saved);
 
-
+      localStorage.removeItem(`level1Fields_${projectId}`);
+      localStorage.removeItem(`level2Fields_${projectId}`);
+      localStorage.removeItem(`level3Fields_${projectId}`);
     }
   }, [projectId]);
-
-
 
   const handleMergeByChange = (val) => {
     setMergeBy(val);
@@ -315,10 +315,25 @@ export default function NodalCenterList() {
   const fetchReports = async (currentMergeBy = mergeBy) => {
     setLoadingReports(true);
     try {
-      const res = await API.get(`/Merging/Reports/${projectId}`, {
-        params: { mergeBy: currentMergeBy }
-      });
+      const params = {
+        mergeBy: currentMergeBy,
+        level1: (level1Fields || []).join(','),
+        level2: (level2Fields || []).join(','),
+        level3: (level3Fields || []).join(',')
+      };
+      const res = await API.get(`/Merging/Reports/${projectId}`, { params });
       setReports(res.data);
+      if (res.data?.configuredLevels) {
+        if ((!level1Fields || level1Fields.length === 0) && res.data.configuredLevels.level1?.length) {
+          setLevel1Fields(res.data.configuredLevels.level1);
+        }
+        if ((!level2Fields || level2Fields.length === 0) && res.data.configuredLevels.level2?.length) {
+          setLevel2Fields(res.data.configuredLevels.level2);
+        }
+        if ((!level3Fields || level3Fields.length === 0) && res.data.configuredLevels.level3?.length) {
+          setLevel3Fields(res.data.configuredLevels.level3);
+        }
+      }
       await fetchAllNodalRecords();
     } catch (err) {
       console.error("Failed to fetch reports", err);
@@ -464,6 +479,16 @@ export default function NodalCenterList() {
       setTempData([]);
       setReports(null);
       setIsDirty(false);
+
+      // Clear level field selections and storage after successful push to main NR
+      setLevel1Fields([]);
+      setLevel2Fields([]);
+      setLevel3Fields([]);
+      if (projectId) {
+        localStorage.removeItem(`level1Fields_${projectId}`);
+        localStorage.removeItem(`level2Fields_${projectId}`);
+        localStorage.removeItem(`level3Fields_${projectId}`);
+      }
     } catch (err) {
       const errMsg = err.response?.data?.message || err.response?.data || "Push failed";
       showToast(errMsg, "error");
@@ -685,7 +710,7 @@ export default function NodalCenterList() {
     // When uploading Nodal List, check for non-standard gender values
     if (activeTab === "2") {
       const genderHeader = mapping["Gender"];
-      
+
       if (genderHeader) {
         const nonStandardMap = {};
         let nonStandardCount = 0;
@@ -812,7 +837,13 @@ export default function NodalCenterList() {
       const values = await addForm.validateFields();
       setAddingRecord(true);
       const endpoint = activeTab === "1" ? `/CatchLists` : `/NodalLists`;
-      const payload = { ...values, projectId };
+      const payload = {
+        ...values,
+        projectId,
+        examCenterCode: values.examCenterCode !== undefined && values.examCenterCode !== null ? String(values.examCenterCode) : (values.ExamCenterCode !== undefined && values.ExamCenterCode !== null ? String(values.ExamCenterCode) : undefined),
+        nodalCode: values.nodalCode !== undefined && values.nodalCode !== null ? String(values.nodalCode) : (values.NodalCode !== undefined && values.NodalCode !== null ? String(values.NodalCode) : undefined),
+        catchNo: values.catchNo !== undefined && values.catchNo !== null ? String(values.catchNo) : (values.CatchNo !== undefined && values.CatchNo !== null ? String(values.CatchNo) : undefined),
+      };
 
       await API.post(endpoint, payload);
       showToast("Record added successfully", "success");
@@ -907,7 +938,18 @@ export default function NodalCenterList() {
 
         if (index > -1) {
           const item = newData[index];
-          const updatedItem = { ...item, ...row, id: key, Id: key };
+          const updatedItem = {
+            ...item,
+            ...row,
+            id: key,
+            Id: key,
+            examCenterCode: row.examCenterCode !== undefined && row.examCenterCode !== null ? String(row.examCenterCode) : (row.ExamCenterCode !== undefined && row.ExamCenterCode !== null ? String(row.ExamCenterCode) : (item.examCenterCode !== undefined && item.examCenterCode !== null ? String(item.examCenterCode) : (item.ExamCenterCode !== undefined && item.ExamCenterCode !== null ? String(item.ExamCenterCode) : null))),
+            ExamCenterCode: row.examCenterCode !== undefined && row.examCenterCode !== null ? String(row.examCenterCode) : (row.ExamCenterCode !== undefined && row.ExamCenterCode !== null ? String(row.ExamCenterCode) : (item.examCenterCode !== undefined && item.examCenterCode !== null ? String(item.examCenterCode) : (item.ExamCenterCode !== undefined && item.ExamCenterCode !== null ? String(item.ExamCenterCode) : null))),
+            nodalCode: row.nodalCode !== undefined && row.nodalCode !== null ? String(row.nodalCode) : (row.NodalCode !== undefined && row.NodalCode !== null ? String(row.NodalCode) : (item.nodalCode !== undefined && item.nodalCode !== null ? String(item.nodalCode) : (item.NodalCode !== undefined && item.NodalCode !== null ? String(item.NodalCode) : null))),
+            NodalCode: row.nodalCode !== undefined && row.nodalCode !== null ? String(row.nodalCode) : (row.NodalCode !== undefined && row.NodalCode !== null ? String(row.NodalCode) : (item.nodalCode !== undefined && item.nodalCode !== null ? String(item.nodalCode) : (item.NodalCode !== undefined && item.NodalCode !== null ? String(item.NodalCode) : null))),
+            catchNo: row.catchNo !== undefined && row.catchNo !== null ? String(row.catchNo) : (row.CatchNo !== undefined && row.CatchNo !== null ? String(row.CatchNo) : (item.catchNo !== undefined && item.catchNo !== null ? String(item.catchNo) : (item.CatchNo !== undefined && item.CatchNo !== null ? String(item.CatchNo) : null))),
+            CatchNo: row.catchNo !== undefined && row.catchNo !== null ? String(row.catchNo) : (row.CatchNo !== undefined && row.CatchNo !== null ? String(row.CatchNo) : (item.catchNo !== undefined && item.catchNo !== null ? String(item.catchNo) : (item.CatchNo !== undefined && item.CatchNo !== null ? String(item.CatchNo) : null))),
+          };
 
           const endpoint = activeTab === "1" ? `/CatchLists/${key}` : `/NodalLists/${key}`;
           await API.put(endpoint, updatedItem);
@@ -1570,7 +1612,6 @@ export default function NodalCenterList() {
               type="error"
               showIcon
               message="Rule 2 Error: Missing Exam Center Assignments"
-              description="Every college must be assigned an exam center."
               action={
                 <Button type="primary" danger size="small" onClick={() => setActiveTab("3")}>
                   View Conflict Report
@@ -1777,6 +1818,30 @@ export default function NodalCenterList() {
     }
 
     try {
+      if (conflict.conflictType === "gender_quantity_mismatch") {
+        const conflictId = conflict.dcId || conflict.id;
+        const cNo = conflict.catchNo || (isObj ? selectedValue.catchNo : "");
+        const cCode = conflict.collegeCode || (isObj ? selectedValue.collegeCode : 0);
+        const nrQty = isObj ? Number(selectedValue.nrQuantity ?? conflict.nrQuantity ?? 0) : Number(conflict.nrQuantity ?? 0);
+        const mCount = isObj ? Number(selectedValue.male ?? conflict.male ?? 0) : Number(conflict.male ?? 0);
+        const fCount = isObj ? Number(selectedValue.female ?? conflict.female ?? 0) : Number(conflict.female ?? 0);
+        const tCount = isObj ? Number(selectedValue.transgender ?? conflict.transgender ?? 0) : Number(conflict.transgender ?? 0);
+
+        await API.post("/Merging/ResolveGenderMismatch", {
+          projectId: Number(projectId),
+          conflictId: typeof conflictId === "number" ? conflictId : (Number(conflictId) || 0),
+          catchNo: String(cNo),
+          collegeCode: Number(cCode) || 0,
+          nrQuantity: nrQty,
+          male: mCount,
+          female: fCount,
+          transgender: tCount,
+        });
+        showToast(`Updated NR Quantity & Gender counts for Catch ${cNo}`, "success");
+        await Promise.all([fetchReports(mergeBy), fetchTempData()]);
+        return;
+      }
+
       if (conflict.conflictType === "college_multiple_centers" || conflict.conflictType === "unassigned_catch_nodal") {
         const rawCodeStr = String(conflict.collegeCode || conflict.key || "").trim();
         const extractedCodeMatch = rawCodeStr.match(/^(\d+)/);
@@ -1791,9 +1856,9 @@ export default function NodalCenterList() {
             collegeCode: collegeCodeInt,
             collegeName: conflict.collegeName || (collegeCodeInt ? `College ${collegeCodeInt}` : "Unknown College"),
             gender: conflict.gender || "ALL",
-            correctCenterCode: centerCodeNum,
+            correctCenterCode: Number(centerCodeNum) || 0,
             correctCenterName: finalCenterName,
-            nodalCode: nodalCodeNum,
+            nodalCode: String(nodalCodeNum || ""),
             nodalName: finalNodalName,
           });
         } catch (resolveErr) {
@@ -1802,9 +1867,9 @@ export default function NodalCenterList() {
             projectId: Number(projectId),
             collegeCode: collegeCodeInt,
             collegeName: conflict.collegeName || (collegeCodeInt ? `College ${collegeCodeInt}` : "Unknown College"),
-            examCenterCode: centerCodeNum,
+            examCenterCode: String(centerCodeNum || ""),
             examCenterName: finalCenterName,
-            nodalCode: nodalCodeNum,
+            nodalCode: String(nodalCodeNum || ""),
             nodalName: finalNodalName,
             gender: conflict.gender || "ALL",
             status: true,
@@ -1816,8 +1881,8 @@ export default function NodalCenterList() {
         try {
           await API.post("/NodalLists/resolve-center-nodal", {
             projectId: Number(projectId),
-            centerCode: Number(conflict.centreCode),
-            correctNodalCode: nodalCodeNum,
+            centerCode: String(conflict.centreCode || ""),
+            correctNodalCode: String(nodalCodeNum || ""),
             correctNodalName: finalNodalName,
           });
         } catch {
@@ -1831,7 +1896,8 @@ export default function NodalCenterList() {
             rowsToUpdate.map((r) =>
               API.put(`/NodalLists/${r.id}`, {
                 ...r,
-                nodalCode: nodalCodeNum,
+                nodalCode: String(nodalCodeNum || r.nodalCode || ""),
+                examCenterCode: String(r.examCenterCode || ""),
                 nodalName: finalNodalName || r.nodalName,
               })
             )
@@ -1877,8 +1943,8 @@ export default function NodalCenterList() {
               items.map((r) =>
                 API.put(`/NodalLists/${r.id ?? r.Id}`, {
                   ...r,
-                  nodalCode: targetField.toLowerCase().includes("nodal") ? targetValNum : r.nodalCode,
-                  examCenterCode: targetField.toLowerCase().includes("center") ? targetValNum : r.examCenterCode,
+                  nodalCode: targetField.toLowerCase().includes("nodal") ? String(targetValNum) : String(r.nodalCode || ""),
+                  examCenterCode: targetField.toLowerCase().includes("center") ? String(targetValNum) : String(r.examCenterCode || ""),
                 })
               )
             );
@@ -1976,7 +2042,7 @@ export default function NodalCenterList() {
       conflictsList.forEach((dc) => {
         const uniqueField = dc.uniqueField || dc.UniqueField;
         if (uniqueField && (uniqueField.startsWith("Rule1_") || uniqueField.startsWith("Rule2_"))) {
-            return; // these are already handled via multiCenterDetails, etc.
+          return; // these are already handled via multiCenterDetails, etc.
         }
 
         const idKey = String(dc.id || dc.Id || "");
@@ -2017,6 +2083,62 @@ export default function NodalCenterList() {
     processDbConflicts(reports.dbRule1Conflicts, 1);
     processDbConflicts(reports.dbRule2Conflicts, 2);
 
+    if (reports.rule3Details && reports.rule3Details.length > 0) {
+      reports.rule3Details.forEach((r3, idx) => {
+        const cNo = r3.catchNo || r3.CatchNo || "";
+        const cCode = r3.collegeCode || r3.CollegeCode || 0;
+        const key = `rule3_${cNo}_${cCode}_${idx}`;
+        errors.push({
+          conflictType: "gender_quantity_mismatch",
+          summary: r3.description || `Catch No ${cNo} (College ${cCode}) NR Quantity (${r3.nrQuantity}) != Male (${r3.male}) + Female (${r3.female}).`,
+          catchNo: cNo,
+          collegeCode: cCode,
+          collegeName: r3.collegeName || "",
+          nrQuantity: r3.nrQuantity,
+          male: r3.male,
+          female: r3.female,
+          transgender: r3.transgender,
+          key: key,
+          id: key,
+          status: resolvedKeys.has(key) ? "resolved" : "pending"
+        });
+      });
+    }
+
+    if (reports.dbRule3Conflicts && reports.dbRule3Conflicts.length > 0) {
+      reports.dbRule3Conflicts.forEach((dc) => {
+        const idKey = String(dc.id || dc.Id || "");
+        const isResolved = resolvedKeys.has(idKey) || dc.status === 0 || dc.Status === 0;
+        try {
+          const conflict = JSON.parse(dc.conflictingField || dc.ConflictingField);
+          errors.push({
+            conflictType: "gender_quantity_mismatch",
+            summary: conflict.description || `Gender Quantity Mismatch for Catch ${conflict.catchNo}`,
+            status: isResolved ? "resolved" : "pending",
+            key: dc.id || dc.Id,
+            dcId: dc.id || dc.Id,
+            id: dc.id || dc.Id,
+            catchNo: conflict.catchNo,
+            collegeCode: conflict.collegeCode,
+            collegeName: conflict.collegeName,
+            nrQuantity: conflict.nrQuantity,
+            male: conflict.male,
+            female: conflict.female,
+            transgender: conflict.transgender,
+          });
+        } catch (e) {
+          errors.push({
+            conflictType: "gender_quantity_mismatch",
+            summary: `Rule 3 Conflict: ${dc.conflictingField || dc.ConflictingField}`,
+            status: isResolved ? "resolved" : "pending",
+            key: dc.id || dc.Id,
+            dcId: dc.id || dc.Id,
+            id: dc.id || dc.Id,
+          });
+        }
+      });
+    }
+
     return errors;
   }, [reports, allNodalRecords, resolvedKeys]);
 
@@ -2024,12 +2146,16 @@ export default function NodalCenterList() {
     if (!reports) return false;
     if (reports.rule1Passed === false) return false;
     if (reports.rule2Passed === false) return false;
+    if (reports.rule3Passed === false) return false;
     if (reports.rule1Errors && reports.rule1Errors.length > 0) return false;
     if (reports.rule2Errors && reports.rule2Errors.length > 0) return false;
+    if (reports.rule3Errors && reports.rule3Errors.length > 0) return false;
     const validRule2Codes = (reports.rule2CollegeCodes || []).filter(c => c && c !== "Unknown" && c !== "0");
     if (validRule2Codes.length > 0) return false;
     const validUnassignedDetails = (reports.unassignedDetails || []).filter(ud => ud.collegeCode && ud.collegeCode !== "Unknown" && ud.collegeCode !== "0" && !(ud.description && ud.description.includes("Missing College/Center Code")));
     if (validUnassignedDetails.length > 0) return false;
+    const validRule3Details = (reports.rule3Details || []);
+    if (validRule3Details.length > 0) return false;
     return true;
   }, [reports]);
 
@@ -2351,8 +2477,8 @@ export default function NodalCenterList() {
         open={isZeroModalVisible}
         onCancel={() => setIsZeroModalVisible(false)}
         footer={[
-          <Button 
-            key="cancel" 
+          <Button
+            key="cancel"
             onClick={() => {
               setIsZeroModalVisible(false);
               showToast("Upload cancelled. Please update your Excel file and re-upload.", "info");
@@ -2403,4 +2529,4 @@ export default function NodalCenterList() {
       </Modal>
     </div>
   );
-  }
+}

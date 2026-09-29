@@ -85,6 +85,14 @@ export const CONFLICT_TYPE_CONFIG = {
     accent: "#d9d9d9",
     resolveKind: "manual",
   },
+  gender_quantity_mismatch: {
+    title: "Gender Quantity Mismatch",
+    groupLabel: "Rule 3 Conflict",
+    color: "#722ed1",
+    background: "#f9f0ff",
+    accent: "#d3adf7",
+    resolveKind: "gender_mismatch",
+  },
 };
 
 export const STATUS_TAG_CONFIG = {
