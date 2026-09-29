@@ -1,5 +1,5 @@
 import React from "react";
-import { Card, Button, Typography, Space, Tag, Tabs, Select, Skeleton, Spin } from "antd";
+import { Card, Button, Typography, Space, Tag, Tabs, Select, Skeleton, Spin, Tooltip } from "antd";
 
 const { Text } = Typography;
 
@@ -118,6 +118,7 @@ const LotWisePanel = ({
                             const status = lotTemplateStatus[templateId];
                             const isStale = staleLotIds.has(templateId);
                             const isGenerating = generatingLotTemplates[templateId];
+                            const hasTemplateFile = (template.hasFileOnDisk !== false && template.HasFileOnDisk !== false) && !!(template.rptFilePath || template.RPTFilePath);
 
                             return (
                               <Card
@@ -138,14 +139,17 @@ const LotWisePanel = ({
                                     </div>
                                   </div>
                                   <Space size="small">
-                                    <Button
-                                      size="small"
-                                      type="primary"
-                                      onClick={() => handleGenerateTemplate(template)}
-                                      loading={isGenerating}
-                                    >
-                                      Generate
-                                    </Button>
+                                    <Tooltip title={!hasTemplateFile ? "Upload template first" : ""}>
+                                      <Button
+                                        size="small"
+                                        type="primary"
+                                        onClick={() => handleGenerateTemplate(template)}
+                                        loading={isGenerating}
+                                        disabled={!hasTemplateFile}
+                                      >
+                                        Generate
+                                      </Button>
+                                    </Tooltip>
                                   </Space>
                                 </div>
                               </Card>
@@ -175,6 +179,8 @@ const LotWisePanel = ({
                   return staleLotIds.has(statusKey);
                 });
 
+                const hasAnyTemplateFile = lotTemplates.some(template => (template.hasFileOnDisk !== false && template.HasFileOnDisk !== false) && !!(template.rptFilePath || template.RPTFilePath));
+
                 return {
                   key: String(lot.lotNo),
                   label: (
@@ -203,15 +209,17 @@ const LotWisePanel = ({
                             Templates
                           </Text>
                           <Space size="small">
-                            <Button
-                              size="small"
-                              type="primary"
-                              onClick={() => handleGenerateAllLotTemplates(lot.lotNo)}
-                              loading={bulkGeneratingLots}
-                              disabled={!lotReportStatus?.[lot.lotNo] || lotTemplates.length === 0}
-                            >
-                              Generate All
-                            </Button>
+                            <Tooltip title={!hasAnyTemplateFile ? "Upload at least one template first" : ""}>
+                              <Button
+                                size="small"
+                                type="primary"
+                                onClick={() => handleGenerateAllLotTemplates(lot.lotNo)}
+                                loading={bulkGeneratingLots}
+                                disabled={!lotReportStatus?.[lot.lotNo] || lotTemplates.length === 0 || !hasAnyTemplateFile}
+                              >
+                                Generate All
+                              </Button>
+                            </Tooltip>
                           </Space>
                         </div>
 
@@ -238,6 +246,7 @@ const LotWisePanel = ({
                                 ? staleTemplateIds.has(templateId) || isMappingStale
                                 : staleLotIds.has(`${lot.lotNo}_${templateId}`) || isMappingStale;
                               const canGenerate = !status?.exists || isStale;
+                              const hasTemplateFile = (template.hasFileOnDisk !== false && template.HasFileOnDisk !== false) && !!(template.rptFilePath || template.RPTFilePath);
                               return (
                                 <Card
                                   size="small"
@@ -267,21 +276,23 @@ const LotWisePanel = ({
                                       )}
                                     </div>
                                     <Space size="small">
-                                      <Button
-                                        size="small"
-                                        type="primary"
-                                        onClick={() => {
-                                          if (isProjectWide) {
-                                            handleGenerateTemplate(template);
-                                          } else {
-                                            handleGenerateLotTemplate(lot.lotNo, template);
-                                          }
-                                        }}
-                                        loading={isGenerating}
-                                        disabled={!lotReportStatus?.[lot.lotNo]}
-                                      >
-                                        Generate
-                                      </Button>
+                                      <Tooltip title={!hasTemplateFile ? "Upload template first" : ""}>
+                                        <Button
+                                          size="small"
+                                          type="primary"
+                                          onClick={() => {
+                                            if (isProjectWide) {
+                                              handleGenerateTemplate(template);
+                                            } else {
+                                              handleGenerateLotTemplate(lot.lotNo, template);
+                                            }
+                                          }}
+                                          loading={isGenerating}
+                                          disabled={!lotReportStatus?.[lot.lotNo] || !hasTemplateFile}
+                                        >
+                                          Generate
+                                        </Button>
+                                      </Tooltip>
                                     </Space>
                                   </div>
                                 </Card>
