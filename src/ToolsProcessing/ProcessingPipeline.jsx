@@ -3668,7 +3668,23 @@ const loadGeneratedTemplateReports = async () => {
       render: (_, record) => {
         const moduleTemplates = getTemplatesForModuleKey(record.key);
         const hasTemplates = moduleTemplates.length > 0;
-        const isReady = record.status === "completed" || (record.key === "box" && record.completedLots > 0);
+        const completedKeyMap = {
+          duplicate: "completedDuplicateLots",
+          enhancement: "completedEnhancementLots",
+          extra: "completedExtraLots",
+          envelopebreaking: "completedEnvelopeLots",
+          box: "completedBoxLots",
+        };
+        const completedKey = completedKeyMap[record.key];
+        const hasCompletedLots = pipelineStepStatus && completedKey && (pipelineStepStatus[completedKey] || []).length > 0;
+        
+        let isReady = record.status === "completed" || hasCompletedLots;
+        if (record.key === "box") {
+           const currentCompletedLots = Object.values(lotReportStatus || {}).filter(Boolean).length;
+           if (record.completedLots > 0 || currentCompletedLots > 0 || hasCompletedLots) {
+             isReady = true;
+           }
+        }
         const isBoxBreaking = record.key === "box";
 
         // Compute outdated info for Templates column badge
