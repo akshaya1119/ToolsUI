@@ -1371,7 +1371,7 @@ const ProcessingPipeline = () => {
       const match = allModules.find(
         (m) => String(m.name || "").toLowerCase() === String(name).toLowerCase()
       );
-      if (match?.id) map[key] = match.id;
+      if (match?.id) map[key] = Number(match.id);
     });
     return map;
   }, [allModules]);
