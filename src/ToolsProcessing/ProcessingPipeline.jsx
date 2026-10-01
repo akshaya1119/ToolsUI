@@ -106,7 +106,15 @@ const ProcessingPipeline = () => {
   const [selectedModules, setSelectedModules] = useState([]);
   const [allModules, setAllModules] = useState([]);
   const [projectConfig, setProjectConfig] = useState(null);
-  
+  const [allFields, setAllFields] = useState([]);
+
+  useEffect(() => {
+    // Fetch all fields for translating field IDs to names
+    API.get(`/Fields`)
+      .then(res => setAllFields(res.data || []))
+      .catch(err => console.error("Failed to fetch fields", err));
+  }, []);
+
   // Batch states
   const [batches, setBatches] = useState([]);
   const [selectedBatch, setSelectedBatch] = useState(1);
@@ -2874,6 +2882,11 @@ const loadGeneratedTemplateReports = async () => {
           if (typeof item === 'object' && item !== null && item.name) {
             return item.name;
           }
+          // Check if item corresponds to a field ID in allFields
+          const fieldMatch = allFields.find(f => Number(f.fieldId) === Number(item));
+          if (fieldMatch && fieldMatch.name) {
+            return fieldMatch.name;
+          }
           // Otherwise return as string
           return String(item);
         });
@@ -2888,7 +2901,7 @@ const loadGeneratedTemplateReports = async () => {
       },
       enhancement: {
         value: projectConfig.enhancement
-          ? [`Enhancement: ${projectConfig.enhancement}`]
+          ? [`Enhancement: ${getNames([projectConfig.enhancement])[0]}`]
           : ["Not configured"],
       },
       extra: {
@@ -4839,7 +4852,16 @@ Object.keys(groupedTpl).forEach((templateKey) => {
             lotTemplateStatus={lotTemplateStatus}
             staleLotIds={staleLotIds}
             generatingLotReport={generatingLotReport}
-            lotReportStatus={lotReportStatus}
+            lotReportStatus={(() => {
+              const adjustedStatus = { ...lotReportStatus };
+              (availableLots || []).forEach(lot => {
+                const isCompleted = pipelineStepStatus?.completedBoxLots?.includes(Number(lot.lotNo));
+                if (isCompleted) {
+                  adjustedStatus[lot.lotNo] = true;
+                }
+              });
+              return adjustedStatus;
+            })()}
             getBoxVersionsForLot={getBoxVersionsForLot}
             handleGenerateAllLots={handleGenerateAllLots}
             generatingLotTemplates={generatingLotTemplates}
