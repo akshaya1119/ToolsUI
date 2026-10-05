@@ -25,6 +25,7 @@ import { motion } from "framer-motion";
 import axios from "axios";
 import { getCurrentUserId } from "../hooks/useUserMap";
 import API from "../hooks/api";
+import { getRptApiUrl } from "../hooks/rptApi";
 import useStore from "../stores/ProjectData";
 import { buildReportFileName, getErrorMessageAsync, parseMappingJson, getErrorDetails,retryAsync } from "../utils/rptTemplateUtils";
 import EnvLotReportsManager from "./EnvLotReportsManager";
@@ -307,7 +308,7 @@ const ProcessingPipeline = () => {
       });
   }, [pipelineStepStatus, steps, hasDeactivatedCatches]);
 
-  const rptApiUrl = import.meta.env.VITE_RPT_API_URL;
+  const rptApiUrl = getRptApiUrl();
   const mappingUpdateKey = "rptTemplateMappingUpdatedAt";
 
   const moduleKeyToNameMap = {
@@ -4567,7 +4568,11 @@ Object.keys(groupedTpl).forEach((templateKey) => {
 
               const getEffectiveDependency = (mod) => {
                 let currentDep = dependencies[mod];
-                while (currentDep && allModules && !allModules.some(s => s.key === currentDep || s.name?.toLowerCase().includes(currentDep))) {
+                while (
+                  currentDep &&
+                  !steps.some(s => s.key === currentDep) &&
+                  !allModules?.some(s => s.key === currentDep || s.name?.toLowerCase().replace(/\s+/g, "").includes(currentDep.toLowerCase()))
+                ) {
                   currentDep = dependencies[currentDep];
                 }
                 return currentDep;
