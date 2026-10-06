@@ -1235,12 +1235,21 @@ const DataImport = () => {
         showToast(`Corrected NRData report uploaded (${mappedData.length} rows).`, "success");
       } else {
         const lotParam = selectedLot ? `?lotNo=${selectedLot}` : '';
-        const res = await API.post(`/NRDatas${lotParam}`, payload, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        console.log('NRDatas full response:', JSON.stringify(res.data, null, 2));
-        batchId = res?.data?.Batch || res?.data?.batch;
-        console.log('Extracted batchId from NRDatas:', batchId);
+
+        // Call both POST /api/NRDatas (NRDatas table) and POST /api/NrData1 (nrdata1 & centerlist tables) concurrently
+        const [nrDatasRes, res] = await Promise.all([
+          API.post(`/NRDatas${lotParam}`, payload, {
+            headers: { Authorization: `Bearer ${token}` }
+          }),
+          API.post(`/NrData1${lotParam}`, payload, {
+            headers: { Authorization: `Bearer ${token}` }
+          })
+        ]);
+
+        console.log('NRDatas full response:', JSON.stringify(nrDatasRes.data, null, 2));
+        console.log('NrData1 full response:', JSON.stringify(res.data, null, 2));
+        batchId = res?.data?.Batch || res?.data?.batch || nrDatasRes?.data?.Batch || nrDatasRes?.data?.batch;
+        console.log('Extracted batchId from response:', batchId);
         showToast(`Validation successful! ${mappedData.length} rows uploaded.`, "success");
       }
 
@@ -1257,19 +1266,21 @@ const DataImport = () => {
 
           showToast("Processing duplicates...", "info");
 
-          // Call duplicate endpoint with batchId parameter
-          const duplicateEndpoint = batchId && batchId > 0
-            ? `/Duplicate?ProjectId=${projectId}&batchId=${batchId}`
-            : `/Duplicate?ProjectId=${projectId}`;
+          // Call both duplicate endpoints concurrently with batchId parameter
+          const queryParam = batchId && batchId > 0
+            ? `ProjectId=${projectId}&batchId=${batchId}`
+            : `ProjectId=${projectId}`;
 
-          console.log('Calling duplicate endpoint:', duplicateEndpoint);
+          console.log('Calling duplicate endpoints for params:', queryParam);
 
-          const duplicateRes = await API.post(duplicateEndpoint, {}, {
-            headers: { Authorization: `Bearer ${token}` }
-          });
+          const [dupRes1, dupRes2] = await Promise.all([
+            API.post(`/Duplicate?${queryParam}`, {}, { headers: { Authorization: `Bearer ${token}` } }),
+            API.post(`/NrData1/MergeFields?${queryParam}`, {}, { headers: { Authorization: `Bearer ${token}` } })
+          ]);
 
-          console.log('Duplicate response:', duplicateRes.data);
-          const duplicatesRemoved = duplicateRes?.data?.mergedRows ?? 0;
+          const data1 = dupRes1?.data || {};
+          const data2 = dupRes2?.data || {};
+          const duplicatesRemoved = (data1.mergedRows ?? 0) + (data2.MergedRows ?? data2.mergedRows ?? 0);
           showToast(`Duplicate processing completed for batch ${batchId || 'project'}. Duplicates removed: ${duplicatesRemoved}`, "success");
         } catch (dupErr) {
           console.error("Error running duplicate processing:", dupErr);
