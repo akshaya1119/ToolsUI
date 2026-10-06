@@ -52,10 +52,13 @@ const EnvelopeBreaking = () => {
     try {
       setLoading(true);
 
-      const res = await API.post(
-        `/EnvelopeBreakageProcessing/ProcessEnvelopeBreaking?ProjectId=${project}`);
+      const [resLegacy, resNrData1Proc] = await Promise.all([
+        API.post(`/EnvelopeBreakageProcessing/ProcessEnvelopeBreaking?ProjectId=${project}`),
+        API.post(`/NrData1/ProcessEnvelopeBreaking?ProjectId=${project}`)
+      ]);
 
-      const msg = res?.data?.message || "Envelope breaking completed";
+      const resData = resNrData1Proc?.data || resLegacy?.data;
+      const msg = typeof resData === 'string' ? resData : (resData?.message || "Envelope breaking completed");
       message.success(msg);
 
       // Refresh data grid after breaking
