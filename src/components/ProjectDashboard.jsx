@@ -246,7 +246,12 @@ const ProjectDashboard = () => {
           params.append('ProjectId', projectId);
           lotNumbers.forEach(lot => params.append('LotNo', lot));
           params.append('bypassDispatch', 'true');
-          await API.post(`/BoxBreakingProcessing/ProcessBoxBreaking?${params.toString()}`);
+          const queryStr = params.toString();
+
+          await Promise.all([
+            API.post(`/BoxBreakingProcessing/ProcessBoxBreaking?${queryStr}`),
+            API.post(`/NrData1/ProcessBoxBreaking?${queryStr}`)
+          ]);
         }
         else if (step.key === "envelopeSummary")
           await API.get(

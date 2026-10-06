@@ -847,8 +847,13 @@ const ProcessingPipeline = () => {
 
     const queryStr = params.toString();
 
-    const res = await API.post(`/BoxBreakingProcessing/ProcessBoxBreaking?${queryStr}`);
-    message.success(res?.data?.message || "Box breaking completed");
+    const [resLegacy, resNrData1] = await Promise.all([
+      API.post(`/BoxBreakingProcessing/ProcessBoxBreaking?${queryStr}`),
+      API.post(`/NrData1/ProcessBoxBreaking?${queryStr}`)
+    ]);
+
+    const resData = resNrData1?.data || resLegacy?.data;
+    message.success(typeof resData === 'string' ? resData : (resData?.message || "Box breaking completed"));
   };
 
   const runCatchSummary = async (projectId) => {
