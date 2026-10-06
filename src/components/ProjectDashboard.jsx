@@ -222,14 +222,22 @@ const ProjectDashboard = () => {
         updateStepStatus(step.key, { status: "in-progress" });
         stepTimers.set(step.key, Date.now());
 
-        if (step.key === "duplicate")
-          await API.post(`/Duplicate?ProjectId=${projectId}`);
-        else if (step.key === "extra")
-          await API.post(`/ExtraEnvelopes?ProjectId=${projectId}`);
-        else if (step.key === "envelope")
-          await API.post(
-            `/EnvelopeBreakageProcessing/ProcessEnvelopeBreaking?ProjectId=${projectId}&bypassDispatch=true`
-          );
+        if (step.key === "duplicate") {
+          await Promise.all([
+            API.post(`/Duplicate?ProjectId=${projectId}`),
+            API.post(`/NrData1/MergeFields?ProjectId=${projectId}`)
+          ]);
+        } else if (step.key === "extra") {
+          await Promise.all([
+            API.post(`/ExtraEnvelopes?ProjectId=${projectId}`),
+            API.post(`/NrData1/PostExtraEnvelopes?ProjectId=${projectId}`)
+          ]);
+        } else if (step.key === "envelope") {
+          await Promise.all([
+            API.post(`/EnvelopeBreakageProcessing/ProcessEnvelopeBreaking?ProjectId=${projectId}&bypassDispatch=true`),
+            API.post(`/NrData1/ProcessEnvelopeBreaking?ProjectId=${projectId}&bypassDispatch=true`)
+          ]);
+        }
         else if (step.key === "box") {
           // Fetch lots and pass them as query parameters
           const lots = await API.get(`/NRDataLots/GetLotsWithDispatchInfo/${projectId}`).then(res => res.data || []).catch(() => []);
@@ -238,7 +246,12 @@ const ProjectDashboard = () => {
           params.append('ProjectId', projectId);
           lotNumbers.forEach(lot => params.append('LotNo', lot));
           params.append('bypassDispatch', 'true');
-          await API.post(`/BoxBreakingProcessing/ProcessBoxBreaking?${params.toString()}`);
+          const queryStr = params.toString();
+
+          await Promise.all([
+            API.post(`/BoxBreakingProcessing/ProcessBoxBreaking?${queryStr}`),
+            API.post(`/NrData1/ProcessBoxBreaking?${queryStr}`)
+          ]);
         }
         else if (step.key === "envelopeSummary")
           await API.get(
