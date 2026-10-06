@@ -1787,15 +1787,21 @@ const loadGeneratedTemplateReports = async () => {
     const lotsToProcess = isQS ? selectedLotsForQS : (isBoxBreakingDependent ? selectedLotsForBoxBreaking : [null]);
 
     for (const currentLot of lotsToProcess) {
+      const effectiveLotNos = isQS && currentLot
+        ? String(currentLot)
+        : isBoxBreakingDependent && currentLot
+        ? String(currentLot)
+        : envLotNumbers.length > 0 && !isQS && !isComposite
+        ? envLotNumbers.join(',')
+        : selectedDropdownLot !== "all" && selectedDropdownLot !== null
+        ? String(selectedDropdownLot)
+        : null;
+
       const payload = {
         projectId: Number(projectId),
         templateId: Number(templateId),
         ...(Object.keys(staticVariables).length > 0 ? { staticVariables } : {}),
-        ...(isQS && currentLot
-          ? { LotNos: String(currentLot) }
-          : (isBoxBreakingDependent && currentLot
-            ? { LotNos: String(currentLot) }
-            : (envLotNumbers.length > 0 && !isQS && !isComposite ? { LotNos: envLotNumbers.join(',') } : {}))),
+        ...(effectiveLotNos ? { LotNos: effectiveLotNos, lotNumber: Number(effectiveLotNos.split(',')[0]), lotNo: effectiveLotNos } : {}),
       };
       const messageKey = `generate-report-${payload.templateId}-${Date.now()}`;
       setGeneratingTemplates((prev) => ({ ...prev, [templateId]: true }));
@@ -2426,6 +2432,8 @@ const loadGeneratedTemplateReports = async () => {
         projectId: Number(projectId),
         templateId: Number(templateId),
         lotNumber: lotNo,
+        LotNos: String(lotNo),
+        lotNo: String(lotNo),
       };
 
       let generatedFilePath = null;
