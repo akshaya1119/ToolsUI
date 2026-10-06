@@ -25,6 +25,7 @@ import { motion } from "framer-motion";
 import axios from "axios";
 import { getCurrentUserId } from "../hooks/useUserMap";
 import API from "../hooks/api";
+import { getRptApiUrl } from "../hooks/rptApi";
 import useStore from "../stores/ProjectData";
 import { buildReportFileName, getErrorMessageAsync, parseMappingJson, getErrorDetails,retryAsync } from "../utils/rptTemplateUtils";
 import EnvLotReportsManager from "./EnvLotReportsManager";
@@ -106,7 +107,15 @@ const ProcessingPipeline = () => {
   const [selectedModules, setSelectedModules] = useState([]);
   const [allModules, setAllModules] = useState([]);
   const [projectConfig, setProjectConfig] = useState(null);
-  
+  const [allFields, setAllFields] = useState([]);
+
+  useEffect(() => {
+    // Fetch all fields for translating field IDs to names
+    API.get(`/Fields`)
+      .then(res => setAllFields(res.data || []))
+      .catch(err => console.error("Failed to fetch fields", err));
+  }, []);
+
   // Batch states
   const [batches, setBatches] = useState([]);
   const [selectedBatch, setSelectedBatch] = useState(1);
@@ -299,7 +308,7 @@ const ProcessingPipeline = () => {
       });
   }, [pipelineStepStatus, steps, hasDeactivatedCatches]);
 
-  const rptApiUrl = import.meta.env.VITE_RPT_API_URL;
+  const rptApiUrl = getRptApiUrl();
   const mappingUpdateKey = "rptTemplateMappingUpdatedAt";
 
   const moduleKeyToNameMap = {
@@ -1401,7 +1410,7 @@ const ProcessingPipeline = () => {
       const match = allModules.find(
         (m) => String(m.name || "").toLowerCase() === String(name).toLowerCase()
       );
-      if (match?.id) map[key] = match.id;
+      if (match?.id) map[key] = Number(match.id);
     });
     return map;
   }, [allModules]);
@@ -1808,15 +1817,21 @@ const loadGeneratedTemplateReports = async () => {
     const lotsToProcess = isQS ? selectedLotsForQS : (isBoxBreakingDependent ? selectedLotsForBoxBreaking : [null]);
 
     for (const currentLot of lotsToProcess) {
+      const effectiveLotNos = isQS && currentLot
+        ? String(currentLot)
+        : isBoxBreakingDependent && currentLot
+        ? String(currentLot)
+        : envLotNumbers.length > 0 && !isQS && !isComposite
+        ? envLotNumbers.join(',')
+        : selectedDropdownLot !== "all" && selectedDropdownLot !== null
+        ? String(selectedDropdownLot)
+        : null;
+
       const payload = {
         projectId: Number(projectId),
         templateId: Number(templateId),
         ...(Object.keys(staticVariables).length > 0 ? { staticVariables } : {}),
-        ...(isQS && currentLot
-          ? { LotNos: String(currentLot) }
-          : (isBoxBreakingDependent && currentLot
-            ? { LotNos: String(currentLot) }
-            : (envLotNumbers.length > 0 && !isQS && !isComposite ? { LotNos: envLotNumbers.join(',') } : {}))),
+        ...(effectiveLotNos ? { LotNos: effectiveLotNos, lotNumber: Number(effectiveLotNos.split(',')[0]), lotNo: effectiveLotNos } : {}),
       };
       const messageKey = `generate-report-${payload.templateId}-${Date.now()}`;
       setGeneratingTemplates((prev) => ({ ...prev, [templateId]: true }));
@@ -2447,6 +2462,8 @@ const loadGeneratedTemplateReports = async () => {
         projectId: Number(projectId),
         templateId: Number(templateId),
         lotNumber: lotNo,
+        LotNos: String(lotNo),
+        lotNo: String(lotNo),
       };
 
       let generatedFilePath = null;
@@ -2904,6 +2921,11 @@ const loadGeneratedTemplateReports = async () => {
           if (typeof item === 'object' && item !== null && item.name) {
             return item.name;
           }
+          // Check if item corresponds to a field ID in allFields
+          const fieldMatch = allFields.find(f => Number(f.fieldId) === Number(item));
+          if (fieldMatch && fieldMatch.name) {
+            return fieldMatch.name;
+          }
           // Otherwise return as string
           return String(item);
         });
@@ -2918,7 +2940,7 @@ const loadGeneratedTemplateReports = async () => {
       },
       enhancement: {
         value: projectConfig.enhancement
-          ? [`Enhancement: ${projectConfig.enhancement}`]
+          ? [`Enhancement: ${getNames([projectConfig.enhancement])[0]}`]
           : ["Not configured"],
       },
       extra: {
@@ -3698,7 +3720,23 @@ const loadGeneratedTemplateReports = async () => {
       render: (_, record) => {
         const moduleTemplates = getTemplatesForModuleKey(record.key);
         const hasTemplates = moduleTemplates.length > 0;
-        const isReady = record.status === "completed" || (record.key === "box" && record.completedLots > 0);
+        const completedKeyMap = {
+          duplicate: "completedDuplicateLots",
+          enhancement: "completedEnhancementLots",
+          extra: "completedExtraLots",
+          envelopebreaking: "completedEnvelopeLots",
+          box: "completedBoxLots",
+        };
+        const completedKey = completedKeyMap[record.key];
+        const hasCompletedLots = pipelineStepStatus && completedKey && (pipelineStepStatus[completedKey] || []).length > 0;
+        
+        let isReady = record.status === "completed" || hasCompletedLots;
+        if (record.key === "box") {
+           const currentCompletedLots = Object.values(lotReportStatus || {}).filter(Boolean).length;
+           if (record.completedLots > 0 || currentCompletedLots > 0 || hasCompletedLots) {
+             isReady = true;
+           }
+        }
         const isBoxBreaking = record.key === "box";
 
         // Compute outdated info for Templates column badge
@@ -4568,7 +4606,11 @@ Object.keys(groupedTpl).forEach((templateKey) => {
 
               const getEffectiveDependency = (mod) => {
                 let currentDep = dependencies[mod];
-                while (currentDep && allModules && !allModules.some(s => s.key === currentDep || s.name?.toLowerCase().includes(currentDep))) {
+                while (
+                  currentDep &&
+                  !steps.some(s => s.key === currentDep) &&
+                  !allModules?.some(s => s.key === currentDep || s.name?.toLowerCase().replace(/\s+/g, "").includes(currentDep.toLowerCase()))
+                ) {
                   currentDep = dependencies[currentDep];
                 }
                 return currentDep;
@@ -4853,7 +4895,16 @@ Object.keys(groupedTpl).forEach((templateKey) => {
             lotTemplateStatus={lotTemplateStatus}
             staleLotIds={staleLotIds}
             generatingLotReport={generatingLotReport}
-            lotReportStatus={lotReportStatus}
+            lotReportStatus={(() => {
+              const adjustedStatus = { ...lotReportStatus };
+              (availableLots || []).forEach(lot => {
+                const isCompleted = pipelineStepStatus?.completedBoxLots?.includes(Number(lot.lotNo));
+                if (isCompleted) {
+                  adjustedStatus[lot.lotNo] = true;
+                }
+              });
+              return adjustedStatus;
+            })()}
             getBoxVersionsForLot={getBoxVersionsForLot}
             handleGenerateAllLots={handleGenerateAllLots}
             generatingLotTemplates={generatingLotTemplates}

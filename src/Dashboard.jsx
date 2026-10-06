@@ -166,38 +166,43 @@ export default function Dashboard({ externalSearchQuery, onSearchQueryChange }) 
       console.log("Combined Projects:", combinedProjects);
       setProjects(combinedProjects);
       setAllProjects(combinedProjects);
+      
+      // Stop the main loading spinner immediately so projects are visible
+      setLoading(false);
 
-      // 4. For roleId <= 4, fetch projects that have correction or review catches
+      // 4. For roleId <= 4, fetch projects that have correction or review catches in the background
       if (isRoleAuthorized) {
-        try {
-          const pendingRes = await API.get('/Correction/PendingProjects');
-          console.log("[Dashboard] Pending correction projects from API:", pendingRes?.data);
-          const pendingList = (pendingRes.data || []).map((item) => {
-            const p = combinedProjects.find(cp => Number(cp.id) === Number(item.projectId)) ||
-                      allProjects.find(ap => Number(ap.projectId ?? ap.id) === Number(item.projectId)) || {};
-            return {
-              id: item.projectId,
-              name: p.name || p.projectName || `Project #${item.projectId}`,
-              groupId: p.groupId || '',
-              typeId: p.typeId || '',
-              timeAgo: p.timeAgo || '',
-              correctionCount: item.correctionCount || 0,
-              reviewCount: item.reviewCount || 0,
-            };
-          }).filter(p => p.name);
-          setCorrectionProjects(pendingList);
-        } catch (err) {
-          console.error("Failed to fetch pending correction projects", err);
-        }
+        (async () => {
+          try {
+            const pendingRes = await API.get('/Correction/PendingProjects');
+            console.log("[Dashboard] Pending correction projects from API:", pendingRes?.data);
+            const pendingList = (pendingRes.data || []).map((item) => {
+              const p = combinedProjects.find(cp => Number(cp.id) === Number(item.projectId)) ||
+                        allProjects.find(ap => Number(ap.projectId ?? ap.id) === Number(item.projectId)) || {};
+              return {
+                id: item.projectId,
+                name: p.name || p.projectName || `Project #${item.projectId}`,
+                groupId: p.groupId || '',
+                typeId: p.typeId || '',
+                timeAgo: p.timeAgo || '',
+                correctionCount: item.correctionCount || 0,
+                reviewCount: item.reviewCount || 0,
+              };
+            }).filter(p => p.name);
+            setCorrectionProjects(pendingList);
+          } catch (err) {
+            console.error("Failed to fetch pending correction projects", err);
+          }
+        })();
       } else {
         setCorrectionProjects([]);
       }
 
     } catch (err) {
       console.error("Failed to fetch projects", err);
-    } finally {
       setLoading(false);
     }
+    // finally block removed to prevent overriding loading state
   };
 
   const getGroupsAndTypes = async () => {
