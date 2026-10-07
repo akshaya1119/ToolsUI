@@ -788,13 +788,9 @@ const ProcessingPipeline = () => {
       queryParams.lotNo = selectedDropdownLot;
     }
     const query = new URLSearchParams(queryParams).toString();
-    const [resDuplicate, resNrData1] = await Promise.all([
-      API.post(`/Duplicate?${query}`),
-      API.post(`/NrData1/MergeFields?${query}`)
-    ]);
-    const dataDuplicate = resDuplicate?.data || {};
+    const resNrData1 = await API.post(`/NrData1/MergeFields?${query}`);
     const dataNrData1 = resNrData1?.data || {};
-    const duplicatesRemoved = (dataDuplicate.mergedRows ?? 0) + (dataNrData1.MergedRows ?? dataNrData1.mergedRows ?? 0);
+    const duplicatesRemoved = dataNrData1.MergedRows ?? dataNrData1.mergedRows ?? 0;
     message.success(`Duplicate processing completed. Duplicates removed: ${duplicatesRemoved}`);
   };
 
@@ -804,13 +800,13 @@ const ProcessingPipeline = () => {
       urlParams += `&lotNo=${selectedDropdownLot}`;
     }
 
-    const [resDuplicate, resNrData1, resEnvConfig] = await Promise.all([
-      API.post(`/Duplicate/Enhancement?${urlParams}`),
-      API.post(`/NrData1/Enhancement?${urlParams}`),
-      API.post(`/NrData1/EnvelopeConfiguration?ProjectId=${projectId}`)
-    ]);
+    // Step 2: Apply enhancement
+    const resNrData1 = await API.post(`/NrData1/Enhancement?${urlParams}`);
 
-    const resData = resEnvConfig?.data || resNrData1?.data || resDuplicate?.data;
+    // Step 3: Run Envelope Configuration sequentially after enhancement completes
+    const resEnvConfig = await API.post(`/NrData1/EnvelopeConfiguration?ProjectId=${projectId}`);
+
+    const resData = resEnvConfig?.data || resNrData1?.data;
     message.success(typeof resData === 'string' ? resData : (resData?.message || "Enhancement processing completed"));
   };
 
@@ -820,12 +816,8 @@ const ProcessingPipeline = () => {
       urlParams += `&lotNo=${selectedDropdownLot}`;
     }
 
-    const [resLegacy, resNrData1] = await Promise.all([
-      API.post(`/ExtraEnvelopes?${urlParams}`),
-      API.post(`/NrData1/PostExtraEnvelopes?${urlParams}`)
-    ]);
-
-    const resData = resNrData1?.data || resLegacy?.data;
+    const resNrData1 = await API.post(`/NrData1/PostExtraEnvelopes?${urlParams}`);
+    const resData = resNrData1?.data;
     message.success(resData?.message || "Extras calculation completed");
   };
 
@@ -835,12 +827,8 @@ const ProcessingPipeline = () => {
       urlParams += `&lotNo=${selectedDropdownLot}`;
     }
 
-    const [resLegacy, resNrData1Proc] = await Promise.all([
-      API.post(`/EnvelopeBreakageProcessing/ProcessEnvelopeBreaking?${urlParams}`),
-      API.post(`/NrData1/ProcessEnvelopeBreaking?${urlParams}`)
-    ]);
-
-    const resData = resNrData1Proc?.data || resLegacy?.data;
+    const resNrData1Proc = await API.post(`/NrData1/ProcessEnvelopeBreaking?${urlParams}`);
+    const resData = resNrData1Proc?.data;
     message.success(typeof resData === 'string' ? resData : (resData?.message || "Envelope breaking completed"));
   };
 
@@ -855,13 +843,8 @@ const ProcessingPipeline = () => {
     }
 
     const queryStr = params.toString();
-
-    const [resLegacy, resNrData1] = await Promise.all([
-      API.post(`/BoxBreakingProcessing/ProcessBoxBreaking?${queryStr}`),
-      API.post(`/NrData1/ProcessBoxBreaking?${queryStr}`)
-    ]);
-
-    const resData = resNrData1?.data || resLegacy?.data;
+    const resNrData1 = await API.post(`/NrData1/ProcessBoxBreaking?${queryStr}`);
+    const resData = resNrData1?.data;
     message.success(typeof resData === 'string' ? resData : (resData?.message || "Box breaking completed"));
   };
 

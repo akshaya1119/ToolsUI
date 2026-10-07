@@ -148,19 +148,39 @@ export default function Dashboard({ externalSearchQuery, onSearchQueryChange }) 
         allProjects = await fetchFreshProjectsPromise;
       }
 
-      // 3. Combine user projects with their names from allProjects
-      const combinedProjects = userProjects.map((project) => {
-        const pId = Number(project.projectId ?? project.id);
-        const projData = allProjects.find(p => Number(p.projectId ?? p.id) === pId) || {};
+      // 3. Combine master projects (all active ERP projects with status === true / 1) with user project log details
+      const activeMasterProjects = (allProjects || []).filter(p => p.status === true || p.status === 1 || p.status !== false);
+      const userProjectsMap = new Map((userProjects || []).map(up => [Number(up.projectId ?? up.id), up]));
+
+      const combinedProjects = activeMasterProjects.map((projData) => {
+        const pId = Number(projData.projectId ?? projData.id);
+        const userProj = userProjectsMap.get(pId) || {};
         return {
-          id: project.projectId,
-          name: projData.name || projData.projectName || 'Unknown Project',
-          timeAgo: project.timeAgo,
-          loggedAt: project.loggedAt,
-          groupId: Number(projData.groupId ?? project.groupId), 
-          typeId: Number(projData.typeId ?? project.typeId),   
-          isActive: project.isActive, // Get isActive from API response
+          id: pId,
+          name: projData.name || projData.projectName || userProj.name || 'Unknown Project',
+          timeAgo: userProj.timeAgo || 'Never accessed',
+          loggedAt: userProj.loggedAt || null,
+          groupId: Number(projData.groupId ?? userProj.groupId), 
+          typeId: Number(projData.typeId ?? userProj.typeId),   
+          isActive: userProj.isActive !== undefined ? userProj.isActive : (projData.status === true || projData.status === 1),
         };
+      });
+
+      // Include any user projects not present in activeMasterProjects
+      (userProjects || []).forEach(userProj => {
+        const pId = Number(userProj.projectId ?? userProj.id);
+        if (!combinedProjects.some(cp => Number(cp.id) === pId)) {
+          const projData = allProjects.find(p => Number(p.projectId ?? p.id) === pId) || {};
+          combinedProjects.push({
+            id: pId,
+            name: projData.name || projData.projectName || userProj.name || 'Unknown Project',
+            timeAgo: userProj.timeAgo || 'Never accessed',
+            loggedAt: userProj.loggedAt || null,
+            groupId: Number(projData.groupId ?? userProj.groupId),
+            typeId: Number(projData.typeId ?? userProj.typeId),
+            isActive: userProj.isActive !== undefined ? userProj.isActive : true,
+          });
+        }
       });
 
       console.log("Combined Projects:", combinedProjects);

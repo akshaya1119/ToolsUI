@@ -12,7 +12,7 @@ const isDevelopment = import.meta.env.DEV;
 
 // In development, use the vite proxy to avoid SSL certificate issues
 // In production, use the direct HTTPS URL
-const getRptApiUrl = () => {
+export const getRptApiUrl = () => {
   if (isDevelopment) {
     // Use vite proxy path (avoids SSL certificate validation)
     return '/rpt-api';
