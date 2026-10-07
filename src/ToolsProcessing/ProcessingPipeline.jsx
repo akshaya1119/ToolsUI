@@ -1656,7 +1656,7 @@ const loadGeneratedTemplateReports = async () => {
     
     // For box breaking dependent templates, show lot selection modal
     let selectedLotsForBoxBreaking = [];
-    if (isBoxBreakingDependent && !isQS && !isComposite) {
+    if (isBoxBreakingDependent && !isQS) {
       if (selectedDropdownLot !== "all" && selectedDropdownLot !== null) {
         selectedLotsForBoxBreaking = [Number(selectedDropdownLot)];
       } else {
