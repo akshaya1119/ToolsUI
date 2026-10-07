@@ -1655,7 +1655,7 @@ const loadGeneratedTemplateReports = async () => {
     
     // For box breaking dependent templates, show lot selection modal
     let selectedLotsForBoxBreaking = [];
-    if (isBoxBreakingDependent && !isQS && !isComposite) {
+    if (isBoxBreakingDependent && !isQS) {
       if (selectedDropdownLot !== "all" && selectedDropdownLot !== null) {
         selectedLotsForBoxBreaking = [Number(selectedDropdownLot)];
       } else {
@@ -1794,7 +1794,7 @@ const loadGeneratedTemplateReports = async () => {
           ? { LotNos: String(currentLot) }
           : (isBoxBreakingDependent && currentLot
             ? { LotNos: String(currentLot) }
-            : (envLotNumbers.length > 0 && !isQS && !isComposite ? { LotNos: envLotNumbers.join(',') } : {}))),
+            : (envLotNumbers.length > 0 && !isQS ? { LotNos: envLotNumbers.join(',') } : {}))),
       };
       const messageKey = `generate-report-${payload.templateId}-${Date.now()}`;
       setGeneratingTemplates((prev) => ({ ...prev, [templateId]: true }));
