@@ -25,6 +25,7 @@ import { motion } from "framer-motion";
 import axios from "axios";
 import { getCurrentUserId } from "../hooks/useUserMap";
 import API from "../hooks/api";
+import { getRptApiUrl } from "../hooks/rptApi";
 import useStore from "../stores/ProjectData";
 import { buildReportFileName, getErrorMessageAsync, parseMappingJson, getErrorDetails,retryAsync } from "../utils/rptTemplateUtils";
 import EnvLotReportsManager from "./EnvLotReportsManager";
@@ -307,7 +308,7 @@ const ProcessingPipeline = () => {
       });
   }, [pipelineStepStatus, steps, hasDeactivatedCatches]);
 
-  const rptApiUrl = import.meta.env.VITE_RPT_API_URL;
+  const rptApiUrl = getRptApiUrl();
   const mappingUpdateKey = "rptTemplateMappingUpdatedAt";
 
   const moduleKeyToNameMap = {
@@ -1786,15 +1787,21 @@ const loadGeneratedTemplateReports = async () => {
     const lotsToProcess = isQS ? selectedLotsForQS : (isBoxBreakingDependent ? selectedLotsForBoxBreaking : [null]);
 
     for (const currentLot of lotsToProcess) {
+      const effectiveLotNos = isQS && currentLot
+        ? String(currentLot)
+        : isBoxBreakingDependent && currentLot
+        ? String(currentLot)
+        : envLotNumbers.length > 0 && !isQS && !isComposite
+        ? envLotNumbers.join(',')
+        : selectedDropdownLot !== "all" && selectedDropdownLot !== null
+        ? String(selectedDropdownLot)
+        : null;
+
       const payload = {
         projectId: Number(projectId),
         templateId: Number(templateId),
         ...(Object.keys(staticVariables).length > 0 ? { staticVariables } : {}),
-        ...(isQS && currentLot
-          ? { LotNos: String(currentLot) }
-          : (isBoxBreakingDependent && currentLot
-            ? { LotNos: String(currentLot) }
-            : (envLotNumbers.length > 0 && !isQS ? { LotNos: envLotNumbers.join(',') } : {}))),
+        ...(effectiveLotNos ? { LotNos: effectiveLotNos, lotNumber: Number(effectiveLotNos.split(',')[0]), lotNo: effectiveLotNos } : {}),
       };
       const messageKey = `generate-report-${payload.templateId}-${Date.now()}`;
       setGeneratingTemplates((prev) => ({ ...prev, [templateId]: true }));
@@ -2425,6 +2432,8 @@ const loadGeneratedTemplateReports = async () => {
         projectId: Number(projectId),
         templateId: Number(templateId),
         lotNumber: lotNo,
+        LotNos: String(lotNo),
+        lotNo: String(lotNo),
       };
 
       let generatedFilePath = null;
@@ -4567,7 +4576,11 @@ Object.keys(groupedTpl).forEach((templateKey) => {
 
               const getEffectiveDependency = (mod) => {
                 let currentDep = dependencies[mod];
-                while (currentDep && allModules && !allModules.some(s => s.key === currentDep || s.name?.toLowerCase().includes(currentDep))) {
+                while (
+                  currentDep &&
+                  !steps.some(s => s.key === currentDep) &&
+                  !allModules?.some(s => s.key === currentDep || s.name?.toLowerCase().replace(/\s+/g, "").includes(currentDep.toLowerCase()))
+                ) {
                   currentDep = dependencies[currentDep];
                 }
                 return currentDep;
