@@ -52,6 +52,8 @@ const TemplatesMappingPanel = ({
   handleSaveMapping,
   useBoxLabelSP,
   setUseBoxLabelSP,
+  inExcel,
+  setInExcel,
   savingMapping = false,
   handleRefreshFields,
   parsedFieldsLoading,
@@ -287,9 +289,21 @@ const TemplatesMappingPanel = ({
             checked={useBoxLabelSP}
             onChange={(e) => setUseBoxLabelSP?.(e.target.checked)}
           >
-            <Typography.Text strong>Use Box Label SP</Typography.Text>
+            <Typography.Text strong>O Group Booklet Case</Typography.Text>
             <Typography.Text type="secondary" style={{ display: "block", fontSize: 11 }}>
               Enable to fetch data via Box Label Stored Procedure.
+            </Typography.Text>
+          </Checkbox>
+        </Card>
+
+        <Card size="small" style={{ marginBottom: 8 }} bodyStyle={{ padding: 8 }}>
+          <Checkbox
+            checked={inExcel}
+            onChange={(e) => setInExcel?.(e.target.checked)}
+          >
+            <Typography.Text strong>In Excel</Typography.Text>
+            <Typography.Text type="secondary" style={{ display: "block", fontSize: 11 }}>
+              Enable to export this template to Excel.
             </Typography.Text>
           </Checkbox>
         </Card>
