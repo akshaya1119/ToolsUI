@@ -148,45 +148,45 @@ export default function Dashboard({ externalSearchQuery, onSearchQueryChange }) 
         allProjects = await fetchFreshProjectsPromise;
       }
 
-      // 3. Combine master projects (all active ERP projects with status === true / 1) with user project log details
-      const activeMasterProjects = (allProjects || []).filter(p => p.status === true || p.status === 1 || p.status !== false);
-      const userProjectsMap = new Map((userProjects || []).map(up => [Number(up.projectId ?? up.id), up]));
+      // 3. Combine user projects with their names from allProjects
+      const combinedProjects = userProjects.map((project) => {
+        const pId = Number(project.projectId ?? project.id);
+        const projData = allProjects.find(p => Number(p.projectId ?? p.id) === pId) || {};
 
-      const combinedProjects = activeMasterProjects.map((projData) => {
-        const pId = Number(projData.projectId ?? projData.id);
-        const userProj = userProjectsMap.get(pId) || {};
+
+
         return {
-          id: pId,
-          name: projData.name || projData.projectName || userProj.name || 'Unknown Project',
-          timeAgo: userProj.timeAgo || 'Never accessed',
-          loggedAt: userProj.loggedAt || null,
-          groupId: Number(projData.groupId ?? userProj.groupId), 
-          typeId: Number(projData.typeId ?? userProj.typeId),   
-          isActive: userProj.isActive !== undefined ? userProj.isActive : (projData.status === true || projData.status === 1),
+          id: project.projectId,
+          name: projData.name || projData.projectName || 'Unknown Project',
+          timeAgo: project.timeAgo,
+          loggedAt: project.loggedAt,
+          groupId: Number(projData.groupId ?? project.groupId), 
+          typeId: Number(projData.typeId ?? project.typeId),   
+          isActive: project.isActive, // Get isActive from API response
         };
       });
 
-      // Include any user projects not present in activeMasterProjects
-      (userProjects || []).forEach(userProj => {
-        const pId = Number(userProj.projectId ?? userProj.id);
-        if (!combinedProjects.some(cp => Number(cp.id) === pId)) {
-          const projData = allProjects.find(p => Number(p.projectId ?? p.id) === pId) || {};
-          combinedProjects.push({
-            id: pId,
-            name: projData.name || projData.projectName || userProj.name || 'Unknown Project',
-            timeAgo: userProj.timeAgo || 'Never accessed',
-            loggedAt: userProj.loggedAt || null,
-            groupId: Number(projData.groupId ?? userProj.groupId),
-            typeId: Number(projData.typeId ?? userProj.typeId),
-            isActive: userProj.isActive !== undefined ? userProj.isActive : true,
-          });
-        }
-      });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
       console.log("Combined Projects:", combinedProjects);
       setProjects(combinedProjects);
       setAllProjects(combinedProjects);
-      
+
       // Stop the main loading spinner immediately so projects are visible
       setLoading(false);
 
@@ -242,7 +242,7 @@ export default function Dashboard({ externalSearchQuery, onSearchQueryChange }) 
       });
       setGroups(groupsRes.data);
       setAllGroups(groupsRes.data);
-      
+
       // Cache the groups data for the session
       localStorage.setItem("cached_groups", JSON.stringify(groupsRes.data));
     } catch (err) {
@@ -253,13 +253,13 @@ export default function Dashboard({ externalSearchQuery, onSearchQueryChange }) 
   const groupProjectCounts = useMemo(() => {
     const counts = {};
     const lastAccessed = {};
-    
+
     projects.forEach(p => {
       // Only count active projects (treat undefined/null as active for backward compatibility)
       if (p.isActive !== false) {
         const gid = Number(p.groupId);
         counts[gid] = (counts[gid] || 0) + 1;
-        
+
         // Track last accessed project in each group
         if (
           !lastAccessed[gid] ||
@@ -269,7 +269,7 @@ export default function Dashboard({ externalSearchQuery, onSearchQueryChange }) 
         }
       }
     });
-  
+
   return {
     counts,
     lastAccessed: Object.fromEntries(
@@ -284,7 +284,7 @@ export default function Dashboard({ externalSearchQuery, onSearchQueryChange }) 
   useEffect(() => {
     getProjects();
     getGroupsAndTypes();
-    
+
     // Auto-select group if user has access to only one group
     if (groups.length === 1 && !selectedGroupId) {
       setSelectedGroupId(groups[0].id);
@@ -342,20 +342,20 @@ export default function Dashboard({ externalSearchQuery, onSearchQueryChange }) 
     const filtered = groups.filter(group => 
       group.name.toLowerCase().includes(debouncedSearchQuery.toLowerCase())
     ).sort((a, b) => (groupProjectCounts.counts[b.id] || 0) - (groupProjectCounts.counts[a.id] || 0));
-    
+
     // Auto-select if only one group in search results and we're in groups view
     if (debouncedSearchQuery && filtered.length === 1 && view === "groups") {
       setTimeout(() => {
         handleGroupClick(filtered[0].id);
       }, 300);
     }
-    
+
     return filtered;
   }, [groups, debouncedSearchQuery, groupProjectCounts]);
 
   const filteredProjects = useMemo(() => {
     if (view !== "projects") return [];
-    
+
     // Search only within the selected group's projects
     return projects.filter(project => 
       Number(project.groupId) === Number(selectedGroupId) &&
@@ -400,10 +400,10 @@ export default function Dashboard({ externalSearchQuery, onSearchQueryChange }) 
     localStorage.setItem("selectedType", typeId || "");
     localStorage.setItem("selectedProjectName", projectName);
     setProject(projectName, projectId, groupId || "", typeId || "");
-    
+
     // Log project entry to localStorage
     addRecentProject({ id: projectId, name: projectName, groupId, typeId });
-    
+
     navigate("/projectdashboard");
   };
 
@@ -477,9 +477,9 @@ export default function Dashboard({ externalSearchQuery, onSearchQueryChange }) 
                     <p className="text-sm font-bold text-slate-700 group-hover:text-blue-600 mt-1">Manage Tools →</p>
                   </div>
                 </button>
-                
+
                 <div className="h-12 w-px bg-slate-200" />
-                
+
                 <button 
                   onClick={() => navigate('/correctiontool')}
                   className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white hover:shadow-md border border-transparent hover:border-slate-200 text-slate-600 hover:text-blue-600 transition-all group"
@@ -493,7 +493,7 @@ export default function Dashboard({ externalSearchQuery, onSearchQueryChange }) 
                   </div>
                 </button>
                 <div className="h-12 w-px bg-slate-200" />
-                
+
                 <motion.button 
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
@@ -508,9 +508,9 @@ export default function Dashboard({ externalSearchQuery, onSearchQueryChange }) 
                     <p className="text-sm font-bold text-slate-700 group-hover:text-purple-600 mt-1">View Archived →</p>
                   </div>
                 </motion.button>
-                
+
                 <div className="h-12 w-px bg-slate-200" />
-                
+
                 <motion.button 
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
@@ -548,7 +548,7 @@ export default function Dashboard({ externalSearchQuery, onSearchQueryChange }) 
                     <div className="h-10 w-px bg-slate-200" />
                   </>
                 )}
-                
+
                 <div className="flex items-center gap-6">
                   <div className="text-center px-3">
                     <p className="text-[10px] uppercase tracking-widest font-bold text-slate-400 leading-none mb-1.5">Items</p>
@@ -762,7 +762,7 @@ export default function Dashboard({ externalSearchQuery, onSearchQueryChange }) 
                     </div>
                   )}
                 </div>
-                
+
                 <AnimatePresence>
                   {true && (
                     <motion.div 
