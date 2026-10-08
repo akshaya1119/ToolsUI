@@ -193,9 +193,10 @@ export const fetchTemplateMapping = async (apiUrl, templateId) => {
   return res.data;
 };
 
-export const saveTemplateMapping = async (apiUrl, templateId, mappingJson) => {
+export const saveTemplateMapping = async (apiUrl, templateId, mappingJson, inExcel) => {
   await axios.post(`${apiUrl}/RPTTemplates/${templateId}/mapping`, {
     mappingJson,
+    inExcel,
   });
 };
 

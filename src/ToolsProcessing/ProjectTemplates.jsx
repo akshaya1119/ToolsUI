@@ -123,6 +123,7 @@ const ProjectTemplates = () => {
   const [filterMode, setFilterMode] = useState(null);
   const [mappingPinnedFields, setMappingPinnedFields] = useState([]);
   const [staticVariables, setStaticVariables] = useState({});
+  const [inExcel, setInExcel] = useState(false);
   const [qrConfiguration, setQrConfiguration] = useState({ enabled: false, qrFields: [], separator: "|" });
 
   const [versionsOpen, setVersionsOpen] = useState(false);
@@ -487,6 +488,7 @@ const ProjectTemplates = () => {
       setFilterMode(null);
       setMappingPinnedFields([]);
       setStaticVariables({});
+      setInExcel(false);
     }
   }, [mappingModalOpen]);
 
@@ -885,6 +887,7 @@ const ProjectTemplates = () => {
       setOrderBySelections(Array.isArray(parsed.orderBy) ? parsed.orderBy : []);
       setLabelCopies(Number.isFinite(parsed.labelCopies) && parsed.labelCopies >= 1 ? parsed.labelCopies : 1);
       setStaticVariables(parsed.staticVariables || {});
+      setInExcel(res?.inExcel === true);
       setFilterMode(parsed.filterMode ?? null);
       setMappingPinnedFields(Object.keys(parsed.mappings || {}));
       setQrConfiguration(parsed.qrConfiguration || { enabled: false, qrFields: [], separator: "|" });
@@ -962,6 +965,7 @@ const ProjectTemplates = () => {
         APIURL,
         mappingTemplate.templateId,
         mappingJson,
+        inExcel
       );
       message.success("Mapping saved.");
       setMappingNotFound(false);
@@ -1381,6 +1385,8 @@ const ProjectTemplates = () => {
         userMap,
         moduleMap,
         moduleOptions,
+        groupOptions,
+        typeOptions,
         editingTemplateId,
         editingTemplateName,
         setEditingTemplateName,
@@ -1404,6 +1410,8 @@ const ProjectTemplates = () => {
       userMap,
       moduleMap,
       moduleOptions,
+      groupOptions,
+      typeOptions,
       editingTemplateId,
       editingTemplateName,
       editingModuleIds,
@@ -1739,6 +1747,8 @@ const ProjectTemplates = () => {
           closeMappingPanel={closeMappingPanel}
           useBoxLabelSP={useBoxLabelSP}
           setUseBoxLabelSP={setUseBoxLabelSP}
+          inExcel={inExcel}
+          setInExcel={setInExcel}
         />
       </div>
 
