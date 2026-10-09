@@ -143,26 +143,23 @@ const EnvLotSelectionModal = ({
   const sourceItems = showAssigned
     ? assignedEnvLots
     : unassignedCatches;
-//  console.log("sourceItems", sourceItems);
-//  console.log("showAssigned:", showAssigned);
-// console.log("assignedEnvLots:", assignedEnvLots);
-// console.log("unassignedCatches:", unassignedCatches);
+
   const filteredItems = sourceItems.filter((item) => {
     const search = envLotSearch.trim().toLowerCase();
 
     if (!search) return true;
 
     if (showAssigned) {
-      const lotStr = String(item?.envLotNo ?? item?.EnvLotNo ?? "");
+      const lotStr = String(typeof item === 'object' && item !== null ? (item?.envLotNo ?? item?.EnvLotNo ?? "") : item);
       return (
         lotStr.toLowerCase().includes(search) ||
         (item?.catches || item?.Catches || []).some((c) =>
-          String(c?.catchNo ?? c?.CatchNo ?? c).toLowerCase().includes(search)
+          String(typeof c === 'object' && c !== null ? (c?.catchNo ?? c?.CatchNo ?? c) : c).toLowerCase().includes(search)
         )
       );
     }
 
-    const catchStr = String(item?.catchNo ?? item?.CatchNo ?? item ?? "");
+    const catchStr = String(typeof item === 'object' && item !== null ? (item?.catchNo ?? item?.CatchNo ?? item) : item);
     return catchStr.toLowerCase().includes(search);
   });
 
@@ -170,8 +167,8 @@ const EnvLotSelectionModal = ({
     filteredItems.length > 0 &&
     filteredItems.every((item) => {
       const itemId = showAssigned
-        ? item.envLotNo
-        : item.catchNo;
+        ? (typeof item === 'object' && item !== null ? (item?.envLotNo ?? item?.EnvLotNo) : item)
+        : (typeof item === 'object' && item !== null ? (item?.catchNo ?? item?.CatchNo ?? item) : item);
 
       return selectedEnvLots.includes(itemId);
     });
@@ -245,7 +242,7 @@ const EnvLotSelectionModal = ({
         </Checkbox>
       </div>
 
-      {(unassignedCatches.length === 0 && (!showAssigned || assignedEnvLots.length === 0)) && !unverifiedCatch && !isVerifying ? (
+      {(unassignedCatches.length === 0 && assignedEnvLots.length === 0) && !unverifiedCatch && !isVerifying ? (
         <Alert
           message="No catch verified yet"
           type="warning"
@@ -312,17 +309,20 @@ const EnvLotSelectionModal = ({
             </div>
           </Card>
         )}
-        {filteredItems.map((item) => {
+        {filteredItems.map((item, idx) => {
           const itemId = showAssigned
-            ? item?.envLotNo ?? item?.EnvLotNo
-            : item?.catchNo ?? item?.CatchNo ?? item;
+            ? (typeof item === 'object' && item !== null ? (item?.envLotNo ?? item?.EnvLotNo) : item)
+            : (typeof item === 'object' && item !== null ? (item?.catchNo ?? item?.CatchNo ?? item) : item);
 
           const isSelected =
             selectedEnvLots.includes(itemId);
 
+          const lotDisplay = typeof item === 'object' && item !== null ? (item?.envLotNo ?? item?.EnvLotNo) : item;
+          const catchDisplay = typeof item === 'object' && item !== null ? (item?.catchNo ?? item?.CatchNo ?? String(item)) : String(item);
+
           return (
             <Card
-              key={itemId}
+              key={itemId || idx}
               size="small"
               style={{
                 backgroundColor: isSelected
@@ -365,19 +365,19 @@ const EnvLotSelectionModal = ({
                             fontSize: "14px"
                           }}
                         >
-                          Batch {item?.envLotNo ?? item?.EnvLotNo}
+                          Batch {String(lotDisplay ?? '')}
                         </Text>
 
                         {(
                           storeStaleEnvLotIds
                             .map(Number)
                             .includes(
-                              Number(item.envLotNo)
+                              Number(lotDisplay)
                             ) ||
                           staleEnvLotIds
                             .map(Number)
                             .includes(
-                              Number(item.envLotNo)
+                              Number(lotDisplay)
                             )
                         ) && (
                           <Tag
@@ -398,7 +398,7 @@ const EnvLotSelectionModal = ({
                         }}
                       >
                         Catches:{" "}
-                        {(item.catches || []).join(", ")}
+                        {Array.isArray(item?.catches) ? item.catches.join(", ") : (Array.isArray(item?.Catches) ? item.Catches.join(", ") : "-")}
                       </Text>
                     </div>
                   ) : (
@@ -408,7 +408,7 @@ const EnvLotSelectionModal = ({
                         fontSize: "14px"
                       }}
                     >
-                      Catch No {item?.catchNo ?? item?.CatchNo ?? item}
+                      Catch No {String(catchDisplay ?? '')}
                     </Text>
                   )}
                 </div>

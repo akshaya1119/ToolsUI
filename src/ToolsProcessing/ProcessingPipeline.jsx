@@ -1699,73 +1699,63 @@ const loadGeneratedTemplateReports = async () => {
     }
     
     if (!isQS && !isComposite && isEnvelopeDependent && !isBoxBreakingDependent) {
-      if (action === "regenerate") {
-        const assignedCatchItems = await fetchAssignedEnvLotCatchesForSelection(projectId);
-        if (assignedCatchItems.length > 0) {
-          const templateId = resolveTemplateId(template);
-          
-          let generatedEnvLots = [];
-          if (templateId) {
-             generatedEnvLots = envLotReports
-               .filter(r => r.templateId === templateId)
-               .flatMap(r => r.envLotNumbers);
+      const runRegenerateFlow = action === "regenerate";
+      const missingCatchItems = await fetchMissingEnvLotCatchesForSelection(projectId);
+      const assignedCatchItems = await fetchAssignedEnvLotCatchesForSelection(projectId);
+
+      const templateId = resolveTemplateId(template);
+      let generatedEnvLots = [];
+      if (templateId) {
+         generatedEnvLots = envLotReports
+           .filter(r => r.templateId === templateId)
+           .flatMap(r => r.envLotNumbers);
+      }
+      
+      const hasMappingUpdate = templateId ? isMappingNewerThanReport(templateId) : false;
+      const isStale = templateId ? staleTemplateIds.has(templateId) : false;
+      const templateIsOutdated = hasMappingUpdate || isStale;
+      
+      const defaultShowAssigned = runRegenerateFlow || missingCatchItems.length === 0;
+
+      const selectedCatchNos = await showEnvLotSelectionModal([], runRegenerateFlow, {
+         unassignedCatches: missingCatchItems,
+         assignedEnvLots: assignedCatchItems,
+         generatedEnvLots,
+         templateIsOutdated,
+         staleEnvLotIds,
+         showAssigned: defaultShowAssigned
+      });
+
+      if (selectedCatchNos === null) {
+        return; // user cancelled
+      }
+
+      if (selectedCatchNos.length > 0) {
+        // Separate any selected envLotNos (when user toggled to show assigned) from pure catchNos
+        const allAssignedEnvLotNos = (assignedCatchItems || []).map(a => Number(a.envLotNo));
+        const selectedEnvLotNos = selectedCatchNos
+          .map(s => (typeof s === 'object' && s !== null ? (s.envLotNo ?? s.EnvLotNo) : s))
+          .map(s => (typeof s === 'number' ? Number(s) : (String(s).match(/^\d+$/) ? Number(s) : NaN)))
+          .filter(n => !isNaN(n) && allAssignedEnvLotNos.includes(n));
+
+        const selectedCatchOnly = selectedCatchNos.filter(s => !selectedEnvLotNos.includes(Number(s)));
+
+        // If catch numbers selected, assign them to an EnvLot
+        if (selectedCatchOnly.length > 0) {
+          console.log('Assigning catches to EnvLot:', selectedCatchOnly);
+          const assignResult = await assignEnvLotByCatchNos(selectedCatchOnly);
+          console.log('Assign result:', assignResult);
+          if (!assignResult || !assignResult.assignedEnvLotNo) {
+            message.error("Failed to assign catches to envelope lot");
+            return;
           }
-          
-          const hasMappingUpdate = templateId ? isMappingNewerThanReport(templateId) : false;
-          const isStale = templateId ? staleTemplateIds.has(templateId) : false;
-          const templateIsOutdated = hasMappingUpdate || isStale;
-          
-          const selectedEnvLots = await showEnvLotSelectionModal([], true, {
-             assignedEnvLots: assignedCatchItems,
-             generatedEnvLots,
-             templateIsOutdated,
-             staleEnvLotIds,
-             showAssigned: true
-          });
-          if (selectedEnvLots === null) return;
-          if (selectedEnvLots.length > 0) {
-            envLotNumbers = selectedEnvLots;
-          }
-        } else {
-          message.info("No generated envelope lots available for regeneration.");
-          return;
+          envLotNumbers.push(Number(assignResult.assignedEnvLotNo));
+          assignedCatchNos = selectedCatchOnly;
         }
-      } else {
-        const missingCatchItems = await fetchMissingEnvLotCatchesForSelection(projectId);
-        // Fetch assigned env-lot items so user can optionally show them
-        const assignedCatchItems = await fetchAssignedEnvLotCatchesForSelection(projectId);
-        
-        // Show modal even if all catches are assigned, allowing user to select from assigned envelopes for regeneration
-        const selectedCatchNos = await showEnvLotSelectionModal([], false, { unassignedCatches: missingCatchItems, assignedEnvLots: assignedCatchItems, showAssigned: missingCatchItems.length === 0 });
-        if (selectedCatchNos === null) {
-          return; // user cancelled
-        }
-        if (selectedCatchNos.length > 0) {
-          // Separate any selected envLotNos (when user toggled to show assigned) from pure catchNos
-          const allAssignedEnvLotNos = (assignedCatchItems || []).map(a => Number(a.envLotNo));
-          const selectedEnvLotNos = selectedCatchNos
-            .map(s => (typeof s === 'number' ? Number(s) : (String(s).match(/^\d+$/) ? Number(s) : NaN)))
-            .filter(n => !isNaN(n) && allAssignedEnvLotNos.includes(n));
 
-          const selectedCatchOnly = selectedCatchNos.filter(s => !selectedEnvLotNos.includes(Number(s)));
-
-          // If catch numbers selected, assign them to an EnvLot
-          if (selectedCatchOnly.length > 0) {
-            console.log('Assigning catches to EnvLot:', selectedCatchOnly);
-            const assignResult = await assignEnvLotByCatchNos(selectedCatchOnly);
-            console.log('Assign result:', assignResult);
-            if (!assignResult || !assignResult.assignedEnvLotNo) {
-              message.error("Failed to assign catches to envelope lot");
-              return;
-            }
-            envLotNumbers.push(assignResult.assignedEnvLotNo);
-            assignedCatchNos = selectedCatchOnly;
-          }
-
-          // Include any explicitly selected existing envLot numbers for regeneration
-          if (selectedEnvLotNos.length > 0) {
-            envLotNumbers = envLotNumbers.concat(selectedEnvLotNos);
-          }
+        // Include any explicitly selected existing envLot numbers for regeneration
+        if (selectedEnvLotNos.length > 0) {
+          envLotNumbers = envLotNumbers.concat(selectedEnvLotNos.map(Number));
         }
       }
     }

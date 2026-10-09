@@ -13,13 +13,7 @@ const isDevelopment = import.meta.env.DEV;
 // In development, use the vite proxy to avoid SSL certificate issues
 // In production, use the direct HTTPS URL
 export const getRptApiUrl = () => {
-  if (isDevelopment) {
-    // Use vite proxy path (avoids SSL certificate validation)
-    return '/rpt-api';
-  } else {
-    // Production: use the configured URL
-    return import.meta.env.VITE_RPT_API_URL || 'https://localhost:44346/api';
-  }
+  return import.meta.env.VITE_RPT_API_URL || 'https://localhost:44346/api';
 };
 
 // Create an Axios instance for RPT API

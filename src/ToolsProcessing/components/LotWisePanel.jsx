@@ -179,7 +179,7 @@ const LotWisePanel = ({
                   return staleLotIds.has(statusKey);
                 });
 
-                const hasAnyTemplateFile = lotTemplates.some(template => (template.hasFileOnDisk !== false && template.HasFileOnDisk !== false) && !!(template.rptFilePath || template.RPTFilePath));
+                const hasAnyTemplateFile = lotTemplates.some(template => template.hasFileOnDisk !== false && template.HasFileOnDisk !== false);
 
                 return {
                   key: String(lot.lotNo),
@@ -215,7 +215,7 @@ const LotWisePanel = ({
                                 type="primary"
                                 onClick={() => handleGenerateAllLotTemplates(lot.lotNo)}
                                 loading={bulkGeneratingLots}
-                                disabled={!lotReportStatus?.[lot.lotNo] || lotTemplates.length === 0 || !hasAnyTemplateFile}
+                                disabled={lotTemplates.length === 0 || !hasAnyTemplateFile}
                               >
                                 Generate All
                               </Button>
@@ -246,7 +246,7 @@ const LotWisePanel = ({
                                 ? staleTemplateIds.has(templateId) || isMappingStale
                                 : staleLotIds.has(`${lot.lotNo}_${templateId}`) || isMappingStale;
                               const canGenerate = !status?.exists || isStale;
-                              const hasTemplateFile = (template.hasFileOnDisk !== false && template.HasFileOnDisk !== false) && !!(template.rptFilePath || template.RPTFilePath);
+                              const hasTemplateFile = template.hasFileOnDisk !== false && template.HasFileOnDisk !== false;
                               return (
                                 <Card
                                   size="small"
@@ -288,7 +288,7 @@ const LotWisePanel = ({
                                             }
                                           }}
                                           loading={isGenerating}
-                                          disabled={!lotReportStatus?.[lot.lotNo] || !hasTemplateFile}
+                                          disabled={isGenerating || !hasTemplateFile}
                                         >
                                           Generate
                                         </Button>
