@@ -32,9 +32,17 @@ const formatDateTimeToIST = (dateVal) => {
 };
 
 const parseEnvLotNumbers = (v) => {
-  if (Array.isArray(v)) return v;
+  if (Array.isArray(v)) {
+    return v.map((item) => (typeof item === 'object' && item !== null ? (item.envLotNo ?? item.EnvLotNo ?? item) : item))
+            .map((n) => parseInt(n, 10))
+            .filter((n) => !isNaN(n) && n > 0);
+  }
   if (!v || v === '0' || v === 0) return [];
   if (typeof v === 'number') return v > 0 ? [v] : [];
+  if (typeof v === 'object' && v !== null) {
+    const num = parseInt(v.envLotNo ?? v.EnvLotNo, 10);
+    return !isNaN(num) && num > 0 ? [num] : [];
+  }
   if (typeof v !== 'string') return [];
   return v.split(',').map((n) => parseInt(n.trim(), 10)).filter((n) => !isNaN(n) && n > 0);
 };
@@ -719,12 +727,13 @@ const ReportTemplateManagement = ({
     return <Tag>{status || '-'}</Tag>;
   };
 
-  const renderEnvLotTag = (envLotNo) => {
-    if (!envLotNo) return <span style={{ color: '#94a3b8' }}>-</span>;
+  const renderEnvLotTag = (envLotVal) => {
+    if (!envLotVal) return <span style={{ color: '#94a3b8' }}>-</span>;
+    const envLotNo = typeof envLotVal === 'object' ? (envLotVal?.envLotNo ?? envLotVal?.EnvLotNo ?? String(envLotVal)) : envLotVal;
     const catches = getCatchesForEnvLot(envLotNo);
     const tip = (
       <div style={{ padding: 8, minWidth: 180 }}>
-        <div style={{ fontWeight: 600, marginBottom: 6 }}>Batch {envLotNo} — Catches</div>
+        <div style={{ fontWeight: 600, marginBottom: 6 }}>Batch {String(envLotNo)} — Catches</div>
         {catches.length > 0
           ? catches.map((c, i) => <div key={i} style={{ fontSize: 12, padding: '2px 6px', background: '#f0f0f0', borderRadius: 3, marginBottom: 2 }}>{c}</div>)
           : <span style={{ color: '#999' }}>No catches assigned</span>}
@@ -733,7 +742,7 @@ const ReportTemplateManagement = ({
     return (
       <Tooltip title={tip} color="#fff" overlayInnerStyle={{ color: '#333' }}>
         <Tag color="blue" style={{ cursor: 'pointer' }}>
-          Batch {envLotNo}{catches.length > 0 && <span style={{ marginLeft: 4, fontSize: 11 }}>({catches.length})</span>}
+          Batch {String(envLotNo)}{catches.length > 0 && <span style={{ marginLeft: 4, fontSize: 11 }}>({catches.length})</span>}
         </Tag>
       </Tooltip>
     );

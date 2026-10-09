@@ -33,7 +33,7 @@ const TemplatesPanel = ({
 }) => {
   if (!open) return null;
 
-  const hasAnyTemplateFile = templates && templates.some(template => (template.hasFileOnDisk !== false && template.HasFileOnDisk !== false) && !!(template.rptFilePath || template.RPTFilePath));
+  const hasAnyTemplateFile = templates && templates.some(template => template.hasFileOnDisk !== false && template.HasFileOnDisk !== false);
 
   return (
     <Card
@@ -98,7 +98,7 @@ const TemplatesPanel = ({
                   const isEnvelopeDependent = checkIsEnvelopeDependent ? checkIsEnvelopeDependent(template) : false;
                   const isQS = isQuantitySheetTemplate ? isQuantitySheetTemplate(resolveTemplateName(template)) : false;
                   const showBothButtons = isEnvelopeDependent && !isQS;
-                  const hasTemplateFile = (template.hasFileOnDisk !== false && template.HasFileOnDisk !== false) && !!(template.rptFilePath || template.RPTFilePath);
+                  const hasTemplateFile = template.hasFileOnDisk !== false && template.HasFileOnDisk !== false;
 
                   return (
                     <Card
