@@ -76,15 +76,19 @@ export default function NodalCenterList() {
   const [addedFields, setAddedFields] = useState([]);
   const [selectedRowKeys, setSelectedRowKeys] = useState([]);
 
-  const allTempColumnsList = [
-    "CatchNo", "CollegeCode", "CollegeName", "CenterCode", "NodalCode", "NRQuantity", "CourseName", "SubjectName", "ExamDate", "ExamTime"
+  const standardTempColumns = [
+    "CatchNo", "CollegeCode", "CollegeName", "CenterCode", "NodalCode", 
+    "NRQuantity", "CourseName", "SubjectName", "ExamDate", "ExamTime",
+    "Day", "Pages", "Route", "RouteSort", "CenterSort", "NodalSort", 
+    "Symbol", "District", "DistrictSort"
   ];
+  const [allTempColumnsList, setAllTempColumnsList] = useState(standardTempColumns);
 
   const [tempData, setTempData] = useState([]);
   const [tempPagination, setTempPagination] = useState({ current: 1, pageSize: 10, total: 0 });
   const [loadingTemp, setLoadingTemp] = useState(false);
   const [tempColumnFilters, setTempColumnFilters] = useState({});
-  const [visibleTempColumns, setVisibleTempColumns] = useState(allTempColumnsList);
+  const [visibleTempColumns, setVisibleTempColumns] = useState(standardTempColumns);
   const [reports, setReports] = useState(null);
   const [allNodalRecords, setAllNodalRecords] = useState([]);
   const [loadingReports, setLoadingReports] = useState(false);
@@ -137,7 +141,7 @@ export default function NodalCenterList() {
 
   const nodalListFields = [
     "CollegeCode", "CollegeName", "ExamCenterCode",
-    "Gender", "NodalCode"
+    "Gender", "NodalCode", "CentreSort", "NodalSort"
   ];
   const requiredNodalListFields = ["NodalCode", "ExamCenterCode"];
 
@@ -268,7 +272,28 @@ export default function NodalCenterList() {
         columnFilters: Object.keys(tempColumnFilters).length > 0 ? JSON.stringify(tempColumnFilters) : null,
       };
       const res = await API.get(`/TemporaryNrDatas/${projectId}`, { params });
-      setTempData(res.data.items || []);
+      
+      const data = res.data.items || [];
+      
+      let dynamicKeysSet = new Set();
+      const processedData = data.map(item => {
+        let parsedDynamic = {};
+        if (item.nrDatas) {
+          try {
+            parsedDynamic = JSON.parse(item.nrDatas);
+            Object.keys(parsedDynamic).forEach(k => dynamicKeysSet.add(k));
+          } catch (e) { }
+        }
+        return { ...item, ...parsedDynamic };
+      });
+      
+      const dynamicFieldsArr = Array.from(dynamicKeysSet);
+      setAllTempColumnsList(prev => {
+        const combined = [...new Set([...standardTempColumns, ...dynamicFieldsArr])];
+        return combined;
+      });
+      
+      setTempData(processedData);
       setTempPagination(prev => ({ ...prev, total: res.data.totalCount || 0 }));
     } catch (err) {
       console.error("Failed to fetch temporary data", err);
@@ -1183,7 +1208,7 @@ export default function NodalCenterList() {
       ...col,
       onCell: (record) => ({
         record,
-        inputType: ['NRQuantity', 'Transgender', 'Male', 'Female', 'CollegeCode', 'NodalCode', 'ExamCenterCode'].includes(col.key) ? 'number' : 'text',
+        inputType: ['NRQuantity', 'Transgender', 'Male', 'Female', 'CollegeCode', 'NodalCode', 'ExamCenterCode', 'CentreSort', 'NodalSort'].includes(col.key) ? 'number' : 'text',
         dataIndex: col.dataIndex,
         title: col.title,
         editing: isEditing(record),
@@ -1532,7 +1557,7 @@ export default function NodalCenterList() {
           ),
           onCell: (record) => ({
             record,
-            inputType: ['NRQuantity', 'CollegeCode'].includes(col) ? 'number' : 'text',
+            inputType: ['NRQuantity', 'CollegeCode', 'CenterSort', 'NodalSort'].includes(col) ? 'number' : 'text',
             dataIndex: dataIndex,
             title: col,
             editing: isEditing(record),
@@ -2428,7 +2453,7 @@ export default function NodalCenterList() {
           <Form form={addForm} layout="vertical">
             <Row gutter={[16, 0]}>
               {currentFields.map(field => {
-                const isNumber = ['NRQuantity', 'Transgender', 'Male', 'Female', 'CollegeCode', 'NodalCode', 'ExamCenterCode'].includes(field);
+                const isNumber = ['NRQuantity', 'Transgender', 'Male', 'Female', 'CollegeCode', 'NodalCode', 'ExamCenterCode', 'CentreSort', 'NodalSort'].includes(field);
                 const isRequired = currentRequiredFields.includes(field);
                 const isFullWidth = ["CollegeName", "CenterName", "ExamCenterName", "NodalName", "SubjectName"].includes(field);
                 return (
