@@ -141,7 +141,7 @@ export default function NodalCenterList() {
 
   const nodalListFields = [
     "CollegeCode", "CollegeName", "ExamCenterCode",
-    "Gender", "NodalCode", "CentreSort", "NodalSort"
+    "Gender", "NodalCode", "CenterSort", "NodalSort"
   ];
   const requiredNodalListFields = ["NodalCode", "ExamCenterCode"];
 
@@ -233,7 +233,14 @@ export default function NodalCenterList() {
         if (dynamicJsonStr) {
           try {
             parsedDynamic = JSON.parse(dynamicJsonStr);
-            Object.keys(parsedDynamic).forEach(k => dynamicKeysSet.add(k));
+            Object.keys(parsedDynamic).forEach(k => {
+              dynamicKeysSet.add(k);
+              
+              const lowerKey = k === "NRQuantity" ? "nrQuantity" : (k.charAt(0).toLowerCase() + k.slice(1));
+              if (item[lowerKey] === 0 || item[lowerKey] === null || item[lowerKey] === "") {
+                item[lowerKey] = parsedDynamic[k];
+              }
+            });
           } catch (e) { }
         }
         return { ...item, ...parsedDynamic };
@@ -281,7 +288,14 @@ export default function NodalCenterList() {
         if (item.nrDatas) {
           try {
             parsedDynamic = JSON.parse(item.nrDatas);
-            Object.keys(parsedDynamic).forEach(k => dynamicKeysSet.add(k));
+            Object.keys(parsedDynamic).forEach(k => {
+              dynamicKeysSet.add(k);
+              
+              const lowerKey = k === "NRQuantity" ? "nrQuantity" : (k.charAt(0).toLowerCase() + k.slice(1));
+              if (item[lowerKey] === 0 || item[lowerKey] === null || item[lowerKey] === "") {
+                item[lowerKey] = parsedDynamic[k];
+              }
+            });
           } catch (e) { }
         }
         return { ...item, ...parsedDynamic };
@@ -1208,7 +1222,7 @@ export default function NodalCenterList() {
       ...col,
       onCell: (record) => ({
         record,
-        inputType: ['NRQuantity', 'Transgender', 'Male', 'Female', 'CollegeCode', 'NodalCode', 'ExamCenterCode', 'CentreSort', 'NodalSort'].includes(col.key) ? 'number' : 'text',
+        inputType: ['NRQuantity', 'Transgender', 'Male', 'Female', 'CollegeCode', 'NodalCode', 'ExamCenterCode', 'CenterSort', 'CentreSort', 'NodalSort'].includes(col.key) ? 'number' : 'text',
         dataIndex: col.dataIndex,
         title: col.title,
         editing: isEditing(record),
@@ -1688,19 +1702,7 @@ export default function NodalCenterList() {
               className="mb-4"
             />
           )}
-          {reports && reports.rule1Passed && reports.rule2Passed === false && (
-            <Alert
-              type="error"
-              showIcon
-              message="Rule 2 Error: Missing Exam Center Assignments"
-              action={
-                <Button type="primary" danger size="small" onClick={() => setActiveTab("3")}>
-                  View Conflict Report
-                </Button>
-              }
-              className="mb-4"
-            />
-          )}
+
 
 
           <div className="flex justify-between items-center mb-4">
@@ -2453,7 +2455,7 @@ export default function NodalCenterList() {
           <Form form={addForm} layout="vertical">
             <Row gutter={[16, 0]}>
               {currentFields.map(field => {
-                const isNumber = ['NRQuantity', 'Transgender', 'Male', 'Female', 'CollegeCode', 'NodalCode', 'ExamCenterCode', 'CentreSort', 'NodalSort'].includes(field);
+                const isNumber = ['NRQuantity', 'Transgender', 'Male', 'Female', 'CollegeCode', 'NodalCode', 'ExamCenterCode', 'CenterSort', 'CentreSort', 'NodalSort'].includes(field);
                 const isRequired = currentRequiredFields.includes(field);
                 const isFullWidth = ["CollegeName", "CenterName", "ExamCenterName", "NodalName", "SubjectName"].includes(field);
                 return (
