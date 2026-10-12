@@ -1325,24 +1325,27 @@ const ProcessingPipeline = () => {
       return memo;
     };
 
+    const isSpecificLot = selectedDropdownLot !== "all" && selectedDropdownLot !== null;
     const ancestors = Array.from(getRecursiveAncestors(moduleKey));
 
     setSelectedModules((prev) => {
       // Filter ancestors to only include those NOT completed (except the clicked one)
-      // If a step has pending changes (is outdated), it is treated as not completed.
-      const keysToSelect = ancestors.filter(key => {
-        const step = steps.find(s => s.key === key);
-        const keyMap = {
-          duplicate: "duplicatePending",
-          enhancement: "enhancementPending",
-          extra: "extraPending",
-          envelopebreaking: "envelopePending",
-          box: "boxPending"
-        };
-        const flag = keyMap[key];
-        const isPending = flag && pipelineStepStatus && pipelineStepStatus[flag];
-        return (step && (step.status !== "completed" || isPending)) || key === moduleKey;
-      });
+      // When a specific lot is selected, allow all ancestors to be selected so dependencies are fulfilled
+      const keysToSelect = isSpecificLot
+        ? ancestors
+        : ancestors.filter(key => {
+            const step = steps.find(s => s.key === key);
+            const keyMap = {
+              duplicate: "duplicatePending",
+              enhancement: "enhancementPending",
+              extra: "extraPending",
+              envelopebreaking: "envelopePending",
+              box: "boxPending"
+            };
+            const flag = keyMap[key];
+            const isPending = flag && pipelineStepStatus && pipelineStepStatus[flag];
+            return (step && (step.status !== "completed" || isPending)) || key === moduleKey;
+          });
 
       // Merge with existing selections
       return Array.from(new Set([...prev, ...keysToSelect]));
@@ -2963,8 +2966,9 @@ const loadGeneratedTemplateReports = async () => {
       return;
     }
 
+    const isSpecificLot = selectedDropdownLot !== "all" && selectedDropdownLot !== null;
     const hasAnyPendingStep = pipelineStepStatus && Object.values(pipelineStepStatus).some(v => v === true);
-    if (!hasPendingPipelineChanges && !hasAnyPendingStep && !configChanged) {
+    if (!isSpecificLot && !hasPendingPipelineChanges && !hasAnyPendingStep && !configChanged) {
       message.info("No new data changes found. Re-run is allowed only after changes (add/remove catch, upload, edit, etc.).");
       return;
     }
@@ -3270,6 +3274,7 @@ const loadGeneratedTemplateReports = async () => {
 
       // Refresh report history to include any newly generated reports or maintain existing history
       await loadEnvLotReports();
+      await loadReportVersions();
 
       // Clear selections and close alert after successful processing
       setSelectedModules([]);
@@ -3376,6 +3381,12 @@ const loadGeneratedTemplateReports = async () => {
   };
 
   const isStepSelectable = (step) => {
+    const isSpecificLot = selectedDropdownLot !== "all" && selectedDropdownLot !== null;
+    if (isSpecificLot) {
+      // When a specific lot is selected from top lot selection, all enabled modules are selectable
+      return true;
+    }
+
     const moduleToLotKey = {
       duplicate: { pending: "pendingDuplicateLots", completed: "completedDuplicateLots" },
       enhancement: { pending: "pendingEnhancementLots", completed: "completedEnhancementLots" },
@@ -3383,18 +3394,6 @@ const loadGeneratedTemplateReports = async () => {
       envelopebreaking: { pending: "pendingEnvelopeLots", completed: "completedEnvelopeLots" },
       box: { pending: "pendingBoxLots", completed: "completedBoxLots" },
     };
-
-    if (selectedDropdownLot !== "all" && selectedDropdownLot !== null && moduleToLotKey[step.key] && pipelineStepStatus) {
-      const keys = moduleToLotKey[step.key];
-      const pendingLots = pipelineStepStatus[keys.pending] || [];
-      const completedLots = pipelineStepStatus[keys.completed] || [];
-      const lotNum = Number(selectedDropdownLot);
-      
-      const isLotPending = pendingLots.includes(lotNum);
-      const isLotCompleted = completedLots.includes(lotNum) && !isLotPending;
-      
-      if (isLotCompleted) return false;
-    }
 
     // Selectable if not completed, or completed but outdated (needs re-run)
     const outdated = isStepOutdated(step);
@@ -3427,7 +3426,7 @@ const loadGeneratedTemplateReports = async () => {
       }
       return next;
     });
-  }, [data, pipelineStepStatus, availableLots, lotReportStatus, hasDeactivatedCatches]);
+  }, [data, pipelineStepStatus, availableLots, lotReportStatus, hasDeactivatedCatches, selectedDropdownLot]);
 
   const columns = [
     {
@@ -3458,7 +3457,9 @@ const loadGeneratedTemplateReports = async () => {
 
           let disabled = isProcessing;
           let isOutsideRange = false;
-          if (pipelineStepStatus) {
+          const isSpecificLot = selectedDropdownLot !== "all" && selectedDropdownLot !== null;
+
+          if (!isSpecificLot && pipelineStepStatus) {
             const stepToNumMap = {
               duplicate: 1,
               enhancement: 2,
@@ -4531,75 +4532,69 @@ Object.keys(groupedTpl).forEach((templateKey) => {
             <Badge status="default" text="Idle" color="gray" />
           )}
           {(() => {
+            const isSpecificLot = selectedDropdownLot !== "all" && selectedDropdownLot !== null;
             const hasAnyPendingStep = pipelineStepStatus && Object.values(pipelineStepStatus).some(v => v === true);
             const availableCount = (availableLots && availableLots.length) || 0;
             const completedCount = Object.values(lotReportStatus || {}).filter(Boolean).length;
             const boxHasRemaining = availableCount > 0 && completedCount < availableCount;
-            const canStartByData = hasPendingPipelineChanges || hasAnyPendingStep || configChanged || boxHasRemaining;
+            const canStartByData = isSpecificLot || hasPendingPipelineChanges || hasAnyPendingStep || configChanged || boxHasRemaining;
 
-            // First, filter the selected modules to only those that ACTUALLY have pending data
-            const modulesWithPendingData = selectedModules.filter(m => {
-              const listKey = {
-                duplicate: "pendingDuplicateLots",
-                enhancement: "pendingEnhancementLots",
-                extra: "pendingExtraLots",
-                envelopebreaking: "pendingEnvelopeLots",
-                box: "pendingBoxLots"
-              }[m];
+            // Determine if modules are ready/allowed to run
+            let hasModulePendingData = false;
+            if (isSpecificLot) {
+              hasModulePendingData = selectedModules.length > 0;
+            } else {
+              // First, filter the selected modules to only those that ACTUALLY have pending data
+              const modulesWithPendingData = selectedModules.filter(m => {
+                const listKey = {
+                  duplicate: "pendingDuplicateLots",
+                  enhancement: "pendingEnhancementLots",
+                  extra: "pendingExtraLots",
+                  envelopebreaking: "pendingEnvelopeLots",
+                  box: "pendingBoxLots"
+                }[m];
 
-              if (selectedDropdownLot !== "all" && selectedDropdownLot !== null) {
-                return pipelineStepStatus?.[listKey]?.includes(Number(selectedDropdownLot));
-              } else {
                 if (m === "box") {
                   const avCount = (availableLots && availableLots.length) || 0;
                   const compCount = Object.values(lotReportStatus || {}).filter(Boolean).length;
                   return (avCount > 0 && compCount < avCount) || pipelineStepStatus?.boxPending;
                 }
                 return pipelineStepStatus?.[listKey]?.length > 0;
-              }
-            });
+              });
 
-            // For the modules that DO have pending data, ensure they are all ready (or virtually ready)
-            const hasModulePendingData = modulesWithPendingData.length > 0 && modulesWithPendingData.every(m => {
-              const lotListKeyMap = {
-                duplicate: "readyDuplicateLots",
-                enhancement: "readyEnhancementLots",
-                extra: "readyExtraLots",
-                envelopebreaking: "readyEnvelopeLots",
-                box: "readyBoxLots"
-              };
-              const listKey = lotListKeyMap[m];
+              // For the modules that DO have pending data, ensure they are all ready (or virtually ready)
+              hasModulePendingData = modulesWithPendingData.length > 0 && modulesWithPendingData.every(m => {
+                const lotListKeyMap = {
+                  duplicate: "readyDuplicateLots",
+                  enhancement: "readyEnhancementLots",
+                  extra: "readyExtraLots",
+                  envelopebreaking: "readyEnvelopeLots",
+                  box: "readyBoxLots"
+                };
+                const listKey = lotListKeyMap[m];
 
-              const dependencies = {
-                enhancement: "duplicate",
-                extra: "enhancement",
-                envelopebreaking: "extra",
-                box: "envelopebreaking"
-              };
+                const dependencies = {
+                  enhancement: "duplicate",
+                  extra: "enhancement",
+                  envelopebreaking: "extra",
+                  box: "envelopebreaking"
+                };
 
-              const getEffectiveDependency = (mod) => {
-                let currentDep = dependencies[mod];
-                while (
-                  currentDep &&
-                  !steps.some(s => s.key === currentDep) &&
-                  !allModules?.some(s => s.key === currentDep || s.name?.toLowerCase().replace(/\s+/g, "").includes(currentDep.toLowerCase()))
-                ) {
-                  currentDep = dependencies[currentDep];
-                }
-                return currentDep;
-              };
+                const getEffectiveDependency = (mod) => {
+                  let currentDep = dependencies[mod];
+                  while (
+                    currentDep &&
+                    !steps.some(s => s.key === currentDep) &&
+                    !allModules?.some(s => s.key === currentDep || s.name?.toLowerCase().replace(/\s+/g, "").includes(currentDep.toLowerCase()))
+                  ) {
+                    currentDep = dependencies[currentDep];
+                  }
+                  return currentDep;
+                };
 
-              const dep = getEffectiveDependency(m);
-              const isDepSelected = dep && selectedModules.includes(dep);
+                const dep = getEffectiveDependency(m);
+                const isDepSelected = dep && selectedModules.includes(dep);
 
-              if (selectedDropdownLot !== "all" && selectedDropdownLot !== null) {
-                const lotNum = Number(selectedDropdownLot);
-                if (listKey && pipelineStepStatus) {
-                  const readyLots = pipelineStepStatus[listKey] || [];
-                  if (readyLots.includes(lotNum)) return true;
-                  return isDepSelected;
-                }
-              } else {
                 if (listKey && pipelineStepStatus) {
                   const pendingKey = listKey.replace("ready", "pending");
                   const pendingLots = pipelineStepStatus[pendingKey] || [];
@@ -4615,13 +4610,13 @@ Object.keys(groupedTpl).forEach((templateKey) => {
                   
                   return true;
                 }
-              }
 
-              if (m === "box") {
+                if (m === "box") {
+                  return true;
+                }
                 return true;
-              }
-              return true;
-            });
+              });
+            }
             
             return (
           <Tooltip
@@ -4880,6 +4875,7 @@ Object.keys(groupedTpl).forEach((templateKey) => {
             })()}
             getBoxVersionsForLot={getBoxVersionsForLot}
             handleGenerateAllLots={handleGenerateAllLots}
+            handleDownloadLotReport={handleDownloadLotReport}
             generatingLotTemplates={generatingLotTemplates}
             downloadingLotTemplates={downloadingLotTemplates}
             handleGenerateLotTemplate={handleGenerateLotTemplate}

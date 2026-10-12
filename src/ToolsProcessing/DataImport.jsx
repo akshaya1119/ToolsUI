@@ -235,7 +235,7 @@ const DataImport = () => {
           : null;
       
       const lotParam = effectiveLot ? { lotNo: effectiveLot } : {};
-      const res = await API.get(`/NRDatas/GetByProjectId/${projectId}`, {
+      const res = await API.get(`/NrData1/GetByProjectId/${projectId}`, {
         params: {
           pageSize: pagination.pageSize,
           pageNo: pagination.current,
@@ -334,7 +334,7 @@ const DataImport = () => {
     setLoading(true);
     try {
       const lotParam = selectedLot ? { lotNo: selectedLot } : {};
-      const res = await API.get(`/NRDatas/ErrorReport`, {
+      const res = await API.get(`/NrData1/ErrorReport`, {
         params: {
           ProjectId: projectId,
           ...lotParam,
@@ -426,7 +426,7 @@ const DataImport = () => {
       };
 
       const lotParam = selectedLot ? `&lotNo=${selectedLot}` : '';
-      await API.put(`/NRDatas?ProjectId=${projectId}${lotParam}`, payload, {
+      await API.put(`/NrData1?ProjectId=${projectId}${lotParam}`, payload, {
         headers: { Authorization: `Bearer ${token}` }
       });
 
@@ -449,7 +449,7 @@ const DataImport = () => {
   const handleIgnoreConflict = async (conflict) => {
     try {
       const lotParam = selectedLot ? `&lotNo=${selectedLot}` : '';
-      await API.put(`/NRDatas/conflicts/status?ProjectId=${projectId}${lotParam}`, {
+      await API.put(`/NrData1/conflicts/status?ProjectId=${projectId}${lotParam}`, {
         conflictType: conflict.conflictType,
         catchNo: conflict.catchNo,
         catchNos: conflict.catchNos || [],
@@ -500,7 +500,7 @@ const DataImport = () => {
       });
 
       const lotParam = selectedLot ? `&lotNo=${selectedLot}` : '';
-      const res = await API.post(`/NRDatas/merge-catchnos?ProjectId=${projectId}${lotParam}`, {
+      const res = await API.post(`/NrData1/merge-catchnos?ProjectId=${projectId}${lotParam}`, {
         catchNos: selectedUploadedCatchNos,
         separator: separator || "/",
         moduleId: selectedModule?.id ?? null
@@ -1236,19 +1236,12 @@ const DataImport = () => {
       } else {
         const lotParam = selectedLot ? `?lotNo=${selectedLot}` : '';
 
-        // Call both POST /api/NRDatas (NRDatas table) and POST /api/NrData1 (nrdata1 & centerlist tables) concurrently
-        const [nrDatasRes, res] = await Promise.all([
-          API.post(`/NRDatas${lotParam}`, payload, {
-            headers: { Authorization: `Bearer ${token}` }
-          }),
-          API.post(`/NrData1${lotParam}`, payload, {
-            headers: { Authorization: `Bearer ${token}` }
-          })
-        ]);
+        const res = await API.post(`/NrData1${lotParam}`, payload, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
 
-        console.log('NRDatas full response:', JSON.stringify(nrDatasRes.data, null, 2));
         console.log('NrData1 full response:', JSON.stringify(res.data, null, 2));
-        batchId = res?.data?.Batch || res?.data?.batch || nrDatasRes?.data?.Batch || nrDatasRes?.data?.batch;
+        batchId = res?.data?.Batch || res?.data?.batch;
         console.log('Extracted batchId from response:', batchId);
         showToast(`Validation successful! ${mappedData.length} rows uploaded.`, "success");
       }
@@ -1606,7 +1599,7 @@ const DataImport = () => {
       }
 
       const lotParam = selectedLot ? `?lotNo=${selectedLot}` : '';
-      await API.put(`/NRDatas/UpdateSingle/${record.id}${lotParam}`, { Status: false }, {
+      await API.put(`/NrData1/UpdateSingle/${record.id}${lotParam}`, { Status: false }, {
         headers: { Authorization: `Bearer ${token}` }
       });
 
@@ -1895,7 +1888,7 @@ const DataImport = () => {
 
       for (const col of fieldsToVerify) {
         const newValue = rowData[col];
-        const checkRes = await API.get(`/NRDatas/CheckValueExists/${projectId}`, {
+        const checkRes = await API.get(`/NrData1/CheckValueExists/${projectId}`, {
           params: {
             fieldName: col,
             value: newValue,
@@ -1929,7 +1922,7 @@ const DataImport = () => {
       console.log("Sending payload:", payload);
 
       const lotParam = selectedLot ? `?lotNo=${selectedLot}` : '';
-      const response = await API.post(`/NRDatas/single${lotParam}`, payload, {
+      const response = await API.post(`/NrData1/single${lotParam}`, payload, {
         headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -2027,7 +2020,7 @@ const DataImport = () => {
 
       for (const col of fieldsToVerify) {
         const newValue = changedPayload[col];
-        const checkRes = await API.get(`/NRDatas/CheckValueExists/${projectId}`, {
+        const checkRes = await API.get(`/NrData1/CheckValueExists/${projectId}`, {
           params: {
             fieldName: col,
             value: newValue,
@@ -2055,7 +2048,7 @@ const DataImport = () => {
 
       // Use the new UpdateSingle endpoint
       const lotParam = selectedLot ? `?lotNo=${selectedLot}` : '';
-      await API.put(`/NRDatas/UpdateSingle/${editingRowId}${lotParam}`, changedPayload, {
+      await API.put(`/NrData1/UpdateSingle/${editingRowId}${lotParam}`, changedPayload, {
         headers: { Authorization: `Bearer ${token}` }
       });
 
@@ -2101,7 +2094,7 @@ const DataImport = () => {
       const token = localStorage.getItem("token");
 
       // Await the delete call
-      await API.delete(`/NRDatas/DeleteByProject/${projectId}`, {
+      await API.delete(`/NrData1/DeleteByProject/${projectId}`, {
         headers: { Authorization: `Bearer ${token}` },
         params: selectedLot ? { lotNo: selectedLot } : {}
       });
