@@ -115,6 +115,7 @@ const BoxBreakingCard = ({
 
   const isExtraConfigured = (keyword) => {
     if (!extraProcessingConfig) return false;
+    if (extraProcessingConfig.extraProcessingAsPerNR) return true;
     const key = Object.keys(extraProcessingConfig).find(k => k.toLowerCase().includes(keyword.toLowerCase()));
     if (!key) return false;
     const config = extraProcessingConfig[key];

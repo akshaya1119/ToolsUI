@@ -2653,6 +2653,8 @@ const loadGeneratedTemplateReports = async () => {
       // After report generation, check lot report existence to update status
       const lots = await fetchLotsForSelection();
       await checkLotReportExistence(lots);
+      await loadReportVersions();
+
 
       message.success({
         content: `Successfully generated Box Breaking report for Lot ${lotNo}`,
@@ -2921,14 +2923,16 @@ const loadGeneratedTemplateReports = async () => {
       },
       extra: {
         value: extraConfigData && extraConfigData.length > 0
-          ? extraConfigData.map(ec => {
-            const type = ec.extraType ?? ec.ExtraType;
-            const mode = ec.mode ?? ec.Mode;
-            const nodalValue = ec.nodalValue ?? ec.NodalValue;
-            const typeName = type === 1 ? "Nodal" : type === 2 ? "University" : "Office";
-            const isPerNodal = nodalValue ? " (Different per Nodal)" : " (Unified)";
-            return `${typeName}: ${mode}${isPerNodal}`;
-          })
+          ? (extraConfigData.some(ec => ec.isExtraProcessingAsPerNR || ec.IsExtraProcessingAsPerNR)
+              ? ["Extra Processing as per NR"]
+              : extraConfigData.map(ec => {
+                const type = ec.extraType ?? ec.ExtraType;
+                const mode = ec.mode ?? ec.Mode;
+                const nodalValue = ec.nodalValue ?? ec.NodalValue;
+                const typeName = type === 1 ? "Nodal" : type === 2 ? "University" : "Office";
+                const isPerNodal = nodalValue ? " (Different per Nodal)" : " (Unified)";
+                return `${typeName}: ${mode}${isPerNodal}`;
+              }))
           : ["Not configured"],
       },
       envelopebreaking: {
@@ -3102,7 +3106,28 @@ const loadGeneratedTemplateReports = async () => {
         try {
           if (step.key === "duplicate") await runDuplicate(projectId);
           else if (step.key === "enhancement") await runEnhancement(projectId);
-          else if (step.key === "extra") await runExtras(projectId);
+          else if (step.key === "extra") {
+            let currentExtraConfig = extraConfigData;
+            if (!currentExtraConfig || currentExtraConfig.length === 0) {
+              try {
+                const freshRes = await API.get(`/ExtrasConfigurations/ByProject/${projectId}`);
+                if (Array.isArray(freshRes.data) && freshRes.data.length > 0) {
+                  currentExtraConfig = freshRes.data;
+                  setExtraConfigData(freshRes.data);
+                }
+              } catch (e) {
+                console.error("Failed to re-fetch extra config", e);
+              }
+            }
+
+            if (!currentExtraConfig || currentExtraConfig.length === 0) {
+              message.error("Extra Configuration has not been configured yet. Please configure envelopes and quantities in Project Configuration first.");
+              updateStepStatus(step.key, { status: "pending" });
+              setSelectedModules(prev => prev.filter(m => m !== step.key));
+              break;
+            }
+            await runExtras(projectId);
+          }
           else if (step.key === "envelopebreaking") await runEnvelope(projectId);
           else if (step.key === "box") {
             if (selectedDropdownLot !== "all" && selectedDropdownLot !== null) {
@@ -4183,9 +4208,11 @@ const loadGeneratedTemplateReports = async () => {
         const fnLower = (fileName || rawPath).toLowerCase();
         let modId = er.moduleId || er.ModuleId;
         if (fnLower.includes("enhancement")) {
-          modId = 2;
-        } else if (fnLower.includes("extra")) {
           modId = 3;
+        } else if (fnLower.includes("extra")) {
+          modId = 2;
+        } else if (fnLower.includes("boxbreaking") || fnLower.includes("box_breaking") || fnLower.includes("box")) {
+          modId = 5;
         }
         const groupKey = `${modId}_${er.lot || er.Lot || 0}_${baseName}`;
         if (!groupedExcel[groupKey]) {
@@ -4205,9 +4232,11 @@ const loadGeneratedTemplateReports = async () => {
           let modId = er.normalizedModuleId || er.moduleId || er.ModuleId;
           const fnLower = (er.fileName || er.rawPath || "").toLowerCase();
           if (fnLower.includes("enhancement")) {
-            modId = 2;
-          } else if (fnLower.includes("extra")) {
             modId = 3;
+          } else if (fnLower.includes("extra")) {
+            modId = 2;
+          } else if (fnLower.includes("boxbreaking") || fnLower.includes("box_breaking") || fnLower.includes("box")) {
+            modId = 5;
           }
           const lotVal = er.lot || er.Lot;
           const genAt = er.generatedAt || er.GeneratedAt;
@@ -4246,11 +4275,18 @@ const loadGeneratedTemplateReports = async () => {
           });
         });
       });
-    } else {
+    }
+
+    // Always merge any disk reportVersions that are not yet recorded in excelReports
+    if (reportVersions) {
+      const existingFileNames = new Set(list.map(item => (item.fileName || "").toLowerCase()));
       Object.keys(reportVersions || {}).forEach((moduleKey) => {
         const versions = reportVersions[moduleKey] || [];
+        const missingVersions = versions.filter(v => v.fileName && !existingFileNames.has(v.fileName.toLowerCase()));
+        if (missingVersions.length === 0) return;
+
         const grouped = {};
-        versions.forEach((v) => {
+        missingVersions.forEach((v) => {
           const baseName = v.fileName.replace(/[_-]?v\d+(?=\.[^.]+$)/i, '');
           if (!grouped[baseName]) grouped[baseName] = [];
           grouped[baseName].push(v);
@@ -4265,12 +4301,13 @@ const loadGeneratedTemplateReports = async () => {
           fileVersions.forEach((fv) => {
             const currentVersion = Number(fv.version || 0);
             list.push({
-              key: `report-${keyId++}`,
+              key: `report-disk-${keyId++}`,
               type: "Report",
-              module: moduleKeyToNameMap[moduleKey] || moduleKey,
+              module: moduleKeyToNameMap[moduleKey] || (moduleKey === "box" ? "Box Breaking" : moduleKey),
               templateName: "-",
               reportName: fv.fileName || baseName,
               fileName: fv.fileName,
+              lot: fv.lotNo != null ? Number(fv.lotNo) : null,
               versions: [
                 {
                   version: currentVersion > 0 ? `v${currentVersion}` : "Latest",
@@ -4286,6 +4323,7 @@ const loadGeneratedTemplateReports = async () => {
         });
       });
     }
+
     const allTemplateReports = [
   ...(envLotReports || []),
   ...(generatedTemplateReports || []),

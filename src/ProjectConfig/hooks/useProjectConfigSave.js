@@ -110,35 +110,43 @@ export const useProjectConfigSave = (
       const projectConfigEndpoint = finalIsMasterConfig ? '/MProjectConfigs' : '/ProjectConfigs';
       const extraConfigEndpoint = finalIsMasterConfig ? '/MExtraConfigs' : '/ExtrasConfigurations';
 
-      // 0️⃣ Validation & Auto-check/uncheck for Extra Configuration
+      // 0️⃣ Validation & Auto-check for Extra Configuration
       
       console.log("=== EXTRA CONFIG VALIDATION START ===");
       console.log("Current enabledModules:", enabledModules);
       console.log("extraTypeSelection:", extraTypeSelection);
       console.log("extraProcessingConfig:", extraProcessingConfig);
       
+      const isExtraAsPerNR = !!extraProcessingConfig?.extraProcessingAsPerNR;
+
       // Check if anything is actually configured in the extras processing
-      // Requirement: Must have BOTH envelope setup AND mode selected AND value
-      const hasConfigurations = Object.entries(extraTypeSelection).some(([typeName, mode]) => {
+      const allKnownExtraTypes = new Set([
+        ...(extraTypes || []).map((t) => t.type),
+        ...Object.keys(extraTypeSelection || {}),
+        ...Object.keys(extraProcessingConfig || {}),
+      ]);
+
+      const hasConfigurations = isExtraAsPerNR || Array.from(allKnownExtraTypes).some((typeName) => {
         const config = extraProcessingConfig[typeName] || {};
+        const mode = extraTypeSelection[typeName] || config.mode || config.nodalMode || "Fixed";
         const normalizedEnvelope = {
           Inner: Array.isArray(config.envelopeType?.inner) ? config.envelopeType.inner[0] || "" : config.envelopeType?.inner || "",
           Outer: Array.isArray(config.envelopeType?.outer) ? config.envelopeType.outer[0] || "" : config.envelopeType?.outer || "",
         };
-        const hasEnvelope = normalizedEnvelope.Inner || normalizedEnvelope.Outer;
-        
-        // Mode must be selected (not undefined/null)
-        const hasMode = mode && mode !== null && mode !== undefined;
+        const hasEnvelope = Boolean(normalizedEnvelope.Inner || normalizedEnvelope.Outer);
         
         let hasValue = false;
-        if (mode === "Fixed") hasValue = Number(config.fixedQty || 0) > 0;
-        else if (mode === "Percentage") hasValue = Number(config.percentage || 0) > 0;
-        else if (mode === "Range") hasValue = Array.isArray(config.range) && config.range.length > 0;
+        if (config.isPerNodal && Array.isArray(config.nodalConfigs) && config.nodalConfigs.length > 0) {
+          hasValue = config.nodalConfigs.some(nc => Array.isArray(nc.nodalCodes) && nc.nodalCodes.length > 0);
+        } else if (mode === "Fixed") {
+          hasValue = Number(config.fixedQty || 0) > 0;
+        } else if (mode === "Percentage") {
+          hasValue = Number(config.percentage || 0) > 0;
+        } else if (mode === "Range") {
+          hasValue = Array.isArray(config.range) && config.range.length > 0;
+        }
         
-        console.log(`Type: ${typeName}, Mode: ${mode}, HasEnvelope: ${hasEnvelope}, HasMode: ${hasMode}, HasValue: ${hasValue}`);
-        
-        // Must have envelope AND mode AND value
-        return hasEnvelope && hasMode && hasValue;
+        return hasEnvelope && hasValue;
       });
 
       console.log("hasConfigurations:", hasConfigurations);
@@ -151,13 +159,6 @@ export const useProjectConfigSave = (
         console.log(`Auto-enabling ${EXTRA_ALIAS_NAME}. finalEnabledModules is now:`, finalEnabledModules);
         showToast(`${EXTRA_ALIAS_NAME} has been automatically enabled because it has valid configuration.`, "info");
       }
-      // Auto-uncheck if no configurations but is checked
-      else if (!hasConfigurations && finalEnabledModules.includes(EXTRA_ALIAS_NAME)) {
-        finalEnabledModules = finalEnabledModules.filter(m => m !== EXTRA_ALIAS_NAME);
-        setEnabledModules(finalEnabledModules);
-        console.log(`Auto-disabling ${EXTRA_ALIAS_NAME}. finalEnabledModules is now:`, finalEnabledModules);
-        showToast(`${EXTRA_ALIAS_NAME} was not configured, so it has been unchecked.`, "warning");
-      }
       
       console.log("Final enabled modules before payload creation:", finalEnabledModules);
       console.log("=== EXTRA CONFIG VALIDATION END ===")
@@ -168,23 +169,17 @@ export const useProjectConfigSave = (
         modules: finalEnabledModules.flatMap((m) => {
           if (m === EXTRA_ALIAS_NAME) {
             // Expand alias into actual module IDs
-            // Strategy: Find all modules that are related to extra types
-            // These are typically modules with "Extra" in the name or specific module IDs
             const extraModuleIds = toolModules
               .filter((tm) => {
-                // Match by exact name
                 if (tm.name === NODAL_MODULE || tm.name === UNIVERSITY_MODULE) return true;
-                // Match by name containing "extra" (case-insensitive)
                 if (tm.name && tm.name.toLowerCase().includes("extra")) return true;
-                // Match by description containing "extra"
                 if (tm.description && tm.description.toLowerCase().includes("extra")) return true;
                 return false;
               })
               .map((tm) => tm.id);
             
             console.log(`Expanding ${EXTRA_ALIAS_NAME} to module IDs:`, extraModuleIds);
-            console.log("toolModules available:", toolModules.map(tm => ({ id: tm.id, name: tm.name, description: tm.description })));
-            return extraModuleIds;
+            return extraModuleIds.length > 0 ? extraModuleIds : [2];
           }
           const mod = toolModules.find((tm) => tm.name === m);
           return mod ? [mod.id] : [];
@@ -313,24 +308,22 @@ export const useProjectConfigSave = (
       console.log(' extraProcessingConfig:', extraProcessingConfig);
       
       // Build list of extra types to process
-      // Include types from extraTypeSelection AND types with nodal configuration
+      // Include all extraTypes, plus any keys in extraTypeSelection or extraProcessingConfig
       const extraTypesToProcess = new Set([
-        ...Object.keys(extraTypeSelection),
-        ...Object.keys(extraProcessingConfig).filter(typeName => 
-          extraProcessingConfig[typeName]?.isPerNodal && 
-          extraProcessingConfig[typeName]?.nodalConfigs?.length > 0
-        )
+        ...(extraTypes || []).map((t) => t.type),
+        ...Object.keys(extraTypeSelection || {}),
+        ...Object.keys(extraProcessingConfig || {}),
       ]);
       
       console.log(' extraTypesToProcess:', Array.from(extraTypesToProcess));
       
-      const extrasPayloads = Array.from(extraTypesToProcess)
+      let extrasPayloads = Array.from(extraTypesToProcess)
         .map((typeName) => {
-          const et = extraTypes.find((t) => t.type === typeName);
+          const et = (extraTypes || []).find((t) => t.type === typeName || t.type?.toLowerCase() === typeName?.toLowerCase());
           if (!et) return null;
 
           const config = extraProcessingConfig[typeName] || {};
-          const mode = extraTypeSelection[typeName]; // May be undefined for nodal-only configs
+          const mode = extraTypeSelection[typeName] || config.mode || config.nodalMode || "Fixed";
           
           // Debug logging for nodal configuration
           console.log(` Processing ${typeName}:`, {
@@ -381,7 +374,8 @@ export const useProjectConfigSave = (
           const hasMode = mode || config.isPerNodal; // Mode is required unless it's nodal config
 
           // Skip if nothing configured - must have envelope AND (mode OR nodal config) AND value
-          if (!hasEnvelope || !hasMode || !hasValue) return null;
+          // EXCEPT when Extra Processing as per NR is selected, where manual envelopes and values are optional
+          if (!isExtraAsPerNR && (!hasEnvelope || !hasMode || !hasValue)) return null;
 
           const payload = {
             id: 0,
@@ -389,7 +383,7 @@ export const useProjectConfigSave = (
             extraType: et.extraTypeId,
             mode: mode || config.nodalMode || "Fixed", // Use mode from selection, or nodalMode, or default to Fixed
             envelopeType: JSON.stringify(normalizedEnvelope),
-            IsExtraProcessingAsPerNR: !!extraProcessingConfig?.extraProcessingAsPerNR,
+            IsExtraProcessingAsPerNR: isExtraAsPerNR,
             AttachExtraForEachCatchForAllNodal: !!extraProcessingConfig?.attachExtraForEachCatchForAllNodal,
           };
 
@@ -442,6 +436,24 @@ export const useProjectConfigSave = (
           return payload;
         })
         .filter(Boolean);
+
+      // If Extra Processing as per NR is checked but no extra type payloads were formed,
+      // generate default payloads for all available extraTypes so backend and pipeline know Extra Processing as per NR is active
+      if (isExtraAsPerNR && extrasPayloads.length === 0) {
+        const typesList = (extraTypes && extraTypes.length > 0)
+          ? extraTypes
+          : [{ extraTypeId: 1, type: "Nodal" }, { extraTypeId: 2, type: "University" }, { extraTypeId: 3, type: "Office" }];
+        extrasPayloads = typesList.map((et) => ({
+          id: 0,
+          ...(finalIsMasterConfig ? { typeId: Number(finalTypeId), groupId: Number(finalGroupId) } : { projectId: Number(projectId) }),
+          extraType: et.extraTypeId,
+          mode: "Fixed",
+          value: "0",
+          envelopeType: JSON.stringify({ Inner: "", Outer: "" }),
+          IsExtraProcessingAsPerNR: true,
+          AttachExtraForEachCatchForAllNodal: !!extraProcessingConfig?.attachExtraForEachCatchForAllNodal,
+        }));
+      }
 
       console.log('📦 Final extrasPayloads:', extrasPayloads);
 

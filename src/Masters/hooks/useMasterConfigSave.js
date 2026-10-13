@@ -160,7 +160,9 @@ export const useMasterConfigSave = (
       }
 
       // 3️⃣ Save MasterExtrasConfigurations
-      const extrasPayloads = Object.entries(extraTypeSelection)
+      const isExtraAsPerNR = !!extraProcessingConfig?.extraProcessingAsPerNR;
+
+      let extrasPayloads = Object.entries(extraTypeSelection)
         .map(([typeName, mode]) => {
           const et = extraTypes.find((t) => t.type === typeName);
           if (!et) return null;
@@ -186,8 +188,8 @@ export const useMasterConfigSave = (
             !normalizedEnvelope.Inner &&
             !normalizedEnvelope.Outer;
 
-          //  Skip if nothing configured
-          if (allZero) return null;
+          // Skip if nothing configured unless Extra Processing as per NR is checked
+          if (!isExtraAsPerNR && allZero) return null;
           const value =
             mode === "Fixed"
               ? String(fixed)
@@ -202,9 +204,26 @@ export const useMasterConfigSave = (
             mode,
             value,
             envelopeType: JSON.stringify(normalizedEnvelope),
+            IsExtraProcessingAsPerNR: isExtraAsPerNR,
           };
         })
         .filter(Boolean);
+
+      if (isExtraAsPerNR && extrasPayloads.length === 0) {
+        const typesList = (extraTypes && extraTypes.length > 0)
+          ? extraTypes
+          : [{ extraTypeId: 1, type: "Nodal" }, { extraTypeId: 2, type: "University" }, { extraTypeId: 3, type: "Office" }];
+        extrasPayloads = typesList.map((et) => ({
+          id: 0,
+          groupId: Number(groupId),
+          typeId: Number(typeId),
+          extraType: et.extraTypeId,
+          mode: "Fixed",
+          value: "0",
+          envelopeType: JSON.stringify({ Inner: "", Outer: "" }),
+          IsExtraProcessingAsPerNR: true,
+        }));
+      }
 
       if (extrasPayloads.length > 0) {
         // Log each extras configuration being saved

@@ -13,6 +13,7 @@ import {
   Switch,
   Modal,
   Checkbox,
+  Alert,
 } from "antd";
 import API from "../../hooks/api";
 import { FolderAddFilled, LockFilled, UndoOutlined, PlusOutlined, MinusCircleOutlined, DeleteOutlined } from "@ant-design/icons";
@@ -162,7 +163,7 @@ useEffect(() => {
         }
       >
         <Row style={{ marginBottom: 16 }} gutter={[24, 8]}>
-          <Col>
+          <Col span={24}>
             <Checkbox
               checked={extraProcessingConfig?.extraProcessingAsPerNR || false}
               onChange={(e) =>
@@ -175,6 +176,14 @@ useEffect(() => {
             >
               Extra Processing as per NR
             </Checkbox>
+            {extraProcessingConfig?.extraProcessingAsPerNR && (
+              <Alert
+                type="info"
+                showIcon
+                style={{ marginTop: 8 }}
+                message="Extra Processing as per NR is enabled"
+              />
+            )}
           </Col>
           {/* <Col>
             <Checkbox
