@@ -25,7 +25,7 @@ import { motion } from "framer-motion";
 import axios from "axios";
 import { getCurrentUserId } from "../hooks/useUserMap";
 import API from "../hooks/api";
-import { getRptApiUrl } from "../hooks/rptApi";
+//import { getRptApiUrl } from "../hooks/rptApi";
 import useStore from "../stores/ProjectData";
 import { buildReportFileName, getErrorMessageAsync, parseMappingJson, getErrorDetails,retryAsync } from "../utils/rptTemplateUtils";
 import EnvLotReportsManager from "./EnvLotReportsManager";
@@ -308,7 +308,7 @@ const ProcessingPipeline = () => {
       });
   }, [pipelineStepStatus, steps, hasDeactivatedCatches]);
 
-  const rptApiUrl = getRptApiUrl();
+  // const rptApiUrl = getRptApiUrl();
   const mappingUpdateKey = "rptTemplateMappingUpdatedAt";
 
   const moduleKeyToNameMap = {
@@ -1314,10 +1314,13 @@ const ProcessingPipeline = () => {
 
     const ancestors = Array.from(getRecursiveAncestors(moduleKey));
 
+    const isExtraConfigured = extraConfigData && extraConfigData.length > 0;
     setSelectedModules((prev) => {
       // Filter ancestors to only include those NOT completed (except the clicked one)
       // If a step has pending changes (is outdated), it is treated as not completed.
       const keysToSelect = ancestors.filter(key => {
+        // If Extra is not configured, do not auto-select it as an ancestor dependency
+        if (key === "extra" && !isExtraConfigured) return false;
         const step = steps.find(s => s.key === key);
         const keyMap = {
           duplicate: "duplicatePending",
@@ -2972,9 +2975,14 @@ const loadGeneratedTemplateReports = async () => {
     const selectedIndices = selectedModules.map(key => allOrder.findIndex(s => s.key === key));
     const maxSelectedIndex = Math.max(...selectedIndices);
 
+    const isExtraConfigured = extraConfigData && extraConfigData.length > 0;
     const unprocessedSteps = [];
     for (let i = 0; i < maxSelectedIndex; i++) {
       const stepKey = allOrder[i].key;
+      // If Extra is not configured, do not treat it as an unfulfilled dependency
+      if (stepKey === "extra" && !isExtraConfigured) {
+        continue;
+      }
       const isSelected = selectedModules.includes(stepKey);
       const isCompleted = steps.find(s => s.key === stepKey)?.status === "completed";
 
@@ -3373,6 +3381,12 @@ const loadGeneratedTemplateReports = async () => {
   };
 
   const isStepSelectable = (step) => {
+    // If Extra is present in pipeline steps but not configured, mark it unselectable so Select All selects valid modules
+    const isExtraConfigured = extraConfigData && extraConfigData.length > 0;
+    if (step.key === "extra" && !isExtraConfigured) {
+      return false;
+    }
+
     const moduleToLotKey = {
       duplicate: { pending: "pendingDuplicateLots", completed: "completedDuplicateLots" },
       enhancement: { pending: "pendingEnhancementLots", completed: "completedEnhancementLots" },
@@ -4534,8 +4548,13 @@ Object.keys(groupedTpl).forEach((templateKey) => {
             const boxHasRemaining = availableCount > 0 && completedCount < availableCount;
             const canStartByData = hasPendingPipelineChanges || hasAnyPendingStep || configChanged || boxHasRemaining;
 
+            const isExtraConfigured = extraConfigData && extraConfigData.length > 0;
             // First, filter the selected modules to only those that ACTUALLY have pending data
             const modulesWithPendingData = selectedModules.filter(m => {
+              // If Extra is not configured, do not allow it to block pipeline readiness
+              if (m === "extra" && !isExtraConfigured) {
+                return false;
+              }
               const listKey = {
                 duplicate: "pendingDuplicateLots",
                 enhancement: "pendingEnhancementLots",
@@ -4578,8 +4597,7 @@ Object.keys(groupedTpl).forEach((templateKey) => {
                 let currentDep = dependencies[mod];
                 while (
                   currentDep &&
-                  !steps.some(s => s.key === currentDep) &&
-                  !allModules?.some(s => s.key === currentDep || s.name?.toLowerCase().replace(/\s+/g, "").includes(currentDep.toLowerCase()))
+                  (!steps.some(s => s.key === currentDep) || (currentDep === "extra" && !isExtraConfigured))
                 ) {
                   currentDep = dependencies[currentDep];
                 }
