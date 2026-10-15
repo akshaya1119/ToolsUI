@@ -924,10 +924,13 @@ const ProcessingPipeline = () => {
     return pages === 0 || pages === null || pages === undefined || pages === '' || pages === '-' || pages === 'null';
   };
 
-  const fetchMissingEnvLotCatchesForSelection = async (projectIdParam) => {
-    console.log(projectIdParam)
+  const fetchMissingEnvLotCatchesForSelection = async (projectIdParam, lotNoParam = null) => {
+    console.log(projectIdParam);
     try {
-      const res = await API.get(`/NRDataLots/GetMissingEnvLotCatches/${projectIdParam}`);
+      const params = lotNoParam && lotNoParam !== "all" && Number(lotNoParam) > 0
+        ? { lotNo: Number(lotNoParam) }
+        : {};
+      const res = await API.get(`/NRDataLots/GetMissingEnvLotCatches/${projectIdParam}`, { params });
       const rawData = res.data || [];
       return rawData.map(item => ({
         catchNo: (item.catchNo ?? item.CatchNo ?? "").toString().trim(),
@@ -940,9 +943,12 @@ const ProcessingPipeline = () => {
     }
   };
 
-  const fetchAssignedEnvLotCatchesForSelection = async (projectIdParam) => {
+  const fetchAssignedEnvLotCatchesForSelection = async (projectIdParam, lotNoParam = null) => {
     try {
-      const res = await API.get(`/NRDataLots/GetAssignedEnvLotCatches/${projectIdParam}`);
+      const params = lotNoParam && lotNoParam !== "all" && Number(lotNoParam) > 0
+        ? { lotNo: Number(lotNoParam) }
+        : {};
+      const res = await API.get(`/NRDataLots/GetAssignedEnvLotCatches/${projectIdParam}`, { params });
       const rawData = res.data || [];
       const grouped = rawData.reduce((acc, item) => {
         const envLotNo = item.envLotNo ?? item.EnvLotNo;
@@ -1689,8 +1695,12 @@ const loadGeneratedTemplateReports = async () => {
     }
     
     if (!isQS && !isComposite && isEnvelopeDependent && !isBoxBreakingDependent) {
+      const activeLotNo = selectedDropdownLot !== "all" && selectedDropdownLot !== null && selectedDropdownLot !== undefined && selectedDropdownLot !== ""
+        ? Number(selectedDropdownLot)
+        : null;
+
       if (action === "regenerate") {
-        const assignedCatchItems = await fetchAssignedEnvLotCatchesForSelection(projectId);
+        const assignedCatchItems = await fetchAssignedEnvLotCatchesForSelection(projectId, activeLotNo);
         if (assignedCatchItems.length > 0) {
           const templateId = resolveTemplateId(template);
           
@@ -1710,7 +1720,8 @@ const loadGeneratedTemplateReports = async () => {
              generatedEnvLots,
              templateIsOutdated,
              staleEnvLotIds,
-             showAssigned: true
+             showAssigned: true,
+             selectedLot: activeLotNo,
           });
           if (selectedEnvLots === null) return;
           if (selectedEnvLots.length > 0) {
@@ -1721,12 +1732,17 @@ const loadGeneratedTemplateReports = async () => {
           return;
         }
       } else {
-        const missingCatchItems = await fetchMissingEnvLotCatchesForSelection(projectId);
+        const missingCatchItems = await fetchMissingEnvLotCatchesForSelection(projectId, activeLotNo);
         // Fetch assigned env-lot items so user can optionally show them
-        const assignedCatchItems = await fetchAssignedEnvLotCatchesForSelection(projectId);
+        const assignedCatchItems = await fetchAssignedEnvLotCatchesForSelection(projectId, activeLotNo);
         
         // Show modal even if all catches are assigned, allowing user to select from assigned envelopes for regeneration
-        const selectedCatchNos = await showEnvLotSelectionModal([], false, { unassignedCatches: missingCatchItems, assignedEnvLots: assignedCatchItems, showAssigned: missingCatchItems.length === 0 });
+        const selectedCatchNos = await showEnvLotSelectionModal([], false, {
+          unassignedCatches: missingCatchItems,
+          assignedEnvLots: assignedCatchItems,
+          showAssigned: missingCatchItems.length === 0,
+          selectedLot: activeLotNo,
+        });
         if (selectedCatchNos === null) {
           return; // user cancelled
         }
@@ -1874,7 +1890,7 @@ const loadGeneratedTemplateReports = async () => {
             templateId: Number(templateId),
             templateName: template?.templateName || template?.TemplateName || "Template Report",
             envLotNumbers: isQS ? String(currentLot) : (envLotNumbers.length > 0 ? envLotNumbers.join(',') : "0"),
-            lotNo: isQS ? Number(currentLot) : (isBoxBreakingDependent && currentLot ? Number(currentLot) : 0),
+            lotNo: isQS ? Number(currentLot) : (isBoxBreakingDependent && currentLot ? Number(currentLot) : (selectedDropdownLot !== "all" && selectedDropdownLot !== null && selectedDropdownLot !== undefined && selectedDropdownLot !== "" ? Number(selectedDropdownLot) : 0)),
             fileName: fileName,
             generatedByUserId: currentUserId ? Number(currentUserId) : null,
             filePath: filePath
@@ -4952,6 +4968,7 @@ Object.keys(groupedTpl).forEach((templateKey) => {
         assignedEnvLots={envLotSelectionModal.assignedEnvLots}
         unassignedCatches={envLotSelectionModal.unassignedCatches}
         showAssigned={envLotSelectionModal.showAssigned}
+        selectedLot={envLotSelectionModal.selectedLot}
         onToggleShowAssigned={(val) => setEnvLotSelectionModal(prev => ({ ...prev, showAssigned: val }))}
       />
       <ReportTemplateManagement
