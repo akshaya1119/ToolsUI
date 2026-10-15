@@ -1037,6 +1037,7 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted, defaultOpenBifurcation }, 
 
                     // Save field edits (other columns)
                     if (Object.keys(payload).length > 1) {
+                      payload.catchNo = catchNo;
                       const lotParam = selectedLot ? `?lotNo=${selectedLot}` : '';
                       await API.put(`/NRDatas/UpdateCatchwise/${catchNo}${lotParam}`, payload);
                       showToast("Catch fields updated successfully", "success");
