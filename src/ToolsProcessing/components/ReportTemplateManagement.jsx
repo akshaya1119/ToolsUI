@@ -11,7 +11,7 @@ import {
   Pagination,
 } from 'antd';
 import axios from 'axios';
-import { Search, Download, FileText, ChevronDown, ChevronRight, Archive, ArchiveRestore } from 'lucide-react';
+import { Search, Download, FileText, FileSpreadsheet, ChevronDown, ChevronRight, Archive, ArchiveRestore } from 'lucide-react';
 import { useUserMap, getFirstNameFromUserId, getCurrentUserId } from '../../hooks/useUserMap';
 import useStore from '../../stores/ProjectData';
 
@@ -127,6 +127,16 @@ const ReportTemplateManagement = ({
   const [bulkDownloading, setBulkDownloading] = useState(false);
   const [envLotCatches, setEnvLotCatches] = useState({});
   const [envLotReportsLocal, setEnvLotReportsLocal] = useState([]);
+
+  // Fetch groups and types for filename mapping
+  const [globalGroupOptions, setGlobalGroupOptions] = useState([]);
+  const [globalTypeOptions, setGlobalTypeOptions] = useState([]);
+  useEffect(() => {
+    const baseUrl = import.meta.env.VITE_API_BASE_URL;
+    if (!baseUrl) return;
+    axios.get(`${baseUrl}/Groups`).then(res => setGlobalGroupOptions(res.data || [])).catch(() => {});
+    axios.get(`${baseUrl}/PaperTypes`).then(res => setGlobalTypeOptions(res.data || [])).catch(() => {});
+  }, []);
 
   // ── helpers ──────────────────────────────────────────────────────────────
 
@@ -387,11 +397,15 @@ const ReportTemplateManagement = ({
       const templateNameKey = (r.templateName || r.TemplateName || '').trim().toLowerCase();
       const moduleLower = (r.module || '').toLowerCase();
 
-      // Get all DB records for this template (first by templateId, fallback by templateName)
-      let rawDbRows = templateId ? (envLotReportsByTemplate[templateId] || []) : [];
-      if (rawDbRows.length === 0 && templateNameKey) {
-        rawDbRows = envLotReportsByTemplate[`name_${templateNameKey}`] || [];
+      // Combine DB records matched by templateId OR templateName
+      const combined = new Map();
+      if (templateId) {
+        (envLotReportsByTemplate[templateId] || []).forEach(x => combined.set(x.id ?? x.Id, x));
       }
+      if (templateNameKey) {
+        (envLotReportsByTemplate[`name_${templateNameKey}`] || []).forEach(x => combined.set(x.id ?? x.Id, x));
+      }
+      let rawDbRows = Array.from(combined.values());
       const dbRows = rawDbRows.filter(db => {
         const isArchived = db.status === false || db.Status === false;
         return isArchivedView ? isArchived : !isArchived;
@@ -430,9 +444,9 @@ const ReportTemplateManagement = ({
           lotGroups[lot].push(db);
         });
         Object.entries(lotGroups).forEach(([lot, dbs]) => {
-          const gk = `tpl-${templateId}-lot-${lot}`;
+          const gk = templateNameKey ? `tplname-${templateNameKey}-lot-${lot}` : `tpl-${templateId}-lot-${lot}`;
           if (!groupMap.has(gk)) {
-            groupMap.set(gk, { key: gk, module: r.module, templateId, templateName, subName: r.subName || r.SubName || null, lot: Number(lot), envLotNo: null, rows: [] });
+            groupMap.set(gk, { key: gk, module: r.module, templateId, templateName, subName: r.subName || r.SubName || null, lot: Number(lot), envLotNo: null, groupId: r.groupId, typeId: r.typeId, rows: [] });
           }
           // Each DB row = one version row; map to the report shape
           dbs.forEach((db, idx) => {
@@ -449,9 +463,9 @@ const ReportTemplateManagement = ({
           batchGroups[envNo].push(db);
         });
         Object.entries(batchGroups).forEach(([envNo, dbs]) => {
-          const gk = `tpl-${templateId}-env-${envNo}`;
+          const gk = templateNameKey ? `tplname-${templateNameKey}-env-${envNo}` : `tpl-${templateId}-env-${envNo}`;
           if (!groupMap.has(gk)) {
-            groupMap.set(gk, { key: gk, module: r.module, templateId, templateName, subName: r.subName || r.SubName || null, lot: null, envLotNo: Number(envNo), rows: [] });
+            groupMap.set(gk, { key: gk, module: r.module, templateId, templateName, subName: r.subName || r.SubName || null, lot: null, envLotNo: Number(envNo), groupId: r.groupId, typeId: r.typeId, rows: [] });
           }
           dbs.forEach((db, idx) => {
             pushDbRow(gk, r, db, idx);
@@ -459,9 +473,9 @@ const ReportTemplateManagement = ({
         });
       } else {
         // Plain template — one group per templateId
-        const gk = `tpl-${templateId}`;
+        const gk = templateNameKey ? `tplname-${templateNameKey}` : `tpl-${templateId}`;
         if (!groupMap.has(gk)) {
-          groupMap.set(gk, { key: gk, module: r.module, templateId, templateName, subName: r.subName || r.SubName || null, lot: null, envLotNo: null, rows: [] });
+          groupMap.set(gk, { key: gk, module: r.module, templateId, templateName, subName: r.subName || r.SubName || null, lot: null, envLotNo: null, groupId: r.groupId, typeId: r.typeId, rows: [] });
         }
         dbRows.forEach((db, idx) => {
           pushDbRow(gk, r, db, idx);
@@ -591,50 +605,80 @@ const ReportTemplateManagement = ({
     message.success('Download started.');
   };
 
-  // Download a template (uses rptApiUrl)
-  const handleDownloadTemplate = async (group, dbRow) => {
+  // Download a template
+  const handleDownloadTemplate = async (group, dbRow, asExcel = false) => {
     const templateId = group.templateId;
     const lotNumber = dbRow
       ? Number(dbRow.lotNumber ?? dbRow.lotNo ?? dbRow.LotNo ?? 0) || 1
       : group.lot || 1;
+
+    const dbId = dbRow?.id ?? dbRow?.Id;
+
     if (!templateId || !projectId) { message.error('Missing template download details.'); return; }
     try {
       const base = (rptApiUrl || import.meta.env.VITE_RPT_API_URL || '').replace(/\/api\/?$/i, '');
       if (!base) { message.error('RPT API URL not configured.'); return; }
-      const ok = await axios.get(`${base}/api/report/generated-exists?templateId=${templateId}&projectId=${projectId}`);
-      if (!ok.data?.exists && ok.data !== true) { message.error('No generated PDF found.'); return; }
 
-      let fileName = projectName ? projectName.replace(/[^a-zA-Z0-9_-]/g, '_') : `Project_${projectId}`;
+      // Build a descriptive file name
+      const groupId = dbRow?.groupId ?? dbRow?.GroupId ?? group.groupId;
+      const typeId = dbRow?.typeId ?? dbRow?.TypeId ?? group.typeId;
+      const groupObj = globalGroupOptions.find(g => Number(g.id) === Number(groupId) || Number(g.groupId) === Number(groupId));
+      const typeObj = globalTypeOptions.find(t => Number(t.typeId) === Number(typeId) || Number(t.id) === Number(typeId));
+      
+      const gName = groupObj ? (groupObj.name || groupObj.groupName) : (group.module || 'Group');
+      const tName = typeObj ? (typeObj.types || typeObj.name) : 'Template';
+
+      const groupNameStr = gName.replace(/[^a-zA-Z0-9_-]/g, '-');
+      const typeNameStr = tName.replace(/[^a-zA-Z0-9_-]/g, '-');
+      const templateNameStr = group.templateName ? group.templateName.replace(/[^a-zA-Z0-9_-]/g, '-') : '';
+
+      let fileName = `${groupNameStr}-${typeNameStr}-${templateNameStr}`;
+
       const envNums = parseEnvLotNumbers(dbRow?.envLotNumbers ?? dbRow?.EnvLotNumbers);
       const envLotVal = group.envLotNo ?? envNums[0];
-
       if (envLotVal) {
-        fileName += `_Batch-${envLotVal}`;
+        fileName += `-Batch-${envLotVal}`;
       } else if (lotNumber) {
-        fileName += `_Lot-${lotNumber}`;
+        fileName += `-Lot-${lotNumber}`;
       }
-
-      // Include template name to be descriptive
-      const templateNameStr = group.templateName ? `_${group.templateName.replace(/[^a-zA-Z0-9_-]/g, '_')}` : '';
-      fileName += `${templateNameStr}.pdf`;
+      fileName += `.${asExcel ? 'xls' : 'pdf'}`;
 
       message.loading({ content: 'Downloading...', key: 'downloading-template' });
-      const res = await axios.get(`${base}/api/report/generated-download`, {
-        params: { templateId, projectId, lotNumber },
+
+      // Single call: generated-exists?download=true streams the PDF directly
+      const envLotRptId = dbId ?? group.rows[0]?._dbRow?.id ?? group.rows[0]?._dbRow?.Id ?? null;
+      // Pass filePath from the specific version's DB record so the backend serves that exact file
+      const versionFilePath = dbRow?.filePath || dbRow?.FilePath || null;
+      const dlParams = { templateId, projectId, lotNumber, download: true, fileName };
+      if (asExcel) dlParams.asExcel = true;
+      if (envLotRptId) dlParams.envelopeLotReportId = envLotRptId;
+      if (versionFilePath) dlParams.filePath = versionFilePath;
+
+      const res = await axios.get(`${base}/api/report/generated-exists`, {
+        params: dlParams,
         responseType: 'blob'
       });
-      const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+
+      // Check if the response is JSON (exists=false) vs a real PDF blob
+      const contentType = res.headers?.['content-type'] || '';
+      if (contentType.includes('application/json')) {
+        const text = await res.data.text();
+        const json = JSON.parse(text);
+        if (!json.exists) { message.error({ content: 'No generated file found.', key: 'downloading-template' }); return; }
+      }
+
+      const mimeType = asExcel ? 'application/vnd.ms-excel' : 'application/pdf';
+      const url = window.URL.createObjectURL(new Blob([res.data], { type: mimeType }));
       const a = document.createElement('a'); a.href = url; a.download = fileName;
       document.body.appendChild(a); a.click(); a.remove(); window.URL.revokeObjectURL(url);
       message.success({ content: 'Download completed.', key: 'downloading-template' });
 
-      // track download
-      const dbId = dbRow?.id ?? dbRow?.Id;
-      if (dbId) {
+      // Track download against the specific DB record (silent)
+      if (envLotRptId) {
         try {
           const uid = getCurrentUserId();
-          await axios.put(`${apiBaseUrl}/EnvelopeLotReports/${dbId}/track-download`, { downloadedByUserId: uid, DownloadedByUserId: uid });
-          await fetchEnvLotReports();
+          await axios.put(`${apiBaseUrl}/EnvelopeLotReports/${envLotRptId}/track-download`, { downloadedByUserId: uid, DownloadedByUserId: uid });
+          await fetchEnvLotReports(showRecentOnly);
         } catch (e) { console.warn('Failed to track download:', e); }
       }
     } catch (e) { console.error('Template download failed:', e); message.error({ content: 'Failed to download.', key: 'downloading-template' }); }
@@ -687,7 +731,7 @@ const ReportTemplateManagement = ({
         try {
           await axios.put(`${apiBaseUrl}/EnvelopeLotReports/${dbId}/archive`);
           message.success('Report archived successfully');
-          fetchEnvLotReports();
+          fetchEnvLotReports(showRecentOnly);
         } catch (e) {
           console.error('Failed to archive report:', e);
           message.error('Failed to archive report');
@@ -703,7 +747,7 @@ const ReportTemplateManagement = ({
     try {
       await axios.put(`${apiBaseUrl}/EnvelopeLotReports/${dbId}/unarchive`);
       message.success('Report unarchived successfully');
-      fetchEnvLotReports();
+      fetchEnvLotReports(showRecentOnly);
     } catch (e) {
       console.error('Failed to unarchive report:', e);
       message.error('Failed to unarchive report');
@@ -845,6 +889,7 @@ const ReportTemplateManagement = ({
         status: (latestDb?.status === false || latestDb?.Status === false) ? 'Archived' : (firstVer?.status || 'Latest'),
         onDownload: () => handleDownloadTemplate(group, latestDb),
         canDownload: true,
+        inExcel: firstRow?.inExcel,
         onArchive: () => handleArchiveTemplate(latestDb),
         onUnarchive: () => handleUnarchiveTemplate(latestDb),
         canArchive: !(latestDb?.status === false || latestDb?.Status === false),
@@ -964,7 +1009,7 @@ const ReportTemplateManagement = ({
           {/* action — always shown */}
           <div className="rtm-cell rtm-cell--action" onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', gap: '8px' }}>
-              <Tooltip title="Download">
+              <Tooltip title="Download PDF">
                 <Button
                   type="primary" size="small"
                   icon={<Download size={13} />}
@@ -972,6 +1017,17 @@ const ReportTemplateManagement = ({
                   onClick={(e) => { e.stopPropagation(); headerData.onDownload(); }}>
                 </Button>
               </Tooltip>
+              {headerData.inExcel && (
+                <Tooltip title="Download Excel">
+                  <Button
+                    type="primary" size="small"
+                    style={{ backgroundColor: '#107c41', borderColor: '#107c41' }}
+                    icon={<FileSpreadsheet size={13} />}
+                    disabled={!headerData.canDownload}
+                    onClick={(e) => { e.stopPropagation(); handleDownloadTemplate(group, group.rows[0]?._dbRow, true); }}>
+                  </Button>
+                </Tooltip>
+              )}
               {!isReport && (
                 <>
                   {headerData.status === 'Archived' ? (
@@ -1103,11 +1159,20 @@ const ReportTemplateManagement = ({
                           {tvc('status') && <td>{db?.status === false || db?.Status === false ? <Tag color="error">Archived</Tag> : (idx === 0 ? <Tag color="success">Latest</Tag> : <Tag>Previous</Tag>)}</td>}
                           <td style={{ textAlign: 'left' }}>
                             <div style={{ display: 'flex', gap: '8px' }}>
-                              <Tooltip title="Download">
+                              <Tooltip title="Download PDF">
                                 <Button size="small" icon={<Download size={12} />}
                                   onClick={() => handleDownloadTemplate(group, db)}>
                                 </Button>
                               </Tooltip>
+                              {headerData.inExcel && (
+                                <Tooltip title="Download Excel">
+                                  <Button size="small"
+                                    style={{ color: '#107c41', borderColor: '#107c41' }}
+                                    icon={<FileSpreadsheet size={12} />}
+                                    onClick={() => handleDownloadTemplate(group, db, true)}>
+                                  </Button>
+                                </Tooltip>
+                              )}
                               {(db?.status === false || db?.Status === false) ? (
                                 <Tooltip title="Unarchive">
                                   <Button size="small" icon={<ArchiveRestore size={12} />} onClick={() => handleUnarchiveTemplate(db)}>

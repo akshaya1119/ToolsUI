@@ -25,7 +25,7 @@ import { motion } from "framer-motion";
 import axios from "axios";
 import { getCurrentUserId } from "../hooks/useUserMap";
 import API from "../hooks/api";
-//import { getRptApiUrl } from "../hooks/rptApi";
+// import { getRptApiUrl } from "../hooks/rptApi";
 import useStore from "../stores/ProjectData";
 import { buildReportFileName, getErrorMessageAsync, parseMappingJson, getErrorDetails,retryAsync } from "../utils/rptTemplateUtils";
 import EnvLotReportsManager from "./EnvLotReportsManager";
@@ -307,8 +307,7 @@ const ProcessingPipeline = () => {
         return config.name;
       });
   }, [pipelineStepStatus, steps, hasDeactivatedCatches]);
-
-  // const rptApiUrl = getRptApiUrl();
+const rptApiUrl = import.meta.env.VITE_RPT_API_URL;
   const mappingUpdateKey = "rptTemplateMappingUpdatedAt";
 
   const moduleKeyToNameMap = {
@@ -1665,7 +1664,7 @@ const loadGeneratedTemplateReports = async () => {
     
     // For box breaking dependent templates, show lot selection modal
     let selectedLotsForBoxBreaking = [];
-    if (isBoxBreakingDependent && !isQS && !isComposite) {
+    if (isBoxBreakingDependent && !isQS) {
       if (selectedDropdownLot !== "all" && selectedDropdownLot !== null) {
         selectedLotsForBoxBreaking = [Number(selectedDropdownLot)];
       } else {
@@ -4444,6 +4443,12 @@ Object.keys(groupedTpl).forEach((templateKey) => {
       templateId:
         r.templateId ||
         firstRep?.templateId,
+      groupId:
+        tpl?.groupId || tpl?.GroupId || null,
+      typeId:
+        tpl?.typeId || tpl?.TypeId || null,
+      inExcel:
+        tpl?.inExcel || tpl?.InExcel || false,
 
       envLotNumbers:
         r.envLotNumbers ||

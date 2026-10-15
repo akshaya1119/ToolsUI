@@ -114,6 +114,8 @@ export const buildTemplateColumns = ({
   userMap,
   moduleMap,
   moduleOptions,
+  groupOptions,
+  typeOptions,
   editingTemplateId,
   editingTemplateName,
   setEditingTemplateName,
@@ -210,6 +212,28 @@ export const buildTemplateColumns = ({
         {value ?? record?.SubName ?? "-"}
       </Typography.Text>
     ),
+  },
+  {
+    title: "Group",
+    key: "groupId",
+    width: 150,
+    render: (_, record) => {
+      const gId = record?.groupId ?? record?.GroupId;
+      if (!gId) return <Typography.Text type="secondary">-</Typography.Text>;
+      const group = (groupOptions || []).find((g) => g.value === gId);
+      return <Typography.Text>{group ? group.label : `Group ${gId}`}</Typography.Text>;
+    },
+  },
+  {
+    title: "Type",
+    key: "typeId",
+    width: 150,
+    render: (_, record) => {
+      const tId = record?.typeId ?? record?.TypeId;
+      if (!tId) return <Typography.Text type="secondary">-</Typography.Text>;
+      const type = (typeOptions || []).find((t) => t.value === tId);
+      return <Typography.Text>{type ? type.label : `Type ${tId}`}</Typography.Text>;
+    },
   },
   {
     title: "Version",
