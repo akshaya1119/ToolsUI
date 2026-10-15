@@ -1018,6 +1018,7 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted, defaultOpenBifurcation }, 
                 type="primary"
                 onClick={async () => {
                   try {
+                    const catchNo = record.CatchNo || record.catchNo;
                     const payload = { projectId: Number(projectId) };
                     const fieldsToCheck = [
                       ...uniqueColumns,
@@ -1027,7 +1028,9 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted, defaultOpenBifurcation }, 
                       if (!fieldName) return;
                       const originalValue = record[fieldName];
                       const currentValue = editingRowValues[fieldName];
-                      if (currentValue !== originalValue) {
+                      const orig = originalValue == null ? "" : String(originalValue).trim();
+                      const curr = currentValue == null ? "" : String(currentValue).trim();
+                      if (curr !== orig) {
                         payload[fieldName] = currentValue;
                       }
                     });
@@ -1035,11 +1038,11 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted, defaultOpenBifurcation }, 
                     // Save field edits (other columns)
                     if (Object.keys(payload).length > 1) {
                       const lotParam = selectedLot ? `?lotNo=${selectedLot}` : '';
-                      await API.put(`/NRDatas/UpdateCatchwise/${record.CatchNo}${lotParam}`, payload);
+                      await API.put(`/NRDatas/UpdateCatchwise/${catchNo}${lotParam}`, payload);
                       showToast("Catch fields updated successfully", "success");
                       setRows((prev) =>
                         prev.map((row) =>
-                          row.CatchNo === record.CatchNo
+                          String(row.CatchNo || row.catchNo) === String(catchNo)
                             ? { ...row, ...editingRowValues }
                             : row
                         )
@@ -1049,16 +1052,16 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted, defaultOpenBifurcation }, 
                     // In Lot 0 tab: also save the LotNo if it changed
                     if (activeLotTab === "0") {
                       const nextLot = coerceNumber(editingValue, 0);
-                      const originalLot = coerceNumber(record?.LotNo, 0);
+                      const originalLot = coerceNumber(record?.LotNo ?? record?.lotNo, 0);
                       if (nextLot !== originalLot) {
                         await saveLotAssignments(
-                          [{ catchNo: record.CatchNo, lotNo: nextLot }],
+                          [{ catchNo: catchNo, lotNo: nextLot }],
                           "Lot number saved"
                         );
                         setRows((prev) =>
                           prev.map((row) =>
-                            row.CatchNo === record.CatchNo
-                              ? { ...row, LotNo: nextLot }
+                            String(row.CatchNo || row.catchNo) === String(catchNo)
+                              ? { ...row, LotNo: nextLot, lotNo: nextLot }
                               : row
                           )
                         );
@@ -1068,6 +1071,7 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted, defaultOpenBifurcation }, 
                     setEditingCatchNo(null);
                     setEditingRowValues({});
                     setEditingValue(null);
+                    await loadRows();
                   } catch (error) {
                     console.error("Failed to update catch", error);
                     showToast("Failed to update catch", "error");

@@ -4622,8 +4622,7 @@ Object.keys(groupedTpl).forEach((templateKey) => {
                   let currentDep = dependencies[mod];
                   while (
                     currentDep &&
-                    !steps.some(s => s.key === currentDep) &&
-                    !allModules?.some(s => s.key === currentDep || s.name?.toLowerCase().replace(/\s+/g, "").includes(currentDep.toLowerCase()))
+                    !steps.some(s => s.key === currentDep)
                   ) {
                     currentDep = dependencies[currentDep];
                   }
@@ -4640,7 +4639,7 @@ Object.keys(groupedTpl).forEach((templateKey) => {
                   
                   if (pendingLots.length > 0 && pendingLots.some(lot => {
                     if (readyLots.includes(lot)) return false;
-                    if (isDepSelected) return false;
+                    if (!dep || isDepSelected) return false;
                     return true;
                   })) {
                     return false;

@@ -55,9 +55,22 @@ const EnvLotReportsManager = ({
     return `Batches - ${envLotNumbers.join(', ')}`;
   };
 
+  const parseDateSafe = (val) => {
+    if (!val) return null;
+    if (val instanceof Date) return isNaN(val.getTime()) ? null : val;
+    let s = String(val).trim();
+    if (!s || s === '-') return null;
+    if (s.includes(' ') && !s.includes('T')) s = s.replace(' ', 'T');
+    if (!s.endsWith('Z') && !s.includes('+') && !/-\d{2}:\d{2}$/.test(s)) s += 'Z';
+    const d = new Date(s);
+    return isNaN(d.getTime()) ? null : d;
+  };
+
   const formatDateTime = (isoString) => {
-    const date = new Date(isoString);
+    const date = parseDateSafe(isoString);
+    if (!date) return '-';
     return date.toLocaleString('en-US', {
+      timeZone: 'Asia/Kolkata',
       month: 'short',
       day: 'numeric',
       hour: '2-digit',
@@ -66,7 +79,8 @@ const EnvLotReportsManager = ({
   };
 
   const formatRelativeTime = (isoString) => {
-    const date = new Date(isoString);
+    const date = parseDateSafe(isoString);
+    if (!date) return '-';
     const now = new Date();
     const diffMs = now - date;
     const diffMins = Math.floor(diffMs / (1000 * 60));

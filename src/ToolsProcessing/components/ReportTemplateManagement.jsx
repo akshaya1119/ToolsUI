@@ -17,14 +17,26 @@ import useStore from '../../stores/ProjectData';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
+const parseDateSafe = (dateVal) => {
+  if (!dateVal) return null;
+  if (dateVal instanceof Date) return isNaN(dateVal.getTime()) ? null : dateVal;
+  let s = String(dateVal).trim();
+  if (!s || s === '-') return null;
+  if (s.includes(' ') && !s.includes('T')) s = s.replace(' ', 'T');
+  if (!s.endsWith('Z') && !s.includes('+') && !/-\d{2}:\d{2}$/.test(s)) {
+    s += 'Z';
+  }
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? null : d;
+};
+
 const formatDateTimeToIST = (dateVal) => {
   if (!dateVal) return '-';
   try {
-    let s = String(dateVal);
-    if (s.includes(' ') && !s.includes('T')) s = s.replace(' ', 'T');
-    const d = new Date(s);
-    if (isNaN(d.getTime())) return '-';
+    const d = parseDateSafe(dateVal);
+    if (!d) return '-';
     return d.toLocaleString('en-IN', {
+      timeZone: 'Asia/Kolkata',
       day: '2-digit', month: '2-digit', year: 'numeric',
       hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true,
     });
@@ -481,8 +493,8 @@ const ReportTemplateManagement = ({
     const groups = [];
     groupMap.forEach((g) => {
       g.rows.sort((a, b) =>
-        new Date(b._dbRow?.generatedAt ?? b._dbRow?.GeneratedAt ?? 0) -
-        new Date(a._dbRow?.generatedAt ?? a._dbRow?.GeneratedAt ?? 0)
+        (parseDateSafe(b._dbRow?.generatedAt ?? b._dbRow?.GeneratedAt)?.getTime() || 0) -
+        (parseDateSafe(a._dbRow?.generatedAt ?? a._dbRow?.GeneratedAt)?.getTime() || 0)
       );
       groups.push(g);
     });
@@ -493,14 +505,8 @@ const ReportTemplateManagement = ({
         let best = 0;
         g.rows.forEach((row) => {
           const raw = row._dbRow?.generatedAt ?? row._dbRow?.GeneratedAt ?? null;
-          if (!raw) return;
-          let s = String(raw);
-          if (!s.endsWith('Z') && !s.includes('+') && !s.match(/-\d{2}:\d{2}$/)) {
-            if (s.includes(' ') && !s.includes('T')) s = s.replace(' ', 'T');
-            s += 'Z';
-          }
-          const t = new Date(s).getTime();
-          if (!isNaN(t) && t > best) best = t;
+          const t = parseDateSafe(raw)?.getTime() || 0;
+          if (t > best) best = t;
         });
         return best;
       };
@@ -527,11 +533,11 @@ const ReportTemplateManagement = ({
           return sign * ((a.lot ?? 0) - (b.lot ?? 0));
         case 'generatedOn': {
           const ad = viewType === 'Report'
-            ? new Date(a.rows[0]?.versions?.[0]?.generatedOn ?? 0)
-            : new Date(a.rows[0]?._dbRow?.generatedAt ?? a.rows[0]?._dbRow?.GeneratedAt ?? 0);
+            ? (parseDateSafe(a.rows[0]?.versions?.[0]?.generatedOn)?.getTime() || 0)
+            : (parseDateSafe(a.rows[0]?._dbRow?.generatedAt ?? a.rows[0]?._dbRow?.GeneratedAt)?.getTime() || 0);
           const bd = viewType === 'Report'
-            ? new Date(b.rows[0]?.versions?.[0]?.generatedOn ?? 0)
-            : new Date(b.rows[0]?._dbRow?.generatedAt ?? b.rows[0]?._dbRow?.GeneratedAt ?? 0);
+            ? (parseDateSafe(b.rows[0]?.versions?.[0]?.generatedOn)?.getTime() || 0)
+            : (parseDateSafe(b.rows[0]?._dbRow?.generatedAt ?? b.rows[0]?._dbRow?.GeneratedAt)?.getTime() || 0);
           return sign * (ad - bd);
         }
         default: return 0;
