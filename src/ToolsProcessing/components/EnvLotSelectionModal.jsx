@@ -31,7 +31,8 @@ const EnvLotSelectionModal = ({
   templateIsOutdated = false,
   staleEnvLotIds = [],
   showAssigned = false,
-  projectId
+  projectId,
+  selectedLot = null,
 }) => {
   const navigate = useNavigate();
   const apiBaseUrl = (import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || '').replace(/\/api\/?$/i, '');
@@ -181,7 +182,7 @@ const EnvLotSelectionModal = ({
 
   return (
     <Modal
-      title="Select Catches For Processing"
+      title={selectedLot ? `Select Catches For Processing (Lot ${selectedLot})` : "Select Catches For Processing"}
       open={visible}
       onOk={unverifiedCatch? () =>navigate( `/headerverification?catch=${unverifiedCatch.catchNo}&status=${unverifiedCatch.verificationStatus}`): onConfirm}
       onCancel={onCancel}

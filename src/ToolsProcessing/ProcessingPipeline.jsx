@@ -923,10 +923,13 @@ const rptApiUrl = import.meta.env.VITE_RPT_API_URL;
     return pages === 0 || pages === null || pages === undefined || pages === '' || pages === '-' || pages === 'null';
   };
 
-  const fetchMissingEnvLotCatchesForSelection = async (projectIdParam) => {
-    console.log(projectIdParam)
+  const fetchMissingEnvLotCatchesForSelection = async (projectIdParam, lotNoParam = null) => {
+    console.log(projectIdParam);
     try {
-      const res = await API.get(`/NRDataLots/GetMissingEnvLotCatches/${projectIdParam}`);
+      const params = lotNoParam && lotNoParam !== "all" && Number(lotNoParam) > 0
+        ? { lotNo: Number(lotNoParam) }
+        : {};
+      const res = await API.get(`/NRDataLots/GetMissingEnvLotCatches/${projectIdParam}`, { params });
       const rawData = res.data || [];
       return rawData.map(item => ({
         catchNo: (item.catchNo ?? item.CatchNo ?? "").toString().trim(),
@@ -939,9 +942,12 @@ const rptApiUrl = import.meta.env.VITE_RPT_API_URL;
     }
   };
 
-  const fetchAssignedEnvLotCatchesForSelection = async (projectIdParam) => {
+  const fetchAssignedEnvLotCatchesForSelection = async (projectIdParam, lotNoParam = null) => {
     try {
-      const res = await API.get(`/NRDataLots/GetAssignedEnvLotCatches/${projectIdParam}`);
+      const params = lotNoParam && lotNoParam !== "all" && Number(lotNoParam) > 0
+        ? { lotNo: Number(lotNoParam) }
+        : {};
+      const res = await API.get(`/NRDataLots/GetAssignedEnvLotCatches/${projectIdParam}`, { params });
       const rawData = res.data || [];
       const grouped = rawData.reduce((acc, item) => {
         const envLotNo = item.envLotNo ?? item.EnvLotNo;
@@ -1313,10 +1319,13 @@ const rptApiUrl = import.meta.env.VITE_RPT_API_URL;
 
     const ancestors = Array.from(getRecursiveAncestors(moduleKey));
 
+    const isExtraConfigured = extraConfigData && extraConfigData.length > 0;
     setSelectedModules((prev) => {
       // Filter ancestors to only include those NOT completed (except the clicked one)
       // If a step has pending changes (is outdated), it is treated as not completed.
       const keysToSelect = ancestors.filter(key => {
+        // If Extra is not configured, do not auto-select it as an ancestor dependency
+        if (key === "extra" && !isExtraConfigured) return false;
         const step = steps.find(s => s.key === key);
         const keyMap = {
           duplicate: "duplicatePending",
@@ -1685,8 +1694,12 @@ const loadGeneratedTemplateReports = async () => {
     }
     
     if (!isQS && !isComposite && isEnvelopeDependent && !isBoxBreakingDependent) {
+      const activeLotNo = selectedDropdownLot !== "all" && selectedDropdownLot !== null && selectedDropdownLot !== undefined && selectedDropdownLot !== ""
+        ? Number(selectedDropdownLot)
+        : null;
+
       if (action === "regenerate") {
-        const assignedCatchItems = await fetchAssignedEnvLotCatchesForSelection(projectId);
+        const assignedCatchItems = await fetchAssignedEnvLotCatchesForSelection(projectId, activeLotNo);
         if (assignedCatchItems.length > 0) {
           const templateId = resolveTemplateId(template);
           
@@ -1706,7 +1719,8 @@ const loadGeneratedTemplateReports = async () => {
              generatedEnvLots,
              templateIsOutdated,
              staleEnvLotIds,
-             showAssigned: true
+             showAssigned: true,
+             selectedLot: activeLotNo,
           });
           if (selectedEnvLots === null) return;
           if (selectedEnvLots.length > 0) {
@@ -1717,12 +1731,17 @@ const loadGeneratedTemplateReports = async () => {
           return;
         }
       } else {
-        const missingCatchItems = await fetchMissingEnvLotCatchesForSelection(projectId);
+        const missingCatchItems = await fetchMissingEnvLotCatchesForSelection(projectId, activeLotNo);
         // Fetch assigned env-lot items so user can optionally show them
-        const assignedCatchItems = await fetchAssignedEnvLotCatchesForSelection(projectId);
+        const assignedCatchItems = await fetchAssignedEnvLotCatchesForSelection(projectId, activeLotNo);
         
         // Show modal even if all catches are assigned, allowing user to select from assigned envelopes for regeneration
-        const selectedCatchNos = await showEnvLotSelectionModal([], false, { unassignedCatches: missingCatchItems, assignedEnvLots: assignedCatchItems, showAssigned: missingCatchItems.length === 0 });
+        const selectedCatchNos = await showEnvLotSelectionModal([], false, {
+          unassignedCatches: missingCatchItems,
+          assignedEnvLots: assignedCatchItems,
+          showAssigned: missingCatchItems.length === 0,
+          selectedLot: activeLotNo,
+        });
         if (selectedCatchNos === null) {
           return; // user cancelled
         }
@@ -1870,7 +1889,7 @@ const loadGeneratedTemplateReports = async () => {
             templateId: Number(templateId),
             templateName: template?.templateName || template?.TemplateName || "Template Report",
             envLotNumbers: isQS ? String(currentLot) : (envLotNumbers.length > 0 ? envLotNumbers.join(',') : "0"),
-            lotNo: isQS ? Number(currentLot) : (isBoxBreakingDependent && currentLot ? Number(currentLot) : 0),
+            lotNo: isQS ? Number(currentLot) : (isBoxBreakingDependent && currentLot ? Number(currentLot) : (selectedDropdownLot !== "all" && selectedDropdownLot !== null && selectedDropdownLot !== undefined && selectedDropdownLot !== "" ? Number(selectedDropdownLot) : 0)),
             fileName: fileName,
             generatedByUserId: currentUserId ? Number(currentUserId) : null,
             filePath: filePath
@@ -2971,9 +2990,14 @@ const loadGeneratedTemplateReports = async () => {
     const selectedIndices = selectedModules.map(key => allOrder.findIndex(s => s.key === key));
     const maxSelectedIndex = Math.max(...selectedIndices);
 
+    const isExtraConfigured = extraConfigData && extraConfigData.length > 0;
     const unprocessedSteps = [];
     for (let i = 0; i < maxSelectedIndex; i++) {
       const stepKey = allOrder[i].key;
+      // If Extra is not configured, do not treat it as an unfulfilled dependency
+      if (stepKey === "extra" && !isExtraConfigured) {
+        continue;
+      }
       const isSelected = selectedModules.includes(stepKey);
       const isCompleted = steps.find(s => s.key === stepKey)?.status === "completed";
 
@@ -3372,6 +3396,12 @@ const loadGeneratedTemplateReports = async () => {
   };
 
   const isStepSelectable = (step) => {
+    // If Extra is present in pipeline steps but not configured, mark it unselectable so Select All selects valid modules
+    const isExtraConfigured = extraConfigData && extraConfigData.length > 0;
+    if (step.key === "extra" && !isExtraConfigured) {
+      return false;
+    }
+
     const moduleToLotKey = {
       duplicate: { pending: "pendingDuplicateLots", completed: "completedDuplicateLots" },
       enhancement: { pending: "pendingEnhancementLots", completed: "completedEnhancementLots" },
@@ -4539,8 +4569,13 @@ Object.keys(groupedTpl).forEach((templateKey) => {
             const boxHasRemaining = availableCount > 0 && completedCount < availableCount;
             const canStartByData = hasPendingPipelineChanges || hasAnyPendingStep || configChanged || boxHasRemaining;
 
+            const isExtraConfigured = extraConfigData && extraConfigData.length > 0;
             // First, filter the selected modules to only those that ACTUALLY have pending data
             const modulesWithPendingData = selectedModules.filter(m => {
+              // If Extra is not configured, do not allow it to block pipeline readiness
+              if (m === "extra" && !isExtraConfigured) {
+                return false;
+              }
               const listKey = {
                 duplicate: "pendingDuplicateLots",
                 enhancement: "pendingEnhancementLots",
@@ -4583,8 +4618,7 @@ Object.keys(groupedTpl).forEach((templateKey) => {
                 let currentDep = dependencies[mod];
                 while (
                   currentDep &&
-                  !steps.some(s => s.key === currentDep) &&
-                  !allModules?.some(s => s.key === currentDep || s.name?.toLowerCase().replace(/\s+/g, "").includes(currentDep.toLowerCase()))
+                  (!steps.some(s => s.key === currentDep) || (currentDep === "extra" && !isExtraConfigured))
                 ) {
                   currentDep = dependencies[currentDep];
                 }
@@ -4939,6 +4973,7 @@ Object.keys(groupedTpl).forEach((templateKey) => {
         assignedEnvLots={envLotSelectionModal.assignedEnvLots}
         unassignedCatches={envLotSelectionModal.unassignedCatches}
         showAssigned={envLotSelectionModal.showAssigned}
+        selectedLot={envLotSelectionModal.selectedLot}
         onToggleShowAssigned={(val) => setEnvLotSelectionModal(prev => ({ ...prev, showAssigned: val }))}
       />
       <ReportTemplateManagement
