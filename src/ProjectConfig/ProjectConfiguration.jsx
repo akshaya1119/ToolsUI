@@ -139,6 +139,8 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
   const [isInnerBundlingDone, setIsInnerBundlingDone] = useState(false);
   const [innerBundlingCriteria, setInnerBundlingCriteria] = useState([]);
   const [selectedHeaderVerificationFields, setSelectedHeaderVerificationFields] = useState([]);
+  const [useCustomCatchSerial, setUseCustomCatchSerial] = useState(false);
+  const [customCatchSerials, setCustomCatchSerials] = useState([]);
   const [duplicateConfig, setDuplicateConfig] = useState({
     duplicateCriteria: [],
     enhancement: 0,
@@ -324,6 +326,8 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
       extraTypeSelection: {},
       selectedMss: fetchedMss.map(m => m.id),
       mssInsertPosition: "end",
+      useCustomCatchSerial: false,
+      customCatchSerials: [],
     };
 
     if (projectConfig && toolModules.length > 0) {
@@ -398,6 +402,22 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
         defaultHeaderVerificationFields = abcdFieldIds;
       }
 
+      const parsedCustomCatchSerials = (() => {
+        if (!projectConfig?.customCatchSerials) return [];
+        try {
+          const parsed = typeof projectConfig.customCatchSerials === "string"
+            ? JSON.parse(projectConfig.customCatchSerials)
+            : projectConfig.customCatchSerials;
+          if (Array.isArray(parsed)) return parsed;
+          if (typeof parsed === "object") {
+            return Object.entries(parsed).map(([catchNo, startSerial]) => ({ catchNo, startSerial: Number(startSerial) || 1 }));
+          }
+        } catch (e) {
+          console.error("Failed to parse customCatchSerials", e);
+        }
+        return [];
+      })();
+
       parsedValues = {
         ...parsedValues,
         enabledModules: Array.from(enabledNames),
@@ -423,6 +443,8 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
         innerBundlingCriteria: parsedInnerBundlingCriteria,
         selectedMss: projectConfig.mssTypes ?? fetchedMss.map(m => m.id),
         mssInsertPosition: projectConfig.mssAttached || "end",
+        useCustomCatchSerial: projectConfig.useCustomCatchSerial ?? false,
+        customCatchSerials: parsedCustomCatchSerials,
       };
 
       setEnabledModules([...parsedValues.enabledModules]);
@@ -436,6 +458,8 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
       setResetBookletSerialOnCatchChange(
         parsedValues.resetBookletSerialOnCatchChange,
       );
+      setUseCustomCatchSerial(parsedValues.useCustomCatchSerial);
+      setCustomCatchSerials([...parsedValues.customCatchSerials]);
       setSelectedBoxFields([...parsedValues.selectedBoxFields]);
       setSelectedUniversityExtraBoxFields([...parsedValues.selectedUniversityExtraBoxFields]);
       setSelectedOfficeExtraBoxFields([...parsedValues.selectedOfficeExtraBoxFields]);
@@ -1039,7 +1063,9 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
     },
     isMasterConfig,
     selectedType,
-    selectedGroup
+    selectedGroup,
+    useCustomCatchSerial,
+    customCatchSerials
   );
 
   const { requireAuth, authModalComponent } = useMasterAuth();
@@ -1122,6 +1148,8 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
       );
       setSelectedMss([...(importedSnapshot.selectedMss || [])]);
       setMssInsertPosition(importedSnapshot.mssInsertPosition || "end");
+      setUseCustomCatchSerial(importedSnapshot.useCustomCatchSerial ?? false);
+      setCustomCatchSerials([...(importedSnapshot.customCatchSerials || [])]);
     } else {
       setSelectedEnvelopeFields([]);
       setStartOmrEnvelopeNumber(0);
@@ -1130,6 +1158,8 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
       setResetBookletSerialOnCatchChange(false);
       setSelectedMss([]);
       setMssInsertPosition("end");
+      setUseCustomCatchSerial(false);
+      setCustomCatchSerials([]);
     }
   };
 
@@ -1217,6 +1247,8 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
     setResetBookletSerialOnCatchChange(false);
     setSelectedMss([]);
     setMssInsertPosition("end");
+    setUseCustomCatchSerial(false);
+    setCustomCatchSerials([]);
   };
 
   const clearBoxBreaking = () => {
@@ -1554,6 +1586,11 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
             setSelectedMss={setSelectedMss}
             mssInsertPosition={mssInsertPosition}
             setMssInsertPosition={setMssInsertPosition}
+            useCustomCatchSerial={useCustomCatchSerial}
+            setUseCustomCatchSerial={setUseCustomCatchSerial}
+            customCatchSerials={customCatchSerials}
+            setCustomCatchSerials={setCustomCatchSerials}
+            projectId={projectId}
           />
           <BoxBreakingCard
             isEnabled={isEnabled}

@@ -39,7 +39,9 @@ export const useProjectConfigSave = (
   onConfigSaved = null,
   isMasterConfig = false,
   typeId = null,
-  groupId = null
+  groupId = null,
+  useCustomCatchSerial = false,
+  customCatchSerials = []
 ) => {
   const handleSave = async (overrideIsMasterConfig = false, overrideTypeId = null, overrideGroupId = null, skipChangeDetection = false, passcode = null) => {
     let existingConfig = null;
@@ -214,7 +216,9 @@ export const useProjectConfigSave = (
         roundOffBeforeEnhancement: duplicateConfig?.roundOffBeforeEnhancement || false,
         mssTypes: selectedMss || [],
         mssAttached: mssInsertPosition || "end",
-        headerVerificationFields: selectedHeaderVerificationFields || []
+        headerVerificationFields: selectedHeaderVerificationFields || [],
+        useCustomCatchSerial: useCustomCatchSerial ?? false,
+        customCatchSerials: typeof customCatchSerials === "string" ? customCatchSerials : JSON.stringify(customCatchSerials || [])
       };
 
       console.log("SENDING PROJECT CONFIG PAYLOAD:", JSON.stringify(projectConfigPayload, null, 2));

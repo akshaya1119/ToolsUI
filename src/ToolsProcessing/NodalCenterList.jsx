@@ -76,15 +76,19 @@ export default function NodalCenterList() {
   const [addedFields, setAddedFields] = useState([]);
   const [selectedRowKeys, setSelectedRowKeys] = useState([]);
 
-  const allTempColumnsList = [
-    "CatchNo", "CollegeCode", "CollegeName", "CenterCode", "NodalCode", "NRQuantity", "CourseName", "SubjectName", "ExamDate", "ExamTime"
+  const standardTempColumns = [
+    "CatchNo", "CollegeCode", "CollegeName", "CenterCode", "NodalCode", 
+    "NRQuantity", "CourseName", "SubjectName", "ExamDate", "ExamTime",
+    "Day", "Pages", "Route", "RouteSort", "CenterSort", "NodalSort", 
+    "Symbol", "District", "DistrictSort"
   ];
+  const [allTempColumnsList, setAllTempColumnsList] = useState(standardTempColumns);
 
   const [tempData, setTempData] = useState([]);
   const [tempPagination, setTempPagination] = useState({ current: 1, pageSize: 10, total: 0 });
   const [loadingTemp, setLoadingTemp] = useState(false);
   const [tempColumnFilters, setTempColumnFilters] = useState({});
-  const [visibleTempColumns, setVisibleTempColumns] = useState(allTempColumnsList);
+  const [visibleTempColumns, setVisibleTempColumns] = useState(standardTempColumns);
   const [reports, setReports] = useState(null);
   const [allNodalRecords, setAllNodalRecords] = useState([]);
   const [loadingReports, setLoadingReports] = useState(false);
@@ -131,15 +135,15 @@ export default function NodalCenterList() {
 
   const catchListFields = [
     "CatchNo", "CollegeCode", "CollegeName", "PaperCode", "CourseName", "SubjectName", "NRQuantity", "ExamDate", "ExamTime",
-    "Transgender", "Male", "Female", "Semester", "CenterCode", "CenterName"
+    "Transgender", "Male", "Female", "Semester", "CenterCode"
   ];
   const requiredCatchListFields = ["CatchNo", "CenterCode", "NRQuantity"];
 
   const nodalListFields = [
-    "CollegeCode", "CollegeName", "ExamCenterCode", "ExamCenterName",
-    "Gender", "NodalCode", "NodalName"
+    "CollegeCode", "CollegeName", "ExamCenterCode",
+    "Gender", "NodalCode", "CenterSort", "NodalSort"
   ];
-  const requiredNodalListFields = ["NodalCode", "NodalName", "ExamCenterCode", "ExamCenterName"];
+  const requiredNodalListFields = ["NodalCode", "ExamCenterCode"];
 
   const currentFields = activeTab === "1" ? catchListFields : nodalListFields;
   const currentRequiredFields = activeTab === "1" ? requiredCatchListFields : requiredNodalListFields;
@@ -229,7 +233,14 @@ export default function NodalCenterList() {
         if (dynamicJsonStr) {
           try {
             parsedDynamic = JSON.parse(dynamicJsonStr);
-            Object.keys(parsedDynamic).forEach(k => dynamicKeysSet.add(k));
+            Object.keys(parsedDynamic).forEach(k => {
+              dynamicKeysSet.add(k);
+              
+              const lowerKey = k === "NRQuantity" ? "nrQuantity" : (k.charAt(0).toLowerCase() + k.slice(1));
+              if (item[lowerKey] === 0 || item[lowerKey] === null || item[lowerKey] === "") {
+                item[lowerKey] = parsedDynamic[k];
+              }
+            });
           } catch (e) { }
         }
         return { ...item, ...parsedDynamic };
@@ -268,7 +279,35 @@ export default function NodalCenterList() {
         columnFilters: Object.keys(tempColumnFilters).length > 0 ? JSON.stringify(tempColumnFilters) : null,
       };
       const res = await API.get(`/TemporaryNrDatas/${projectId}`, { params });
-      setTempData(res.data.items || []);
+      
+      const data = res.data.items || [];
+      
+      let dynamicKeysSet = new Set();
+      const processedData = data.map(item => {
+        let parsedDynamic = {};
+        if (item.nrDatas) {
+          try {
+            parsedDynamic = JSON.parse(item.nrDatas);
+            Object.keys(parsedDynamic).forEach(k => {
+              dynamicKeysSet.add(k);
+              
+              const lowerKey = k === "NRQuantity" ? "nrQuantity" : (k.charAt(0).toLowerCase() + k.slice(1));
+              if (item[lowerKey] === 0 || item[lowerKey] === null || item[lowerKey] === "") {
+                item[lowerKey] = parsedDynamic[k];
+              }
+            });
+          } catch (e) { }
+        }
+        return { ...item, ...parsedDynamic };
+      });
+      
+      const dynamicFieldsArr = Array.from(dynamicKeysSet);
+      setAllTempColumnsList(prev => {
+        const combined = [...new Set([...standardTempColumns, ...dynamicFieldsArr])];
+        return combined;
+      });
+      
+      setTempData(processedData);
       setTempPagination(prev => ({ ...prev, total: res.data.totalCount || 0 }));
     } catch (err) {
       console.error("Failed to fetch temporary data", err);
@@ -1183,7 +1222,7 @@ export default function NodalCenterList() {
       ...col,
       onCell: (record) => ({
         record,
-        inputType: ['NRQuantity', 'Transgender', 'Male', 'Female', 'CollegeCode', 'NodalCode', 'ExamCenterCode'].includes(col.key) ? 'number' : 'text',
+        inputType: ['NRQuantity', 'Transgender', 'Male', 'Female', 'CollegeCode', 'NodalCode', 'ExamCenterCode', 'CenterSort', 'CentreSort', 'NodalSort'].includes(col.key) ? 'number' : 'text',
         dataIndex: col.dataIndex,
         title: col.title,
         editing: isEditing(record),
@@ -1532,7 +1571,7 @@ export default function NodalCenterList() {
           ),
           onCell: (record) => ({
             record,
-            inputType: ['NRQuantity', 'CollegeCode'].includes(col) ? 'number' : 'text',
+            inputType: ['NRQuantity', 'CollegeCode', 'CenterSort', 'NodalSort'].includes(col) ? 'number' : 'text',
             dataIndex: dataIndex,
             title: col,
             editing: isEditing(record),
@@ -1663,19 +1702,7 @@ export default function NodalCenterList() {
               className="mb-4"
             />
           )}
-          {reports && reports.rule1Passed && reports.rule2Passed === false && (
-            <Alert
-              type="error"
-              showIcon
-              message="Rule 2 Error: Missing Exam Center Assignments"
-              action={
-                <Button type="primary" danger size="small" onClick={() => setActiveTab("3")}>
-                  View Conflict Report
-                </Button>
-              }
-              className="mb-4"
-            />
-          )}
+
 
 
           <div className="flex justify-between items-center mb-4">
@@ -2428,7 +2455,7 @@ export default function NodalCenterList() {
           <Form form={addForm} layout="vertical">
             <Row gutter={[16, 0]}>
               {currentFields.map(field => {
-                const isNumber = ['NRQuantity', 'Transgender', 'Male', 'Female', 'CollegeCode', 'NodalCode', 'ExamCenterCode'].includes(field);
+                const isNumber = ['NRQuantity', 'Transgender', 'Male', 'Female', 'CollegeCode', 'NodalCode', 'ExamCenterCode', 'CenterSort', 'CentreSort', 'NodalSort'].includes(field);
                 const isRequired = currentRequiredFields.includes(field);
                 const isFullWidth = ["CollegeName", "CenterName", "ExamCenterName", "NodalName", "SubjectName"].includes(field);
                 return (
