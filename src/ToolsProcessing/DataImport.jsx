@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import '@ant-design/v5-patch-for-react-19'
-import { Row, Col, Card, Select, Upload, Button, Typography, Space, Table, Tabs, Checkbox, Input, Modal, Radio, DatePicker, Popconfirm } from 'antd';
+import { Row, Col, Card, Select, Upload, Button, Typography, Space, Table, Tabs, Checkbox, Input, Modal, Radio, DatePicker, Popconfirm, Alert, Tooltip } from 'antd';
 import dayjs from 'dayjs';
 import { TriangleAlert, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
 import { MessageService } from "../services/MessageService";
@@ -21,6 +21,7 @@ import DataImportConflictReport from '../components/DataImportConflictReport';
 import LotsBifurcation from "./components/LotsBifurcation";
 import MergeCatchNumbers from "./components/MergeCatchNumbers";
 import { getCurrentUserId } from "../hooks/useUserMap";
+import useModulePermission from '../hooks/useModulePermission';
 
 const { Text } = Typography;
 const { Option } = Select;
@@ -28,6 +29,7 @@ const { TabPane } = Tabs;
 const PRIMARY_COLOR = "#1677ff";
 
 const DataImport = () => {
+  const { canCreate, canEdit, canDelete, canExecute } = useModulePermission('DATA_IMPORT');
   const { showToast } = useToast();
   const navigate = useNavigate();
   const location = useLocation();
@@ -1530,34 +1532,51 @@ const DataImport = () => {
         }
         return (
           <Space size="small">
-            <Button
-              type="link"
-              size="small"
-              onClick={() => handleEditRow(record)}
-              style={{ padding: 0, fontSize: '16px' }}
-              title="Edit"
-            >
-              <EditOutlined />
-            </Button>
-            <Popconfirm
-              title="Delete row"
-              description={`Are you sure you want to delete this row?`}
-              onConfirm={async () => {
-                await handleDeleteRow(record);
-              }}
-              okText="Yes"
-              cancelText="No"
-              okButtonProps={{ danger: true }}
-            >
+            {canEdit ? (
               <Button
                 type="link"
                 size="small"
-                style={{ padding: 0, color: '#ff4d4f', fontSize: '16px' }}
-                title="Delete"
+                onClick={() => handleEditRow(record)}
+                style={{ padding: 0, fontSize: '16px' }}
+                title="Edit"
               >
-                <DeleteOutlined />
+                <EditOutlined />
               </Button>
-            </Popconfirm>
+            ) : (
+              <Tooltip title="View-only access: Editing is disabled">
+                <span>
+                  <Button
+                    type="link"
+                    size="small"
+                    disabled
+                    style={{ padding: 0, fontSize: '16px', color: '#bfbfbf', cursor: 'not-allowed' }}
+                  >
+                    <EditOutlined />
+                  </Button>
+                </span>
+              </Tooltip>
+            )}
+            {canDelete ? (
+              <Popconfirm
+                title="Delete row"
+                description={`Are you sure you want to delete this row?`}
+                onConfirm={async () => {
+                  await handleDeleteRow(record);
+                }}
+                okText="Yes"
+                cancelText="No"
+                okButtonProps={{ danger: true }}
+              >
+                <Button
+                  type="link"
+                  size="small"
+                  style={{ padding: 0, color: '#ff4d4f', fontSize: '16px' }}
+                  title="Delete"
+                >
+                  <DeleteOutlined />
+                </Button>
+              </Popconfirm>
+            ) : null}
           </Space>
         );
       }
@@ -1575,6 +1594,10 @@ const DataImport = () => {
   const lockedUploadedFields = columns.filter((field) => requiredFieldNames.includes(field));
 
   const handleDeleteRow = async (record) => {
+    if (!canDelete) {
+      showToast("View-only access: Deleting is disabled", "warning");
+      return;
+    }
     if (!record?.id) return;
     try {
       setLoading(true);
@@ -1970,6 +1993,10 @@ const DataImport = () => {
   };
 
   const handleEditRow = (record) => {
+    if (!canEdit) {
+      showToast("View-only access: Editing is disabled", "warning");
+      return;
+    }
     setEditingRowId(record.id);
     setEditFormData({ ...record });
     setOriginalEditFormData({ ...record });
@@ -1982,6 +2009,10 @@ const DataImport = () => {
   };
 
   const handleSaveEdit = async () => {
+    if (!canEdit) {
+      showToast("View-only access: Editing is disabled", "warning");
+      return;
+    }
     if (!editingRowId) return;
 
     try {
@@ -2260,6 +2291,16 @@ const DataImport = () => {
         Data Import
       </Typography.Title>
 
+      {!canCreate && !canEdit && (
+        <Alert
+          type="warning"
+          showIcon
+          message="View-Only Access"
+          description="You have view-only permission for Data Import. Uploading new files, adding manual records, editing rows, and deleting data are disabled."
+          style={{ marginBottom: 16 }}
+        />
+      )}
+
       {/* === DATA IMPORT SECTION (collapsible) === */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -2283,15 +2324,31 @@ const DataImport = () => {
           }
           extra={
             <Space size={6} onClick={e => e.stopPropagation()}>
-              <Button
-                type="primary"
-                size="small"
-                icon={<PlusOutlined />}
-                style={{ minWidth: 110, height: 28, fontSize: 12 }}
-                onClick={() => setAddRowOpen((prev) => !prev)}
-              >
-                Add Data
-              </Button>
+              {canCreate ? (
+                <Button
+                  type="primary"
+                  size="small"
+                  icon={<PlusOutlined />}
+                  style={{ minWidth: 110, height: 28, fontSize: 12 }}
+                  onClick={() => setAddRowOpen((prev) => !prev)}
+                >
+                  Add Data
+                </Button>
+              ) : (
+                <Tooltip title="View-only access: Adding data is disabled">
+                  <span>
+                    <Button
+                      type="primary"
+                      size="small"
+                      disabled
+                      icon={<PlusOutlined />}
+                      style={{ minWidth: 110, height: 28, fontSize: 12 }}
+                    >
+                      Add Data
+                    </Button>
+                  </span>
+                </Tooltip>
+              )}
 
               <Button
                 size="small"
@@ -2309,33 +2366,49 @@ const DataImport = () => {
                 Load Conflict
               </Button>
 
-              <Button
-                danger
-                size="small"
-                icon={<Trash2 size={14} />}
-                style={{
-                  minWidth: 110,
-                  height: 28,
-                  fontSize: 12,
-                  backgroundColor: "#ff4d4f",
-                  borderColor: "#ff4d4f",
-                  color: "#fff",
-                }}
-                onClick={async () => {
-                  const confirmed = await MessageService.confirm(
-                    "Are you sure you want to delete NR data for this project?",
-                    {
-                      title: "Confirm Deletion",
-                      confirmText: "Yes, Delete",
-                      cancelText: "Cancel",
-                      type: 'error',
-                    }
-                  );
-                  if (confirmed) await deleteNRData();
-                }}
-              >
-                Delete NR Data
-              </Button>
+              {canDelete ? (
+                <Button
+                  danger
+                  size="small"
+                  icon={<Trash2 size={14} />}
+                  style={{
+                    minWidth: 110,
+                    height: 28,
+                    fontSize: 12,
+                    backgroundColor: "#ff4d4f",
+                    borderColor: "#ff4d4f",
+                    color: "#fff",
+                  }}
+                  onClick={async () => {
+                    const confirmed = await MessageService.confirm(
+                      "Are you sure you want to delete NR data for this project?",
+                      {
+                        title: "Confirm Deletion",
+                        confirmText: "Yes, Delete",
+                        cancelText: "Cancel",
+                        type: 'error',
+                      }
+                    );
+                    if (confirmed) await deleteNRData();
+                  }}
+                >
+                  Delete NR Data
+                </Button>
+              ) : (
+                <Tooltip title="View-only access: Deleting data is disabled">
+                  <span>
+                    <Button
+                      danger
+                      size="small"
+                      disabled
+                      icon={<Trash2 size={14} />}
+                      style={{ minWidth: 110, height: 28, fontSize: 12 }}
+                    >
+                      Delete NR Data
+                    </Button>
+                  </span>
+                </Tooltip>
+              )}
             </Space>
           }
           bordered={true}
@@ -2367,13 +2440,14 @@ const DataImport = () => {
                         beforeUpload={beforeUpload}
                         onRemove={handleRemove}
                         maxCount={1}
+                        disabled={!canCreate}
                       >
                         {/* <p className="ant-upload-drag-icon">📤</p> */}
                         <p className="ant-upload-text">Upload Excel or CSV file</p>
                         <Text type="secondary" style={{ display: "block" }}>
                           Drag and drop or click to choose a file.
                         </Text>
-                        <Button icon={<UploadOutlined />}>Choose File</Button>
+                        <Button icon={<UploadOutlined />} disabled={!canCreate}>Choose File</Button>
                       </Upload.Dragger>
                     </Space>
                   </div>
@@ -2581,14 +2655,27 @@ const DataImport = () => {
                           </Space>
                         </div>
                         <Space style={{ width: "100%", justifyContent: "space-between" }}>
-                          <Button
-                            type="primary"
-                            onClick={handleUpload}
-                            loading={uploading}
-                            disabled={uploading}
-                          >
-                            Upload Data
-                          </Button>
+                          {canCreate ? (
+                            <Button
+                              type="primary"
+                              onClick={handleUpload}
+                              loading={uploading}
+                              disabled={uploading}
+                            >
+                              Upload Data
+                            </Button>
+                          ) : (
+                            <Tooltip title="View-only access: Uploading data is disabled">
+                              <span>
+                                <Button
+                                  type="primary"
+                                  disabled
+                                >
+                                  Upload Data
+                                </Button>
+                              </span>
+                            </Tooltip>
+                          )}
                           {skippedRows.length > 0 && (
                             <Button
                               onClick={downloadSkippedRowsReport}
@@ -2865,7 +2952,14 @@ const DataImport = () => {
                     + Field
                   </Button>
                   <div style={{ display: "flex", gap: 6 }}>
-                    <Button size="small" type="primary" onClick={handleInlineSave} loading={loading} style={{ height: 24 }}>
+                    <Button 
+                      size="small" 
+                      type="primary" 
+                      onClick={handleInlineSave} 
+                      loading={loading} 
+                      disabled={loading || (!canCreate && !canEdit)}
+                      style={{ height: 24 }}
+                    >
                       Save
                     </Button>
                     <Button size="small" onClick={() => {
@@ -2928,21 +3022,41 @@ const DataImport = () => {
                     </Button>
                   </Space>
                 ) : activeTab === "4" ? (
-                  <Button
-                    type="primary"
-                    size="small"
-                    onClick={() => lotBifurcationRef.current?.openBifurcationModal?.()}
-                  >
-                    Bifurcate Lots
-                  </Button>
+                  canExecute ? (
+                    <Button
+                      type="primary"
+                      size="small"
+                      onClick={() => lotBifurcationRef.current?.openBifurcationModal?.()}
+                    >
+                      Bifurcate Lots
+                    </Button>
+                  ) : (
+                    <Tooltip title="View-only access: Execution is disabled">
+                      <span>
+                        <Button type="primary" size="small" disabled>
+                          Bifurcate Lots
+                        </Button>
+                      </span>
+                    </Tooltip>
+                  )
                 ) : activeTab === "5" ? (
-                  <Button
-                    size="small"
-                    disabled={mergeSelectionCount < 2}
-                    onClick={() => mergeCatchRef.current?.openMergeModal?.()}
-                  >
-                    Merge Selected
-                  </Button>
+                  canExecute ? (
+                    <Button
+                      size="small"
+                      disabled={mergeSelectionCount < 2}
+                      onClick={() => mergeCatchRef.current?.openMergeModal?.()}
+                    >
+                      Merge Selected
+                    </Button>
+                  ) : (
+                    <Tooltip title="View-only access: Execution is disabled">
+                      <span>
+                        <Button size="small" disabled>
+                          Merge Selected
+                        </Button>
+                      </span>
+                    </Tooltip>
+                  )
                 ) : null
               }
             >

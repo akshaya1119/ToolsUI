@@ -46,10 +46,12 @@ import TemplatesSidePanel from "../components/rpt/TemplatesSidePanel";
 import TemplatesMappingPanel from "../components/rpt/TemplatesMappingPanel";
 import TemplatesVersionsModal from "../components/rpt/TemplatesVersionsModal";
 import useMasterAuth from "../hooks/useMasterAuth";
+import useModulePermission from "../hooks/useModulePermission";
 
 const RPTFiles = () => {
   const url = import.meta.env.VITE_API_BASE_URL;
   const APIURL = import.meta.env.VITE_API_URL;
+  const { canView, canCreate, canEdit, canDelete } = useModulePermission('MASTER_RPT');
   const { requireAuth, authModalComponent } = useMasterAuth();
   const token = localStorage.getItem("token");
   const [useBoxLabelSP, setUseBoxLabelSP] = useState(false);
@@ -593,6 +595,10 @@ const RPTFiles = () => {
   };
 
   const handleAddTemplate = async () => {
+    if (!canCreate) {
+      message.error("You do not have permission to add templates.");
+      return;
+    }
     try {
       const values = await addForm.validateFields();
       const file = addFileList[0]?.originFileObj || addFileList[0];
@@ -697,6 +703,10 @@ const RPTFiles = () => {
   };
 
   const handleImportTemplates = async () => {
+    if (!canCreate) {
+      message.error("You do not have permission to import templates.");
+      return;
+    }
     try {
       const values = await importForm.validateFields();
       if (values.sourceScope === "project" && !selectedImportProjectType) {
@@ -864,6 +874,10 @@ const RPTFiles = () => {
   };
 
   const handleSaveMapping = async () => {
+    if (!canEdit) {
+      message.error("You do not have permission to save mapping.");
+      return;
+    }
     if (!mappingTemplate?.templateId) return;
     setSavingMapping(true);
     try {
@@ -1011,6 +1025,10 @@ const RPTFiles = () => {
   };
 
   const confirmActivateVersion = async (record) => {
+    if (!canEdit) {
+      message.error("You do not have permission to activate template versions.");
+      return;
+    }
     const scopeLabel = getScopeLabel(record);
     const confirmed = await MessageService.confirm(
       `This will make v${record?.version} the active template for the ${scopeLabel.toLowerCase()} scope. All projects using this template in that scope will use this version.`,
@@ -1055,6 +1073,10 @@ const RPTFiles = () => {
   };
 
   const startInlineEdit = (template) => {
+    if (!canEdit) {
+      message.error("You do not have permission to edit templates.");
+      return;
+    }
     setEditingTemplateId(template?.templateId ?? null);
     setEditingTemplateName(template?.templateName || "");
     setEditingModuleIds(
@@ -1109,6 +1131,10 @@ const RPTFiles = () => {
   };
 
   const handleRemoveTemplate = (record) => {
+    if (!canDelete) {
+      message.error("You do not have permission to delete templates.");
+      return;
+    }
     const scope = record?.projectId ? "project" : record?.groupId ? "group" : "standard";
 
     if (record?.isDeleted) {
@@ -1267,6 +1293,9 @@ const RPTFiles = () => {
         cancelInlineEdit,
         inlineEditSaving,
         onRemove: handleRemoveTemplate,
+        canEdit,
+        canDelete,
+        canCreate,
       }),
     [
       userMap,
@@ -1289,6 +1318,9 @@ const RPTFiles = () => {
       startInlineEdit,
       saveInlineEdit,
       cancelInlineEdit,
+      canEdit,
+      canDelete,
+      canCreate,
     ],
   );
 
@@ -1425,6 +1457,15 @@ const RPTFiles = () => {
         groupLabel={groupLabel}
       />
 
+      {!canEdit && !canCreate && (
+        <div style={{ marginBottom: 16, padding: '10px 14px', background: '#fffbe6', border: '1px solid #ffe58f', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span style={{ color: '#d46b08', fontSize: 13 }}>
+            <strong>View-Only Access:</strong> You have view-only permission for Master RPT Templates. Adding, importing, editing, or deleting templates is disabled for your role.
+          </span>
+          <span style={{ padding: '2px 8px', fontSize: 12, fontWeight: 600, background: '#ffe58f', color: '#d46b08', borderRadius: 4 }}>Read Only</span>
+        </div>
+      )}
+
       <div
         className={`rpt-main ${
           showMappingPanel || showSidePanel
@@ -1461,8 +1502,8 @@ const RPTFiles = () => {
             importForm.resetFields();
             importForm.setFieldsValue({ copyMappings: true });
           }}
-          disableAdd={false}
-          disableImport={!selectionReady || templateScope !== "group"}
+          disableAdd={!canCreate || !selectionReady}
+          disableImport={!canCreate || !selectionReady || templateScope !== "group"}
           showImportAction
         />
 
@@ -1559,6 +1600,7 @@ const RPTFiles = () => {
   handleSaveMapping={handleSaveMapping}
   mappingLoading={mappingLoading}
   closeMappingPanel={closeMappingPanel}
+  canEdit={canEdit}
 />
       </div>
 

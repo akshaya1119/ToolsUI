@@ -14,6 +14,7 @@ import axios from 'axios';
 import { Search, Download, FileText, FileSpreadsheet, ChevronDown, ChevronRight, Archive, ArchiveRestore } from 'lucide-react';
 import { useUserMap, getFirstNameFromUserId, getCurrentUserId } from '../../hooks/useUserMap';
 import useStore from '../../stores/ProjectData';
+import useModulePermission from '../../hooks/useModulePermission';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -85,6 +86,7 @@ const ReportTemplateManagement = ({
 }) => {
   const { userMap } = useUserMap();
   const projectName = useStore(state => state.projectName);
+  const { canEdit, canDelete } = useModulePermission('PROCESSING_PIPELINE');
 
   // filters
   const [searchText, setSearchText] = useState('');
@@ -134,8 +136,8 @@ const ReportTemplateManagement = ({
   useEffect(() => {
     const baseUrl = import.meta.env.VITE_API_BASE_URL;
     if (!baseUrl) return;
-    axios.get(`${baseUrl}/Groups`).then(res => setGlobalGroupOptions(res.data || [])).catch(() => {});
-    axios.get(`${baseUrl}/PaperTypes`).then(res => setGlobalTypeOptions(res.data || [])).catch(() => {});
+    axios.get(`${baseUrl}/Groups`).then(res => setGlobalGroupOptions(res.data || [])).catch(() => { });
+    axios.get(`${baseUrl}/PaperTypes`).then(res => setGlobalTypeOptions(res.data || [])).catch(() => { });
   }, []);
 
   // ── helpers ──────────────────────────────────────────────────────────────
@@ -624,7 +626,7 @@ const ReportTemplateManagement = ({
       const typeId = dbRow?.typeId ?? dbRow?.TypeId ?? group.typeId;
       const groupObj = globalGroupOptions.find(g => Number(g.id) === Number(groupId) || Number(g.groupId) === Number(groupId));
       const typeObj = globalTypeOptions.find(t => Number(t.typeId) === Number(typeId) || Number(t.id) === Number(typeId));
-      
+
       const gName = groupObj ? (groupObj.name || groupObj.groupName) : (group.module || 'Group');
       const tName = typeObj ? (typeObj.types || typeObj.name) : 'Template';
 
@@ -718,6 +720,10 @@ const ReportTemplateManagement = ({
   };
 
   const handleArchiveTemplate = async (dbRow) => {
+    if (!canEdit) {
+      message.warning('View-only access: Archiving reports is disabled');
+      return;
+    }
     const dbId = dbRow?.id ?? dbRow?.Id;
     if (!dbId) return;
 
@@ -741,6 +747,10 @@ const ReportTemplateManagement = ({
   };
 
   const handleUnarchiveTemplate = async (dbRow) => {
+    if (!canEdit) {
+      message.warning('View-only access: Unarchiving reports is disabled');
+      return;
+    }
     const dbId = dbRow?.id ?? dbRow?.Id;
     if (!dbId) return;
 
@@ -1009,7 +1019,7 @@ const ReportTemplateManagement = ({
           {/* action — always shown */}
           <div className="rtm-cell rtm-cell--action" onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', gap: '8px' }}>
-              <Tooltip title="Download PDF">
+              <Tooltip title="Download">
                 <Button
                   type="primary" size="small"
                   icon={<Download size={13} />}
@@ -1031,16 +1041,23 @@ const ReportTemplateManagement = ({
               {!isReport && (
                 <>
                   {headerData.status === 'Archived' ? (
-                    <Tooltip title="Unarchive">
-                      <Button size="small" icon={<ArchiveRestore size={12} />} onClick={(e) => { e.stopPropagation(); headerData.onUnarchive(); }}>
-                      </Button>
+                    <Tooltip title={!canEdit ? "View-only access: Unarchiving is disabled" : "Unarchive"}>
+                      <Button
+                        size="small"
+                        icon={<ArchiveRestore size={12} />}
+                        disabled={!canEdit}
+                        onClick={(e) => { e.stopPropagation(); headerData.onUnarchive(); }}
+                      />
                     </Tooltip>
                   ) : (
-                    <Tooltip title="Archive">
-                      <Button size="small" danger icon={<Archive size={12} />}
-                        disabled={!headerData.canArchive}
-                        onClick={(e) => { e.stopPropagation(); headerData.onArchive(); }}>
-                      </Button>
+                    <Tooltip title={!canEdit ? "View-only access: Archiving is disabled" : "Archive"}>
+                      <Button
+                        size="small"
+                        danger
+                        icon={<Archive size={12} />}
+                        disabled={!headerData.canArchive || !canEdit}
+                        onClick={(e) => { e.stopPropagation(); headerData.onArchive(); }}
+                      />
                     </Tooltip>
                   )}
                 </>
@@ -1174,15 +1191,23 @@ const ReportTemplateManagement = ({
                                 </Tooltip>
                               )}
                               {(db?.status === false || db?.Status === false) ? (
-                                <Tooltip title="Unarchive">
-                                  <Button size="small" icon={<ArchiveRestore size={12} />} onClick={() => handleUnarchiveTemplate(db)}>
-                                  </Button>
+                                <Tooltip title={!canEdit ? "View-only access: Unarchiving is disabled" : "Unarchive"}>
+                                  <Button
+                                    size="small"
+                                    icon={<ArchiveRestore size={12} />}
+                                    disabled={!canEdit}
+                                    onClick={() => handleUnarchiveTemplate(db)}
+                                  />
                                 </Tooltip>
                               ) : (
-                                <Tooltip title="Archive">
-                                  <Button size="small" danger icon={<Archive size={12} />}
-                                    onClick={() => handleArchiveTemplate(db)}>
-                                  </Button>
+                                <Tooltip title={!canEdit ? "View-only access: Archiving is disabled" : "Archive"}>
+                                  <Button
+                                    size="small"
+                                    danger
+                                    icon={<Archive size={12} />}
+                                    disabled={!canEdit}
+                                    onClick={() => handleArchiveTemplate(db)}
+                                  />
                                 </Tooltip>
                               )}
                             </div>

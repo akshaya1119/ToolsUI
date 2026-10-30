@@ -1,9 +1,12 @@
 import React, { useEffect, useState } from "react";
 import * as XLSX from "xlsx";
+import { Alert } from "antd";
 import API from "../hooks/api";
 import useStore from "../stores/ProjectData";
+import useModulePermission from "../hooks/useModulePermission";
 
 const HToV = () => {
+    const { canView, canExecute, canCreate } = useModulePermission('HTOV_TOOL');
     const [headers, setHeaders] = useState([]);
     const [fixedHeaders, setFixedHeaders] = useState([]);
     const [file, setFile] = useState(null);
@@ -66,6 +69,10 @@ const HToV = () => {
 
     // Send file + fixed headers to backend
     const handleSendToBackend = async () => {
+        if (!canExecute) {
+            alert("You do not have permission to process or convert files.");
+            return;
+        }
         if (!file) {
             alert("Please upload an Excel file first.");
             return;
@@ -102,6 +109,19 @@ const HToV = () => {
         }
     };
 
+    if (!canView) {
+        return (
+            <div style={{ maxWidth: "800px", margin: "40px auto", padding: "20px" }}>
+                <Alert
+                    message="Access Denied"
+                    description="You do not have permission to view Horizontal to Vertical Tool."
+                    type="error"
+                    showIcon
+                />
+            </div>
+        );
+    }
+
     return (
         <div
             style={{
@@ -114,9 +134,18 @@ const HToV = () => {
                 fontFamily: "Inter, system-ui, sans-serif",
             }}
         >
-            <p style={{ textAlign: "center", color: "#666", marginBottom: "30px" }}>
+            <p style={{ textAlign: "center", color: "#666", marginBottom: "20px" }}>
                 Upload file and select fixed headers.
             </p>
+
+            {!canExecute && (
+                <div style={{ marginBottom: 20, padding: '10px 14px', background: '#fffbe6', border: '1px solid #ffe58f', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ color: '#d46b08', fontSize: 13 }}>
+                        <strong>View-Only Access:</strong> You do not have permission to process or convert files. Upload and conversion are disabled.
+                    </span>
+                    <span style={{ padding: '2px 8px', fontSize: 12, fontWeight: 600, background: '#ffe58f', color: '#d46b08', borderRadius: 4 }}>Read Only</span>
+                </div>
+            )}
 
             {/* File Upload Section */}
             <div
@@ -125,11 +154,12 @@ const HToV = () => {
                     borderRadius: "12px",
                     padding: "40px",
                     textAlign: "center",
-                    backgroundColor: "#f9f9ff",
-                    cursor: "pointer",
+                    backgroundColor: canExecute ? "#f9f9ff" : "#f5f5f5",
+                    cursor: canExecute ? "pointer" : "not-allowed",
+                    opacity: canExecute ? 1 : 0.6,
                     transition: "all 0.2s",
                 }}
-                onClick={() => document.getElementById("excelInput").click()}
+                onClick={() => canExecute && document.getElementById("excelInput").click()}
             >
                 <input
                     id="excelInput"
@@ -197,15 +227,16 @@ const HToV = () => {
                 <div style={{ textAlign: "center", marginTop: "40px" }}>
                     <button
                         onClick={handleSendToBackend}
-                        disabled={isUploading}
+                        disabled={isUploading || !canExecute}
+                        title={!canExecute ? "You do not have permission to process files" : ""}
                         style={{
-                            backgroundColor: "#6c63ff",
+                            backgroundColor: !canExecute ? "#a0a0a0" : "#6c63ff",
                             color: "#fff",
                             border: "none",
                             padding: "12px 24px",
                             borderRadius: "8px",
                             fontSize: "1rem",
-                            cursor: "pointer",
+                            cursor: !canExecute ? "not-allowed" : "pointer",
                             transition: "0.3s",
                         }}
                     >

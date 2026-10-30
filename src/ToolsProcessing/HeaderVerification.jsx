@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 import { Filter, FileEdit, Check, X } from 'lucide-react';
-import { Table, Input, Space, Button, Tag } from 'antd';
+import { Table, Input, Space, Button, Tag, Alert } from 'antd';
 import { SearchOutlined } from '@ant-design/icons';
 import API from '../hooks/api';
 import { useToast } from '../hooks/useToast';
@@ -13,6 +13,7 @@ import StatusBadgeHV from './components/HeaderVerification/StatusBadgeHV';
 import PrintPreviewHV from './components/HeaderVerification/PrintPreviewHV';
 import { normalizeStatus, statusLabels, statusDropdownOptions } from './components/HeaderVerification/statusUtils';
 import { getCurrentUserId, getCurrentUserRoleId } from '../hooks/useUserMap';
+import useModulePermission from '../hooks/useModulePermission';
 
 const customTableStyles = `
   .header-verification-table tbody tr:hover td {
@@ -38,8 +39,9 @@ const HeaderVerification = () => {
   const initVerificationStatus = searchParams.get('status');
 
   const [correctionFilter, setCorrectionFilter] = useState(false);
+  const { canView, canEdit, canExecute } = useModulePermission('HEADER_VERIFICATION');
   const currentUserRoleId = getCurrentUserRoleId();
-  const isRoleAuthorized = currentUserRoleId !== null && Number(currentUserRoleId) <= 4 && Number(currentUserRoleId) > 0;
+  const isRoleAuthorized = canEdit && (currentUserRoleId === null || Number(currentUserRoleId) <= 4 || canExecute);
   const canShowCorrection = isRoleAuthorized && ((summaryStats.correctionCount ?? 0) > 0 || correctionFilter);
 
   // Pre-fill search input from ?catch= param, but don't restrict the API — let user see all records
@@ -680,8 +682,9 @@ const HeaderVerification = () => {
             <div className="flex items-center justify-center gap-2">
               <button
                 onClick={(e) => handleSaveRow(e, record.id)}
-                className="p-1 px-1.5 bg-green-500 text-white rounded shadow-sm hover:bg-green-600"
-                title="Save"
+                disabled={!canEdit}
+                className={`p-1 px-1.5 text-white rounded shadow-sm ${!canEdit ? 'bg-gray-400 opacity-50 cursor-not-allowed' : 'bg-green-500 hover:bg-green-600'}`}
+                title={!canEdit ? "Permission required to edit" : "Save"}
               >
                 <Check className="w-3.5 h-3.5" />
               </button>
@@ -695,9 +698,13 @@ const HeaderVerification = () => {
             </div>
           ) : (
             <button
-              onClick={(e) => handleEditRowClick(e, record)}
-              className="p-1.5 rounded-md transition-colors text-blue-600 hover:bg-blue-50"
-              title="Edit row inline"
+              onClick={(e) => {
+                if (!canEdit) return;
+                handleEditRowClick(e, record);
+              }}
+              disabled={!canEdit}
+              className={`p-1.5 rounded-md transition-colors ${!canEdit ? 'text-gray-400 opacity-40 cursor-not-allowed' : 'text-blue-600 hover:bg-blue-50'}`}
+              title={!canEdit ? "You do not have permission to edit records" : "Edit row inline"}
             >
               <FileEdit className="w-4 h-4" />
             </button>
@@ -705,7 +712,7 @@ const HeaderVerification = () => {
         </div>
       ),
     },
-  ], [columnFilters, editFormData, editingRowId, tableSorter, selectedStatus, catchEnvLotMap, isRoleAuthorized, headerFields]);
+  ], [columnFilters, editFormData, editingRowId, tableSorter, selectedStatus, catchEnvLotMap, isRoleAuthorized, headerFields, canEdit]);
 
   const handleColumnToggle = useCallback((colKey) => {
     if (ALWAYS_VISIBLE.includes(colKey)) return;
@@ -765,6 +772,10 @@ const HeaderVerification = () => {
   }, []);
 
   const handleBulkVerify = useCallback(async () => {
+    if (!canEdit || !canExecute) {
+      showToast('You do not have permission to bulk verify', 'error');
+      return;
+    }
     try {
       setBulkVerifyLoading(true);
       const res = await API.post(`/Correction/HeaderVerification/BulkVerifyProject/${projectId}`);
@@ -818,6 +829,10 @@ const HeaderVerification = () => {
   }, [projectId, records, selectedRecord, showToast, fetchAllMeta, selectedLot]);
 
   const handleStatusChange = useCallback(async (recordId, newStatusValue) => {
+    if (!canEdit) {
+      showToast('You do not have permission to update status', 'error');
+      throw new Error('Permission denied');
+    }
     try {
       if (!projectId) throw new Error('No project selected');
       const updatedRecord = records.find(r => r.id === recordId);
@@ -855,6 +870,10 @@ const HeaderVerification = () => {
 
   const handleEditRowClick = (e, record) => {
     e.stopPropagation();
+    if (!canEdit) {
+      showToast('You do not have permission to edit records', 'error');
+      return;
+    }
     setEditingRowId(record.id);
     const initialFormData = {
       remark: record.remark || '',
@@ -873,6 +892,10 @@ const HeaderVerification = () => {
 
   const handleSaveRow = async (e, recordId) => {
     e.stopPropagation();
+    if (!canEdit) {
+      showToast('You do not have permission to edit records', 'error');
+      return;
+    }
     try {
       if (!projectId) throw new Error('No project selected');
       const updatedRecord = records.find(r => r.id === recordId);
@@ -937,6 +960,19 @@ const HeaderVerification = () => {
     }
   };
 
+  if (!canView) {
+    return (
+      <div className="p-6">
+        <Alert
+          message="Access Denied"
+          description="You do not have permission to view Header Verification."
+          type="error"
+          showIcon
+        />
+      </div>
+    );
+  }
+
   return (
     <>
     <div className="w-full h-full min-h-0 flex flex-col overflow-hidden">
@@ -947,7 +983,7 @@ const HeaderVerification = () => {
           <p className="text-sm text-gray-500 mt-1">Search, filter, edit, and verify academic papers</p>
         </div>
         <div className="flex items-center gap-3">
-          {isRoleAuthorized && (() => {
+          {isRoleAuthorized && canEdit && canExecute && (() => {
             const allVerified = summaryStats.total > 0 && summaryStats.notVerified === 0 && summaryStats.unclear === 0;
             return (
               <button
@@ -967,6 +1003,16 @@ const HeaderVerification = () => {
           })()}
         </div>
       </div>
+
+      {!canEdit && (
+        <div className="mx-6 mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-center justify-between text-sm text-amber-800">
+          <div className="flex items-center gap-2">
+            <span className="font-semibold">View-Only Access:</span>
+            <span>You have view-only permission for Header Verification. Editing, updating status, or verifying catches is disabled for your role.</span>
+          </div>
+          <span className="px-2 py-0.5 text-xs font-semibold bg-amber-100 text-amber-900 rounded">Read Only</span>
+        </div>
+      )}
 
       <div className="px-6 py-4 flex-shrink-0">
         <SummaryCardsHV
@@ -1155,6 +1201,7 @@ const HeaderVerification = () => {
                 currentUser={currentUser}
                 userMap={userMap}
                 headerFields={headerFields}
+                canEdit={canEdit}
               />
             </div>
           )}

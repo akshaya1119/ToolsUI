@@ -29,6 +29,7 @@ import customParseFormat from "dayjs/plugin/customParseFormat";
 import API from "../../hooks/api";
 import useStore from "../../stores/ProjectData";
 import { useToast } from "../../hooks/useToast";
+import useModulePermission from "../../hooks/useModulePermission";
 
 dayjs.extend(customParseFormat);
 
@@ -156,6 +157,7 @@ const mergeRows = (base, patch) => ({
 });
 
 const LotsBifurcation = forwardRef(({ onCatchDeleted, defaultOpenBifurcation }, ref) => {
+  const { canCreate, canEdit, canDelete, canExecute } = useModulePermission('DATA_IMPORT');
   const projectId = useStore((state) => state.projectId);
   const selectedLot = useStore((state) => state.selectedLot);
   const setHasDeactivatedCatches = useStore((state) => state.setHasDeactivatedCatches);
@@ -463,6 +465,10 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted, defaultOpenBifurcation }, 
   };
 
   const handleDeleteCatchNo = async (catchNo) => {
+    if (!canDelete) {
+      showToast("View-only access: Deleting catch number is disabled", "warning");
+      return;
+    }
     if (!projectId) return;
     try {
       // Find out which EnvLot this catch belongs to *before* deleting
@@ -1091,44 +1097,57 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted, defaultOpenBifurcation }, 
 
         return (
           <Space size={4}>
-            <Tooltip title="Edit this row inline">
-              <Button
-                size="small"
-                icon={<EditOutlined />}
-                onClick={() => {
-                  setEditingCatchNo(record.CatchNo);
-                  // Initialise row values for other fields
-                  setEditingRowValues({ ...record });
-                  // In Lot 0 tab, also initialise the LotNo input in the Lot Number column
-                  if (activeLotTab === "0") {
-                    setEditingValue(coerceNumber(record?.LotNo, 0));
-                  }
-                }}
-                title="Edit inline"
-              />
-            </Tooltip>
-            <Popconfirm
-              title="Delete Catch Number"
-              description={`Are you sure you want to delete catch number ${record.CatchNo}?`}
-              onConfirm={() => handleDeleteCatchNo(record.CatchNo)}
-              okText="Yes"
-              cancelText="No"
-              okButtonProps={{ danger: true }}
-            >
-              <Button
-                size="small"
-                danger
-                icon={<DeleteOutlined />}
-                title="Delete this catch number"
-              />
-            </Popconfirm>
+            {canEdit ? (
+              <Tooltip title="Edit this row inline">
+                <Button
+                  size="small"
+                  icon={<EditOutlined />}
+                  onClick={() => {
+                    setEditingCatchNo(record.CatchNo);
+                    // Initialise row values for other fields
+                    setEditingRowValues({ ...record });
+                    // In Lot 0 tab, also initialise the LotNo input in the Lot Number column
+                    if (activeLotTab === "0") {
+                      setEditingValue(coerceNumber(record?.LotNo, 0));
+                    }
+                  }}
+                  title="Edit inline"
+                />
+              </Tooltip>
+            ) : (
+              <Tooltip title="View-only access: Editing is disabled">
+                <Button
+                  size="small"
+                  icon={<EditOutlined />}
+                  disabled
+                  style={{ color: '#bfbfbf', cursor: 'not-allowed' }}
+                />
+              </Tooltip>
+            )}
+            {canDelete && (
+              <Popconfirm
+                title="Delete Catch Number"
+                description={`Are you sure you want to delete catch number ${record.CatchNo}?`}
+                onConfirm={() => handleDeleteCatchNo(record.CatchNo)}
+                okText="Yes"
+                cancelText="No"
+                okButtonProps={{ danger: true }}
+              >
+                <Button
+                  size="small"
+                  danger
+                  icon={<DeleteOutlined />}
+                  title="Delete this catch number"
+                />
+              </Popconfirm>
+            )}
           </Space>
         );
       },
     });
 
     return cols;
-  }, [uniqueColumns, activeLotTab, editingCatchNo, editingField, editingValue, searchedColumn, searchText, editingRowValues]);
+  }, [uniqueColumns, activeLotTab, editingCatchNo, editingField, editingValue, searchedColumn, searchText, editingRowValues, canEdit, canDelete]);
 
   return (
     <div className="pt-0">
@@ -1347,13 +1366,15 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted, defaultOpenBifurcation }, 
                       }}
                     >
                       <Button onClick={closeBifurcationPanel}>Cancel</Button>
-                      <Button
-                        type="primary"
-                        onClick={handleBifurcate}
-                        disabled={loading || !rows.length}
-                      >
-                        Apply
-                      </Button>
+                      <Tooltip title={!canExecute ? "View-only access: Execution is disabled" : ""}>
+                        <Button
+                          type="primary"
+                          onClick={handleBifurcate}
+                          disabled={loading || !rows.length || !canExecute}
+                        >
+                          Apply
+                        </Button>
+                      </Tooltip>
                     </div>
                   </div>
                 </div>

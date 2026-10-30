@@ -67,6 +67,8 @@ export const getCurrentUserRoleId = () => {
  */
 export const useUserMap = () => {
   const [userMap, setUserMap] = useState({});
+  const [userRoleMap, setUserRoleMap] = useState({});
+  const [rawUsers, setRawUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -93,8 +95,9 @@ export const useUserMap = () => {
           }
         }
 
-        // Build userId → display name map (keyed by both number and string for safe lookup)
+        // Build userId → display name map and userId -> roleId map
         const map = {};
+        const roleMap = {};
         users.forEach(user => {
           const id = user.userId ?? user.UserId ?? user.id ?? user.Id;
           if (id == null) return;
@@ -103,9 +106,17 @@ export const useUserMap = () => {
             || `User ${id}`;
           map[Number(id)] = name;
           map[String(id)] = name;
+
+          const rId = user.roleId ?? user.RoleId ?? user.role;
+          if (rId != null && !isNaN(Number(rId))) {
+            roleMap[Number(id)] = Number(rId);
+            roleMap[String(id)] = Number(rId);
+          }
         });
 
         setUserMap(map);
+        setUserRoleMap(roleMap);
+        setRawUsers(users);
       } catch (err) {
         console.error('Failed to fetch user map:', err);
         setError(err);
@@ -117,7 +128,7 @@ export const useUserMap = () => {
     fetchUsers();
   }, []);
 
-  return { userMap, loading, error };
+  return { userMap, userRoleMap, rawUsers, loading, error };
 };
 
 /**

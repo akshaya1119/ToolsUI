@@ -134,6 +134,9 @@ export const buildTemplateColumns = ({
   cancelInlineEdit,
   inlineEditSaving,
   onRemove,
+  canEdit = true,
+  canDelete = true,
+  canCreate = true,
 }) => [
   {
     title: "Template",
@@ -397,32 +400,69 @@ export const buildTemplateColumns = ({
           >
             {" "}
           </Button>
-          <Upload {...rowUploadProps(record)}>
+          {canCreate ? (
+            <Upload {...rowUploadProps(record)}>
+              <Button
+                size="small"
+                icon={<UploadOutlined />}
+                title="Upload New Version"
+              >
+                {" "}
+              </Button>
+            </Upload>
+          ) : (
+            <Tooltip title="View-only: Upload disabled">
+              <span>
+                <Button
+                  size="small"
+                  icon={<UploadOutlined />}
+                  disabled
+                />
+              </span>
+            </Tooltip>
+          )}
+          {canEdit ? (
             <Button
               size="small"
-              icon={<UploadOutlined />}
-              title="Upload New Version"
+              icon={<EditOutlined />}
+              title="Edit Template"
+              onClick={() => startInlineEdit(record)}
             >
               {" "}
             </Button>
-          </Upload>
-          <Button
-            size="small"
-            icon={<EditOutlined />}
-            title="Edit Template"
-            onClick={() => startInlineEdit(record)}
-          >
-            {" "}
-          </Button>
-          {onRemove && (
-            <Tooltip title={record?.isDeleted ? "Restore template" : "Remove from this scope"}>
-              <Button
-                size="small"
-                danger={!record?.isDeleted}
-                icon={record?.isDeleted ? <CheckOutlined /> : <DeleteOutlined />}
-                onClick={() => onRemove(record)}
-              />
+          ) : (
+            <Tooltip title="View-only: Edit disabled">
+              <span>
+                <Button
+                  size="small"
+                  icon={<EditOutlined />}
+                  disabled
+                />
+              </span>
             </Tooltip>
+          )}
+          {onRemove && (
+            canDelete ? (
+              <Tooltip title={record?.isDeleted ? "Restore template" : "Remove from this scope"}>
+                <Button
+                  size="small"
+                  danger={!record?.isDeleted}
+                  icon={record?.isDeleted ? <CheckOutlined /> : <DeleteOutlined />}
+                  onClick={() => onRemove(record)}
+                />
+              </Tooltip>
+            ) : (
+              <Tooltip title="View-only: Delete/Restore disabled">
+                <span>
+                  <Button
+                    size="small"
+                    danger={!record?.isDeleted}
+                    icon={record?.isDeleted ? <CheckOutlined /> : <DeleteOutlined />}
+                    disabled
+                  />
+                </span>
+              </Tooltip>
+            )
           )}
         </Space>
       ),
@@ -435,6 +475,7 @@ export const buildVersionsColumns = ({
   confirmActivateVersion,
   handleDownload,
   onGenerate,
+  canEdit = true,
 }) => [
   {
     title: "Version",
@@ -504,15 +545,17 @@ export const buildVersionsColumns = ({
         >
           Download
         </Button>
-        <Button
-          size="small"
-          icon={<CheckOutlined />}
-          onClick={() => confirmActivateVersion(record)}
-          loading={resolveTemplateId(record) === activatingVersionId}
-          disabled={record?.isActive && !record?.isDeleted}
-        >
-          {record?.isDeleted ? "Restore & Activate" : "Set Active"}
-        </Button>
+        <Tooltip title={!canEdit ? "View-only: Version activation disabled" : ""}>
+          <Button
+            size="small"
+            icon={<CheckOutlined />}
+            onClick={() => confirmActivateVersion(record)}
+            loading={resolveTemplateId(record) === activatingVersionId}
+            disabled={!canEdit || (record?.isActive && !record?.isDeleted)}
+          >
+            {record?.isDeleted ? "Restore & Activate" : "Set Active"}
+          </Button>
+        </Tooltip>
         {onGenerate && (
           <Button size="small" type="primary" onClick={() => onGenerate(record)}>
             Generate

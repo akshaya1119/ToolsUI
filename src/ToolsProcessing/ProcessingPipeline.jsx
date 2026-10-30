@@ -37,6 +37,7 @@ import ExistingReportModal from "./components/ExistingReportModal";
 import TemplatesPanel from "./components/TemplatesPanel";
 import LotWisePanel from "./components/LotWisePanel";
 import ReportTemplateManagement from './components/ReportTemplateManagement';
+import useModulePermission from "../hooks/useModulePermission";
 
 const { Text } = Typography;
 
@@ -76,6 +77,7 @@ class ErrorBoundary extends React.Component {
 const url3 = import.meta.env.VITE_API_FILE_URL;
 
 const ProcessingPipeline = () => {
+  const { canExecute, canEdit } = useModulePermission('PROCESSING_PIPELINE');
   const navigate = useNavigate();
   const isConfigured = useStore((state) => state.isConfigured);
   const isLoadingData = useStore((state) => state.isLoadingData);
@@ -4545,6 +4547,16 @@ Object.keys(groupedTpl).forEach((templateKey) => {
         />
       )}
 
+      {!canExecute && (
+        <Alert
+          message="View-Only Access"
+          description="You have view-only permission for Processing Pipeline. Starting pipeline executions, running modules, and regenerating reports are disabled."
+          type="warning"
+          showIcon
+          style={{ marginBottom: 16 }}
+        />
+      )}
+
       <div className="flex justify-between items-center mb-4">
         <Typography.Title level={3} style={{ marginBottom: 6 }}>
           Processing Pipeline
@@ -4662,7 +4674,9 @@ Object.keys(groupedTpl).forEach((templateKey) => {
             return (
           <Tooltip
             title={
-              (!canStartByData)
+              !canExecute
+                ? "View-only access: Pipeline execution is disabled"
+                : (!canStartByData)
                 ? "No new data found for processing. All data is already processed."
                 : (selectedModules.length === 0
                   ? "Please select at least one module"
@@ -4671,11 +4685,12 @@ Object.keys(groupedTpl).forEach((templateKey) => {
                     : "")
             }
           >
-            <span style={{ cursor: (!canStartByData) || selectedModules.length === 0 ? "not-allowed" : "default" }}>
+            <span style={{ cursor: (!canExecute || !canStartByData) || selectedModules.length === 0 ? "not-allowed" : "default" }}>
               <Button
                 type="primary"
                 onClick={handleAudit}
                 disabled={
+                  !canExecute ||
                   !projectId ||
                   isProcessing ||
                   selectedModules.length === 0 ||
@@ -4801,6 +4816,7 @@ Object.keys(groupedTpl).forEach((templateKey) => {
             }}
             isQuantitySheetTemplate={isQuantitySheetTemplate}
             isCompositeSummaryTemplate={isCompositeSummaryTemplate}
+            canExecute={canExecute}
           />
           <Modal
             title="Report Generation Error"
@@ -4933,6 +4949,7 @@ Object.keys(groupedTpl).forEach((templateKey) => {
             isQuantitySheetTemplate={isQuantitySheetTemplate}
             isCompositeSummaryTemplate={isCompositeSummaryTemplate}
             onClose={closeLotWisePanel}
+            canExecute={canExecute}
           />
         </div>
       </motion.div>

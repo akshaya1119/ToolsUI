@@ -39,6 +39,7 @@ const ExtraProcessingCard = ({
   importedSnapshot,
   projectId,
   allowNodalConfig = true,
+  canEdit = true,
 }) => {
   const isDirty = (current, snapshotVal) => {
     if (!importedSnapshot || importedSnapshot === "pending") return false;
@@ -138,7 +139,8 @@ useEffect(() => {
                   size="small"
                   icon={<UndoOutlined />}
                   onClick={onReset}
-                  style={{ color: PRIMARY_COLOR }}
+                  disabled={!canEdit}
+                  style={{ color: canEdit ? PRIMARY_COLOR : undefined }}
                 >
                   Reset
                 </Button>
@@ -147,16 +149,15 @@ useEffect(() => {
                   size="small"
                   icon={<DeleteOutlined />}
                   onClick={onClear}
-                  style={{ color: "#ff4d4f" }}
+                  disabled={!canEdit}
+                  style={{ color: canEdit ? "#ff4d4f" : undefined }}
                 >
                   Clear
                 </Button>
               </>
             )}
             {!extraEnabled && (
-              <Tag icon={<LockFilled style={{ color: PRIMARY_COLOR }} />}>
-                Disabled
-              </Tag>
+              <Tag color="default">Not Enabled</Tag>
             )}
           </div>
         }

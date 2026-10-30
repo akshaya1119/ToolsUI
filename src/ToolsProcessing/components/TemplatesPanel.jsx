@@ -30,6 +30,7 @@ const TemplatesPanel = ({
   onClose,
   checkIsEnvelopeDependent,
   isQuantitySheetTemplate,
+  canExecute = true,
 }) => {
   if (!open) return null;
 
@@ -45,16 +46,18 @@ const TemplatesPanel = ({
             Templates{moduleTitle ? ` - ${moduleTitle}` : ""}
           </Typography.Text>
           <div className="pipeline-panel-actions">
-            <Tooltip title={!hasAnyTemplateFile ? "Upload at least one template first" : ""}>
-              <Button
-                size="small"
-                type="primary"
-                onClick={handleGenerateAllTemplates}
-                loading={bulkGenerating}
-                disabled={!templates || templates.length === 0 || !hasAnyTemplateFile}
-              >
-                Generate All
-              </Button>
+            <Tooltip title={!canExecute ? "View-only access: Generating reports is disabled" : !hasAnyTemplateFile ? "Upload at least one template first" : ""}>
+              <span>
+                <Button
+                  size="small"
+                  type="primary"
+                  onClick={handleGenerateAllTemplates}
+                  loading={bulkGenerating}
+                  disabled={!canExecute || !templates || templates.length === 0 || !hasAnyTemplateFile}
+                >
+                  Generate All
+                </Button>
+              </span>
             </Tooltip>
 
             <Button size="small" onClick={onClose}>
@@ -123,16 +126,18 @@ const TemplatesPanel = ({
                           )}
                         </div>
                         <Space>
-                          <Tooltip title={!hasTemplateFile ? "Upload template first" : ""}>
-                            <Button
-                              size="small"
-                              type={alreadyGenerated ? "default" : "primary"}
-                              onClick={() => handleGenerateTemplate(template, alreadyGenerated ? "regenerate" : "generate")}
-                              loading={isGenerating}
-                              disabled={!hasTemplateFile}
-                            >
-                              Generate
-                            </Button>
+                          <Tooltip title={!canExecute ? "View-only access: Generating reports is disabled" : !hasTemplateFile ? "Upload template first" : ""}>
+                            <span>
+                              <Button
+                                size="small"
+                                type={alreadyGenerated ? "default" : "primary"}
+                                onClick={() => handleGenerateTemplate(template, alreadyGenerated ? "regenerate" : "generate")}
+                                loading={isGenerating}
+                                disabled={!canExecute || !hasTemplateFile}
+                              >
+                                Generate
+                              </Button>
+                            </span>
                           </Tooltip>
                         </Space>
                       </div>

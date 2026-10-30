@@ -1,14 +1,16 @@
 import React, { useState, useEffect } from "react";
-import { Table, Input, Select, Typography, message, Button, Space, Modal, Checkbox } from "antd";
+import { Table, Input, Select, Typography, message, Button, Space, Modal, Checkbox, Alert } from "antd";
 import { SearchOutlined } from '@ant-design/icons';
 import API from "../hooks/api";
 import useStore from "../stores/ProjectData";
+import useModulePermission from "../hooks/useModulePermission";
 
 const { Title } = Typography;
 const { Search } = Input;
 const { Option } = Select;
 
 const BatchWiseData = () => {
+  const { canView } = useModulePermission('BATCH_DATA');
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(false);
   const [totalCount, setTotalCount] = useState(0);
@@ -237,6 +239,19 @@ const BatchWiseData = () => {
   const visibleEnhancedColumns = enhancedColumns.filter((column) => {
     return uploadedDisplayFields.includes(column.dataIndex);
   });
+
+  if (!canView) {
+    return (
+      <div className="p-4 md:p-6 min-h-screen">
+        <Alert
+          message="Access Denied"
+          description="You do not have permission to view Batch Wise Data."
+          type="error"
+          showIcon
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 md:p-6 min-h-screen">

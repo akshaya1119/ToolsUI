@@ -6,6 +6,7 @@ import useStore from "../stores/ProjectData";
 import API from "../hooks/api";
 import Footer from "./Footer";
 import { getCurrentUserRoleId } from "../hooks/useUserMap";
+import usePermissionsStore from "../stores/UserPermissions";
 
 export default function Sidebar({ collapsed }) {
   const navigate = useNavigate();
@@ -13,6 +14,8 @@ export default function Sidebar({ collapsed }) {
   const [openGroups, setOpenGroups] = useState({});
   const roleId = getCurrentUserRoleId();
   const isRoleAuthorized = roleId === null || (Number(roleId) <= 4 && Number(roleId) > 0);
+  const permissions = usePermissionsStore((state) => state.permissions);
+  const hasPermission = usePermissionsStore((state) => state.hasPermission);
 
   // Subscribe to Zustand store for projectName (optimizing re-renders)
   const projectName = useStore((state) => state.projectName);
@@ -98,22 +101,33 @@ export default function Sidebar({ collapsed }) {
     });
   };
 
-  const menuItems = [
+  const allMenuItems = [
     {
       label: projectName ? "Project Dashboard" : "Dashboard",
       icon: <FaHome className="text-black" />,
       path: projectName ? "/projectdashboard" : "/dashboard",
+      visible: hasPermission("DASHBOARD", "View"),
     },
     {
       label: "Masters",
       icon: <FaBookmark className="text-black" />,
       path: "/masters",
+      visible: hasPermission("MASTER_PROJECT", "View") ||
+        hasPermission("MASTER_CONFIG", "View") ||
+        hasPermission("MASTER_BOX_CAPACITY", "View") ||
+        hasPermission("MASTER_ENVELOPE", "View") ||
+        hasPermission("MASTER_FIELDS", "View") ||
+        hasPermission("MASTER_MODULES", "View") ||
+        hasPermission("MASTER_NODAL_EXTRA", "View") ||
+        hasPermission("MASTER_RPT", "View") ||
+        hasPermission("ROLES_PERMISSIONS", "View"),
     },
     {
       label: "Reports",
       icon: <FaChartLine className="text-black" />,
+      visible: hasPermission("REPORTS", "View"),
       children: [
-        { label: "Master Config Report", path: "/masterconfig-report" },
+        { label: "Master Config Report", path: "/masterconfig-report", visible: hasPermission("REPORTS", "View") },
       ],
     },
     ...(projectName
@@ -122,28 +136,24 @@ export default function Sidebar({ collapsed }) {
           label: "Tools",
           icon: <FaWrench className="text-black" />, // Filled wrench icon
           children: [
-            { label: "Project Configuration", path: "/projectconfiguration" },
-            { label: "Data Import", path: "/dataimport", disabled: !isConfigured },
-            { label: "Changed NR Analysis", path: "/changedNRUpload" },
-            { label: "Batch Wise Data", path: "/batchwisedata" },
-            { label: "Nodal & Catch List", path: "/nodal-center-list" },
-            { label: "Project Templates", path: "/projecttemplates" },
+            { label: "Project Configuration", path: "/projectconfiguration", visible: hasPermission("PROJECT_CONFIG", "View") },
+            { label: "Data Import", path: "/dataimport", disabled: !isConfigured, visible: hasPermission("DATA_IMPORT", "View") },
+            { label: "Changed NR Analysis", path: "/changedNRUpload", visible: hasPermission("CHANGED_NR", "View") },
+            { label: "Batch Wise Data", path: "/batchwisedata", visible: hasPermission("BATCH_DATA", "View") },
+            { label: "Nodal & Catch List", path: "/nodal-center-list", visible: hasPermission("NODAL_CATCH", "View") },
+            { label: "Project Templates", path: "/projecttemplates", visible: hasPermission("MASTER_RPT", "View") },
             {
               label: "Processing Pipeline",
               path: "/processingpipeline",
-              disabled: nrDataCount === 0 || !isConfigured
+              disabled: nrDataCount === 0 || !isConfigured,
+              visible: hasPermission("PROCESSING_PIPELINE", "View")
             },
-            // {
-            //   label: "Processing Pipeline V2",
-            //   path: "/processingpipelinev2",
-            //   disabled: nrDataCount === 0 || !isConfigured
-            // },
             {
               label: "Header Verification",
               path: "/headerverification",
               badge: isRoleAuthorized ? headerCorrectionCount : null,
+              visible: hasPermission("HEADER_VERIFICATION", "View")
             },
-            // { label: "RPT Reports", path: "/rptreports" },
           ],
         },
       ]
@@ -153,7 +163,8 @@ export default function Sidebar({ collapsed }) {
         {
           label: "Horizontal To Vertical Tool",
           icon: <FaWrench className="text-black" />, // Filled wrench icon
-          path: "/horizontalToVertical"
+          path: "/horizontalToVertical",
+          visible: hasPermission("HTOV_TOOL", "View")
         },
       ]
       : []),
@@ -163,14 +174,27 @@ export default function Sidebar({ collapsed }) {
         {
           label: "Correction Tool",
           icon: <FaWrench className="text-black" />, // Filled wrench icon
+          visible: hasPermission("CORRECTION_TOOL", "View"),
           children: [
-            { label: "Excel Upload", path: "/excelupload" },
-            { label: "Correction Tool", path: "/correctiontool" },
+            { label: "Excel Upload", path: "/excelupload", visible: hasPermission("CORRECTION_TOOL", "View") },
+            { label: "Correction Tool", path: "/correctiontool", visible: hasPermission("CORRECTION_TOOL", "View") },
           ],
         },
       ]
     ),
   ];
+
+  // Clean and filter menu items based on effective permissions
+  const menuItems = allMenuItems
+    .filter(item => item.visible !== false)
+    .map(item => {
+      if (item.children) {
+        const visibleChildren = item.children.filter(c => c.visible !== false);
+        return { ...item, children: visibleChildren };
+      }
+      return item;
+    })
+    .filter(item => !item.children || item.children.length > 0);
 
   const SidebarItem = ({ label, icon, path, disabled, active, isChild = false, badge = null, isFlyoutChild = false }) => {
     const isActive = active || location.pathname === path;

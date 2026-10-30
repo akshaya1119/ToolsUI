@@ -1,11 +1,14 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
+import { Alert, Tooltip } from "antd";
 import { useToast } from './../hooks/useToast';
 import { RiFilter3Fill, RiListCheck2 } from "react-icons/ri";
 import API from "./../hooks/api";
+import useModulePermission from "../hooks/useModulePermission";
 const fieldOptions = ["type", "language", "subject", "course", "examType", "catch", "paperNumber"];
 
 export default function CorrectionTool() {
+  const { canView, canEdit, canExecute } = useModulePermission('CORRECTION_TOOL');
   const [groups, setGroups] = useState([]);
   const [selectedGroupId, setSelectedGroupId] = useState("");
   const [groupData, setGroupData] = useState([]);
@@ -191,11 +194,35 @@ export default function CorrectionTool() {
     : groupData;
 
 
+  if (!canView) {
+    return (
+      <div className="p-4">
+        <Alert
+          message="Access Denied"
+          description="You do not have permission to view Correction Tool."
+          type="error"
+          showIcon
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="p-4">
       <h2 className="text-2xl font-bold text-gray-800 flex justify-center items-center text-center gap-2 mb-3.5">
         <i className="ri-upload-cloud-line text-blue-600"></i> Correction Page
       </h2>
+
+      {!canEdit && (
+        <Alert
+          message="Read Only Mode"
+          description="You have view-only access to Correction Tool. Editing data, correcting mismatches, and saving changes are disabled."
+          type="info"
+          showIcon
+          style={{ marginBottom: 16 }}
+        />
+      )}
+
       <div className="bg-white p-4 rounded shadow mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         {/* Left - Group Selector */}
         <div className="flex-1">
@@ -238,12 +265,17 @@ export default function CorrectionTool() {
 
         {/* Right - Action Buttons */}
         <div className="flex items-end space-x-2">
-          <button
-            onClick={handleCorrect}
-            className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-sm font-semibold"
-          >
-            Correct Data
-          </button>
+          <Tooltip title={!canExecute && !canEdit ? "View-only: Data correction is disabled" : ""}>
+            <span>
+              <button
+                onClick={handleCorrect}
+                disabled={!canExecute && !canEdit}
+                className={`bg-blue-600 text-white px-4 py-2 rounded text-sm font-semibold ${(!canExecute && !canEdit) ? 'opacity-50 cursor-not-allowed' : 'hover:bg-blue-700'}`}
+              >
+                Correct Data
+              </button>
+            </span>
+          </Tooltip>
           <button
             onClick={() => {
               setSelectedGroupId("");
@@ -296,20 +328,26 @@ export default function CorrectionTool() {
             >
               Audit Data
             </button>
-            <button
-              onClick={async () => {
-                if (editMode) {
-                  await handleSaveChanges();
-                } else {
-                  setEditMode(true);
-                  setEditableRows(groupData.map(row => ({ ...row })));
-                }
-              }}
-              className={`px-4 py-2 rounded font-semibold ${editMode ? "bg-green-600 text-white hover:bg-green-700" : "bg-yellow-500 text-white hover:bg-yellow-600"
-                }`}
-            >
-              {editMode ? "Save Changes" : "Edit Data"}
-            </button>
+            <Tooltip title={!canEdit ? "View-only: Editing correction data is disabled" : ""}>
+              <span>
+                <button
+                  disabled={!canEdit}
+                  onClick={async () => {
+                    if (!canEdit) return;
+                    if (editMode) {
+                      await handleSaveChanges();
+                    } else {
+                      setEditMode(true);
+                      setEditableRows(groupData.map(row => ({ ...row })));
+                    }
+                  }}
+                  className={`px-4 py-2 rounded font-semibold ${!canEdit ? "bg-gray-400 text-white cursor-not-allowed" : editMode ? "bg-green-600 text-white hover:bg-green-700" : "bg-yellow-500 text-white hover:bg-yellow-600"
+                    }`}
+                >
+                  {editMode ? "Save Changes" : "Edit Data"}
+                </button>
+              </span>
+            </Tooltip>
             {editMode && (
               <div className="flex flex-wrap gap-2">
                 <input

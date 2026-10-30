@@ -1,15 +1,17 @@
 import React, { useState, useEffect } from "react";
-import { Typography, Row, Col, Card, Button, Select, Space, Spin, Empty, Tag, Modal } from "antd";
+import { Typography, Row, Col, Card, Button, Select, Space, Spin, Empty, Tag, Modal, Alert } from "antd";
 import { RedoOutlined, DeleteOutlined, ReloadOutlined, CloudUploadOutlined } from "@ant-design/icons";
 import API from "../hooks/api";
 import { useToast } from "../hooks/useToast";
 import useStore from "../stores/ProjectData";
 import BatchComparisonTable from "./components/BatchComparisonTable";
+import useModulePermission from "../hooks/useModulePermission";
 import "./ChangedNRUpload.css";
 
 const ChangedNRUpload = () => {
   const { showToast } = useToast();
   const projectId = useStore((state) => state.projectId);
+  const { canView, canCreate, canEdit, canExecute } = useModulePermission('CHANGED_NR');
   const [batches, setBatches] = useState([]);
   const [comparedBatch, setComparedBatch] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -249,6 +251,10 @@ const ChangedNRUpload = () => {
   };
 
   const handlePushChanges = async (selectedItems = null) => {
+    if (!canExecute) {
+      showToast("You do not have permission to push changes to Base Batch", "error");
+      return;
+    }
     if (!projectId || !comparedBatch) {
       showToast("Please select a batch to push changes", "warning");
       return;
@@ -411,6 +417,19 @@ const ChangedNRUpload = () => {
     }
   };
 
+  if (!canView) {
+    return (
+      <div className="changed-nr-upload-container">
+        <Alert
+          message="Access Denied"
+          description="You do not have permission to view Changed NR Analysis."
+          type="error"
+          showIcon
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="changed-nr-upload-container">
       <div style={{ marginBottom: 24 }}>
@@ -421,6 +440,15 @@ const ChangedNRUpload = () => {
           Compare NR data between two batches to identify changes and differences
         </Typography.Text>
       </div>
+
+      {!canExecute && (
+        <div style={{ marginBottom: 16, padding: '10px 14px', background: '#fffbe6', border: '1px solid #ffe58f', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span style={{ color: '#d46b08', fontSize: 13 }}>
+            <strong>View-Only Access:</strong> You do not have permission to push changes to Base Batch. Push actions are disabled.
+          </span>
+          <Tag color="orange">Read Only</Tag>
+        </div>
+      )}
 
       {/* Batch Selection Section */}
       <Card className="batch-selection-card" style={{ marginBottom: 24 }}>
@@ -557,6 +585,7 @@ const ChangedNRUpload = () => {
             selectedProcess={selectedProcess}
             processes={processes}
             additionalFields={additionalFields}
+            canExecute={canExecute}
           />
         </Card>
       )}

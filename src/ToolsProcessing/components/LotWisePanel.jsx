@@ -33,6 +33,7 @@ const LotWisePanel = ({
   isCompositeSummaryTemplate,
   staleTemplateIds,
   getMappingUpdateTime,
+  canExecute = true,
 }) => {
   if (!open) return null;
 
@@ -139,16 +140,18 @@ const LotWisePanel = ({
                                     </div>
                                   </div>
                                   <Space size="small">
-                                    <Tooltip title={!hasTemplateFile ? "Upload template first" : ""}>
-                                      <Button
-                                        size="small"
-                                        type="primary"
-                                        onClick={() => handleGenerateTemplate(template)}
-                                        loading={isGenerating}
-                                        disabled={!hasTemplateFile}
-                                      >
-                                        Generate
-                                      </Button>
+                                    <Tooltip title={!canExecute ? "View-only access: Generating reports is disabled" : !hasTemplateFile ? "Upload template first" : ""}>
+                                      <span>
+                                        <Button
+                                          size="small"
+                                          type="primary"
+                                          onClick={() => handleGenerateTemplate(template)}
+                                          loading={isGenerating}
+                                          disabled={!canExecute || !hasTemplateFile}
+                                        >
+                                          Generate
+                                        </Button>
+                                      </span>
                                     </Tooltip>
                                   </Space>
                                 </div>
@@ -209,16 +212,18 @@ const LotWisePanel = ({
                             Templates
                           </Text>
                           <Space size="small">
-                            <Tooltip title={!hasAnyTemplateFile ? "Upload at least one template first" : ""}>
-                              <Button
-                                size="small"
-                                type="primary"
-                                onClick={() => handleGenerateAllLotTemplates(lot.lotNo)}
-                                loading={bulkGeneratingLots}
-                                disabled={!lotReportStatus?.[lot.lotNo] || lotTemplates.length === 0 || !hasAnyTemplateFile}
-                              >
-                                Generate All
-                              </Button>
+                            <Tooltip title={!canExecute ? "View-only access: Generating reports is disabled" : !hasAnyTemplateFile ? "Upload at least one template first" : ""}>
+                              <span>
+                                <Button
+                                  size="small"
+                                  type="primary"
+                                  onClick={() => handleGenerateAllLotTemplates(lot.lotNo)}
+                                  loading={bulkGeneratingLots}
+                                  disabled={!canExecute || !lotReportStatus?.[lot.lotNo] || lotTemplates.length === 0 || !hasAnyTemplateFile}
+                                >
+                                  Generate All
+                                </Button>
+                              </span>
                             </Tooltip>
                           </Space>
                         </div>
@@ -276,22 +281,24 @@ const LotWisePanel = ({
                                       )}
                                     </div>
                                     <Space size="small">
-                                      <Tooltip title={!hasTemplateFile ? "Upload template first" : ""}>
-                                        <Button
-                                          size="small"
-                                          type="primary"
-                                          onClick={() => {
-                                            if (isProjectWide) {
-                                              handleGenerateTemplate(template);
-                                            } else {
-                                              handleGenerateLotTemplate(lot.lotNo, template);
-                                            }
-                                          }}
-                                          loading={isGenerating}
-                                          disabled={!lotReportStatus?.[lot.lotNo] || !hasTemplateFile}
-                                        >
-                                          Generate
-                                        </Button>
+                                      <Tooltip title={!canExecute ? "View-only access: Generating reports is disabled" : !hasTemplateFile ? "Upload template first" : ""}>
+                                        <span>
+                                          <Button
+                                            size="small"
+                                            type="primary"
+                                            onClick={() => {
+                                              if (isProjectWide) {
+                                                handleGenerateTemplate(template);
+                                              } else {
+                                                handleGenerateLotTemplate(lot.lotNo, template);
+                                              }
+                                            }}
+                                            loading={isGenerating}
+                                            disabled={!canExecute || !lotReportStatus?.[lot.lotNo] || !hasTemplateFile}
+                                          >
+                                            Generate
+                                          </Button>
+                                        </span>
                                       </Tooltip>
                                     </Space>
                                   </div>

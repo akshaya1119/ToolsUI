@@ -9,7 +9,7 @@ const { Text } = Typography;
 // Modules allowed without Envelope Setup and Enhancement
 const ALWAYS_ALLOWED = ["Duplicate Tool", "Extra Configuration"];
 
-const ModuleSelectionCard = ({ mergedModules, enabledModules, setEnabledModules, onReset, onClear, importedSnapshot }) => {
+const ModuleSelectionCard = ({ mergedModules, enabledModules, setEnabledModules, onReset, onClear, importedSnapshot, canEdit = true }) => {
   const isDirty = (current, snapshotVal) => {
     if (!importedSnapshot || importedSnapshot === "pending") return false;
     return JSON.stringify(current) !== JSON.stringify(snapshotVal);
@@ -19,6 +19,7 @@ const ModuleSelectionCard = ({ mergedModules, enabledModules, setEnabledModules,
   const envelopeEnabled = enabledModules.includes("Envelope Setup and Enhancement");
 
   const handleChange = (newValues) => {
+    if (!canEdit) return;
     // If Envelope Setup and Enhancement is being unchecked, strip all non-allowed modules
     if (!newValues.includes("Envelope Setup and Enhancement")) {
       setEnabledModules(newValues.filter((m) => ALWAYS_ALLOWED.includes(m)));
@@ -49,7 +50,8 @@ const ModuleSelectionCard = ({ mergedModules, enabledModules, setEnabledModules,
               size="small"
               icon={<UndoOutlined />}
               onClick={onReset}
-              style={{ color: PRIMARY_COLOR }}
+              disabled={!canEdit}
+              style={{ color: canEdit ? PRIMARY_COLOR : undefined }}
             >
               Reset
             </Button>
@@ -58,7 +60,8 @@ const ModuleSelectionCard = ({ mergedModules, enabledModules, setEnabledModules,
               size="small"
               icon={<DeleteOutlined />}
               onClick={onClear}
-              style={{ color: "#ff4d4f" }}
+              disabled={!canEdit}
+              style={{ color: canEdit ? "#ff4d4f" : undefined }}
             >
               Clear
             </Button>
@@ -70,6 +73,7 @@ const ModuleSelectionCard = ({ mergedModules, enabledModules, setEnabledModules,
             style={{ display: "block", marginTop: 12 }}
             value={enabledModules}
             onChange={handleChange}
+            disabled={!canEdit}
           >
           <div
             style={{
@@ -82,7 +86,7 @@ const ModuleSelectionCard = ({ mergedModules, enabledModules, setEnabledModules,
             {mergedModules.map((tool) => {
               const isAlwaysAllowed = ALWAYS_ALLOWED.includes(tool.name);
               const isGateModule = tool.name === "Envelope Setup and Enhancement";
-              const isDisabled = !envelopeEnabled && !isAlwaysAllowed && !isGateModule;
+              const isDisabled = !canEdit || (!envelopeEnabled && !isAlwaysAllowed && !isGateModule);
               return (
                 <Checkbox key={tool.id} value={tool.name} disabled={isDisabled}>
                   <b style={{ color: isDisabled ? "#aaa" : undefined }}>{tool.name}</b>

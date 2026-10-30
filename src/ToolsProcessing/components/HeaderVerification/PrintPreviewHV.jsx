@@ -12,9 +12,10 @@ const PrintPreviewHV = ({
   currentUser,
   userMap = {},
   headerFields = [],
+  canEdit = true,
 }) => {
   const userRoleId = getCurrentUserRoleId();
-  const canEditVerified = userRoleId !== null && Number(userRoleId) <= 4 && Number(userRoleId) > 0;
+  const canEditVerified = canEdit && userRoleId !== null && Number(userRoleId) <= 4 && Number(userRoleId) > 0;
 
   const [record, setRecord] = useState(initialRecord);
   const [draftRecord, setDraftRecord] = useState(initialRecord);
@@ -225,10 +226,13 @@ const PrintPreviewHV = ({
             // Normal mode - Show Edit button with same styling as action buttons
             <button
               type="button"
-              onClick={() => handleStatusChange('edit')}
-              disabled={loading}
-              className="flex items-center justify-center gap-1 px-3 py-1 text-xs font-medium rounded-md transition-all duration-200 whitespace-nowrap text-white bg-blue-500 hover:bg-blue-600 active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-              title="Edit this record"
+              onClick={() => {
+                if (!canEdit) return;
+                handleStatusChange('edit');
+              }}
+              disabled={loading || !canEdit}
+              className={`flex items-center justify-center gap-1 px-3 py-1 text-xs font-medium rounded-md transition-all duration-200 whitespace-nowrap text-white ${!canEdit ? 'bg-gray-400 opacity-50 cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-600 active:scale-95 cursor-pointer'} disabled:opacity-50 disabled:cursor-not-allowed`}
+              title={!canEdit ? "You do not have permission to edit records" : "Edit this record"}
             >
               Edit
             </button>
@@ -318,15 +322,15 @@ const PrintPreviewHV = ({
         <button
           type="button"
           onClick={() => handleStatusChange('Unclear')}
-          disabled={loading || (normalizeStatus(currentRecord?.status) === 1 && !canEditVerified) || hasNoValidValues}
+          disabled={loading || (normalizeStatus(currentRecord?.status) === 1 && !canEditVerified) || hasNoValidValues || !canEdit}
           className={`flex items-center justify-center gap-1 px-3 py-1 text-xs font-medium rounded-md transition-all duration-200
-            ${loading || (normalizeStatus(currentRecord?.status) === 1 && !canEditVerified) || hasNoValidValues
+            ${loading || (normalizeStatus(currentRecord?.status) === 1 && !canEditVerified) || hasNoValidValues || !canEdit
               ? 'bg-orange-100 text-orange-400 cursor-not-allowed opacity-60'
               : normalizeStatus(currentRecord?.status) === 2
                 ? 'bg-orange-100 text-orange-400 cursor-not-allowed opacity-60'
                 : 'bg-orange-400 text-white hover:bg-orange-500 active:scale-95 cursor-pointer'
             }`}
-          title={hasNoValidValues ? 'At least one of A, B, C, D is required' : (normalizeStatus(currentRecord?.status) === 1 && !canEditVerified) ? 'Cannot change verified records' : 'Mark as Needs Review'}
+          title={!canEdit ? "You do not have permission to update status" : hasNoValidValues ? 'At least one of A, B, C, D is required' : (normalizeStatus(currentRecord?.status) === 1 && !canEditVerified) ? 'Cannot change verified records' : 'Mark as Needs Review'}
         >
           <AlertCircle className="w-3 h-3" />
           Needs Review
@@ -334,13 +338,13 @@ const PrintPreviewHV = ({
         <button
           type="button"
           onClick={() => handleStatusChange('Verified')}
-          disabled={loading || (normalizeStatus(currentRecord?.status) === 1 && !canEditVerified) || hasNoValidValues}
+          disabled={loading || (normalizeStatus(currentRecord?.status) === 1 && !canEditVerified) || hasNoValidValues || !canEdit}
           className={`flex items-center justify-center gap-1 px-3 py-1 text-xs font-medium rounded-md transition-all duration-200
-            ${loading || (normalizeStatus(currentRecord?.status) === 1 && !canEditVerified) || hasNoValidValues
+            ${loading || (normalizeStatus(currentRecord?.status) === 1 && !canEditVerified) || hasNoValidValues || !canEdit
               ? 'bg-green-100 text-green-400 cursor-not-allowed opacity-60'
               : 'bg-green-500 text-white hover:bg-green-600 active:scale-95 cursor-pointer'
             }`}
-          title={hasNoValidValues ? 'At least one field is required' : (normalizeStatus(currentRecord?.status) === 1 && !canEditVerified) ? 'Already verified' : 'Mark as Verified (or press Enter)'}
+          title={!canEdit ? "You do not have permission to verify records" : hasNoValidValues ? 'At least one field is required' : (normalizeStatus(currentRecord?.status) === 1 && !canEditVerified) ? 'Already verified' : 'Mark as Verified (or press Enter)'}
         >
           <CheckCircle2 className="w-3 h-3" />
           Verified

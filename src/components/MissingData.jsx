@@ -14,6 +14,7 @@ import {
     TimePicker,
     Typography,
     Upload,
+    Tooltip,
 } from "antd";
 import {
     CheckCircleOutlined,
@@ -28,6 +29,7 @@ import customParseFormat from "dayjs/plugin/customParseFormat";
 import API from "../hooks/api";
 import useStore from "../stores/ProjectData";
 import { useToast } from "../hooks/useToast";
+import useModulePermission from "../hooks/useModulePermission";
 
 const { Text, Title } = Typography;
 
@@ -139,6 +141,7 @@ const MissingData = () => {
     const projectId = useStore((state) => state.projectId);
     const selectedLot = useStore((state) => state.selectedLot);
     const { showToast } = useToast();
+    const { canCreate, canEdit, canDelete } = useModulePermission('DATA_IMPORT');
     const [loadingTemplateData, setLoadingTemplateData] = useState(false);
     const [templateRows, setTemplateRows] = useState([]);
     const [missingDataRows, setMissingDataRows] = useState([]);
@@ -196,7 +199,7 @@ const MissingData = () => {
                     ...lotParam,
                 },
             });
-            console.log("Raw catch data from backend:", res.data);
+            // console.log("Raw catch data from backend:", res.data);
             const items = Array.isArray(res.data?.items) ? res.data.items : [];
             const uniqueByCatch = new Map();
 
@@ -234,9 +237,9 @@ const MissingData = () => {
                                     rowData[key] = parsedData[key] ?? "";
                                 }
                             });
-                            console.log(`Parsed NRDatas for ${catchNo}:`, parsedData);
+                            // console.log(`Parsed NRDatas for ${catchNo}:`, parsedData);
                         } catch (e) {
-                            console.warn(`Failed to parse NRDatas JSON for catch ${catchNo}:`, e);
+                            // console.warn(`Failed to parse NRDatas JSON for catch ${catchNo}:`, e);
                         }
                     }
 
@@ -251,11 +254,11 @@ const MissingData = () => {
                 })
             );
 
-            console.log("Processed rows with NRDatas:", rows);
+            // console.log("Processed rows with NRDatas:", rows);
             setTemplateRows(rows);
             setMissingDataRows(rows.map((row) => ({ ...row })));
         } catch (error) {
-            console.error("Failed to load missing data template rows", error);
+            // console.error("Failed to load missing data template rows", error);
             showToast("Failed to load catch data for template", "error");
             setTemplateRows([]);
             setMissingDataRows([]);
@@ -269,13 +272,13 @@ const MissingData = () => {
         try {
             const res = await API.get('/Fields');
             const uniqueFields = (res.data || []).filter(f => f.isUnique);
-            
+
             // Filter out fields that match standard field names to avoid duplicates
             const standardFieldNames = standardFields.map(f => f.name.toLowerCase());
             const filteredMasterFields = uniqueFields.filter(
                 f => !standardFieldNames.includes(f.name.toLowerCase())
             );
-            
+
             // Combine standard fields with filtered master fields
             const allFields = [...standardFields, ...filteredMasterFields];
             setAvailableFields(allFields);
@@ -306,24 +309,24 @@ const MissingData = () => {
     }, [selectedRowKeys]);
 
     useEffect(() => {
-    if (!availableFields.length) return;
+        if (!availableFields.length) return;
 
-    const saved = localStorage.getItem("missingData_displayFields");
+        const saved = localStorage.getItem("missingData_displayFields");
 
-    if (saved) {
-        try {
-            const parsedIds = JSON.parse(saved);
+        if (saved) {
+            try {
+                const parsedIds = JSON.parse(saved);
 
-            const restoredFields = availableFields.filter(f =>
-                parsedIds.includes(f.fieldId)
-            );
+                const restoredFields = availableFields.filter(f =>
+                    parsedIds.includes(f.fieldId)
+                );
 
-            setDisplayFields(restoredFields);
-        } catch (e) {
-            console.warn("Failed to restore display fields", e);
+                setDisplayFields(restoredFields);
+            } catch (e) {
+                console.warn("Failed to restore display fields", e);
+            }
         }
-    }
-}, [availableFields]);
+    }, [availableFields]);
 
     const handleDownloadTemplate = async () => {
         if (!templateRows.length) {
@@ -340,8 +343,8 @@ const MissingData = () => {
             templateFields.forEach(field => {
                 const fieldName = field.name;
                 // Try different case variations to find the field value
-                const value = row[fieldName] || row[fieldName.toLowerCase()] || 
-                              row[fieldName.toUpperCase()] || "";
+                const value = row[fieldName] || row[fieldName.toLowerCase()] ||
+                    row[fieldName.toUpperCase()] || "";
                 rowData[fieldName] = value;
             });
 
@@ -380,7 +383,7 @@ const MissingData = () => {
                 }
 
                 const headers = jsonData[0].map(normalizeHeader);
-                const catchIndex = headers.findIndex((h) =>["catchno", "catch"].includes(h));
+                const catchIndex = headers.findIndex((h) => ["catchno", "catch"].includes(h));
 
                 if (catchIndex === -1) {
                     showToast(
@@ -420,11 +423,11 @@ const MissingData = () => {
                 // Find all field indices dynamically
                 const fieldIndices = {};
 
-headers.forEach((header, index) => {
-    if (["catchno", "catch"].includes(header)) return;
+                headers.forEach((header, index) => {
+                    if (["catchno", "catch"].includes(header)) return;
 
-    fieldIndices[header] = index;
-});
+                    fieldIndices[header] = index;
+                });
 
                 const uniqueRows = new Map();
 
@@ -439,61 +442,61 @@ headers.forEach((header, index) => {
 
                     // Add all dynamic fields
                     Object.entries(fieldIndices).forEach(([normalizedHeader, idx]) => {
-    const value = row[idx];
+                        const value = row[idx];
 
-    // Try to map header back to actual field name
-    const matchedField =
-        availableFields.find(f => normalizeHeader(f.name) === normalizedHeader);
+                        // Try to map header back to actual field name
+                        const matchedField =
+                            availableFields.find(f => normalizeHeader(f.name) === normalizedHeader);
 
-    const fieldName = matchedField ? matchedField.name : normalizedHeader;
+                        const fieldName = matchedField ? matchedField.name : normalizedHeader;
 
-    if (fieldName === 'Pages') {
-        rowData[fieldName] = value === "" ? "" : Number(value);
-    } else if (fieldName === 'ExamDate') {
-        rowData[fieldName] = parseExcelDate(value);
-    } else if (fieldName === 'ExamTime') {
-        rowData[fieldName] = normalizeTimeValue(value);
-    } else {
-        rowData[fieldName] = value ?? "";
-    }
-});
+                        if (fieldName === 'Pages') {
+                            rowData[fieldName] = value === "" ? "" : Number(value);
+                        } else if (fieldName === 'ExamDate') {
+                            rowData[fieldName] = parseExcelDate(value);
+                        } else if (fieldName === 'ExamTime') {
+                            rowData[fieldName] = normalizeTimeValue(value);
+                        } else {
+                            rowData[fieldName] = value ?? "";
+                        }
+                    });
 
                     uniqueRows.set(catchNo, rowData);
                 });
 
                 const newModifiedRows = new Set();
 
-const mergedRows = templateRows.map((templateRow) => {
-    const uploaded = uniqueRows.get(templateRow.catchNo);
+                const mergedRows = templateRows.map((templateRow) => {
+                    const uploaded = uniqueRows.get(templateRow.catchNo);
 
-    if (uploaded) {
-        let isChanged = false;
+                    if (uploaded) {
+                        let isChanged = false;
 
-        Object.keys(uploaded).forEach(key => {
-    if (key === "catchNo" || key === "key") return;
+                        Object.keys(uploaded).forEach(key => {
+                            if (key === "catchNo" || key === "key") return;
 
-            const oldValue = templateRow[key] ?? "";
-            const newValue = uploaded[key] ?? "";
+                            const oldValue = templateRow[key] ?? "";
+                            const newValue = uploaded[key] ?? "";
 
-            if (String(oldValue).trim() !== String(newValue).trim()) {
-                isChanged = true;
-            }
-        });
+                            if (String(oldValue).trim() !== String(newValue).trim()) {
+                                isChanged = true;
+                            }
+                        });
 
-        if (isChanged) {
-            newModifiedRows.add(templateRow.catchNo);
-        }
+                        if (isChanged) {
+                            newModifiedRows.add(templateRow.catchNo);
+                        }
 
-        return {
-            ...templateRow,
-            ...uploaded,
-        };
-    }
+                        return {
+                            ...templateRow,
+                            ...uploaded,
+                        };
+                    }
 
-    return { ...templateRow };
-});
+                    return { ...templateRow };
+                });
 
-setModifiedRows(newModifiedRows);
+                setModifiedRows(newModifiedRows);
 
                 setMissingDataRows(mergedRows);
                 setTablePagination((prev) => ({
@@ -511,6 +514,10 @@ setModifiedRows(newModifiedRows);
     };
 
     const beforeUpload = (file) => {
+        if (!canEdit) {
+            showToast("View-only access: Uploading template is disabled", "warning");
+            return false;
+        }
         setFileList([file]);
         parseUploadedSheet(file);
         return false;
@@ -535,14 +542,14 @@ setModifiedRows(newModifiedRows);
                 key: row.key,
                 catchNo: row.catchNo,
             };
-            
+
             // Add only the display fields
             displayFields.forEach(field => {
                 const fieldName = field.name;
-                filteredRow[fieldName] = row[fieldName] || row[fieldName.toLowerCase()] || 
-                                         row[fieldName.toUpperCase()] || "";
+                filteredRow[fieldName] = row[fieldName] || row[fieldName.toLowerCase()] ||
+                    row[fieldName.toUpperCase()] || "";
             });
-            
+
             return filteredRow;
         });
     }, [missingDataRows, displayFields]);
@@ -594,14 +601,18 @@ setModifiedRows(newModifiedRows);
     };
 
     const startEditingRow = (record) => {
+        if (!canEdit) {
+            showToast("View-only access: Editing is disabled", "warning");
+            return;
+        }
         setEditingRowKey(record.catchNo);
         const draft = { catchNo: record.catchNo };
-        
+
         // Add all display fields to draft
         displayFields.forEach(field => {
             draft[field.name] = record[field.name] ?? "";
         });
-        
+
         setEditingDraft(draft);
     };
 
@@ -611,6 +622,10 @@ setModifiedRows(newModifiedRows);
     };
 
     const saveEditingRow = async (catchNo) => {
+        if (!canEdit) {
+            showToast("View-only access: Editing is disabled", "warning");
+            return;
+        }
         try {
             // Find the row being edited
             const rowToSave = missingDataRows.find(r => r.catchNo === catchNo);
@@ -624,7 +639,7 @@ setModifiedRows(newModifiedRows);
             displayFields.forEach(field => {
                 const fieldName = field.name;
                 let value = editingDraft[fieldName];
-                
+
                 if (fieldName === 'ExamTime') {
                     value = normalizeTimeValue(value);
                 }
@@ -651,10 +666,10 @@ setModifiedRows(newModifiedRows);
             });
 
             showToast("Row saved successfully", "success");
-            
+
             // Refresh data from API
             await loadCatchTemplateData();
-            
+
             cancelEditingRow();
         } catch (error) {
             console.error("Failed to save row", error);
@@ -685,19 +700,19 @@ setModifiedRows(newModifiedRows);
             showToast("Enter at least one bulk value first", "warning");
             return;
         }
-      const newModified = new Set(modifiedRows);
-      const newMissingDataRows = missingDataRows.map((row) => {
-          if (matcher(row)) {
-              // Mark this row as modified
-              newModified.add(row.catchNo);
-              return { ...row, ...effectivePatch };
-          }
-          return row;
-      });
-      
-      setMissingDataRows(newMissingDataRows);
-      setModifiedRows(newModified);
-      return { newMissingDataRows, newModified };
+        const newModified = new Set(modifiedRows);
+        const newMissingDataRows = missingDataRows.map((row) => {
+            if (matcher(row)) {
+                // Mark this row as modified
+                newModified.add(row.catchNo);
+                return { ...row, ...effectivePatch };
+            }
+            return row;
+        });
+
+        setMissingDataRows(newMissingDataRows);
+        setModifiedRows(newModified);
+        return { newMissingDataRows, newModified };
     };
 
     const handleApplyToSelected = async () => {
@@ -723,6 +738,10 @@ setModifiedRows(newModifiedRows);
     };
 
     const handleSubmit = async (overrideRows, overrideModified) => {
+        if (!canEdit) {
+            showToast("View-only access: Submitting edits is disabled", "warning");
+            return;
+        }
         const currentMissingDataRows = Array.isArray(overrideRows) ? overrideRows : missingDataRows;
         const currentModifiedRows = overrideModified instanceof Set ? overrideModified : modifiedRows;
 
@@ -740,37 +759,37 @@ setModifiedRows(newModifiedRows);
         // Build payload - send all non-empty fields that were in the uploaded Excel file
         const payload = [];
 
-for (const row of currentMissingDataRows) {
-    if (!currentModifiedRows.has(row.catchNo)) continue;
+        for (const row of currentMissingDataRows) {
+            if (!currentModifiedRows.has(row.catchNo)) continue;
 
-    const additionalFields = {};
+            const additionalFields = {};
 
-    // Iterate through all fields in the row
-    for (const key in row) {
-        if (key === 'catchNo' || key === 'key' || key === 'id') continue;
+            // Iterate through all fields in the row
+            for (const key in row) {
+                if (key === 'catchNo' || key === 'key' || key === 'id') continue;
 
-        let value = row[key];
-        
-        // Normalize ExamTime values
-        if (key === 'ExamTime' || key === 'examtime') {
-            value = normalizeTimeValue(value);
+                let value = row[key];
+
+                // Normalize ExamTime values
+                if (key === 'ExamTime' || key === 'examtime') {
+                    value = normalizeTimeValue(value);
+                }
+
+                // Include all non-empty values
+                if (value !== "" && value !== null && value !== undefined) {
+                    additionalFields[key] = value;
+                }
+            }
+
+            if (Object.keys(additionalFields).length > 0) {
+                payload.push({
+                    id: row.id,
+                    catchNo: row.catchNo,
+                    additionalFields,
+                });
+            }
         }
 
-        // Include all non-empty values
-        if (value !== "" && value !== null && value !== undefined) {
-            additionalFields[key] = value;
-        }
-    }
-
-    if (Object.keys(additionalFields).length > 0) {
-        payload.push({
-            id: row.id,
-            catchNo: row.catchNo,
-            additionalFields,
-        });
-    }
-}
-            
         if (!payload.length) {
             showToast("No valid data to submit", "warning");
             return;
@@ -790,7 +809,7 @@ for (const row of currentMissingDataRows) {
                     data: chunk,
                 });
             }
-            
+
             showToast(`Successfully saved ${payload.length} row(s)`, "success");
             setModifiedRows(new Set());
             setFileList([]);
@@ -863,8 +882,8 @@ for (const row of currentMissingDataRows) {
                 dataIndex === "status"
                     ? (
                         isMeaningfulValue(record.pages) &&
-                        isMeaningfulValue(record.examDate) &&
-                        isMeaningfulValue(record.examTime)
+                            isMeaningfulValue(record.examDate) &&
+                            isMeaningfulValue(record.examTime)
                             ? "Ready"
                             : "Pending"
                     )
@@ -949,17 +968,17 @@ for (const row of currentMissingDataRows) {
                         } else if (isExamTime) {
                             return (
                                 <Input
-        value={editingDraft[fieldName] || ""}
-        placeholder={fieldName}
-        size="small"
-        style={{ width: "100%" }}
-        onChange={(e) =>
-            setEditingDraft((prev) => ({
-                ...prev,
-                [fieldName]: e.target.value,
-            }))
-        }
-    />
+                                    value={editingDraft[fieldName] || ""}
+                                    placeholder={fieldName}
+                                    size="small"
+                                    style={{ width: "100%" }}
+                                    onChange={(e) =>
+                                        setEditingDraft((prev) => ({
+                                            ...prev,
+                                            [fieldName]: e.target.value,
+                                        }))
+                                    }
+                                />
                             );
                         } else {
                             return (
@@ -1034,18 +1053,31 @@ for (const row of currentMissingDataRows) {
                             </Button>
                         </>
                     ) : (
-                        <Button
-                            type="link"
-                            size="small"
-                            onClick={() => startEditingRow(record)}
-                        >
-                            Edit
-                        </Button>
+                        canEdit ? (
+                            <Button
+                                type="link"
+                                size="small"
+                                onClick={() => startEditingRow(record)}
+                            >
+                                Edit
+                            </Button>
+                        ) : (
+                            <Tooltip title="View-only access: Editing is disabled">
+                                <Button
+                                    type="link"
+                                    size="small"
+                                    disabled
+                                    style={{ color: '#bfbfbf' }}
+                                >
+                                    Edit
+                                </Button>
+                            </Tooltip>
+                        )
                     )}
                 </Space>
             ),
         },
-    ], [displayFields, editingRowKey, editingDraft, searchText, searchedColumn]);
+    ], [displayFields, editingRowKey, editingDraft, searchText, searchedColumn, canEdit]);
 
     const availableCatchNumberOptions = missingDataRows
         .map((row) => row.catchNo)
@@ -1147,14 +1179,15 @@ for (const row of currentMissingDataRows) {
                                         beforeUpload={beforeUpload}
                                         onRemove={handleRemove}
                                         maxCount={1}
-                                        style={{ padding: 0, minHeight: 10 }}
+                                        disabled={!canEdit}
+                                        style={{ padding: 0, minHeight: 10, cursor: !canEdit ? 'not-allowed' : undefined }}
                                     >
                                         <p className="mb-1 text-xs font-medium text-slate-600">
                                             Upload your filled template here:
                                         </p>
 
                                         <UploadOutlined style={{ fontSize: 18 }} />
-                                        <p className="text-xs mt-0.5 mb-0.5">Drag & drop or choose file</p>
+                                        <p className="text-xs mt-0.5 mb-0.5">{!canEdit ? 'Upload disabled (View-only)' : 'Drag & drop or choose file'}</p>
 
                                     </Upload.Dragger>
 
@@ -1174,30 +1207,35 @@ for (const row of currentMissingDataRows) {
                                     >
                                         Display Fields
                                     </Button>
-                                    <Button
-                                        onClick={() => {
-                                            if (displayFields.length === 0) {
-                                                showToast(
-                                                    "Please select display fields first before using Bulk Update",
-                                                    "warning"
-                                                );
-                                                setShowDisplayFieldsModal(true);
-                                                return;
-                                            }
-                                            setShowBulkUpdate((prev) => !prev);
-                                        }}
-                                        disabled={!reviewRows.length}
-                                    >
-                                        {showBulkUpdate ? "Hide Bulk Update" : "Bulk Update"}
-                                    </Button>
-                                    <Button
-                                        type="primary"
-                                        onClick={handleSubmit}
-                                        disabled={!missingDataRows.length}
-                                        loading={submitting}
-                                    >
-                                        Submit
-                                    </Button>
+                                    <Tooltip title={!canEdit ? "View-only access: Bulk update is disabled" : ""}>
+                                        <Button
+                                            onClick={() => {
+                                                if (!canEdit) return;
+                                                if (displayFields.length === 0) {
+                                                    showToast(
+                                                        "Please select display fields first before using Bulk Update",
+                                                        "warning"
+                                                    );
+                                                    setShowDisplayFieldsModal(true);
+                                                    return;
+                                                }
+                                                setShowBulkUpdate((prev) => !prev);
+                                            }}
+                                            disabled={!canEdit || !reviewRows.length}
+                                        >
+                                            {showBulkUpdate ? "Hide Bulk Update" : "Bulk Update"}
+                                        </Button>
+                                    </Tooltip>
+                                    <Tooltip title={!canEdit ? "View-only access: Submitting changes is disabled" : ""}>
+                                        <Button
+                                            type="primary"
+                                            onClick={handleSubmit}
+                                            disabled={!canEdit || !missingDataRows.length}
+                                            loading={submitting}
+                                        >
+                                            Submit
+                                        </Button>
+                                    </Tooltip>
                                 </Space>
                             }
                         >
@@ -1413,13 +1451,13 @@ for (const row of currentMissingDataRows) {
                         style={{ width: "100%", display: "flex", flexDirection: "column", gap: 8 }}
                         value={displayFields.map(f => f.fieldId)}
                         onChange={(checkedValues) => {
-    const selected = availableFields.filter(f => checkedValues.includes(f.fieldId));
-    setDisplayFields(selected);
-    localStorage.setItem(
-        "missingData_displayFields",
-        JSON.stringify(checkedValues)
-    );
-}}
+                            const selected = availableFields.filter(f => checkedValues.includes(f.fieldId));
+                            setDisplayFields(selected);
+                            localStorage.setItem(
+                                "missingData_displayFields",
+                                JSON.stringify(checkedValues)
+                            );
+                        }}
                     >
                         {availableFields.map(field => (
                             <Checkbox key={field.fieldId} value={field.fieldId}>

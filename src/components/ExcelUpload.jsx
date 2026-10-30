@@ -1,12 +1,15 @@
 import React, { useEffect, useState } from "react";
 import * as XLSX from "xlsx";
 import axios from "axios";
+import { Alert, Tooltip } from "antd";
 import { useToast } from "../hooks/useToast";
 import API from "../hooks/api";
+import useModulePermission from "../hooks/useModulePermission";
 
 const fieldOptions = ["Type", "Language", "Subject", "Course", "ExamType", "Catch", "PaperNumber"];
 
 export default function ExcelUpload() {
+  const { canView, canCreate } = useModulePermission('CORRECTION_TOOL');
   const [file, setFile] = useState(null);
   const [headers, setHeaders] = useState([]);
   const [mappings, setMappings] = useState({});
@@ -121,12 +124,34 @@ export default function ExcelUpload() {
   
   
 
+  if (!canView) {
+    return (
+      <div className="p-4">
+        <Alert
+          message="Access Denied"
+          description="You do not have permission to view Excel Upload."
+          type="error"
+          showIcon
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="p-4 space-y-6">
   <div className="bg-white p-6 rounded-lg shadow space-y-6">
     <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
       <i className="ri-upload-cloud-line text-blue-600"></i> Upload Excel File
     </h2>
+
+    {!canCreate && (
+      <Alert
+        message="Read Only Mode"
+        description="You have view-only access to Excel Upload. Uploading new Excel files is disabled."
+        type="info"
+        showIcon
+      />
+    )}
 
     {/* Group & Upload Date */}
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -169,21 +194,27 @@ export default function ExcelUpload() {
         onChange={handleFileChange}
         className="hidden"
         id="fileInput"
+        disabled={!canCreate}
       />
       <label
-        htmlFor="fileInput"
-        className="px-4 py-2 bg-white border rounded cursor-pointer hover:bg-gray-100 flex items-center gap-2"
+        htmlFor={canCreate ? "fileInput" : undefined}
+        className={`px-4 py-2 bg-white border rounded flex items-center gap-2 ${!canCreate ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:bg-gray-100'}`}
       >
         <i className="ri-folder-upload-line"></i> Browse Files
       </label>
     </div>
 
-    <button
-      onClick={handleSubmit}
-      className="w-full py-3 text-white bg-blue-400 rounded font-semibold hover:bg-blue-500 transition"
-    >
-      <i className="ri-upload-2-line mr-2"></i> Upload File
-    </button>
+    <Tooltip title={!canCreate ? "View-only: Uploading files is disabled" : ""}>
+      <span>
+        <button
+          onClick={handleSubmit}
+          disabled={!canCreate}
+          className={`w-full py-3 text-white rounded font-semibold transition ${!canCreate ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-400 hover:bg-blue-500'}`}
+        >
+          <i className="ri-upload-2-line mr-2"></i> Upload File
+        </button>
+      </span>
+    </Tooltip>
   </div>
 
   {/* ✅ Header Mapping - unchanged */}

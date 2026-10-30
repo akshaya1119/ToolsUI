@@ -1,7 +1,8 @@
-import { Card, List, Button, Typography, Row, Col } from "antd";
+import { Card, List, Button, Typography, Row, Col, Tooltip } from "antd";
 import { CarryOutFilled } from "@ant-design/icons";
 import AnimatedCard from "./AnimatedCard";
 import { cardStyle, iconStyle } from "./constants";
+import useModulePermission from "../../hooks/useModulePermission";
 
 const { Text } = Typography;
 
@@ -16,7 +17,14 @@ const ConfigSummaryCard = ({
   isMasterConfig,
   selectedType,
   selectedGroup,
+  canEdit: propCanEdit,
 }) => {
+  const moduleCode = isMasterConfig ? 'MASTER_CONFIG' : 'PROJECT_CONFIG';
+  const { canEdit: hookCanEdit } = useModulePermission(moduleCode);
+  const { canEdit: canEditMaster } = useModulePermission('MASTER_CONFIG');
+  const canEdit = propCanEdit !== undefined ? propCanEdit : hookCanEdit;
+  const canSave = canEdit;
+  const canSaveAsMaster = canEdit && canEditMaster;
 
   // In project config mode, type/group come from localStorage (set when project was selected on dashboard)
   const effectiveType = selectedType ?? localStorage.getItem("selectedType");
@@ -91,38 +99,73 @@ const ConfigSummaryCard = ({
         />
         {/* Master Config: Only Save button */}
         {isMasterConfig && (
-          <Button
-            type="primary"
-            block
-            onClick={() => handleSave()}
-            disabled={!isAnyConfigMade}
-            className="mt-4"
-          >
-            Save
-          </Button>
+          !canSave ? (
+            <Tooltip title="View-only access: Saving master configuration is disabled">
+              <span style={{ display: 'block', width: '100%' }}>
+                <Button type="primary" block disabled className="mt-4">
+                  Save
+                </Button>
+              </span>
+            </Tooltip>
+          ) : (
+            <Button
+              type="primary"
+              block
+              onClick={() => handleSave()}
+              disabled={!isAnyConfigMade}
+              className="mt-4"
+            >
+              Save
+            </Button>
+          )
         )}
 
         {/* Project Config: Save Configuration and Save as Master Configuration buttons */}
         {!isMasterConfig && (
           <>
-            <Button
-              type="primary"
-              block
-              onClick={() => handleSave()}
-              disabled={!projectId || !isAnyConfigMade}
-              className="mt-4 mb-2"
-            >
-              Save Configuration
-            </Button>
-            <Button
-              type="default"
-              block
-              onClick={() => handleSave(true, effectiveType, effectiveGroup, true)}
-              disabled={!isAnyConfigMade || !effectiveType || !effectiveGroup}
-              style={{ marginTop: '8px' }}
-            >
-              Save as Master Configuration
-            </Button>
+            {!canSave ? (
+              <Tooltip title="View-only access: Saving project configuration is disabled">
+                <span style={{ display: 'block', width: '100%' }}>
+                  <Button type="primary" block disabled className="mt-4 mb-2">
+                    Save Configuration
+                  </Button>
+                </span>
+              </Tooltip>
+            ) : (
+              <Button
+                type="primary"
+                block
+                onClick={() => handleSave()}
+                disabled={!projectId || !isAnyConfigMade}
+                className="mt-4 mb-2"
+              >
+                Save Configuration
+              </Button>
+            )}
+            {!canSaveAsMaster ? (
+              <Tooltip title={!canEditMaster ? "View-only access: Saving master configuration is disabled" : "View-only access: Saving configuration is disabled"}>
+                <span style={{ display: 'block', width: '100%' }}>
+                  <Button
+                    type="default"
+                    block
+                    disabled
+                    style={{ marginTop: '8px' }}
+                  >
+                    Save as Master Configuration
+                  </Button>
+                </span>
+              </Tooltip>
+            ) : (
+              <Button
+                type="default"
+                block
+                onClick={() => handleSave(true, effectiveType, effectiveGroup, true)}
+                disabled={!isAnyConfigMade || !effectiveType || !effectiveGroup}
+                style={{ marginTop: '8px' }}
+              >
+                Save as Master Configuration
+              </Button>
+            )}
           </>
         )}
       </Card>

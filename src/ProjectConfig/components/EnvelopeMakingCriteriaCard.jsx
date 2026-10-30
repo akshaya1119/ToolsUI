@@ -43,6 +43,7 @@ const EnvelopeMakingCriteriaCard = ({
   customCatchSerials = [],
   setCustomCatchSerials = () => {},
   projectId = null,
+  canEdit = true,
 }) => {
   const isDirty = (current, snapshotVal) => {
     if (!importedSnapshot || importedSnapshot === "pending") return false;
@@ -189,7 +190,8 @@ const EnvelopeMakingCriteriaCard = ({
                     handleCancelCatchSerial();
                     onReset();
                   }}
-                  style={{ color: PRIMARY_COLOR }}
+                  disabled={!canEdit}
+                  style={{ color: canEdit ? PRIMARY_COLOR : undefined }}
                 >
                   Reset
                 </Button>
@@ -201,16 +203,15 @@ const EnvelopeMakingCriteriaCard = ({
                     handleCancelCatchSerial();
                     onClear();
                   }}
-                  style={{ color: "#ff4d4f" }}
+                  disabled={!canEdit}
+                  style={{ color: canEdit ? "#ff4d4f" : undefined }}
                 >
                   Clear
                 </Button>
               </>
             )}
             {!isEnabled("Envelope Setup and Enhancement") && (
-              <Tag icon={<LockFilled style={{ color: PRIMARY_COLOR }} />}>
-                Disabled
-              </Tag>
+              <Tag color="default">Not Enabled</Tag>
             )}
           </div>
         }
