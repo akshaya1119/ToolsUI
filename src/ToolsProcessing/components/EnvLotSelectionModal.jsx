@@ -246,7 +246,7 @@ const EnvLotSelectionModal = ({
         </Checkbox>
       </div>
 
-      {(unassignedCatches.length === 0 && (!showAssigned || assignedEnvLots.length === 0)) && !unverifiedCatch && !isVerifying ? (
+      {unassignedCatches.length === 0 && assignedEnvLots.length === 0 && !unverifiedCatch && !isVerifying ? (
         <Alert
           message="No catch verified yet"
           type="warning"
@@ -256,6 +256,13 @@ const EnvLotSelectionModal = ({
               Verify Catch
             </Button>
           }
+          style={{ marginBottom: 16 }}
+        />
+      ) : !showAssigned && unassignedCatches.length === 0 && assignedEnvLots.length > 0 && !unverifiedCatch && !isVerifying ? (
+        <Alert
+          message="All verified catches are assigned to batches. Enable 'Show assigned batches' above to select batches for regeneration."
+          type="info"
+          showIcon
           style={{ marginBottom: 16 }}
         />
       ) : sourceItems.length === 0 && !unverifiedCatch && !isVerifying ? (

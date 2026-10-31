@@ -1700,79 +1700,78 @@ const loadGeneratedTemplateReports = async () => {
         ? Number(selectedDropdownLot)
         : null;
 
-      if (action === "regenerate") {
-        const assignedCatchItems = await fetchAssignedEnvLotCatchesForSelection(projectId, activeLotNo);
-        if (assignedCatchItems.length > 0) {
-          const templateId = resolveTemplateId(template);
-          
-          let generatedEnvLots = [];
-          if (templateId) {
-             generatedEnvLots = envLotReports
-               .filter(r => r.templateId === templateId)
-               .flatMap(r => r.envLotNumbers);
+      // Always fetch both unassigned (missing) verified catches and assigned env-lot batches
+      const missingCatchItems = await fetchMissingEnvLotCatchesForSelection(projectId, activeLotNo);
+      const assignedCatchItems = await fetchAssignedEnvLotCatchesForSelection(projectId, activeLotNo);
+
+      if (missingCatchItems.length === 0 && assignedCatchItems.length === 0) {
+        message.info(action === "regenerate" ? "No generated envelope lots available for regeneration." : "No catches available for processing.");
+        return;
+      }
+
+      const templateId = resolveTemplateId(template);
+      let generatedEnvLots = [];
+      if (templateId) {
+        generatedEnvLots = envLotReports
+          .filter(r => r.templateId === templateId)
+          .flatMap(r => r.envLotNumbers);
+      }
+
+      const hasMappingUpdate = templateId ? isMappingNewerThanReport(templateId) : false;
+      const isStale = templateId ? staleTemplateIds.has(templateId) : false;
+      const templateIsOutdated = hasMappingUpdate || isStale;
+
+      // Default to showing assigned batches only if in regenerate mode AND there are no unassigned catches
+      // If there are unassigned catches waiting to be generated, show them first
+      const defaultShowAssigned = action === "regenerate"
+        ? (missingCatchItems.length > 0 ? false : true)
+        : (missingCatchItems.length === 0);
+
+      const selectedCatchNos = await showEnvLotSelectionModal([], action === "regenerate", {
+        unassignedCatches: missingCatchItems,
+        assignedEnvLots: assignedCatchItems,
+        generatedEnvLots,
+        templateIsOutdated,
+        staleEnvLotIds,
+        showAssigned: defaultShowAssigned,
+        selectedLot: activeLotNo,
+      });
+
+      if (selectedCatchNos === null) {
+        return; // user cancelled
+      }
+
+      if (selectedCatchNos.length > 0) {
+        // Separate any selected envLotNos (when user toggled to show assigned) from pure catchNos
+        const allAssignedEnvLotNos = (assignedCatchItems || []).map(a => Number(a.envLotNo));
+        const selectedEnvLotNos = selectedCatchNos
+          .map(s => (typeof s === 'number' ? Number(s) : (String(s).match(/^\d+$/) ? Number(s) : NaN)))
+          .filter(n => !isNaN(n) && allAssignedEnvLotNos.includes(n));
+
+        const selectedCatchOnly = selectedCatchNos.filter(s => !selectedEnvLotNos.includes(Number(s)));
+
+        // If catch numbers selected, assign them to an EnvLot
+        if (selectedCatchOnly.length > 0) {
+          console.log('Assigning catches to EnvLot:', selectedCatchOnly);
+          const assignResult = await assignEnvLotByCatchNos(selectedCatchOnly);
+          console.log('Assign result:', assignResult);
+          if (!assignResult || !assignResult.assignedEnvLotNo) {
+            message.error("Failed to assign catches to envelope lot");
+            return;
           }
-          
-          const hasMappingUpdate = templateId ? isMappingNewerThanReport(templateId) : false;
-          const isStale = templateId ? staleTemplateIds.has(templateId) : false;
-          const templateIsOutdated = hasMappingUpdate || isStale;
-          
-          const selectedEnvLots = await showEnvLotSelectionModal([], true, {
-             assignedEnvLots: assignedCatchItems,
-             generatedEnvLots,
-             templateIsOutdated,
-             staleEnvLotIds,
-             showAssigned: true,
-             selectedLot: activeLotNo,
-          });
-          if (selectedEnvLots === null) return;
-          if (selectedEnvLots.length > 0) {
-            envLotNumbers = selectedEnvLots;
-          }
-        } else {
-          message.info("No generated envelope lots available for regeneration.");
-          return;
+          envLotNumbers.push(assignResult.assignedEnvLotNo);
+          assignedCatchNos = selectedCatchOnly;
         }
-      } else {
-        const missingCatchItems = await fetchMissingEnvLotCatchesForSelection(projectId, activeLotNo);
-        // Fetch assigned env-lot items so user can optionally show them
-        const assignedCatchItems = await fetchAssignedEnvLotCatchesForSelection(projectId, activeLotNo);
-        
-        // Show modal even if all catches are assigned, allowing user to select from assigned envelopes for regeneration
-        const selectedCatchNos = await showEnvLotSelectionModal([], false, {
-          unassignedCatches: missingCatchItems,
-          assignedEnvLots: assignedCatchItems,
-          showAssigned: missingCatchItems.length === 0,
-          selectedLot: activeLotNo,
-        });
-        if (selectedCatchNos === null) {
-          return; // user cancelled
-        }
-        if (selectedCatchNos.length > 0) {
-          // Separate any selected envLotNos (when user toggled to show assigned) from pure catchNos
-          const allAssignedEnvLotNos = (assignedCatchItems || []).map(a => Number(a.envLotNo));
-          const selectedEnvLotNos = selectedCatchNos
-            .map(s => (typeof s === 'number' ? Number(s) : (String(s).match(/^\d+$/) ? Number(s) : NaN)))
-            .filter(n => !isNaN(n) && allAssignedEnvLotNos.includes(n));
 
-          const selectedCatchOnly = selectedCatchNos.filter(s => !selectedEnvLotNos.includes(Number(s)));
-
-          // If catch numbers selected, assign them to an EnvLot
-          if (selectedCatchOnly.length > 0) {
-            console.log('Assigning catches to EnvLot:', selectedCatchOnly);
-            const assignResult = await assignEnvLotByCatchNos(selectedCatchOnly);
-            console.log('Assign result:', assignResult);
-            if (!assignResult || !assignResult.assignedEnvLotNo) {
-              message.error("Failed to assign catches to envelope lot");
-              return;
-            }
-            envLotNumbers.push(assignResult.assignedEnvLotNo);
-            assignedCatchNos = selectedCatchOnly;
-          }
-
-          // Include any explicitly selected existing envLot numbers for regeneration
-          if (selectedEnvLotNos.length > 0) {
-            envLotNumbers = envLotNumbers.concat(selectedEnvLotNos);
-          }
+        // Include any explicitly selected existing envLot numbers for regeneration
+        if (selectedEnvLotNos.length > 0) {
+          envLotNumbers = envLotNumbers.concat(selectedEnvLotNos);
+          // Also collect catches from these selected assigned batches so we can pass CatchNos
+          const batchCatches = (assignedCatchItems || [])
+            .filter(a => selectedEnvLotNos.includes(Number(a.envLotNo)))
+            .flatMap(a => (a.catches || []).map(c => String(c?.catchNo ?? c?.CatchNo ?? c).trim()))
+            .filter(Boolean);
+          assignedCatchNos = Array.from(new Set([...assignedCatchNos, ...batchCatches]));
         }
       }
     }
@@ -1801,6 +1800,48 @@ const loadGeneratedTemplateReports = async () => {
       }
     }
 
+    // Resolve project lot number for envelope-dependent templates if not explicitly selected in dropdown
+    let resolvedLotNo = null;
+    if (selectedDropdownLot !== "all" && selectedDropdownLot !== null && selectedDropdownLot !== undefined && selectedDropdownLot !== "") {
+      resolvedLotNo = String(selectedDropdownLot);
+    } else if (isEnvelopeDependent && !isQS && !isComposite && (envLotNumbers.length > 0 || assignedCatchNos.length > 0)) {
+      try {
+        const lotsRes = await API.get(`/NRDataLots/GetByProjectId/${projectId}`);
+        const projectLots = (lotsRes.data || []).map(l => Number(l.lotNo)).filter(l => l > 0);
+        for (const pLot of projectLots) {
+          try {
+            const assignedRes = await API.get(`/NRDataLots/GetAssignedEnvLotCatches/${projectId}?lotNo=${pLot}`);
+            const rows = assignedRes.data || [];
+            const match = rows.some(r =>
+              envLotNumbers.includes(Number(r.envLotNo ?? r.EnvLotNo)) ||
+              (assignedCatchNos.length > 0 && assignedCatchNos.includes(String(r.catchNo ?? r.CatchNo).trim()))
+            );
+            if (match) {
+              resolvedLotNo = String(pLot);
+              break;
+            }
+          } catch (_) {}
+        }
+        if (!resolvedLotNo && assignedCatchNos.length > 0) {
+          for (const pLot of projectLots) {
+            try {
+              const missingRes = await API.get(`/NRDataLots/GetMissingEnvLotCatches/${projectId}?lotNo=${pLot}`);
+              const rows = missingRes.data || [];
+              const match = rows.some(r =>
+                assignedCatchNos.includes(String(r.catchNo ?? r.CatchNo).trim())
+              );
+              if (match) {
+                resolvedLotNo = String(pLot);
+                break;
+              }
+            } catch (_) {}
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to resolve project lot for envelope batch:', err);
+      }
+    }
+
     // For quantity sheet, generate one template per lot
     // For other templates, generate one combined template
     // For box breaking templates, loop through selected lots
@@ -1811,10 +1852,16 @@ const loadGeneratedTemplateReports = async () => {
         ? String(currentLot)
         : isBoxBreakingDependent && currentLot
         ? String(currentLot)
-        : envLotNumbers.length > 0 && !isQS && !isComposite
-        ? envLotNumbers.join(',')
-        : selectedDropdownLot !== "all" && selectedDropdownLot !== null
+        : isComposite
+        ? null
+        : resolvedLotNo
+        ? String(resolvedLotNo)
+        : selectedDropdownLot !== "all" && selectedDropdownLot !== null && selectedDropdownLot !== undefined && selectedDropdownLot !== ""
         ? String(selectedDropdownLot)
+        : null;
+
+      const effectiveCatchNos = assignedCatchNos.length > 0
+        ? assignedCatchNos.join(',')
         : null;
 
       const payload = {
@@ -1822,6 +1869,7 @@ const loadGeneratedTemplateReports = async () => {
         templateId: Number(templateId),
         ...(Object.keys(staticVariables).length > 0 ? { staticVariables } : {}),
         ...(effectiveLotNos ? { LotNos: effectiveLotNos, lotNumber: Number(effectiveLotNos.split(',')[0]), lotNo: effectiveLotNos } : {}),
+        ...(effectiveCatchNos ? { CatchNos: effectiveCatchNos, catchNo: effectiveCatchNos.split(',')[0] } : {}),
       };
       const messageKey = `generate-report-${payload.templateId}-${Date.now()}`;
       setGeneratingTemplates((prev) => ({ ...prev, [templateId]: true }));
@@ -1891,7 +1939,15 @@ const loadGeneratedTemplateReports = async () => {
             templateId: Number(templateId),
             templateName: template?.templateName || template?.TemplateName || "Template Report",
             envLotNumbers: isQS ? String(currentLot) : (envLotNumbers.length > 0 ? envLotNumbers.join(',') : "0"),
-            lotNo: isQS ? Number(currentLot) : (isBoxBreakingDependent && currentLot ? Number(currentLot) : (selectedDropdownLot !== "all" && selectedDropdownLot !== null && selectedDropdownLot !== undefined && selectedDropdownLot !== "" ? Number(selectedDropdownLot) : 0)),
+            lotNo: isQS
+              ? Number(currentLot)
+              : (isBoxBreakingDependent && currentLot
+                ? Number(currentLot)
+                : (resolvedLotNo
+                  ? Number(resolvedLotNo)
+                  : (selectedDropdownLot !== "all" && selectedDropdownLot !== null && selectedDropdownLot !== undefined && selectedDropdownLot !== ""
+                    ? Number(selectedDropdownLot)
+                    : 0))),
             fileName: fileName,
             generatedByUserId: currentUserId ? Number(currentUserId) : null,
             filePath: filePath
