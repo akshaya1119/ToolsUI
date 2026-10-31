@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Table, Button, Select, Modal, Input, Space, message, Tag, Popconfirm } from "antd";
+import { Table, Button, Select, Modal, Input, Space, message, Tag, Popconfirm, Tooltip } from "antd";
 import {
     EditOutlined,
     SearchOutlined,
@@ -10,15 +10,18 @@ import axios from "axios";
 import API from "../hooks/api";
 import { useLocation } from "react-router-dom";
 import { getCurrentUserRoleId } from "../hooks/useUserMap";
+import useModulePermission from "../hooks/useModulePermission";
 
 const { Option } = Select;
 
 const Project = () => {
+    const { canView, canCreate, canEdit, canDelete } = useModulePermission('MASTER_PROJECT');
     const location = useLocation();
     const [projects, setProjects] = useState([]); // List of project records from /Projects API
     const [projectNames, setProjectNames] = useState([]); // List of project names fetched from /Project API
     const [createdProjectIds, setCreatedProjectIds] = useState([]); // All project IDs already created
-    const [users, setUsers] = useState([]); // List of users with roleId 3
+    const [users, setUsers] = useState([]); // List of users with roleId <= 3
+    const [allUsers, setAllUsers] = useState([]); // All system users for name lookup
     const [loading, setLoading] = useState(false);
     const [editingItem, setEditingItem] = useState(null);
     const [modalVisible, setModalVisible] = useState(false);
@@ -36,32 +39,6 @@ const Project = () => {
     });
     
     useEffect(() => {
-        // Authorization check: Managers (RoleId 4) are not allowed to access Project Master
-        const checkAuthorization = async () => {
-            const currentRoleId = getCurrentUserRoleId();
-            if (currentRoleId === 4) {
-                message.error("Managers are not authorized to access project master configuration.");
-                window.history.back();
-                return;
-            }
-            try {
-                const res = await axios.get(`${url}/User`, {
-                    headers: { Authorization: `Bearer ${token}` },
-                });
-                const userList = Array.isArray(res.data) ? res.data : (res.data?.$values || []);
-                const currentUserId = parseInt(localStorage.getItem("userId") || "0");
-                const currentUser = userList.find(u => Number(u.userId ?? u.id) === currentUserId);
-                if (currentUser && Number(currentUser.roleId ?? currentUser.RoleId) === 4) {
-                    message.error("Managers are not authorized to access project master configuration.");
-                    window.history.back();
-                    return;
-                }
-            } catch (err) {
-                console.warn("ERP /User authorization check skipped due to error:", err?.message || err);
-            }
-        };
-        
-        checkAuthorization();
         fetchProjects(pagination.current, pagination.pageSize);
         fetchCreatedProjectIds();
         fetchProjectNames();
@@ -165,6 +142,7 @@ const Project = () => {
                 localStorage.setItem("cached_users", JSON.stringify(userList));
             }
 
+            setAllUsers(userList || []);
             const response = userList.filter((r) => Number(r.roleId ?? r.RoleId) <= 3);
             setUsers(response || []);
         } catch (err) {
@@ -307,7 +285,7 @@ const Project = () => {
         const userNames = Array.isArray(assignedList) && assignedList.length > 0
             ? assignedList
                 .map(userId => {
-                    const user = users.find(u => Number(u.userId ?? u.id) === Number(userId));
+                    const user = (allUsers.length > 0 ? allUsers : users).find(u => Number(u.userId ?? u.id) === Number(userId));
                     return user?.firstName || user?.name || user?.userName || (userId ? `User ${userId}` : '-');
                 })
                 .join(', ') // Combine user names into a single string
@@ -351,30 +329,68 @@ const Project = () => {
             key: 'actions',
             render: (_, record) => (
                 <Space>
-                    <Button type="link" icon={<EditOutlined />} onClick={() => handleEdit(record)} />
-                    <Popconfirm
-                        title={`Are you sure you want to ${record.status ? 'unarchive' : 'archive'} this project?`}
-                        onConfirm={() => handleArchive(record)}
-                        okText="Yes"
-                        cancelText="No"
-                    >
-                        <Button 
-                            type="link" 
-                            danger={!record.status}
-                            icon={record.status ? <FolderOpenOutlined /> : <FolderAddOutlined />} 
-                        />
-                    </Popconfirm>
+                    {canEdit ? (
+                        <Button type="link" icon={<EditOutlined />} onClick={() => handleEdit(record)} />
+                    ) : (
+                        <Tooltip title="View-only access: Editing is disabled">
+                            <span><Button type="link" icon={<EditOutlined />} disabled /></span>
+                        </Tooltip>
+                    )}
+                    {canDelete ? (
+                        <Popconfirm
+                            title={`Are you sure you want to ${record.status ? 'unarchive' : 'archive'} this project?`}
+                            onConfirm={() => handleArchive(record)}
+                            okText="Yes"
+                            cancelText="No"
+                        >
+                            <Button 
+                                type="link" 
+                                danger={!record.status}
+                                icon={record.status ? <FolderOpenOutlined /> : <FolderAddOutlined />} 
+                            />
+                        </Popconfirm>
+                    ) : (
+                        <Tooltip title="View-only access: Archiving/Deleting is disabled">
+                            <span>
+                                <Button 
+                                    type="link" 
+                                    disabled
+                                    icon={record.status ? <FolderOpenOutlined /> : <FolderAddOutlined />} 
+                                />
+                            </span>
+                        </Tooltip>
+                    )}
                 </Space>
             ),
         },
     ];
 
+    if (!canView) {
+        return (
+            <div style={{ padding: 24, background: '#fff', borderRadius: 8, border: '1px solid #ffd591' }}>
+                <p style={{ color: '#d46b08', margin: 0, fontWeight: 500 }}>
+                    Access Denied: You do not have permission to view Project Master.
+                </p>
+            </div>
+        );
+    }
+
     return (
         <div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
-                <Button type="primary" onClick={handleAdd}>
-                    Add
-                </Button>
+                {canCreate ? (
+                    <Button type="primary" onClick={handleAdd}>
+                        Add
+                    </Button>
+                ) : (
+                    <Tooltip title="View-only access: Creating new projects is disabled">
+                        <span>
+                            <Button type="primary" disabled>
+                                Add
+                            </Button>
+                        </span>
+                    </Tooltip>
+                )}
             </div>
             <Table
                 dataSource={mergedProjects} // Use the merged project data
@@ -396,6 +412,7 @@ const Project = () => {
                 onOk={handleSave}
                 onCancel={() => setModalVisible(false)}
                 okText="Save"
+                okButtonProps={{ disabled: editingItem ? !canEdit : !canCreate }}
             >
                 <Select
                     style={{ width: "100%", marginTop: 4 }}

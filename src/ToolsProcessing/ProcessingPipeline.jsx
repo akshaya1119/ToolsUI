@@ -37,6 +37,7 @@ import ExistingReportModal from "./components/ExistingReportModal";
 import TemplatesPanel from "./components/TemplatesPanel";
 import LotWisePanel from "./components/LotWisePanel";
 import ReportTemplateManagement from './components/ReportTemplateManagement';
+import useModulePermission from "../hooks/useModulePermission";
 
 const { Text } = Typography;
 
@@ -55,7 +56,7 @@ class ErrorBoundary extends React.Component {
   }
 
   render() {
-    if (this.state.hasError) {
+    if (this.state.error) {
       return (
         <div style={{ padding: 24 }}>
           <Alert
@@ -76,6 +77,7 @@ class ErrorBoundary extends React.Component {
 const url3 = import.meta.env.VITE_API_FILE_URL;
 
 const ProcessingPipeline = () => {
+  const { canExecute, canEdit } = useModulePermission('PROCESSING_PIPELINE');
   const navigate = useNavigate();
   const isConfigured = useStore((state) => state.isConfigured);
   const isLoadingData = useStore((state) => state.isLoadingData);
@@ -937,10 +939,13 @@ const ProcessingPipeline = () => {
     return pages === 0 || pages === null || pages === undefined || pages === '' || pages === '-' || pages === 'null';
   };
 
-  const fetchMissingEnvLotCatchesForSelection = async (projectIdParam) => {
-    console.log(projectIdParam)
+  const fetchMissingEnvLotCatchesForSelection = async (projectIdParam, lotNoParam = null) => {
+    console.log(projectIdParam);
     try {
-      const res = await API.get(`/NRDataLots/GetMissingEnvLotCatches/${projectIdParam}`);
+      const params = lotNoParam && lotNoParam !== "all" && Number(lotNoParam) > 0
+        ? { lotNo: Number(lotNoParam) }
+        : {};
+      const res = await API.get(`/NRDataLots/GetMissingEnvLotCatches/${projectIdParam}`, { params });
       const rawData = res.data || [];
       return rawData.map(item => ({
         catchNo: (item.catchNo ?? item.CatchNo ?? "").toString().trim(),
@@ -953,9 +958,12 @@ const ProcessingPipeline = () => {
     }
   };
 
-  const fetchAssignedEnvLotCatchesForSelection = async (projectIdParam) => {
+  const fetchAssignedEnvLotCatchesForSelection = async (projectIdParam, lotNoParam = null) => {
     try {
-      const res = await API.get(`/NRDataLots/GetAssignedEnvLotCatches/${projectIdParam}`);
+      const params = lotNoParam && lotNoParam !== "all" && Number(lotNoParam) > 0
+        ? { lotNo: Number(lotNoParam) }
+        : {};
+      const res = await API.get(`/NRDataLots/GetAssignedEnvLotCatches/${projectIdParam}`, { params });
       const rawData = res.data || [];
       const grouped = rawData.reduce((acc, item) => {
         const envLotNo = item.envLotNo ?? item.EnvLotNo;
@@ -1703,8 +1711,8 @@ const loadGeneratedTemplateReports = async () => {
     
     if (!isQS && !isComposite && isEnvelopeDependent && !isBoxBreakingDependent) {
       const runRegenerateFlow = action === "regenerate";
-      const missingCatchItems = await fetchMissingEnvLotCatchesForSelection(projectId);
-      const assignedCatchItems = await fetchAssignedEnvLotCatchesForSelection(projectId);
+      const missingCatchItems = await fetchMissingEnvLotCatchesForSelection(projectId, selectedDropdownLot);
+      const assignedCatchItems = await fetchAssignedEnvLotCatchesForSelection(projectId, selectedDropdownLot);
 
       const templateId = resolveTemplateId(template);
       let generatedEnvLots = [];
@@ -1726,7 +1734,8 @@ const loadGeneratedTemplateReports = async () => {
          generatedEnvLots,
          templateIsOutdated,
          staleEnvLotIds,
-         showAssigned: defaultShowAssigned
+         showAssigned: defaultShowAssigned,
+         selectedLot: selectedDropdownLot !== "all" && selectedDropdownLot !== null ? selectedDropdownLot : null
       });
 
       if (selectedCatchNos === null) {
@@ -1787,6 +1796,48 @@ const loadGeneratedTemplateReports = async () => {
       }
     }
 
+    // Resolve project lot number for envelope-dependent templates if not explicitly selected in dropdown
+    let resolvedLotNo = null;
+    if (selectedDropdownLot !== "all" && selectedDropdownLot !== null && selectedDropdownLot !== undefined && selectedDropdownLot !== "") {
+      resolvedLotNo = String(selectedDropdownLot);
+    } else if (isEnvelopeDependent && !isQS && !isComposite && (envLotNumbers.length > 0 || assignedCatchNos.length > 0)) {
+      try {
+        const lotsRes = await API.get(`/NRDataLots/GetByProjectId/${projectId}`);
+        const projectLots = (lotsRes.data || []).map(l => Number(l.lotNo)).filter(l => l > 0);
+        for (const pLot of projectLots) {
+          try {
+            const assignedRes = await API.get(`/NRDataLots/GetAssignedEnvLotCatches/${projectId}?lotNo=${pLot}`);
+            const rows = assignedRes.data || [];
+            const match = rows.some(r =>
+              envLotNumbers.includes(Number(r.envLotNo ?? r.EnvLotNo)) ||
+              (assignedCatchNos.length > 0 && assignedCatchNos.includes(String(r.catchNo ?? r.CatchNo).trim()))
+            );
+            if (match) {
+              resolvedLotNo = String(pLot);
+              break;
+            }
+          } catch (_) {}
+        }
+        if (!resolvedLotNo && assignedCatchNos.length > 0) {
+          for (const pLot of projectLots) {
+            try {
+              const missingRes = await API.get(`/NRDataLots/GetMissingEnvLotCatches/${projectId}?lotNo=${pLot}`);
+              const rows = missingRes.data || [];
+              const match = rows.some(r =>
+                assignedCatchNos.includes(String(r.catchNo ?? r.CatchNo).trim())
+              );
+              if (match) {
+                resolvedLotNo = String(pLot);
+                break;
+              }
+            } catch (_) {}
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to resolve project lot for envelope batch:', err);
+      }
+    }
+
     // For quantity sheet, generate one template per lot
     // For other templates, generate one combined template
     // For box breaking templates, loop through selected lots
@@ -1797,10 +1848,16 @@ const loadGeneratedTemplateReports = async () => {
         ? String(currentLot)
         : isBoxBreakingDependent && currentLot
         ? String(currentLot)
-        : envLotNumbers.length > 0 && !isQS && !isComposite
-        ? envLotNumbers.join(',')
-        : selectedDropdownLot !== "all" && selectedDropdownLot !== null
+        : isComposite
+        ? null
+        : resolvedLotNo
+        ? String(resolvedLotNo)
+        : selectedDropdownLot !== "all" && selectedDropdownLot !== null && selectedDropdownLot !== undefined && selectedDropdownLot !== ""
         ? String(selectedDropdownLot)
+        : null;
+
+      const effectiveCatchNos = assignedCatchNos.length > 0
+        ? assignedCatchNos.join(',')
         : null;
 
       const payload = {
@@ -1808,6 +1865,7 @@ const loadGeneratedTemplateReports = async () => {
         templateId: Number(templateId),
         ...(Object.keys(staticVariables).length > 0 ? { staticVariables } : {}),
         ...(effectiveLotNos ? { LotNos: effectiveLotNos, lotNumber: Number(effectiveLotNos.split(',')[0]), lotNo: effectiveLotNos } : {}),
+        ...(effectiveCatchNos ? { CatchNos: effectiveCatchNos, catchNo: effectiveCatchNos.split(',')[0] } : {}),
       };
       const messageKey = `generate-report-${payload.templateId}-${Date.now()}`;
       setGeneratingTemplates((prev) => ({ ...prev, [templateId]: true }));
@@ -1877,7 +1935,15 @@ const loadGeneratedTemplateReports = async () => {
             templateId: Number(templateId),
             templateName: template?.templateName || template?.TemplateName || "Template Report",
             envLotNumbers: isQS ? String(currentLot) : (envLotNumbers.length > 0 ? envLotNumbers.join(',') : "0"),
-            lotNo: isQS ? Number(currentLot) : (isBoxBreakingDependent && currentLot ? Number(currentLot) : 0),
+            lotNo: isQS
+              ? Number(currentLot)
+              : (isBoxBreakingDependent && currentLot
+                ? Number(currentLot)
+                : (resolvedLotNo
+                  ? Number(resolvedLotNo)
+                  : (selectedDropdownLot !== "all" && selectedDropdownLot !== null && selectedDropdownLot !== undefined && selectedDropdownLot !== ""
+                    ? Number(selectedDropdownLot)
+                    : 0))),
             fileName: fileName,
             generatedByUserId: currentUserId ? Number(currentUserId) : null,
             filePath: filePath
@@ -4658,7 +4724,9 @@ Object.keys(groupedTpl).forEach((templateKey) => {
             return (
           <Tooltip
             title={
-              (!canStartByData)
+              !canExecute
+                ? "View-only access: Pipeline execution is disabled"
+                : (!canStartByData)
                 ? "No new data found for processing. All data is already processed."
                 : (selectedModules.length === 0
                   ? "Please select at least one module"
@@ -4667,11 +4735,12 @@ Object.keys(groupedTpl).forEach((templateKey) => {
                     : "")
             }
           >
-            <span style={{ cursor: (!canStartByData) || selectedModules.length === 0 ? "not-allowed" : "default" }}>
+            <span style={{ cursor: (!canExecute || !canStartByData) || selectedModules.length === 0 ? "not-allowed" : "default" }}>
               <Button
                 type="primary"
                 onClick={handleAudit}
                 disabled={
+                  !canExecute ||
                   !projectId ||
                   isProcessing ||
                   selectedModules.length === 0 ||
@@ -4797,6 +4866,7 @@ Object.keys(groupedTpl).forEach((templateKey) => {
             }}
             isQuantitySheetTemplate={isQuantitySheetTemplate}
             isCompositeSummaryTemplate={isCompositeSummaryTemplate}
+            canExecute={canExecute}
           />
           <Modal
             title="Report Generation Error"
@@ -4930,6 +5000,7 @@ Object.keys(groupedTpl).forEach((templateKey) => {
             isQuantitySheetTemplate={isQuantitySheetTemplate}
             isCompositeSummaryTemplate={isCompositeSummaryTemplate}
             onClose={closeLotWisePanel}
+            canExecute={canExecute}
           />
         </div>
       </motion.div>
@@ -4970,6 +5041,7 @@ Object.keys(groupedTpl).forEach((templateKey) => {
         assignedEnvLots={envLotSelectionModal.assignedEnvLots}
         unassignedCatches={envLotSelectionModal.unassignedCatches}
         showAssigned={envLotSelectionModal.showAssigned}
+        selectedLot={selectedDropdownLot !== "all" && selectedDropdownLot !== null ? selectedDropdownLot : null}
         onToggleShowAssigned={(val) => setEnvLotSelectionModal(prev => ({ ...prev, showAssigned: val }))}
       />
       <ReportTemplateManagement

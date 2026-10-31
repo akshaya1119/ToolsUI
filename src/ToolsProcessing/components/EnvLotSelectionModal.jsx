@@ -31,7 +31,8 @@ const EnvLotSelectionModal = ({
   templateIsOutdated = false,
   staleEnvLotIds = [],
   showAssigned = false,
-  projectId
+  projectId,
+  selectedLot = null,
 }) => {
   const navigate = useNavigate();
   const apiBaseUrl = (import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || '').replace(/\/api\/?$/i, '');
@@ -143,23 +144,26 @@ const EnvLotSelectionModal = ({
   const sourceItems = showAssigned
     ? assignedEnvLots
     : unassignedCatches;
-
+//  console.log("sourceItems", sourceItems);
+//  console.log("showAssigned:", showAssigned);
+// console.log("assignedEnvLots:", assignedEnvLots);
+// console.log("unassignedCatches:", unassignedCatches);
   const filteredItems = sourceItems.filter((item) => {
     const search = envLotSearch.trim().toLowerCase();
 
     if (!search) return true;
 
     if (showAssigned) {
-      const lotStr = String(typeof item === 'object' && item !== null ? (item?.envLotNo ?? item?.EnvLotNo ?? "") : item);
+      const lotStr = String(item?.envLotNo ?? item?.EnvLotNo ?? "");
       return (
         lotStr.toLowerCase().includes(search) ||
         (item?.catches || item?.Catches || []).some((c) =>
-          String(typeof c === 'object' && c !== null ? (c?.catchNo ?? c?.CatchNo ?? c) : c).toLowerCase().includes(search)
+          String(c?.catchNo ?? c?.CatchNo ?? c).toLowerCase().includes(search)
         )
       );
     }
 
-    const catchStr = String(typeof item === 'object' && item !== null ? (item?.catchNo ?? item?.CatchNo ?? item) : item);
+    const catchStr = String(item?.catchNo ?? item?.CatchNo ?? item ?? "");
     return catchStr.toLowerCase().includes(search);
   });
 
@@ -167,8 +171,8 @@ const EnvLotSelectionModal = ({
     filteredItems.length > 0 &&
     filteredItems.every((item) => {
       const itemId = showAssigned
-        ? (typeof item === 'object' && item !== null ? (item?.envLotNo ?? item?.EnvLotNo) : item)
-        : (typeof item === 'object' && item !== null ? (item?.catchNo ?? item?.CatchNo ?? item) : item);
+        ? item.envLotNo
+        : item.catchNo;
 
       return selectedEnvLots.includes(itemId);
     });
@@ -178,7 +182,7 @@ const EnvLotSelectionModal = ({
 
   return (
     <Modal
-      title="Select Catches For Processing"
+      title={selectedLot ? `Select Catches For Processing (Lot ${selectedLot})` : "Select Catches For Processing"}
       open={visible}
       onOk={unverifiedCatch? () =>navigate( `/headerverification?catch=${unverifiedCatch.catchNo}&status=${unverifiedCatch.verificationStatus}`): onConfirm}
       onCancel={onCancel}
@@ -242,7 +246,7 @@ const EnvLotSelectionModal = ({
         </Checkbox>
       </div>
 
-      {(unassignedCatches.length === 0 && assignedEnvLots.length === 0) && !unverifiedCatch && !isVerifying ? (
+      {unassignedCatches.length === 0 && assignedEnvLots.length === 0 && !unverifiedCatch && !isVerifying ? (
         <Alert
           message="No catch verified yet"
           type="warning"
@@ -252,6 +256,13 @@ const EnvLotSelectionModal = ({
               Verify Catch
             </Button>
           }
+          style={{ marginBottom: 16 }}
+        />
+      ) : !showAssigned && unassignedCatches.length === 0 && assignedEnvLots.length > 0 && !unverifiedCatch && !isVerifying ? (
+        <Alert
+          message="All verified catches are assigned to batches. Enable 'Show assigned batches' above to select batches for regeneration."
+          type="info"
+          showIcon
           style={{ marginBottom: 16 }}
         />
       ) : sourceItems.length === 0 && !unverifiedCatch && !isVerifying ? (
@@ -309,20 +320,17 @@ const EnvLotSelectionModal = ({
             </div>
           </Card>
         )}
-        {filteredItems.map((item, idx) => {
+        {filteredItems.map((item) => {
           const itemId = showAssigned
-            ? (typeof item === 'object' && item !== null ? (item?.envLotNo ?? item?.EnvLotNo) : item)
-            : (typeof item === 'object' && item !== null ? (item?.catchNo ?? item?.CatchNo ?? item) : item);
+            ? item?.envLotNo ?? item?.EnvLotNo
+            : item?.catchNo ?? item?.CatchNo ?? item;
 
           const isSelected =
             selectedEnvLots.includes(itemId);
 
-          const lotDisplay = typeof item === 'object' && item !== null ? (item?.envLotNo ?? item?.EnvLotNo) : item;
-          const catchDisplay = typeof item === 'object' && item !== null ? (item?.catchNo ?? item?.CatchNo ?? String(item)) : String(item);
-
           return (
             <Card
-              key={itemId || idx}
+              key={itemId}
               size="small"
               style={{
                 backgroundColor: isSelected
@@ -365,19 +373,19 @@ const EnvLotSelectionModal = ({
                             fontSize: "14px"
                           }}
                         >
-                          Batch {String(lotDisplay ?? '')}
+                          Batch {item?.envLotNo ?? item?.EnvLotNo}
                         </Text>
 
                         {(
                           storeStaleEnvLotIds
                             .map(Number)
                             .includes(
-                              Number(lotDisplay)
+                              Number(item.envLotNo)
                             ) ||
                           staleEnvLotIds
                             .map(Number)
                             .includes(
-                              Number(lotDisplay)
+                              Number(item.envLotNo)
                             )
                         ) && (
                           <Tag
@@ -398,7 +406,7 @@ const EnvLotSelectionModal = ({
                         }}
                       >
                         Catches:{" "}
-                        {Array.isArray(item?.catches) ? item.catches.join(", ") : (Array.isArray(item?.Catches) ? item.Catches.join(", ") : "-")}
+                        {(item.catches || []).join(", ")}
                       </Text>
                     </div>
                   ) : (
@@ -408,7 +416,7 @@ const EnvLotSelectionModal = ({
                         fontSize: "14px"
                       }}
                     >
-                      Catch No {String(catchDisplay ?? '')}
+                      Catch No {item?.catchNo ?? item?.CatchNo ?? item}
                     </Text>
                   )}
                 </div>
