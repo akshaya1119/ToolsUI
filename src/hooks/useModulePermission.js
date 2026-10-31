@@ -1,49 +1,72 @@
 import usePermissionsStore from '../stores/UserPermissions';
 
-const isDevOrAdminRole = (roleName, roleId) => {
-  if (roleId === 1) return true;
-  if (!roleName) return false;
-  const lower = String(roleName).toLowerCase();
-  return lower.includes('developer') || lower.includes('admin') || lower === 'dev';
-};
-
+/**
+ * Hook to retrieve effective permissions for a specific module.
+ * @param {string} moduleCode The uppercase module code (e.g. 'DATA_IMPORT', 'MASTER_PROJECT')
+ * @returns {{ canView: boolean, canCreate: boolean, canEdit: boolean, canDelete: boolean, canExecute: boolean, canExport: boolean, isSuperuser: boolean }}
+ */
 export const useModulePermission = (moduleCode) => {
-  const permissions = usePermissionsStore((state) => state.permissions);
   const isSuperuser = usePermissionsStore((state) => state.isSuperuser);
-  const roleName = usePermissionsStore((state) => state.roleName);
-  const roleId = usePermissionsStore((state) => state.roleId);
+  const permissions = usePermissionsStore((state) => state.permissions[moduleCode]);
   const initialized = usePermissionsStore((state) => state.initialized);
-  const loading = usePermissionsStore((state) => state.loading);
+  const error = usePermissionsStore((state) => state.error);
 
-  const isBypass = isSuperuser || isDevOrAdminRole(roleName, roleId);
-
-  // If user is Developer or Admin, grant full access across all modules
-  if (isBypass) {
+  // Fail-safe: Superuser always maintains access to Roles & Permissions management so they cannot be locked out
+  if (isSuperuser && moduleCode === 'ROLES_PERMISSIONS') {
     return {
       canView: true,
-      canEdit: true,
       canCreate: true,
+      canEdit: true,
       canDelete: true,
       canExecute: true,
       canExport: true,
-      loading: false,
-      initialized: true,
-      isSuperuser: true
+      isSuperuser: true,
+      loading: !initialized
     };
   }
 
-  const mod = permissions?.[moduleCode] || {};
+  // Safe fallback: If not yet initialized or on error, allow viewing but block mutating actions
+  if (!initialized || error) {
+    return {
+      canView: true,
+      canCreate: false,
+      canEdit: false,
+      canDelete: false,
+      canExecute: false,
+      canExport: false,
+      isSuperuser,
+      loading: !initialized
+    };
+  }
+
+  // Once initialized, if module is not listed in user permissions, all actions are false
+  if (!permissions) {
+    return {
+      canView: false,
+      canCreate: false,
+      canEdit: false,
+      canDelete: false,
+      canExecute: false,
+      canExport: false,
+      isSuperuser,
+      loading: false
+    };
+  }
+
+  const getFlag = (action) => {
+    const cap = action.charAt(0).toUpperCase() + action.slice(1).toLowerCase();
+    return !!(permissions[`can${cap}`] ?? permissions[`Can${cap}`] ?? permissions[cap] ?? permissions[action]);
+  };
 
   return {
-    canView: !!(mod.canView ?? mod.CanView ?? false),
-    canEdit: !!(mod.canEdit ?? mod.CanEdit ?? false),
-    canCreate: !!(mod.canCreate ?? mod.CanCreate ?? false),
-    canDelete: !!(mod.canDelete ?? mod.CanDelete ?? false),
-    canExecute: !!(mod.canExecute ?? mod.CanExecute ?? false),
-    canExport: !!(mod.canExport ?? mod.CanExport ?? false),
-    loading,
-    initialized,
-    isSuperuser: false
+    canView: getFlag('view'),
+    canCreate: getFlag('create'),
+    canEdit: getFlag('edit'),
+    canDelete: getFlag('delete'),
+    canExecute: getFlag('execute'),
+    canExport: getFlag('export'),
+    isSuperuser,
+    loading: false
   };
 };
 

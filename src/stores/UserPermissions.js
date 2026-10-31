@@ -1,35 +1,6 @@
 import { create } from 'zustand';
 import API from '../hooks/api';
 
-const decodeTokenPayload = (token) => {
-  try {
-    if (!token) return null;
-    const parts = token.split('.');
-    if (parts.length < 2) return null;
-    let base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
-    while (base64.length % 4) {
-      base64 += '=';
-    }
-    const jsonPayload = decodeURIComponent(
-      atob(base64)
-        .split('')
-        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
-        .join('')
-    );
-    return JSON.parse(jsonPayload);
-  } catch (err) {
-    console.warn('Failed to parse JWT token claims:', err);
-    return null;
-  }
-};
-
-const isDevOrAdminRole = (roleName, roleId) => {
-  if (roleId === 1) return true;
-  if (!roleName) return false;
-  const lower = String(roleName).toLowerCase();
-  return lower.includes('developer') || lower.includes('admin') || lower === 'dev';
-};
-
 const usePermissionsStore = create((set, get) => ({
   permissions: {},
   roleId: null,
@@ -46,39 +17,22 @@ const usePermissionsStore = create((set, get) => ({
       return;
     }
 
-    const payload = decodeTokenPayload(token);
-    const tokenRoleId = payload?.roleId ?? payload?.RoleId ?? (payload?.role === 'Developer' ? 1 : null);
-    const tokenRoleName = payload?.roleName ?? payload?.RoleName ?? payload?.role ?? payload?.Role ?? '';
-    const tokenIsDev = isDevOrAdminRole(tokenRoleName, tokenRoleId);
-
     set({ loading: true, error: null });
     try {
       const res = await API.get('/Permissions/my-permissions');
       const data = res.data || {};
 
-      const roleId = data.roleId || tokenRoleId || null;
-      const roleName = data.roleName || tokenRoleName || '';
-      const isSuper = !!data.isSuperuser || tokenIsDev || isDevOrAdminRole(roleName, roleId);
-
       set({
         permissions: data.modules || {},
-        roleId,
-        roleName,
-        isSuperuser: isSuper,
+        roleId: data.roleId || null,
+        roleName: data.roleName || '',
+        isSuperuser: !!data.isSuperuser,
         loading: false,
         initialized: true
       });
     } catch (err) {
-      console.warn('Failed to fetch user permissions from ToolsAPI, using token fallback:', err?.message || err);
-      set({
-        permissions: {},
-        roleId: tokenRoleId,
-        roleName: tokenRoleName,
-        isSuperuser: tokenIsDev,
-        loading: false,
-        initialized: true,
-        error: err
-      });
+      console.warn('Failed to fetch user permissions from ToolsAPI, using fallback:', err?.message || err);
+      set({ loading: false, initialized: true, error: err });
     }
   },
 
@@ -97,8 +51,8 @@ const usePermissionsStore = create((set, get) => ({
   hasPermission: (moduleCode, action = 'View') => {
     const state = get();
 
-    // Superuser / Developer / Admin bypass: full access across all modules
-    if (state.isSuperuser || isDevOrAdminRole(state.roleName, state.roleId)) {
+    // Fail-safe: Superuser always maintains access to Roles & Permissions management so they cannot be locked out
+    if (state.isSuperuser && moduleCode === 'ROLES_PERMISSIONS') {
       return true;
     }
 
