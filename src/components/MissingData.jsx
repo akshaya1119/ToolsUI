@@ -14,6 +14,8 @@ import {
     TimePicker,
     Typography,
     Upload,
+    Tag,
+    Tooltip,
 } from "antd";
 import {
     CheckCircleOutlined,
@@ -139,6 +141,23 @@ const MissingData = () => {
     const projectId = useStore((state) => state.projectId);
     const selectedLot = useStore((state) => state.selectedLot);
     const { showToast } = useToast();
+    const [projectLots, setProjectLots] = useState([]);
+
+    useEffect(() => {
+        if (projectId) {
+            API.get(`/NRDataLots/GetByProjectId/${projectId}`)
+                .then((res) => {
+                    if (Array.isArray(res.data)) setProjectLots(res.data);
+                })
+                .catch(console.error);
+        }
+    }, [projectId]);
+
+    const isLotDispatched = (lotNo) => {
+        if (!lotNo || lotNo === "all") return false;
+        const lotObj = projectLots.find(p => Number(p.lotNo) === Number(lotNo));
+        return Boolean(lotObj && (lotObj.isDispatched || lotObj.isDispatchExceeded || lotObj.status === 0));
+    };
     const [loadingTemplateData, setLoadingTemplateData] = useState(false);
     const [templateRows, setTemplateRows] = useState([]);
     const [missingDataRows, setMissingDataRows] = useState([]);
@@ -594,6 +613,11 @@ setModifiedRows(newModifiedRows);
     };
 
     const startEditingRow = (record) => {
+        const rowLot = record.lotNo ?? record.LotNo ?? selectedLot;
+        if (isLotDispatched(rowLot)) {
+            showToast(`Lot ${rowLot} has been dispatched and cannot be modified`, "error");
+            return;
+        }
         setEditingRowKey(record.catchNo);
         const draft = { catchNo: record.catchNo };
         
@@ -616,6 +640,12 @@ setModifiedRows(newModifiedRows);
             const rowToSave = missingDataRows.find(r => r.catchNo === catchNo);
             if (!rowToSave) {
                 showToast("Row not found", "error");
+                return;
+            }
+
+            const rowLot = rowToSave.lotNo ?? rowToSave.LotNo ?? selectedLot;
+            if (isLotDispatched(rowLot)) {
+                showToast(`Lot ${rowLot} has been dispatched and cannot be modified`, "error");
                 return;
             }
 
@@ -737,11 +767,18 @@ setModifiedRows(newModifiedRows);
             return;
         }
 
+        if (isLotDispatched(selectedLot)) {
+            showToast(`Lot ${selectedLot} has been dispatched and cannot be modified`, "error");
+            return;
+        }
+
         // Build payload - send all non-empty fields that were in the uploaded Excel file
         const payload = [];
 
 for (const row of currentMissingDataRows) {
     if (!currentModifiedRows.has(row.catchNo)) continue;
+    const rowLot = row.lotNo ?? row.LotNo ?? selectedLot;
+    if (isLotDispatched(rowLot)) continue;
 
     const additionalFields = {};
 
@@ -1033,15 +1070,25 @@ for (const row of currentMissingDataRows) {
                                 Cancel
                             </Button>
                         </>
-                    ) : (
-                        <Button
-                            type="link"
-                            size="small"
-                            onClick={() => startEditingRow(record)}
-                        >
-                            Edit
-                        </Button>
-                    )}
+                    ) : (() => {
+                        const rowLot = record.lotNo ?? record.LotNo ?? selectedLot;
+                        if (isLotDispatched(rowLot)) {
+                            return (
+                                <Tooltip title={`Lot ${rowLot} has been dispatched and is read-only.`}>
+                                    <Tag color="error" style={{ fontSize: 11, padding: "1px 6px" }}>Locked</Tag>
+                                </Tooltip>
+                            );
+                        }
+                        return (
+                            <Button
+                                type="link"
+                                size="small"
+                                onClick={() => startEditingRow(record)}
+                            >
+                                Edit
+                            </Button>
+                        );
+                    })()}
                 </Space>
             ),
         },
@@ -1186,18 +1233,22 @@ for (const row of currentMissingDataRows) {
                                             }
                                             setShowBulkUpdate((prev) => !prev);
                                         }}
-                                        disabled={!reviewRows.length}
+                                        disabled={!reviewRows.length || isLotDispatched(selectedLot)}
                                     >
                                         {showBulkUpdate ? "Hide Bulk Update" : "Bulk Update"}
                                     </Button>
-                                    <Button
-                                        type="primary"
-                                        onClick={handleSubmit}
-                                        disabled={!missingDataRows.length}
-                                        loading={submitting}
-                                    >
-                                        Submit
-                                    </Button>
+                                    <Tooltip title={isLotDispatched(selectedLot) ? `Lot ${selectedLot} is dispatched (read-only)` : ""}>
+                                        <span>
+                                            <Button
+                                                type="primary"
+                                                onClick={handleSubmit}
+                                                disabled={!missingDataRows.length || isLotDispatched(selectedLot)}
+                                                loading={submitting}
+                                            >
+                                                Submit
+                                            </Button>
+                                        </span>
+                                    </Tooltip>
                                 </Space>
                             }
                         >

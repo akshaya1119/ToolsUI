@@ -90,6 +90,23 @@ const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
   const selectedLot = useStore((state) => state.selectedLot);
   const { showToast } = useToast();
   const token = localStorage.getItem("token");
+  const [projectLots, setProjectLots] = useState([]);
+
+  useEffect(() => {
+    if (projectId) {
+      API.get(`/NRDataLots/GetByProjectId/${projectId}?includeDispatched=true`)
+        .then((res) => {
+          if (Array.isArray(res.data)) setProjectLots(res.data);
+        })
+        .catch(console.error);
+    }
+  }, [projectId]);
+
+  const isLotDispatched = (lotNo) => {
+    if (!lotNo || lotNo === "all") return false;
+    const lotObj = projectLots.find(p => Number(p.lotNo) === Number(lotNo));
+    return Boolean(lotObj && (lotObj.isDispatched || lotObj.isDispatchExceeded || lotObj.status === 0));
+  };
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState([]);
   const [recentlyMerged, setRecentlyMerged] = useState(null);
@@ -329,6 +346,17 @@ const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
         };
       })
       .filter((item) => item.extraType && extraTouched?.[item.extraType]);
+
+    if (isLotDispatched(selectedLot)) {
+      showToast(`Lot ${selectedLot} has been dispatched and cannot be merged`, "error");
+      return;
+    }
+
+    const dispatchedRow = selectedRows.find(r => isLotDispatched(r.lotNo ?? r.LotNo));
+    if (dispatchedRow) {
+      showToast(`Catch ${dispatchedRow.catchNo} belongs to dispatched Lot ${dispatchedRow.lotNo ?? dispatchedRow.LotNo} and cannot be merged`, "error");
+      return;
+    }
 
     try {
       setLoading(true);

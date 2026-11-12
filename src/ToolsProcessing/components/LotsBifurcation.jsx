@@ -4,6 +4,7 @@ import React, {
   useImperativeHandle,
   useMemo,
   useState,
+  useRef,
 } from "react";
 import "@ant-design/v5-patch-for-react-19";
 import {
@@ -20,6 +21,7 @@ import {
   Input,
   Tooltip,
   Popconfirm,
+  Tag,
 } from "antd";
 import { motion } from "framer-motion";
 import { SearchOutlined, EditOutlined, DeleteOutlined } from "@ant-design/icons";
@@ -166,7 +168,16 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted, defaultOpenBifurcation }, 
   const [dateRange, setDateRange] = useState([null, null]);
   const [lotNumber, setLotNumber] = useState(null);
   const [startTouched, setStartTouched] = useState(false);
-  const [activeLotTab, setActiveLotTab] = useState("all");
+  const isGlobalLotSelected = selectedLot !== null && selectedLot !== undefined && selectedLot !== "all" && selectedLot !== "";
+  const [activeLotTab, setActiveLotTab] = useState(
+    isGlobalLotSelected ? String(selectedLot) : "all"
+  );
+  const fetchIdRef = useRef(0);
+
+  const effectiveLot = isGlobalLotSelected
+    ? Number(selectedLot)
+    : (activeLotTab !== "all" ? Number(activeLotTab) : null);
+
   const [searchText, setSearchText] = useState("");
   const [searchedColumn, setSearchedColumn] = useState("");
   const [bifurcationModalOpen, setBifurcationModalOpen] = useState(false);
@@ -200,7 +211,7 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted, defaultOpenBifurcation }, 
   const loadProjectLots = async () => {
     if (!projectId) return;
     try {
-      const res = await API.get(`/NRDataLots/GetByProjectId/${projectId}`);
+      const res = await API.get(`/NRDataLots/GetByProjectId/${projectId}?includeDispatched=true`);
       setProjectLots(Array.isArray(res.data) ? res.data : []);
     } catch (err) {
       console.error("Failed to load project lots", err);
@@ -215,10 +226,11 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted, defaultOpenBifurcation }, 
     sOrder = sortOrder,
     sKey = searchKey,
     sVal = searchVal,
-    lotTab = activeLotTab,
+    targetLot = effectiveLot,
     lotFilter = lotAssignmentFilter
   ) => {
     if (!projectId) return;
+    const fetchId = ++fetchIdRef.current;
     setLoading(true);
     try {
       const params = {
@@ -226,20 +238,14 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted, defaultOpenBifurcation }, 
         pageNo: page,
       };
 
-      if (lotTab !== "all") {
-        const lotValue = Number(lotTab);
-        // For lot 0 tab: filter by lotNo=0 (rows explicitly assigned to lot 0)
-        params.lotNo = lotValue;
+      if (targetLot !== null && targetLot !== undefined) {
+        params.lotNo = Number(targetLot);
       } else {
         if (lotFilter === "assigned") {
           params.assigned = true;
         } else if (lotFilter === "unassigned") {
           params.assigned = false;
         }
-      }
-
-      if (selectedLot) {
-        params.lotNo = selectedLot;
       }
 
       if (sField && sOrder) {
@@ -266,6 +272,9 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted, defaultOpenBifurcation }, 
       }
 
       const res = await API.get(`/NRDatas/GetUniqueByProjectId/${projectId}`, { params });
+
+      // Discard stale responses from older requests
+      if (fetchId !== fetchIdRef.current) return;
 
       const items = Array.isArray(res.data?.items) ? res.data.items : [];
       setTotalCount(res.data?.totalCount || 0);
@@ -343,25 +352,36 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted, defaultOpenBifurcation }, 
       const list = Array.from(uniqueByCatch.values());
       setRows(list);
     } catch (error) {
+      if (fetchId !== fetchIdRef.current) return;
       console.error("Failed to load catch data for lots", error);
       showToast("Failed to load catch data", "error");
       setRows([]);
     } finally {
-      setLoading(false);
+      if (fetchId === fetchIdRef.current) {
+        setLoading(false);
+      }
     }
   };
 
+  // Whenever selectedLot changes from navbar or store
   useEffect(() => {
-    loadRows(currentPage, pageSize, sortField, sortOrder, searchKey, searchVal, activeLotTab, lotAssignmentFilter);
-  }, [projectId, currentPage, pageSize, sortField, sortOrder, searchKey, searchVal, activeLotTab, lotAssignmentFilter, selectedLot]);
+    if (isGlobalLotSelected) {
+      setActiveLotTab(String(selectedLot));
+    } else {
+      setActiveLotTab("all");
+    }
+    setCurrentPage(1);
+    setRows([]); // Clear previous lot's rows immediately so they don't linger
+  }, [selectedLot, isGlobalLotSelected]);
+
+  // Main data fetching effect
+  useEffect(() => {
+    loadRows(currentPage, pageSize, sortField, sortOrder, searchKey, searchVal, effectiveLot, lotAssignmentFilter);
+  }, [projectId, currentPage, pageSize, sortField, sortOrder, searchKey, searchVal, effectiveLot, lotAssignmentFilter]);
 
   useEffect(() => {
     loadProjectLots();
   }, [projectId]);
-
-  useEffect(() => {
-    setActiveLotTab(selectedLot ? String(selectedLot) : "all");
-  }, [selectedLot]);
 
   useEffect(() => {
     if (activeLotTab !== "0") {
@@ -384,6 +404,9 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted, defaultOpenBifurcation }, 
   }, [bifurcationModalOpen, bifurcateRows, lotNumber, startTouched]);
 
   const lotTabs = useMemo(() => {
+    if (isGlobalLotSelected) {
+      return [String(selectedLot)];
+    }
     const allLotNos = projectLots.map((lot) => coerceNumber(lot.lotNo ?? lot.LotNo, -1));
     const hasLotZero = allLotNos.includes(0);
     const uniqueLots = Array.from(
@@ -391,7 +414,7 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted, defaultOpenBifurcation }, 
     ).filter(lot => lot > 0).sort((a, b) => a - b);
     // Include "0" tab only when there are actual rows with lot number 0
     return ["all", ...(hasLotZero ? ["0"] : []), ...uniqueLots.map((lot) => String(lot))];
-  }, [projectLots]);
+  }, [projectLots, selectedLot, isGlobalLotSelected]);
 
   const filteredRows = rows;
 
@@ -399,7 +422,7 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted, defaultOpenBifurcation }, 
     if (!projectId) return false;
     if (!updates?.length) return true;
     try {
-      const lotParam = selectedLot ? `?lotNo=${selectedLot}` : '';
+      const lotParam = effectiveLot !== null ? `?lotNo=${effectiveLot}` : '';
       await API.put(`/NRDataLots/assign${lotParam}`, {
         projectId,
         updates: updates.map((item) => ({
@@ -414,14 +437,40 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted, defaultOpenBifurcation }, 
       return true;
     } catch (error) {
       console.error("Failed to save lot numbers", error);
-      showToast("Failed to save lot numbers", "error");
+      const errorMsg =
+        error.response?.data?.message ||
+        (typeof error.response?.data === "string" ? error.response.data : null) ||
+        "Failed to save lot numbers";
+      showToast(errorMsg, "error");
       return false;
     }
+  };
+
+  const isLotDispatched = (lotNo) => {
+    if (lotNo === null || lotNo === undefined || lotNo === "all") return false;
+    const num = Number(lotNo);
+    const lotObj = projectLots.find((p) => Number(p.lotNo) === num);
+    return Boolean(lotObj && (lotObj.isDispatched || lotObj.isDispatchExceeded || lotObj.status === 0));
+  };
+
+  const getNextAvailableLotNumber = () => {
+    const existingLots = (projectLots || []).map((p) => Number(p.lotNo)).filter((l) => l > 0);
+    const rowsLots = (bifurcateRows?.length ? bifurcateRows : rows || []).map((r) => coerceNumber(r.lotNumber, 0)).filter((l) => l > 0);
+    const allKnownLots = Array.from(new Set([...existingLots, ...rowsLots]));
+    let candidate = 1;
+    while (allKnownLots.includes(candidate) || isLotDispatched(candidate)) {
+      candidate++;
+    }
+    return candidate;
   };
 
   const saveProjectLotRange = async (startDate, endDate, lotNo) => {
     if (!projectId || !startDate || !endDate || !lotNo) {
       console.warn("Missing required parameters for ProjectLotRange", { projectId, startDate, endDate, lotNo });
+      return false;
+    }
+    if (isLotDispatched(lotNo)) {
+      showToast(`Lot ${lotNo} has already been dispatched and cannot be modified`, "error");
       return false;
     }
     try {
@@ -436,10 +485,10 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted, defaultOpenBifurcation }, 
       console.log("ProjectLotRange saved successfully");
       return true;
     } catch (error) {
+      const msg = error.response?.data?.message || "Warning: Failed to save range metadata";
       console.error("Failed to save ProjectLotRange", error);
-      showToast("Warning: Lot range saved to database but failed to save range metadata", "warning");
-      // Don't fail the entire bifurcation process if this fails
-      return true;
+      showToast(msg, "warning");
+      return false;
     }
   };
 
@@ -462,8 +511,13 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted, defaultOpenBifurcation }, 
     }
   };
 
-  const handleDeleteCatchNo = async (catchNo) => {
+  const handleDeleteCatchNo = async (catchNo, lotNo) => {
     if (!projectId) return;
+    const targetLot = lotNo ?? activeLotTab;
+    if (isLotDispatched(targetLot)) {
+      showToast(`Lot ${targetLot} has already been dispatched and cannot be modified`, "error");
+      return;
+    }
     try {
       // Find out which EnvLot this catch belongs to *before* deleting
       let staleEnvLotNo = null;
@@ -532,6 +586,14 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted, defaultOpenBifurcation }, 
     }
 
     const targetLot = coerceNumber(lotNumber, 0);
+    if (isLotDispatched(targetLot)) {
+      showToast(`Target Lot ${targetLot} has already been dispatched and cannot be modified`, "error");
+      return;
+    }
+    if (isLotDispatched(activeLotTab)) {
+      showToast(`Lot ${activeLotTab} has already been dispatched and cannot be modified`, "error");
+      return;
+    }
     const inRangeSet = new Set(inRangeCatchNos);
 
     const outOfRangeTargetRows = bRows.filter((row) => {
@@ -807,6 +869,16 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted, defaultOpenBifurcation }, 
         lotNumber: coerceNumber(item.LotNo ?? item.lotNo ?? item.lotNumber, 0)
       }));
       setBifurcateRows(allRows);
+      if (lotNumber === null || isLotDispatched(lotNumber)) {
+        const existingLots = (projectLots || []).map((p) => Number(p.lotNo)).filter((l) => l > 0);
+        const rowsLots = allRows.map((r) => coerceNumber(r.lotNumber, 0)).filter((l) => l > 0);
+        const allKnown = Array.from(new Set([...existingLots, ...rowsLots]));
+        let candidate = 1;
+        while (allKnown.includes(candidate) || isLotDispatched(candidate)) {
+          candidate++;
+        }
+        setLotNumber(candidate);
+      }
     } catch (error) {
       console.error("Failed to fetch data for bifurcation", error);
       showToast("Failed to fetch data for bifurcation", "error");
@@ -1094,6 +1166,17 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted, defaultOpenBifurcation }, 
           );
         }
 
+        const rowLotNo = record?.LotNo ?? record?.lotNo ?? activeLotTab;
+        const isDispatched = isLotDispatched(rowLotNo);
+
+        if (isDispatched) {
+          return (
+            <Tooltip title={`Lot ${rowLotNo} has been dispatched and is read-only.`}>
+              <Tag color="error" style={{ fontSize: 11, padding: "1px 6px" }}>Locked (Dispatched)</Tag>
+            </Tooltip>
+          );
+        }
+
         return (
           <Space size={4}>
             <Tooltip title="Edit this row inline">
@@ -1115,7 +1198,7 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted, defaultOpenBifurcation }, 
             <Popconfirm
               title="Delete Catch Number"
               description={`Are you sure you want to delete catch number ${record.CatchNo}?`}
-              onConfirm={() => handleDeleteCatchNo(record.CatchNo)}
+              onConfirm={() => handleDeleteCatchNo(record.CatchNo, rowLotNo)}
               okText="Yes"
               cancelText="No"
               okButtonProps={{ danger: true }}
@@ -1332,16 +1415,34 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted, defaultOpenBifurcation }, 
                       />
                     </div>
                     <div>
-                      <Text type="secondary" style={{ fontSize: 11, fontWeight: 600 }}>
-                        Lot Number
-                      </Text>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <Text type="secondary" style={{ fontSize: 11, fontWeight: 600 }}>
+                          Lot Number
+                        </Text>
+                        <Button
+                          type="link"
+                          size="small"
+                          style={{ padding: 0, fontSize: 11, height: "auto" }}
+                          onClick={() => setLotNumber(getNextAvailableLotNumber())}
+                        >
+                          Use next available (Lot {getNextAvailableLotNumber()})
+                        </Button>
+                      </div>
                       <InputNumber
                         min={0}
                         value={lotNumber}
+                        status={lotNumber && isLotDispatched(lotNumber) ? "error" : undefined}
                         style={{ width: "100%", marginTop: 6 }}
                         placeholder="Enter lot number"
                         onChange={(value) => setLotNumber(value)}
                       />
+                      {lotNumber && isLotDispatched(lotNumber) && (
+                        <div style={{ marginTop: 4 }}>
+                          <Text type="danger" style={{ fontSize: 11 }}>
+                            ⚠️ Lot {lotNumber} has already been dispatched and cannot be modified.
+                          </Text>
+                        </div>
+                      )}
                     </div>
                     <div
                       style={{
@@ -1368,16 +1469,42 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted, defaultOpenBifurcation }, 
               <Tabs
                 className="lot-tabs"
                 activeKey={activeLotTab}
-                onChange={(key) => setActiveLotTab(key)}
-                items={lotTabs.map((lotKey) => ({
-                  key: lotKey,
-                  label:
-                    lotKey === "all"
-                      ? "All Lots"
-                      : Number(lotKey) === 0
-                      ? "Lot 0"
-                      : `Lot ${lotKey}`,
-                }))}
+                onChange={(key) => {
+                  setActiveLotTab(key);
+                  setCurrentPage(1);
+                  setRows([]);
+                }}
+                items={lotTabs.map((lotKey) => {
+                  const lotNum = Number(lotKey);
+                  const lotObj = projectLots.find((p) => Number(p.lotNo) === lotNum);
+                  const isDispatched = lotObj?.isDispatched || lotObj?.isDispatchExceeded || lotObj?.status === 0;
+                  return {
+                    key: lotKey,
+                    label: (
+                      <span>
+                        {lotKey === "all"
+                          ? "All Lots"
+                          : Number(lotKey) === 0
+                          ? "Lot 0"
+                          : `Lot ${lotKey}`}
+                        {isDispatched && (
+                          <Tag
+                            color="error"
+                            style={{
+                              marginLeft: 6,
+                              fontSize: "10px",
+                              lineHeight: "16px",
+                              padding: "0 4px",
+                              borderRadius: "4px",
+                            }}
+                          >
+                            Dispatched
+                          </Tag>
+                        )}
+                      </span>
+                    ),
+                  };
+                })}
               />
               {activeLotTab === "all" && (
                 <div className="lot-filter-bar">

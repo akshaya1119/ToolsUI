@@ -260,7 +260,14 @@ export default function Navbar({ onToggleSidebar, onLogout, searchQuery, onSearc
               className="flex items-center gap-2 px-3 py-2.5 bg-white border border-slate-200 rounded-xl hover:border-blue-300 hover:bg-blue-50 transition-all text-slate-700 text-base font-medium"
             >
               <Package size={16} className="text-blue-600" />
-              <span>Lot: {selectedLot ? selectedLot : 'All'}</span>
+              <div className="flex items-center gap-1.5">
+                <span>Lot: {selectedLot ? selectedLot : 'All'}</span>
+                {selectedLot && lots.find(l => l.lotNo === selectedLot)?.isDispatchExceeded && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-100 text-red-700 font-semibold border border-red-200">
+                    Dispatched
+                  </span>
+                )}
+              </div>
               <FiChevronDown className={`text-lg transition-transform ${lotFilterOpen ? 'rotate-180' : ''}`} />
             </button>
 
@@ -290,13 +297,20 @@ export default function Navbar({ onToggleSidebar, onLogout, searchQuery, onSearc
                         <button
                           key={lot.lotNo}
                           onClick={() => handleLotSelect(lot)}
-                          className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-all flex items-center justify-between ${
+                          className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-all flex items-center justify-between gap-3 ${
                             selectedLot === lot.lotNo
                               ? 'bg-blue-100 text-blue-700'
                               : 'text-slate-700 hover:bg-slate-100'
                           }`}
                         >
-                          <span>Lot {lot.lotNo}</span>
+                          <div className="flex items-center gap-1.5">
+                            <span>Lot {lot.lotNo}</span>
+                            {lot.isDispatchExceeded && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-100 text-red-700 font-semibold border border-red-200">
+                                Dispatched
+                              </span>
+                            )}
+                          </div>
                           <span className="text-xs text-slate-500">({lot.catchCount} catches)</span>
                         </button>
                       ))}

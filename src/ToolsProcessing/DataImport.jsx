@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import '@ant-design/v5-patch-for-react-19'
-import { Row, Col, Card, Select, Upload, Button, Typography, Space, Table, Tabs, Checkbox, Input, Modal, Radio, DatePicker, Popconfirm } from 'antd';
+import { Row, Col, Card, Select, Upload, Tooltip, Tag, Button, Typography, Space, Table, Tabs, Checkbox, Input, Modal, Radio, DatePicker, Popconfirm } from 'antd';
 import dayjs from 'dayjs';
 import { TriangleAlert, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
 import { MessageService } from "../services/MessageService";
@@ -95,6 +95,27 @@ const DataImport = () => {
   const [localLotFilter, setLocalLotFilter] = useState(""); // Local lot number filter
 
   // 👉 Initialize activeTab from localStorage on mount
+  const [projectLots, setProjectLots] = useState([]);
+
+  useEffect(() => {
+    if (projectId) {
+      API.get(`/NRDataLots/GetByProjectId/${projectId}?includeDispatched=true`)
+        .then((res) => {
+          if (Array.isArray(res.data)) {
+            setProjectLots(res.data);
+          }
+        })
+        .catch((err) => console.error("Failed to fetch lots for dispatch check", err));
+    }
+  }, [projectId]);
+
+  const isLotDispatched = (lotNo) => {
+    if (lotNo === null || lotNo === undefined || lotNo === "all" || lotNo === "") return false;
+    const num = Number(lotNo);
+    const lotObj = projectLots.find((p) => Number(p.lotNo) === num);
+    return Boolean(lotObj && (lotObj.isDispatched || lotObj.isDispatchExceeded || lotObj.status === 0));
+  };
+
   useEffect(() => {
     const savedTab = localStorage.getItem(`dataImportActiveTab_${projectId}`);
     if (savedTab) {
@@ -228,12 +249,12 @@ const DataImport = () => {
     setLoading(true);
     try {
       // Use localLotFilter if it's set, otherwise use selectedLot from store
-      const effectiveLot = localLotFilter && localLotFilter !== "" && localLotFilter !== "ALL" 
-        ? parseInt(localLotFilter, 10) 
-        : selectedLot && selectedLot !== "ALL" 
-          ? selectedLot 
+      const effectiveLot = localLotFilter && localLotFilter !== "" && localLotFilter !== "ALL"
+        ? parseInt(localLotFilter, 10)
+        : selectedLot && selectedLot !== "ALL"
+          ? selectedLot
           : null;
-      
+
       const lotParam = effectiveLot ? { lotNo: effectiveLot } : {};
       const res = await API.get(`/NrData1/GetByProjectId/${projectId}`, {
         params: {
@@ -367,6 +388,12 @@ const DataImport = () => {
   }, [projectId, activeTab, selectedLot]);
 
   const handleSave = async (record, selectedValue) => {
+    const targetLot = record.lotNo ?? record.LotNo ?? selectedLot;
+    if (isLotDispatched(targetLot)) {
+      showToast(`Lot ${targetLot} has already been dispatched and cannot be modified`, "error");
+      return;
+    }
+
     const normalizedValue =
       selectedValue === undefined || selectedValue === null
         ? ""
@@ -447,6 +474,12 @@ const DataImport = () => {
   };
 
   const handleIgnoreConflict = async (conflict) => {
+    const targetLot = conflict.lotNo ?? conflict.LotNo ?? selectedLot;
+    if (isLotDispatched(targetLot)) {
+      showToast(`Lot ${targetLot} has already been dispatched and cannot be modified`, "error");
+      return;
+    }
+
     try {
       const lotParam = selectedLot ? `&lotNo=${selectedLot}` : '';
       await API.put(`/NrData1/conflicts/status?ProjectId=${projectId}${lotParam}`, {
@@ -486,6 +519,11 @@ const DataImport = () => {
   };
 
   const handleMergeSelectedRows = async (separator) => {
+    if (isLotDispatched(selectedLot)) {
+      showToast(`Lot ${selectedLot} has already been dispatched and cannot be modified`, "error");
+      return;
+    }
+
     if (selectedUploadedCatchNos.length !== 2) {
       showToast("Please select rows from exactly 2 catch numbers.", "warning");
       return;
@@ -1532,6 +1570,17 @@ const DataImport = () => {
             </Space>
           );
         }
+        const rowLot = record.LotNo ?? record.lotNo ?? selectedLot;
+        const isDispatched = isLotDispatched(rowLot);
+
+        if (isDispatched) {
+          return (
+            <Tooltip title={`Lot ${rowLot} has been dispatched and is read-only.`}>
+              <Tag color="error" style={{ fontSize: 11, padding: "1px 6px" }}>Locked</Tag>
+            </Tooltip>
+          );
+        }
+
         return (
           <Space size="small">
             <Button
@@ -1580,6 +1629,11 @@ const DataImport = () => {
 
   const handleDeleteRow = async (record) => {
     if (!record?.id) return;
+    const rowLot = record.LotNo ?? record.lotNo ?? selectedLot;
+    if (isLotDispatched(rowLot)) {
+      showToast(`Lot ${rowLot} has been dispatched and cannot be modified`, "error");
+      return;
+    }
     try {
       setLoading(true);
       const token = localStorage.getItem("token");
@@ -1832,6 +1886,12 @@ const DataImport = () => {
       return;
     }
 
+    const targetLot = newRow.fields["LotNo"] ?? selectedLot;
+    if (isLotDispatched(targetLot)) {
+      showToast(`Lot ${targetLot} has already been dispatched and cannot be modified`, "error");
+      return;
+    }
+
     // Validate mandatory fields: NRQuantity, LotNo, Pages
     const mandatoryFields = ["NRQuantity", "LotNo", "Pages"];
     const missingMandatory = mandatoryFields.filter(fieldName => {
@@ -1974,6 +2034,11 @@ const DataImport = () => {
   };
 
   const handleEditRow = (record) => {
+    const rowLot = record?.LotNo ?? record?.lotNo ?? selectedLot;
+    if (isLotDispatched(rowLot)) {
+      showToast(`Lot ${rowLot} has been dispatched and cannot be modified`, "error");
+      return;
+    }
     setEditingRowId(record.id);
     setEditFormData({ ...record });
     setOriginalEditFormData({ ...record });
@@ -1987,6 +2052,13 @@ const DataImport = () => {
 
   const handleSaveEdit = async () => {
     if (!editingRowId) return;
+
+    const rowLot = originalEditFormData?.LotNo ?? editFormData?.LotNo ?? selectedLot;
+    if (isLotDispatched(rowLot)) {
+      showToast(`Lot ${rowLot} has been dispatched and cannot be modified`, "error");
+      setEditingRowId(null);
+      return;
+    }
 
     try {
       setLoading(true);
@@ -2177,7 +2249,7 @@ const DataImport = () => {
           month = parseInt(parts[1], 10);
           day = parseInt(parts[2], 10);
         }
-        
+
         if (day && month && year) {
           const parsedDate = new Date(year, month - 1, day);
           if (parsedDate.getFullYear() === year && parsedDate.getMonth() === month - 1 && parsedDate.getDate() === day) {
@@ -2185,7 +2257,7 @@ const DataImport = () => {
           }
         }
       }
-      
+
       // Fallback to default Date.parse
       if (Date.parse(value)) {
         return new Date(value);  // If it's a valid date string, parse it
@@ -2272,7 +2344,7 @@ const DataImport = () => {
       >
         <Card
           title={
-            <div 
+            <div
               style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", userSelect: "none" }}
               onClick={() => setUploadSectionCollapsed(prev => !prev)}
             >
@@ -2287,15 +2359,18 @@ const DataImport = () => {
           }
           extra={
             <Space size={6} onClick={e => e.stopPropagation()}>
-              <Button
-                type="primary"
-                size="small"
-                icon={<PlusOutlined />}
-                style={{ minWidth: 110, height: 28, fontSize: 12 }}
-                onClick={() => setAddRowOpen((prev) => !prev)}
-              >
-                Add Data
-              </Button>
+              <Tooltip title={isLotDispatched(selectedLot) ? `Lot ${selectedLot} is dispatched (read-only)` : ""}>
+                <Button
+                  type="primary"
+                  size="small"
+                  icon={<PlusOutlined />}
+                  disabled={isLotDispatched(selectedLot)}
+                  style={{ minWidth: 110, height: 28, fontSize: 12 }}
+                  onClick={() => setAddRowOpen((prev) => !prev)}
+                >
+                  Add Data
+                </Button>
+              </Tooltip>
 
               <Button
                 size="small"
@@ -2313,33 +2388,40 @@ const DataImport = () => {
                 Load Conflict
               </Button>
 
-              <Button
-                danger
-                size="small"
-                icon={<Trash2 size={14} />}
-                style={{
-                  minWidth: 110,
-                  height: 28,
-                  fontSize: 12,
-                  backgroundColor: "#ff4d4f",
-                  borderColor: "#ff4d4f",
-                  color: "#fff",
-                }}
-                onClick={async () => {
-                  const confirmed = await MessageService.confirm(
-                    "Are you sure you want to delete NR data for this project?",
-                    {
-                      title: "Confirm Deletion",
-                      confirmText: "Yes, Delete",
-                      cancelText: "Cancel",
-                      type: 'error',
+              <Tooltip title={isLotDispatched(selectedLot) ? `Lot ${selectedLot} is dispatched (read-only)` : ""}>
+                <Button
+                  danger
+                  size="small"
+                  disabled={isLotDispatched(selectedLot)}
+                  icon={<Trash2 size={14} />}
+                  style={{
+                    minWidth: 110,
+                    height: 28,
+                    fontSize: 12,
+                    backgroundColor: isLotDispatched(selectedLot) ? undefined : "#ff4d4f",
+                    borderColor: isLotDispatched(selectedLot) ? undefined : "#ff4d4f",
+                    color: isLotDispatched(selectedLot) ? undefined : "#fff",
+                  }}
+                  onClick={async () => {
+                    if (isLotDispatched(selectedLot)) {
+                      showToast(`Lot ${selectedLot} is dispatched and cannot be deleted`, "error");
+                      return;
                     }
-                  );
-                  if (confirmed) await deleteNRData();
-                }}
-              >
-                Delete NR Data
-              </Button>
+                    const confirmed = await MessageService.confirm(
+                      "Are you sure you want to delete NR data for this project?",
+                      {
+                        title: "Confirm Deletion",
+                        confirmText: "Yes, Delete",
+                        cancelText: "Cancel",
+                        type: 'error',
+                      }
+                    );
+                    if (confirmed) await deleteNRData();
+                  }}
+                >
+                  Delete NR Data
+                </Button>
+              </Tooltip>
             </Space>
           }
           bordered={true}
@@ -2932,21 +3014,26 @@ const DataImport = () => {
                     </Button>
                   </Space>
                 ) : activeTab === "4" ? (
-                  <Button
-                    type="primary"
-                    size="small"
-                    onClick={() => lotBifurcationRef.current?.openBifurcationModal?.()}
-                  >
-                    Bifurcate Lots
-                  </Button>
+                  <Tooltip title={isLotDispatched(selectedLot) ? `Lot ${selectedLot} is dispatched and cannot be bifurcated` : ""}>
+                    <Button
+                      type="primary"
+                      size="small"
+                      disabled={isLotDispatched(selectedLot)}
+                      onClick={() => lotBifurcationRef.current?.openBifurcationModal?.()}
+                    >
+                      Bifurcate Lots
+                    </Button>
+                  </Tooltip>
                 ) : activeTab === "5" ? (
-                  <Button
-                    size="small"
-                    disabled={mergeSelectionCount < 2}
-                    onClick={() => mergeCatchRef.current?.openMergeModal?.()}
-                  >
-                    Merge Selected
-                  </Button>
+                  <Tooltip title={isLotDispatched(selectedLot) ? `Lot ${selectedLot} is dispatched and cannot be modified` : ""}>
+                    <Button
+                      size="small"
+                      disabled={mergeSelectionCount < 2 || isLotDispatched(selectedLot)}
+                      onClick={() => mergeCatchRef.current?.openMergeModal?.()}
+                    >
+                      Merge Selected
+                    </Button>
+                  </Tooltip>
                 ) : null
               }
             >

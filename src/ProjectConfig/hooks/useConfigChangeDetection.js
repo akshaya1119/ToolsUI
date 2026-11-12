@@ -9,6 +9,9 @@ export const useConfigChangeDetection = (
   innerEnvelopes,
   outerEnvelopes,
   selectedBoxFields,
+  selectedUniversityExtraBoxFields,
+  selectedOfficeExtraBoxFields,
+  selectedNodalExtraBoxFields,
   selectedEnvelopeFields,
   selectedHeaderVerificationFields,
   extraTypeSelection,
@@ -25,6 +28,7 @@ export const useConfigChangeDetection = (
   innerBundlingCriteria,
   extraProcessingConfig,
   duplicateConfig,
+  selectedMss,
   mssInsertPosition
 ) => {
   const previousSnapshotRef = useRef(null);
@@ -37,6 +41,9 @@ export const useConfigChangeDetection = (
     innerEnvelopes: JSON.stringify(innerEnvelopes),
     outerEnvelopes: JSON.stringify(outerEnvelopes),
     selectedBoxFields: JSON.stringify(selectedBoxFields),
+    selectedUniversityExtraBoxFields: JSON.stringify(selectedUniversityExtraBoxFields),
+    selectedOfficeExtraBoxFields: JSON.stringify(selectedOfficeExtraBoxFields),
+    selectedNodalExtraBoxFields: JSON.stringify(selectedNodalExtraBoxFields),
     selectedEnvelopeFields: JSON.stringify(selectedEnvelopeFields),
     selectedHeaderVerificationFields: JSON.stringify(selectedHeaderVerificationFields),
     extraTypeSelection: JSON.stringify(extraTypeSelection),
@@ -53,6 +60,7 @@ export const useConfigChangeDetection = (
     innerBundlingCriteria: JSON.stringify(innerBundlingCriteria),
     extraProcessingConfig: JSON.stringify(extraProcessingConfig),
     duplicateConfig: JSON.stringify(duplicateConfig),
+    selectedMss: JSON.stringify(selectedMss),
     mssInsertPosition: String(mssInsertPosition),
   });
 
@@ -63,6 +71,9 @@ export const useConfigChangeDetection = (
       innerEnvelopes: "Inner Envelopes",
       outerEnvelopes: "Outer Envelopes",
       selectedBoxFields: "Box Breaking Criteria",
+      selectedUniversityExtraBoxFields: "Box Breaking Criteria (University Extra)",
+      selectedOfficeExtraBoxFields: "Box Breaking Criteria (Office Extra)",
+      selectedNodalExtraBoxFields: "Box Breaking Criteria (Nodal Extra)",
       selectedEnvelopeFields: "Envelope Making Criteria",
       selectedHeaderVerificationFields: "Header Verification Fields",
       extraTypeSelection: "Extra Configuration",
@@ -79,6 +90,7 @@ export const useConfigChangeDetection = (
       innerBundlingCriteria: "Inner Bundling Criteria",
       extraProcessingConfig: "Extra Processing Configuration",
       duplicateConfig: "Duplicate Configuration",
+      selectedMss: "MSS Types",
       mssInsertPosition: "MSS Row Insert Position",
     };
     return displayNames[fieldKey] || fieldKey;

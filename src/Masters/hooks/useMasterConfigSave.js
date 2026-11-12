@@ -164,7 +164,9 @@ export const useMasterConfigSave = (
 
       let extrasPayloads = Object.entries(extraTypeSelection)
         .map(([typeName, mode]) => {
-          const et = extraTypes.find((t) => t.type === typeName);
+          const et = (extraTypes || []).find(
+            (t) => t.type === typeName || t.type?.toLowerCase() === typeName?.toLowerCase()
+          );
           if (!et) return null;
 
           const config = extraProcessingConfig[typeName] || {};
@@ -210,10 +212,7 @@ export const useMasterConfigSave = (
         .filter(Boolean);
 
       if (isExtraAsPerNR && extrasPayloads.length === 0) {
-        const typesList = (extraTypes && extraTypes.length > 0)
-          ? extraTypes
-          : [{ extraTypeId: 1, type: "Nodal" }, { extraTypeId: 2, type: "University" }, { extraTypeId: 3, type: "Office" }];
-        extrasPayloads = typesList.map((et) => ({
+        extrasPayloads = (extraTypes || []).map((et) => ({
           id: 0,
           groupId: Number(groupId),
           typeId: Number(typeId),

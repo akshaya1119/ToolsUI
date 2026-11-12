@@ -118,6 +118,34 @@ export const compareConfigurations = (existingConfig, newConfig, enabledModules 
       label: "Enhancement",
       moduleName: "Envelope Setup and Enhancement",
     },
+    roundOffBeforeEnhancement: {
+      label: "Round Off Before Enhancement",
+      moduleName: "Envelope Setup and Enhancement",
+    },
+    useCustomCatchSerial: {
+      label: "Use Custom Catch Serial",
+      moduleName: "Envelope Setup and Enhancement",
+    },
+    customCatchSerials: {
+      label: "Custom Catch Serials",
+      moduleName: "Envelope Setup and Enhancement",
+    },
+    boxBreakingCriteriaForNodalExtra: {
+      label: "Box Breaking Criteria For Nodal Extra",
+      moduleName: "Box Breaking",
+    },
+    boxBreakingCriteriaForUniExtra: {
+      label: "Box Breaking Criteria For University Extra",
+      moduleName: "Box Breaking",
+    },
+    boxBreakingCriteriaForOffcExtra: {
+      label: "Box Breaking Criteria For Office Extra",
+      moduleName: "Box Breaking",
+    },
+    headerVerificationFields: {
+      label: "Header Verification Fields",
+      moduleName: "Duplicate Tool",
+    },
     mssTypes: {
       label: "MSS Types",
       moduleName: "Envelope Setup and Enhancement",
@@ -165,11 +193,15 @@ export const compareConfigurations = (existingConfig, newConfig, enabledModules 
     Object.entries(config || {}).forEach(([type, item]) => {
       const hasEnvelope = item.envelopeType && (item.envelopeType.Inner || item.envelopeType.Outer);
       const hasRange = item.rangeConfig && Array.isArray(item.rangeConfig.ranges) && item.rangeConfig.ranges.length > 0;
+      const hasNodal = item.nodalConfigs && item.nodalConfigs !== "{}" && item.nodalConfigs !== "null";
       
-      const hasContent = item.mode && (
+      const hasContent = (item.mode || item.isExtraProcessingAsPerNR) && (
         (item.value && String(item.value) !== "0") || 
         hasEnvelope || 
-        hasRange
+        hasRange ||
+        item.isExtraProcessingAsPerNR ||
+        item.attachExtraForEachCatchForAllNodal ||
+        hasNodal
       );
       if (hasContent) {
         filtered[type] = item;

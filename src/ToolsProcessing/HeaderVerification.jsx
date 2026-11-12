@@ -100,15 +100,15 @@ const HeaderVerification = () => {
             ...(token && { Authorization: `Bearer ${token}` })
           }
         });
-        console.log('[HeaderVerification] Fetched users from VITE_API_BASE_URL:', res.data);
+        // console.log('[HeaderVerification] Fetched users from VITE_API_BASE_URL:', res.data);
         const map = {};
         (res.data || []).forEach(user => {
           // Use only firstName
           const displayName = user.firstName || user.userName || `User ${user.userId}`;
           map[user.userId] = displayName;
-          console.log(`[HeaderVerification] Mapped userId ${user.userId} to "${displayName}"`);
+          // console.log(`[HeaderVerification] Mapped userId ${user.userId} to "${displayName}"`);
         });
-        console.log('[HeaderVerification] Final user map:', map);
+        // console.log('[HeaderVerification] Final user map:', map);
         setUserMap(map);
       } catch (err) {
         console.error('Failed to fetch users from VITE_API_BASE_URL:', err);
@@ -296,7 +296,7 @@ const HeaderVerification = () => {
   }, [projectId]);
 
   useEffect(() => { fetchAllMeta(); }, [fetchAllMeta]);
-  
+
   // Auto-select category or Correction filter ONCE on initial project load
   // If user has roleId <= 4 and there are corrections (correctionCount > 0), show filtered correction data first!
   useEffect(() => {
@@ -315,7 +315,7 @@ const HeaderVerification = () => {
       setSelectedStatus('ALL');
     }
   }, [summaryStats, initCatch, isRoleAuthorized]);
-  
+
   useEffect(() => { fetchRecords(); }, [fetchRecords]);
 
   const getNumericStatus = normalizeStatus;
@@ -526,9 +526,9 @@ const HeaderVerification = () => {
       width: 100,
       ...getColumnSearchProps(fieldName),
       sorter: (a, b) => {
-          const valA = (a.dynamicData && a.dynamicData[fieldName]) || a[fieldName] || a[fieldName.toLowerCase()] || a[fieldName.toUpperCase()] || '';
-          const valB = (b.dynamicData && b.dynamicData[fieldName]) || b[fieldName] || b[fieldName.toLowerCase()] || b[fieldName.toUpperCase()] || '';
-          return String(valA).localeCompare(String(valB));
+        const valA = (a.dynamicData && a.dynamicData[fieldName]) || a[fieldName] || a[fieldName.toLowerCase()] || a[fieldName.toUpperCase()] || '';
+        const valB = (b.dynamicData && b.dynamicData[fieldName]) || b[fieldName] || b[fieldName.toLowerCase()] || b[fieldName.toUpperCase()] || '';
+        return String(valA).localeCompare(String(valB));
       },
       sortOrder: tableSorter.field === fieldName ? tableSorter.order : null,
       render: (value, record) => {
@@ -580,7 +580,7 @@ const HeaderVerification = () => {
       sorter: (a, b) => String(a.date || '').localeCompare(String(b.date || '')),
       sortOrder: tableSorter.field === 'date' ? tableSorter.order : null,
       render: (value, record) => (
-          <span className="text-sm text-gray-600">{value}</span>
+        <span className="text-sm text-gray-600">{value}</span>
       ),
     },
     {
@@ -592,7 +592,7 @@ const HeaderVerification = () => {
       sorter: (a, b) => String(a.time || '').localeCompare(String(b.time || '')),
       sortOrder: tableSorter.field === 'time' ? tableSorter.order : null,
       render: (value, record) => (
-          <span className="text-sm text-gray-600">{value}</span>
+        <span className="text-sm text-gray-600">{value}</span>
       ),
     },
     {
@@ -603,10 +603,10 @@ const HeaderVerification = () => {
       filterDropdown: ({ confirm }) => {
         // Maps display label → selectedStatus API key
         const options = [
-          { label: 'All',          value: 'ALL' },
+          { label: 'All', value: 'ALL' },
           { label: 'Not Verified', value: 'NOT_VERIFIED' },
-          { label: 'Verified',     value: 'VERIFIED' },
-          { label: 'Needs Review',      value: 'UNCLEAR' },
+          { label: 'Verified', value: 'VERIFIED' },
+          { label: 'Needs Review', value: 'UNCLEAR' },
         ];
         return (
           <div style={{ padding: 8, minWidth: 160 }}>
@@ -721,7 +721,8 @@ const HeaderVerification = () => {
     [tableColumns, visibleColumns]
   );
 
-  const handleOpenPreview = useCallback((record) => {    setSelectedRecord(record);
+  const handleOpenPreview = useCallback((record) => {
+    setSelectedRecord(record);
     setPreviewOpen(true);
   }, []);
 
@@ -788,7 +789,7 @@ const HeaderVerification = () => {
       const updatedRecord = records.find(r => r.id === recordId);
       if (!updatedRecord) throw new Error('Record not found');
       const userId = getCurrentUserId();
-      
+
       // If overrideValues is provided (for batch updates), use those instead of record values
       const payload = {
         remark: overrideValues?.remark !== undefined ? overrideValues.remark : (fieldName === 'remark' ? newValue : (updatedRecord.remark || '')),
@@ -798,7 +799,7 @@ const HeaderVerification = () => {
       headerFields.forEach(f => {
         payload[f] = overrideValues?.[f] !== undefined ? overrideValues[f] : (fieldName === f ? newValue : ((updatedRecord.dynamicData && updatedRecord.dynamicData[f]) || updatedRecord[f] || updatedRecord[f.toLowerCase()] || updatedRecord[f.toUpperCase()] || ''));
       });
-      console.log('[HeaderVerification] handleFieldUpdate payload:', payload, 'userId from token:', userId);
+      // console.log('[HeaderVerification] handleFieldUpdate payload:', payload, 'userId from token:', userId);
       const lotParam = selectedLot ? `&lotNo=${selectedLot}` : '';
       const res = await API.put(`/Correction/HeaderVerification/${recordId}?projectId=${projectId}${lotParam}`, payload);
       const updatedRecordData = { ...res.data, date: updatedRecord.date, time: updatedRecord.time, remark: res.data.remark ?? '' };
@@ -833,7 +834,7 @@ const HeaderVerification = () => {
       headerFields.forEach(f => {
         payload[f] = (updatedRecord.dynamicData && updatedRecord.dynamicData[f]) || updatedRecord[f] || updatedRecord[f.toLowerCase()] || updatedRecord[f.toUpperCase()] || '';
       });
-      console.log('[HeaderVerification] handleStatusChange payload:', payload, 'userId from token:', userId);
+      // console.log('[HeaderVerification] handleStatusChange payload:', payload, 'userId from token:', userId);
       const lotParam = selectedLot ? `&lotNo=${selectedLot}` : '';
       const res = await API.put(`/Correction/HeaderVerification/${recordId}?projectId=${projectId}${lotParam}`, payload);
       const updatedRecordData = { ...res.data, date: updatedRecord.date, time: updatedRecord.time, remark: res.data.remark ?? '' };
@@ -916,7 +917,7 @@ const HeaderVerification = () => {
         verifiedBy: userId ?? null,
       };
 
-      console.log('[HeaderVerification] handleSaveRow payload:', payload, 'userId from token:', userId);
+      // console.log('[HeaderVerification] handleSaveRow payload:', payload, 'userId from token:', userId);
       const lotParam = selectedLot ? `&lotNo=${selectedLot}` : '';
       const res = await API.put(`/Correction/HeaderVerification/${recordId}?projectId=${projectId}${lotParam}`, payload);
       const updatedRecordData = { ...res.data, date: updatedRecord.date, time: updatedRecord.time, remark: res.data.remark ?? '' };
@@ -939,228 +940,225 @@ const HeaderVerification = () => {
 
   return (
     <>
-    <div className="w-full h-full min-h-0 flex flex-col overflow-hidden">
-      <style>{customTableStyles}</style>
-      <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 flex-shrink-0 px-6 pt-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Paper Header Verification</h1>
-          <p className="text-sm text-gray-500 mt-1">Search, filter, edit, and verify academic papers</p>
-        </div>
-        <div className="flex items-center gap-3">
-          {isRoleAuthorized && (() => {
-            const allVerified = summaryStats.total > 0 && summaryStats.notVerified === 0 && summaryStats.unclear === 0;
-            return (
-              <button
-                onClick={() => setShowBulkVerifyModal(true)}
-                disabled={allVerified}
-                className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg shadow-sm transition-colors ${
-                  allVerified
+      <div className="w-full h-full min-h-0 flex flex-col overflow-hidden">
+        <style>{customTableStyles}</style>
+        <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 flex-shrink-0 px-6 pt-6">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Paper Header Verification</h1>
+            <p className="text-sm text-gray-500 mt-1">Search, filter, edit, and verify academic papers</p>
+          </div>
+          <div className="flex items-center gap-3">
+            {isRoleAuthorized && (() => {
+              const allVerified = summaryStats.total > 0 && summaryStats.notVerified === 0 && summaryStats.unclear === 0;
+              return (
+                <button
+                  onClick={() => setShowBulkVerifyModal(true)}
+                  disabled={allVerified}
+                  className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg shadow-sm transition-colors ${allVerified
                     ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                     : 'bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer'
-                }`}
-                title={allVerified ? 'All catches are already verified' : 'Bulk verify all catches in this project'}
-              >
-                <Check className="w-4 h-4" />
-                Verify All
-              </button>
-            );
-          })()}
+                    }`}
+                  title={allVerified ? 'All catches are already verified' : 'Bulk verify all catches in this project'}
+                >
+                  <Check className="w-4 h-4" />
+                  Verify All
+                </button>
+              );
+            })()}
+          </div>
         </div>
-      </div>
 
-      <div className="px-6 py-4 flex-shrink-0">
-        <SummaryCardsHV
-          records={records}
-          summaryStats={summaryStats}
-          selectedCardKey={correctionFilter ? null : selectedStatus}
-          onSelectCard={handleSelectStatusCard}
-        />
-      </div>
+        <div className="px-6 py-4 flex-shrink-0">
+          <SummaryCardsHV
+            records={records}
+            summaryStats={summaryStats}
+            selectedCardKey={correctionFilter ? null : selectedStatus}
+            onSelectCard={handleSelectStatusCard}
+          />
+        </div>
 
-      <div className="flex-1 min-h-0 mx-6 mb-6 bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden flex">
-        <div
-  className={`flex-1 min-h-0 min-w-0 overflow-hidden flex ${
-    previewOpen ? 'lg:flex-row flex-col' : 'flex-col'
-  }`}
->
+        <div className="flex-1 min-h-0 mx-6 mb-6 bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden flex">
           <div
-  className={`min-w-0 min-h-0 ${
-    previewOpen ? 'lg:w-2/3 w-full' : 'w-full'
-  } flex flex-col overflow-hidden`}
->
-            <div className="p-4 border-b border-gray-200 bg-white flex-shrink-0">
-              <SearchBarHV
-                globalSearch={searchInput}
-                onGlobalSearchChange={setSearchInput}
-                onResetFilters={handleResetFilters}
-                tableSorter={tableSorter}
-                totalRecords={records.length}
-                filteredCount={filteredRecords.length}
-                lots={lots}
-                selectedLot={selectedLot}
-                onLotChange={setSelectedLot}
-                selectedStatus={selectedStatus}
-                onStatusChange={setSelectedStatus}
-                columnFilters={columnFilters}
-                onColumnFilterChange={(field, value) => {
-                  setColumnFilters(prev => ({
-                    ...prev,
-                    [field]: value,
-                  }));
-                  setCurrentPage(1);
-                }}
-                onDownload={() => showToast('Downloading to CSV...', 'success')}
-                visibleColumns={visibleColumns}
-                toggleableColumns={ALL_TOGGLEABLE}
-                onColumnToggle={handleColumnToggle}
-                showCorrection={canShowCorrection}
-                userRoleId={currentUserRoleId}
-                isCorrectionFilter={correctionFilter}
-                onCorrectionFilterToggle={handleToggleCorrectionFilter}
-                correctionCount={summaryStats.correctionCount ?? 0}
-              />
-            </div>
-
-            <div className="flex-1 min-h-0 min-w-0 overflow-hidden bg-gray-50">
-              {loading ? (
-                <div className="flex items-center justify-center h-full p-8">
-                  <div className="w-8 h-8 border-4 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
-                </div>
-              ) : displayedTotalRecords === 0 ? (
-                <div className="flex flex-col items-center justify-center p-12 text-center text-gray-500 h-full">
-                  <Filter className="w-12 h-12 mb-4 text-gray-300" />
-                  <p className="text-lg font-medium text-gray-900">No records found</p>
-                  <p className="text-sm mt-1">Try adjusting your search or filters.</p>
-                </div>
-              ) : (
-                <div id="table-scroll-container" className="max-h-full overflow-auto">
-                  <Table
-                    className="header-verification-table"
-                    dataSource={displayedRows}
-                    columns={visibleTableColumns}
-                    rowKey="id"
-                    loading={loading}
-                    onChange={handleTableChange}
-                    pagination={false}
-                    scroll={{ x: visibleTableColumns.reduce((sum, col) => sum + (col.width || 120), 0) }}
-                    sticky={{ 
-                      offsetHeader: 0,
-                      getContainer: () => document.getElementById('table-scroll-container')
-                    }}
-                    locale={{
-                      emptyText: (
-                        <div className="p-12 text-center text-gray-500">
-                          <Filter className="mx-auto mb-4 w-12 h-12 text-gray-300" />
-                          <p className="text-lg font-medium text-gray-900">No records found</p>
-                          <p className="text-sm mt-1">Try adjusting your search or filters.</p>
-                        </div>
-                      ),
-                    }}
-                    onRow={(record) => {
-                      const isSelected = previewOpen && selectedRecord?.id === record.id;
-                      const status = normalizeStatus(record.status);
-                      let rowStyle = { cursor: 'pointer', backgroundColor: '#ffffff' };
-                      
-                      // Highlight selected row with blue background ONLY when preview is open
-                      if (isSelected) {
-                        rowStyle.backgroundColor = '#dbeafe';
-                      }
-                      // Add status-based row coloring for non-selected rows
-                      else if (status === 1) {
-                        rowStyle.backgroundColor = '#f0fdf4'; // light green for verified
-                      } else if (status === 2) {
-                        rowStyle.backgroundColor = '#fef3c7'; // medium orange for needs review
-                      }
-                      
-                      return {
-                        onClick: () => {
-                          if (editingRowId !== record.id) {
-                            handleOpenPreview(record);
-                          }
-                        },
-                        style: rowStyle,
-                      };
-                    }}
-                  />
-                </div>
-              )}
-            </div>
-
-            <div className="border-t border-gray-200 bg-white px-4 py-3 flex items-center justify-between flex-wrap gap-2 flex-shrink-0">
-              <span className="text-sm text-gray-600">
-                {loading
-                  ? 'Loading...'
-                  : displayedTotalRecords > 0
-                    ? `${(currentPage - 1) * pageSize + 1}–${Math.min(currentPage * pageSize, displayedTotalRecords)} of ${displayedTotalRecords} records`
-                    : '0 records'
-                }
-              </span>
-              <div className="flex items-center gap-2">
-                <Button
-                  size="small"
-                  disabled={loading || currentPage === 1}
-                  onClick={() => setCurrentPage(currentPage - 1)}
-                >
-                  Previous
-                </Button>
-                <span className="text-sm">
-                  {loading ? 'Loading…' : (
-                    <>Page <Input
-                      type="number"
-                      min={1}
-                      max={displayedTotalPages}
-                      value={currentPage}
-                      onChange={(e) => {
-                        const val = parseInt(e.target.value) || 1;
-                        setCurrentPage(Math.min(Math.max(val, 1), displayedTotalPages));
-                      }}
-                      style={{ width: 50 }}
-                      size="small"
-                    /> of {displayedTotalPages}</>
-                  )}
-                </span>
-                <Button
-                  size="small"
-                  disabled={currentPage >= displayedTotalPages}
-                  onClick={() => setCurrentPage(currentPage + 1)}
-                >
-                  Next
-                </Button>
-                <select
-                  value={pageSize}
-                  onChange={(e) => {
-                    setPageSize(Number(e.target.value));
+            className={`flex-1 min-h-0 min-w-0 overflow-hidden flex ${previewOpen ? 'lg:flex-row flex-col' : 'flex-col'
+              }`}
+          >
+            <div
+              className={`min-w-0 min-h-0 ${previewOpen ? 'lg:w-2/3 w-full' : 'w-full'
+                } flex flex-col overflow-hidden`}
+            >
+              <div className="p-4 border-b border-gray-200 bg-white flex-shrink-0">
+                <SearchBarHV
+                  globalSearch={searchInput}
+                  onGlobalSearchChange={setSearchInput}
+                  onResetFilters={handleResetFilters}
+                  tableSorter={tableSorter}
+                  totalRecords={records.length}
+                  filteredCount={filteredRecords.length}
+                  lots={lots}
+                  selectedLot={selectedLot}
+                  onLotChange={setSelectedLot}
+                  selectedStatus={selectedStatus}
+                  onStatusChange={setSelectedStatus}
+                  columnFilters={columnFilters}
+                  onColumnFilterChange={(field, value) => {
+                    setColumnFilters(prev => ({
+                      ...prev,
+                      [field]: value,
+                    }));
                     setCurrentPage(1);
                   }}
-                  style={{ padding: '4px 8px', borderRadius: '2px', border: '1px solid #d9d9d9' }}
-                >
-                  <option value={10}>10 / page</option>
-                  <option value={20}>20 / page</option>
-                  <option value={50}>50 / page</option>
-                  <option value={100}>100 / page</option>
-                </select>
+                  onDownload={() => showToast('Downloading to CSV...', 'success')}
+                  visibleColumns={visibleColumns}
+                  toggleableColumns={ALL_TOGGLEABLE}
+                  onColumnToggle={handleColumnToggle}
+                  showCorrection={canShowCorrection}
+                  userRoleId={currentUserRoleId}
+                  isCorrectionFilter={correctionFilter}
+                  onCorrectionFilterToggle={handleToggleCorrectionFilter}
+                  correctionCount={summaryStats.correctionCount ?? 0}
+                />
               </div>
+
+              <div className="flex-1 min-h-0 min-w-0 overflow-hidden bg-gray-50">
+                {loading ? (
+                  <div className="flex items-center justify-center h-full p-8">
+                    <div className="w-8 h-8 border-4 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
+                  </div>
+                ) : displayedTotalRecords === 0 ? (
+                  <div className="flex flex-col items-center justify-center p-12 text-center text-gray-500 h-full">
+                    <Filter className="w-12 h-12 mb-4 text-gray-300" />
+                    <p className="text-lg font-medium text-gray-900">No records found</p>
+                    <p className="text-sm mt-1">Try adjusting your search or filters.</p>
+                  </div>
+                ) : (
+                  <div id="table-scroll-container" className="max-h-full overflow-auto">
+                    <Table
+                      className="header-verification-table"
+                      dataSource={displayedRows}
+                      columns={visibleTableColumns}
+                      rowKey="id"
+                      loading={loading}
+                      onChange={handleTableChange}
+                      pagination={false}
+                      scroll={{ x: visibleTableColumns.reduce((sum, col) => sum + (col.width || 120), 0) }}
+                      sticky={{
+                        offsetHeader: 0,
+                        getContainer: () => document.getElementById('table-scroll-container')
+                      }}
+                      locale={{
+                        emptyText: (
+                          <div className="p-12 text-center text-gray-500">
+                            <Filter className="mx-auto mb-4 w-12 h-12 text-gray-300" />
+                            <p className="text-lg font-medium text-gray-900">No records found</p>
+                            <p className="text-sm mt-1">Try adjusting your search or filters.</p>
+                          </div>
+                        ),
+                      }}
+                      onRow={(record) => {
+                        const isSelected = previewOpen && selectedRecord?.id === record.id;
+                        const status = normalizeStatus(record.status);
+                        let rowStyle = { cursor: 'pointer', backgroundColor: '#ffffff' };
+
+                        // Highlight selected row with blue background ONLY when preview is open
+                        if (isSelected) {
+                          rowStyle.backgroundColor = '#dbeafe';
+                        }
+                        // Add status-based row coloring for non-selected rows
+                        else if (status === 1) {
+                          rowStyle.backgroundColor = '#f0fdf4'; // light green for verified
+                        } else if (status === 2) {
+                          rowStyle.backgroundColor = '#fef3c7'; // medium orange for needs review
+                        }
+
+                        return {
+                          onClick: () => {
+                            if (editingRowId !== record.id) {
+                              handleOpenPreview(record);
+                            }
+                          },
+                          style: rowStyle,
+                        };
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+
+              <div className="border-t border-gray-200 bg-white px-4 py-3 flex items-center justify-between flex-wrap gap-2 flex-shrink-0">
+                <span className="text-sm text-gray-600">
+                  {loading
+                    ? 'Loading...'
+                    : displayedTotalRecords > 0
+                      ? `${(currentPage - 1) * pageSize + 1}–${Math.min(currentPage * pageSize, displayedTotalRecords)} of ${displayedTotalRecords} records`
+                      : '0 records'
+                  }
+                </span>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="small"
+                    disabled={loading || currentPage === 1}
+                    onClick={() => setCurrentPage(currentPage - 1)}
+                  >
+                    Previous
+                  </Button>
+                  <span className="text-sm">
+                    {loading ? 'Loading…' : (
+                      <>Page <Input
+                        type="number"
+                        min={1}
+                        max={displayedTotalPages}
+                        value={currentPage}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value) || 1;
+                          setCurrentPage(Math.min(Math.max(val, 1), displayedTotalPages));
+                        }}
+                        style={{ width: 50 }}
+                        size="small"
+                      /> of {displayedTotalPages}</>
+                    )}
+                  </span>
+                  <Button
+                    size="small"
+                    disabled={currentPage >= displayedTotalPages}
+                    onClick={() => setCurrentPage(currentPage + 1)}
+                  >
+                    Next
+                  </Button>
+                  <select
+                    value={pageSize}
+                    onChange={(e) => {
+                      setPageSize(Number(e.target.value));
+                      setCurrentPage(1);
+                    }}
+                    style={{ padding: '4px 8px', borderRadius: '2px', border: '1px solid #d9d9d9' }}
+                  >
+                    <option value={10}>10 / page</option>
+                    <option value={20}>20 / page</option>
+                    <option value={50}>50 / page</option>
+                    <option value={100}>100 / page</option>
+                  </select>
+                </div>
+              </div>
+
             </div>
 
+            {previewOpen && selectedRecord && (
+              <div className="lg:w-1/3 w-full min-h-0 h-full flex-shrink-0 border-l border-gray-200 overflow-hidden">
+                <PrintPreviewHV
+                  record={selectedRecord}
+                  allRecords={filteredRecords}
+                  onClose={handleClosePreview}
+                  onStatusChange={handleStatusChange}
+                  onFieldUpdate={handleFieldUpdate}
+                  currentUser={currentUser}
+                  userMap={userMap}
+                  headerFields={headerFields}
+                />
+              </div>
+            )}
           </div>
-
-          {previewOpen && selectedRecord && (
-            <div className="lg:w-1/3 w-full min-h-0 h-full flex-shrink-0 border-l border-gray-200 overflow-hidden">
-              <PrintPreviewHV
-                record={selectedRecord}
-                allRecords={filteredRecords}
-                onClose={handleClosePreview}
-                onStatusChange={handleStatusChange}
-                onFieldUpdate={handleFieldUpdate}
-                currentUser={currentUser}
-                userMap={userMap}
-                headerFields={headerFields}
-              />
-            </div>
-          )}
         </div>
       </div>
-    </div>
 
       {/* Bulk-Verify Modal */}
       {showBulkVerifyModal && (

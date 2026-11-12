@@ -189,6 +189,11 @@ const LotWisePanel = ({
                   label: (
                     <Space size="small">
                       <Text>Lot {lot.lotNo}</Text>
+                      {lot.isDispatchExceeded && (
+                        <Tag color="red" style={{ margin: 0 }}>
+                          Dispatched
+                        </Tag>
+                      )}
                       {hasStale && (
                         <Tag color="orange" style={{ margin: 0 }}>
                           ⟳
@@ -198,6 +203,11 @@ const LotWisePanel = ({
                   ),
                   children: (
                     <div style={{ padding: "12px" }}>
+                      {lot.isDispatchExceeded && (
+                        <div style={{ marginBottom: 12, padding: "8px 12px", background: "#fff2f0", border: "1px solid #ffccc7", borderRadius: 6, color: "#cf1322", fontSize: 13 }}>
+                          Lot {lot.lotNo} has exceeded its dispatch date ({lot.dispatchDate ? new Date(lot.dispatchDate).toLocaleDateString() : 'crossed'}) and is locked (read-only). Generating reports is disabled.
+                        </div>
+                      )}
                       {/* Templates Section - Now Second */}
                       <div style={{ marginBottom: 24 }}>
                         <div style={{
@@ -212,14 +222,14 @@ const LotWisePanel = ({
                             Templates
                           </Text>
                           <Space size="small">
-                            <Tooltip title={!canExecute ? "View-only access: Generating reports is disabled" : !hasAnyTemplateFile ? "Upload at least one template first" : ""}>
+                            <Tooltip title={lot.isDispatchExceeded ? "Dispatch date has exceeded (Read-Only)" : !canExecute ? "View-only access: Generating reports is disabled" : !hasAnyTemplateFile ? "Upload at least one template first" : ""}>
                               <span>
                                 <Button
                                   size="small"
                                   type="primary"
                                   onClick={() => handleGenerateAllLotTemplates(lot.lotNo)}
                                   loading={bulkGeneratingLots}
-                                  disabled={!canExecute || !lotReportStatus?.[lot.lotNo] || lotTemplates.length === 0 || !hasAnyTemplateFile}
+                                  disabled={!canExecute || lot.isDispatchExceeded || !lotReportStatus?.[lot.lotNo] || lotTemplates.length === 0 || !hasAnyTemplateFile}
                                 >
                                   Generate All
                                 </Button>
@@ -281,7 +291,7 @@ const LotWisePanel = ({
                                       )}
                                     </div>
                                     <Space size="small">
-                                      <Tooltip title={!canExecute ? "View-only access: Generating reports is disabled" : !hasTemplateFile ? "Upload template first" : ""}>
+                                      <Tooltip title={lot.isDispatchExceeded ? "Dispatch date has exceeded (Read-Only)" : !canExecute ? "View-only access: Generating reports is disabled" : !hasTemplateFile ? "Upload template first" : ""}>
                                         <span>
                                           <Button
                                             size="small"
@@ -294,7 +304,7 @@ const LotWisePanel = ({
                                               }
                                             }}
                                             loading={isGenerating}
-                                            disabled={!canExecute || !lotReportStatus?.[lot.lotNo] || !hasTemplateFile}
+                                            disabled={!canExecute || lot.isDispatchExceeded || !lotReportStatus?.[lot.lotNo] || !hasTemplateFile}
                                           >
                                             Generate
                                           </Button>

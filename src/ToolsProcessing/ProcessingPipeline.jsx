@@ -19,7 +19,7 @@ import {
   Divider,
   Select,
 } from "antd";
-import { HistoryOutlined, ExclamationCircleOutlined, SyncOutlined } from "@ant-design/icons";
+import { HistoryOutlined, ExclamationCircleOutlined, SyncOutlined, CloudUploadOutlined } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import axios from "axios";
@@ -37,6 +37,7 @@ import ExistingReportModal from "./components/ExistingReportModal";
 import TemplatesPanel from "./components/TemplatesPanel";
 import LotWisePanel from "./components/LotWisePanel";
 import ReportTemplateManagement from './components/ReportTemplateManagement';
+import ErpSyncModal from './components/ErpSyncModal';
 import useModulePermission from "../hooks/useModulePermission";
 
 const { Text } = Typography;
@@ -107,6 +108,7 @@ const ProcessingPipeline = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [steps, setSteps] = useState([]);
   const [selectedModules, setSelectedModules] = useState([]);
+  const [autoRunQueue, setAutoRunQueue] = useState(null);
   const [allModules, setAllModules] = useState([]);
   const [projectConfig, setProjectConfig] = useState(null);
   const [allFields, setAllFields] = useState([]);
@@ -227,6 +229,7 @@ const ProcessingPipeline = () => {
   const [generatedTemplateReports, setGeneratedTemplateReports] = useState([]);
   const [reportVersions, setReportVersions] = useState({});
   const [excelReports, setExcelReports] = useState([]);
+  const [erpSyncModalOpen, setErpSyncModalOpen] = useState(false);
 
   const loadReportVersions = async () => {
     if (!projectId) return;
@@ -737,9 +740,45 @@ const ProcessingPipeline = () => {
           fileUrl: null,
         }));
         setSteps(initialSteps);
-        setSelectedModules([]);
         await checkReportExistence(projectId);
         await fetchPipelineRerunStatus(projectId, selectedBatch);
+
+        // Check for configuration changes / rerun request from sessionStorage
+        const configChangeRaw = sessionStorage.getItem("configChangeData");
+        if (configChangeRaw) {
+          try {
+            const data = JSON.parse(configChangeRaw);
+            if (String(data.projectId) === String(projectId) && data.affectedReports?.length > 0) {
+              const validKeys = new Set(order.map((o) => o.key));
+              const normalizedReports = data.affectedReports
+                .map((r) => (r === "envelope" ? "envelopebreaking" : r))
+                .filter((r) => validKeys.has(r));
+
+              if (normalizedReports.length > 0) {
+                setSelectedModules(normalizedReports);
+                setConfigChanged(true);
+                setChangedFieldsInfo(data.changedModules || []);
+                sessionStorage.removeItem("configChangeData");
+
+                if (data.autoRun) {
+                  setAutoRunQueue(normalizedReports);
+                } else {
+                  message.info(`${normalizedReports.length} report(s) selected for re-processing`);
+                }
+              } else {
+                setSelectedModules([]);
+                sessionStorage.removeItem("configChangeData");
+              }
+            } else {
+              setSelectedModules([]);
+            }
+          } catch (e) {
+            console.error("Failed to parse configChangeData", e);
+            setSelectedModules([]);
+          }
+        } else {
+          setSelectedModules([]);
+        }
       } catch (err) {
         console.error("Failed to load enabled modules", err);
         setEnabledModuleNames([]);
@@ -753,31 +792,24 @@ const ProcessingPipeline = () => {
     loadEnabled();
   }, [projectId]);
 
-  // Listen for configuration changes from sessionStorage
+  // Auto-run pipeline when triggered by configuration change "Re-run Reports"
   useEffect(() => {
-    const configChangeData = sessionStorage.getItem("configChangeData");
-    if (configChangeData) {
-      try {
-        const data = JSON.parse(configChangeData);
-        if (data.projectId === projectId && data.affectedReports) {
-          // Auto-select the affected reports
-          setSelectedModules(data.affectedReports);
-          setConfigChanged(true);
-          setChangedFieldsInfo(data.changedModules || []);
+    if (autoRunQueue && autoRunQueue.length > 0 && !loadingModules && enabledModuleNames.length > 0) {
+      const modulesToRun = [...autoRunQueue];
+      setAutoRunQueue(null);
+      message.loading({
+        content: `Automatically starting pipeline for ${modulesToRun.length} report(s)...`,
+        key: "rerunPipeline",
+        duration: 2.5,
+      });
 
-          // Refresh pipeline rerun status to update pending flags
-          fetchPipelineRerunStatus(projectId, selectedBatch);
+      const timer = setTimeout(() => {
+        processModules(modulesToRun);
+      }, 400);
 
-          // Clear the sessionStorage
-          sessionStorage.removeItem("configChangeData");
-
-          message.info(`${data.affectedReports.length} report(s) selected for re-processing`);
-        }
-      } catch (err) {
-        console.error("Failed to parse config change data", err);
-      }
+      return () => clearTimeout(timer);
     }
-  }, [projectId]);
+  }, [autoRunQueue, loadingModules, enabledModuleNames]);
 
   // Run order helper
 
@@ -3037,6 +3069,16 @@ const loadGeneratedTemplateReports = async () => {
     }
 
     const isSpecificLot = selectedDropdownLot !== "all" && selectedDropdownLot !== null;
+    const currentLotObj = (availableLots || []).find(l => Number(l.lotNo) === Number(selectedDropdownLot));
+    if (isSpecificLot && currentLotObj?.isDispatchExceeded) {
+      message.error(`Lot ${selectedDropdownLot} has exceeded its dispatch date and is read-only. Pipeline processing is not allowed.`);
+      return;
+    }
+    if (!isSpecificLot && availableLots?.length > 0 && availableLots.every(l => l.isDispatchExceeded)) {
+      message.error("All lots in this project have exceeded their dispatch date and are read-only. Processing is not allowed.");
+      return;
+    }
+
     const hasAnyPendingStep = pipelineStepStatus && Object.values(pipelineStepStatus).some(v => v === true);
     if (!isSpecificLot && !hasPendingPipelineChanges && !hasAnyPendingStep && !configChanged) {
       message.info("No new data changes found. Re-run is allowed only after changes (add/remove catch, upload, edit, etc.).");
@@ -3095,8 +3137,9 @@ const loadGeneratedTemplateReports = async () => {
     const fileNames = {
       duplicate: "DuplicateTool.xlsx",
       extra: "ExtrasCalculation.xlsx",
-      enhancement: "EnhancementProcessing.xlsx",
+      enhancement: "EnhancementReport.xlsx",
       envelope: "EnvelopeBreaking.xlsx",
+      envelopebreaking: "EnvelopeBreaking.xlsx",
       box: "BoxBreaking.xlsx",
       envelopeSummary: "EnvelopeSummary.xlsx",
       catchSummary: "CatchSummary.xlsx",
@@ -3474,8 +3517,70 @@ const loadGeneratedTemplateReports = async () => {
   const isStepSelectable = (step) => {
     const isSpecificLot = selectedDropdownLot !== "all" && selectedDropdownLot !== null;
     if (isSpecificLot) {
-      // When a specific lot is selected from top lot selection, all enabled modules are selectable
-      return true;
+      const lotNum = Number(selectedDropdownLot);
+      const currentLotObj = (availableLots || []).find(l => Number(l.lotNo) === lotNum);
+
+      // Dispatched / locked lot cannot be selected or processed
+      if (currentLotObj?.isDispatchExceeded || currentLotObj?.isDispatched || currentLotObj?.status === 0) {
+        return false;
+      }
+
+      const moduleToLotKey = {
+        duplicate: { pending: "pendingDuplicateLots", completed: "completedDuplicateLots" },
+        enhancement: { pending: "pendingEnhancementLots", completed: "completedEnhancementLots" },
+        extra: { pending: "pendingExtraLots", completed: "completedExtraLots" },
+        envelopebreaking: { pending: "pendingEnvelopeLots", completed: "completedEnvelopeLots" },
+        box: { pending: "pendingBoxLots", completed: "completedBoxLots" },
+      };
+
+      if (pipelineStepStatus && moduleToLotKey[step.key]) {
+        const keys = moduleToLotKey[step.key];
+        const pendingLots = pipelineStepStatus[keys.pending] || [];
+        const completedLots = pipelineStepStatus[keys.completed] || [];
+
+        // If this lot has pending work for this step, it is selectable
+        if (pendingLots.includes(lotNum)) {
+          return true;
+        }
+
+        // If this lot has completed this step and is not pending
+        if (completedLots.includes(lotNum)) {
+          // Check if box breaking is outdated for this lot
+          if (step.key === "box") {
+            const isBoxOutdated = lotReportStatus && lotReportStatus[lotNum] && currentLotObj?.minStep < 6;
+            return !!isBoxOutdated;
+          }
+          // Completed and not pending -> NOT selectable
+          return false;
+        }
+
+        // For box breaking, check lotReportStatus directly
+        if (step.key === "box" && lotReportStatus && lotReportStatus[lotNum]) {
+          const isBoxOutdated = currentLotObj?.minStep < 6;
+          return !!isBoxOutdated;
+        }
+
+        // Check against lot's minStep
+        const stepToNumMap = {
+          duplicate: 1,
+          enhancement: 2,
+          extra: 4,
+          envelopebreaking: 5,
+          box: 6,
+        };
+        const stepNum = stepToNumMap[step.key];
+        const lotMinStep = currentLotObj?.minStep ?? 0;
+        if (stepNum !== undefined && lotMinStep > 0 && stepNum < lotMinStep) {
+          // Already passed this step
+          return false;
+        }
+
+        return true;
+      }
+
+      // Fallback
+      const outdated = isStepOutdated(step);
+      return !(step.status === "completed" && !outdated);
     }
 
     const moduleToLotKey = {
@@ -3485,6 +3590,12 @@ const loadGeneratedTemplateReports = async () => {
       envelopebreaking: { pending: "pendingEnvelopeLots", completed: "completedEnvelopeLots" },
       box: { pending: "pendingBoxLots", completed: "completedBoxLots" },
     };
+
+    // If all lots are dispatched, nothing is selectable
+    const areAllLotsExceeded = availableLots?.length > 0 && availableLots.every(l => l.isDispatchExceeded || l.isDispatched);
+    if (areAllLotsExceeded) {
+      return false;
+    }
 
     // Selectable if not completed, or completed but outdated (needs re-run)
     const outdated = isStepOutdated(step);
@@ -3727,10 +3838,27 @@ const loadGeneratedTemplateReports = async () => {
             completedLots = completedLots.filter(l => l === lotNum);
           }
           
+          const dispatchedSet = new Set(
+            (availableLots || [])
+              .filter(l => l.isDispatchExceeded || l.isDispatched)
+              .map(l => l.lotNo)
+          );
+
           if (pendingLots.length > 0 || completedLots.length > 0) {
              const tags = [];
              if (completedLots.length > 0) {
-               tags.push(<Tag color="green" key="completed">Completed Lots - {completedLots.join(", ")}</Tag>);
+               const compDispatched = completedLots.filter(l => dispatchedSet.has(l));
+               const compActive = completedLots.filter(l => !dispatchedSet.has(l));
+               if (compActive.length > 0) {
+                 tags.push(<Tag color="green" key="completed">Completed Lots - {compActive.join(", ")}</Tag>);
+               }
+               if (compDispatched.length > 0) {
+                 tags.push(
+                   <Tag color="red" key="completed-dispatched">
+                     Completed & Dispatched - Lot {compDispatched.join(", ")}
+                   </Tag>
+                 );
+               }
              }
              if (pendingLots.length > 0) {
                const truePending = [];
@@ -3756,10 +3884,24 @@ const loadGeneratedTemplateReports = async () => {
                });
 
                if (outdated.length > 0) {
-                 tags.push(<Tag color="orange" key="outdated" icon={<ExclamationCircleOutlined />}>Outdated Lots - {outdated.join(", ")}</Tag>);
+                 const outDispatched = outdated.filter(l => dispatchedSet.has(l));
+                 const outActive = outdated.filter(l => !dispatchedSet.has(l));
+                 if (outActive.length > 0) {
+                   tags.push(<Tag color="orange" key="outdated" icon={<ExclamationCircleOutlined />}>Outdated Lots - {outActive.join(", ")}</Tag>);
+                 }
+                 if (outDispatched.length > 0) {
+                   tags.push(<Tag color="red" key="outdated-dispatched" icon={<ExclamationCircleOutlined />}>Dispatched Lots - {outDispatched.join(", ")} (Locked)</Tag>);
+                 }
                }
                if (truePending.length > 0) {
-                 tags.push(<Tag color="processing" key="pending" >Pending Lots - {truePending.join(", ")}</Tag>);
+                 const penDispatched = truePending.filter(l => dispatchedSet.has(l));
+                 const penActive = truePending.filter(l => !dispatchedSet.has(l));
+                 if (penActive.length > 0) {
+                   tags.push(<Tag color="processing" key="pending" >Pending Lots - {penActive.join(", ")}</Tag>);
+                 }
+                 if (penDispatched.length > 0) {
+                   tags.push(<Tag color="red" key="pending-dispatched">Dispatched Lots - {penDispatched.join(", ")} (Locked)</Tag>);
+                 }
                }
              }
              return <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-start' }}>{tags}</div>;
@@ -4618,6 +4760,36 @@ Object.keys(groupedTpl).forEach((templateKey) => {
         />
       )}
 
+      {(() => {
+        const isSpecificLot = selectedDropdownLot !== "all" && selectedDropdownLot !== null;
+        const currentLotObj = (availableLots || []).find(l => Number(l.lotNo) === Number(selectedDropdownLot));
+        const isCurrentLotExceeded = isSpecificLot && (currentLotObj?.isDispatchExceeded || currentLotObj?.isDispatched);
+        const dispatchedLots = (availableLots || []).filter(l => l.isDispatchExceeded || l.isDispatched);
+
+        if (isCurrentLotExceeded) {
+          return (
+            <Alert
+              message={`Lot ${selectedDropdownLot} Dispatched & Locked (Read-Only)`}
+              description={`Lot ${selectedDropdownLot} has completed dispatch (${currentLotObj?.dispatchDate ? new Date(currentLotObj.dispatchDate).toLocaleDateString() : 'dispatched'}). Pipeline execution, re-processing, and modifications are blocked for this lot.`}
+              type="error"
+              showIcon
+              style={{ marginBottom: 16 }}
+            />
+          );
+        } else if (!isSpecificLot && dispatchedLots.length > 0) {
+          return (
+            <Alert
+              message={`Dispatched Lots Detected: Lot ${dispatchedLots.map(l => l.lotNo).join(", ")}`}
+              description={`The following lot(s) have crossed their dispatch dates and are locked in read-only mode: Lot ${dispatchedLots.map(l => `${l.lotNo} (Dispatched: ${l.dispatchDate ? new Date(l.dispatchDate).toLocaleDateString() : 'Yes'})`).join(", ")}.`}
+              type="info"
+              showIcon
+              style={{ marginBottom: 16 }}
+            />
+          );
+        }
+        return null;
+      })()}
+
       <div className="flex justify-between items-center mb-4">
         <Typography.Title level={3} style={{ marginBottom: 6 }}>
           Processing Pipeline
@@ -4637,17 +4809,44 @@ Object.keys(groupedTpl).forEach((templateKey) => {
           )}
           {(() => {
             const isSpecificLot = selectedDropdownLot !== "all" && selectedDropdownLot !== null;
+            const currentLotObj = (availableLots || []).find(l => Number(l.lotNo) === Number(selectedDropdownLot));
+            const isCurrentLotExceeded = isSpecificLot && (currentLotObj?.isDispatchExceeded || currentLotObj?.isDispatched);
+            const areAllLotsExceeded = !isSpecificLot && availableLots?.length > 0 && availableLots.every(l => l.isDispatchExceeded || l.isDispatched);
+            const isDispatchBlocked = isCurrentLotExceeded || areAllLotsExceeded;
+
             const hasAnyPendingStep = pipelineStepStatus && Object.values(pipelineStepStatus).some(v => v === true);
             const availableCount = (availableLots && availableLots.length) || 0;
             const completedCount = Object.values(lotReportStatus || {}).filter(Boolean).length;
             const boxHasRemaining = availableCount > 0 && completedCount < availableCount;
-            const canStartByData = isSpecificLot || hasPendingPipelineChanges || hasAnyPendingStep || configChanged || boxHasRemaining;
 
             // Determine if modules are ready/allowed to run
             let hasModulePendingData = false;
+            let canStartByData = false;
+
             if (isSpecificLot) {
-              hasModulePendingData = selectedModules.length > 0;
+              const lotNum = Number(selectedDropdownLot);
+              const moduleToPendingLotKey = {
+                duplicate: "pendingDuplicateLots",
+                enhancement: "pendingEnhancementLots",
+                extra: "pendingExtraLots",
+                envelopebreaking: "pendingEnvelopeLots",
+                box: "pendingBoxLots"
+              };
+
+              const lotHasPendingForModule = (m) => {
+                if (m === "box") {
+                  const hasBoxReport = lotReportStatus && lotReportStatus[lotNum];
+                  return !hasBoxReport || (hasBoxReport && currentLotObj?.minStep < 6) || pipelineStepStatus?.boxPending;
+                }
+                const pendingKey = moduleToPendingLotKey[m];
+                return pipelineStepStatus?.[pendingKey]?.includes(lotNum);
+              };
+
+              const pendingSelectedModules = selectedModules.filter(lotHasPendingForModule);
+              canStartByData = pendingSelectedModules.length > 0 || configChanged;
+              hasModulePendingData = pendingSelectedModules.length > 0;
             } else {
+              canStartByData = hasPendingPipelineChanges || hasAnyPendingStep || configChanged || boxHasRemaining;
               // First, filter the selected modules to only those that ACTUALLY have pending data
               const modulesWithPendingData = selectedModules.filter(m => {
                 const listKey = {
@@ -4726,6 +4925,8 @@ Object.keys(groupedTpl).forEach((templateKey) => {
             title={
               !canExecute
                 ? "View-only access: Pipeline execution is disabled"
+                : isDispatchBlocked
+                ? (isCurrentLotExceeded ? `Lot ${selectedDropdownLot} has exceeded its dispatch date and is read-only.` : "All lots in this project have exceeded their dispatch date and are read-only.")
                 : (!canStartByData)
                 ? "No new data found for processing. All data is already processed."
                 : (selectedModules.length === 0
@@ -4735,12 +4936,13 @@ Object.keys(groupedTpl).forEach((templateKey) => {
                     : "")
             }
           >
-            <span style={{ cursor: (!canExecute || !canStartByData) || selectedModules.length === 0 ? "not-allowed" : "default" }}>
+            <span style={{ cursor: (!canExecute || isDispatchBlocked || !canStartByData) || selectedModules.length === 0 ? "not-allowed" : "default" }}>
               <Button
                 type="primary"
                 onClick={handleAudit}
                 disabled={
                   !canExecute ||
+                  isDispatchBlocked ||
                   !projectId ||
                   isProcessing ||
                   selectedModules.length === 0 ||
@@ -4753,6 +4955,20 @@ Object.keys(groupedTpl).forEach((templateKey) => {
           </Tooltip>
           );
           })()}
+          <Button
+            icon={<CloudUploadOutlined />}
+            onClick={() => setErpSyncModalOpen(true)}
+            title="Send lot catches, quantities, envelopes, and pages to ERP"
+            style={{
+              borderColor: "#2563eb",
+              color: "#2563eb",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+            }}
+          >
+            Send to ERP
+          </Button>
         </div>
       </div>
 
@@ -4834,40 +5050,48 @@ Object.keys(groupedTpl).forEach((templateKey) => {
             )}
           </Card>
 
-          <TemplatesPanel
-            open={showTemplatePanel}
-            moduleKey={templatePanel.moduleKey}
-            moduleTitle={templatePanel.moduleKey ? (steps.find((s) => s.key === templatePanel.moduleKey)?.title || "Module") : ""}
-            templates={getTemplatesForModuleKey(templatePanel.moduleKey || "")}
-            templatesLoading={templatesLoading}
-            generatingTemplates={generatingTemplates}
-            templateReportStatus={templateReportStatus}
-            templateDownloads={templateDownloads}
-            staleTemplateIds={staleTemplateIds}
-            staleEnvLotIds={staleEnvLotIds}
-            envLotReports={envLotReports}
-            expandedReportsTemplates={expandedReportsTemplates}
-            bulkGenerating={bulkGenerating}
-            bulkDownloading={bulkDownloading}
-            isMappingNewerThanReport={isMappingNewerThanReport}
-            resolveTemplateId={resolveTemplateId}
-            resolveTemplateName={resolveTemplateName}
-            handleGenerateTemplate={handleGenerateTemplate}
-            handleDownloadEnvLotReport={handleDownloadEnvLotReport}
-            handleDeleteEnvLotReport={handleDeleteEnvLotReport}
-            handleReportsExpansion={handleReportsExpansion}
-            handleGenerateAllTemplates={handleGenerateAllTemplates}
-            handleDownloadAllTemplates={handleDownloadAllTemplates}
-            onClose={closeTemplatePanel}
-            checkIsEnvelopeDependent={(template) => {
-              const envelopeBreakingModuleId = moduleKeyToIdMap["envelopebreaking"];
-              const templateModuleIds = normalizeModuleIds(template?.moduleIds ?? template?.ModuleIds);
-              return envelopeBreakingModuleId && templateModuleIds.includes(envelopeBreakingModuleId);
-            }}
-            isQuantitySheetTemplate={isQuantitySheetTemplate}
-            isCompositeSummaryTemplate={isCompositeSummaryTemplate}
-            canExecute={canExecute}
-          />
+          {(() => {
+            const currentLotObj = (availableLots || []).find(l => Number(l.lotNo) === Number(selectedDropdownLot));
+            const isCurrentLotExceeded = selectedDropdownLot !== "all" && selectedDropdownLot !== null && !!currentLotObj?.isDispatchExceeded;
+            return (
+              <TemplatesPanel
+                open={showTemplatePanel}
+                moduleKey={templatePanel.moduleKey}
+                moduleTitle={templatePanel.moduleKey ? (steps.find((s) => s.key === templatePanel.moduleKey)?.title || "Module") : ""}
+                templates={getTemplatesForModuleKey(templatePanel.moduleKey || "")}
+                templatesLoading={templatesLoading}
+                generatingTemplates={generatingTemplates}
+                templateReportStatus={templateReportStatus}
+                templateDownloads={templateDownloads}
+                staleTemplateIds={staleTemplateIds}
+                staleEnvLotIds={staleEnvLotIds}
+                envLotReports={envLotReports}
+                expandedReportsTemplates={expandedReportsTemplates}
+                bulkGenerating={bulkGenerating}
+                bulkDownloading={bulkDownloading}
+                isMappingNewerThanReport={isMappingNewerThanReport}
+                resolveTemplateId={resolveTemplateId}
+                resolveTemplateName={resolveTemplateName}
+                handleGenerateTemplate={handleGenerateTemplate}
+                handleDownloadEnvLotReport={handleDownloadEnvLotReport}
+                handleDeleteEnvLotReport={handleDeleteEnvLotReport}
+                handleReportsExpansion={handleReportsExpansion}
+                handleGenerateAllTemplates={handleGenerateAllTemplates}
+                handleDownloadAllTemplates={handleDownloadAllTemplates}
+                onClose={closeTemplatePanel}
+                checkIsEnvelopeDependent={(template) => {
+                  const envelopeBreakingModuleId = moduleKeyToIdMap["envelopebreaking"];
+                  const templateModuleIds = normalizeModuleIds(template?.moduleIds ?? template?.ModuleIds);
+                  return envelopeBreakingModuleId && templateModuleIds.includes(envelopeBreakingModuleId);
+                }}
+                isQuantitySheetTemplate={isQuantitySheetTemplate}
+                isCompositeSummaryTemplate={isCompositeSummaryTemplate}
+                canExecute={canExecute}
+                isDispatchExceeded={isCurrentLotExceeded}
+                dispatchedLotMessage={isCurrentLotExceeded ? `Lot ${selectedDropdownLot} has exceeded its dispatch date (${currentLotObj?.dispatchDate ? new Date(currentLotObj.dispatchDate).toLocaleDateString() : 'crossed'}) and is locked (read-only). Generating reports or re-processing is disabled.` : null}
+              />
+            );
+          })()}
           <Modal
             title="Report Generation Error"
             open={errorDetailsModal.visible}
@@ -5072,6 +5296,14 @@ Object.keys(groupedTpl).forEach((templateKey) => {
         onDownload={handleExistingReportDownload}
         onGenerate={handleExistingReportGenerate}
         onCancel={handleExistingReportCancel}
+      />
+
+      <ErpSyncModal
+        open={erpSyncModalOpen}
+        onClose={() => setErpSyncModalOpen(false)}
+        projectId={projectId}
+        initialLotNo={selectedDropdownLot !== "all" && selectedDropdownLot !== null ? Number(selectedDropdownLot) : null}
+        availableLots={availableLots}
       />
 
       <style>{`

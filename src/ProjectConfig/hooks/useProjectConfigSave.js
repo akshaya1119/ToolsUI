@@ -209,7 +209,9 @@ export const useProjectConfigSave = (
         roundOffBeforeEnhancement: duplicateConfig?.roundOffBeforeEnhancement || false,
         mssTypes: selectedMss || [],
         mssAttached: mssInsertPosition || "end",
-        headerVerificationFields: selectedHeaderVerificationFields || []
+        headerVerificationFields: selectedHeaderVerificationFields || [],
+        useCustomCatchSerial: existingConfig?.useCustomCatchSerial ?? false,
+        customCatchSerials: existingConfig?.customCatchSerials ?? null,
       };
 
       console.log("SENDING PROJECT CONFIG PAYLOAD:", JSON.stringify(projectConfigPayload, null, 2));
@@ -218,7 +220,9 @@ export const useProjectConfigSave = (
       // Prepare extras config for comparison — normalize it to match API structure
       const newExtrasConfig = {};
       Object.entries(extraTypeSelection).forEach(([typeName, mode]) => {
-        const et = extraTypes.find((t) => t.type === typeName);
+        const et = (extraTypes || []).find(
+          (t) => t.type === typeName || t.type?.toLowerCase() === typeName?.toLowerCase()
+        );
         if (!et) return;
         
         const config = extraProcessingConfig[typeName] || {};
@@ -231,11 +235,18 @@ export const useProjectConfigSave = (
             : config.envelopeType?.outer || "",
         };
 
+        const isExtraAsPerNR = !!extraProcessingConfig?.extraProcessingAsPerNR;
+        const attachExtraForAllNodal = !!config.attachExtraForEachCatchForAllNodal;
+        const nodalConfigs = config.nodalConfigs || config.nodalValue || null;
+
         const item = {
           mode,
           value: "",
           envelopeType: normalizedEnvelope,
           rangeConfig: null,
+          isExtraProcessingAsPerNR: isExtraAsPerNR,
+          attachExtraForEachCatchForAllNodal: attachExtraForAllNodal,
+          nodalConfigs: nodalConfigs ? (typeof nodalConfigs === "string" ? nodalConfigs : JSON.stringify(nodalConfigs)) : null,
         };
 
         if (mode === "Fixed") {
@@ -276,6 +287,9 @@ export const useProjectConfigSave = (
                 value: item.value ? String(item.value) : "",
                 envelopeType: item.envelopeType ? JSON.parse(item.envelopeType) : { Inner: "", Outer: "" },
                 rangeConfig: item.rangeConfig ? JSON.parse(item.rangeConfig) : null,
+                isExtraProcessingAsPerNR: item.isExtraProcessingAsPerNR ?? item.IsExtraProcessingAsPerNR ?? false,
+                attachExtraForEachCatchForAllNodal: item.attachExtraForEachCatchForAllNodal ?? item.AttachExtraForEachCatchForAllNodal ?? false,
+                nodalConfigs: item.nodalValue || null,
               };
             }
           });
@@ -319,7 +333,9 @@ export const useProjectConfigSave = (
       
       let extrasPayloads = Array.from(extraTypesToProcess)
         .map((typeName) => {
-          const et = (extraTypes || []).find((t) => t.type === typeName || t.type?.toLowerCase() === typeName?.toLowerCase());
+          const et = (extraTypes || []).find(
+            (t) => t.type === typeName || t.type?.toLowerCase() === typeName?.toLowerCase()
+          );
           if (!et) return null;
 
           const config = extraProcessingConfig[typeName] || {};
@@ -440,10 +456,7 @@ export const useProjectConfigSave = (
       // If Extra Processing as per NR is checked but no extra type payloads were formed,
       // generate default payloads for all available extraTypes so backend and pipeline know Extra Processing as per NR is active
       if (isExtraAsPerNR && extrasPayloads.length === 0) {
-        const typesList = (extraTypes && extraTypes.length > 0)
-          ? extraTypes
-          : [{ extraTypeId: 1, type: "Nodal" }, { extraTypeId: 2, type: "University" }, { extraTypeId: 3, type: "Office" }];
-        extrasPayloads = typesList.map((et) => ({
+        extrasPayloads = (extraTypes || []).map((et) => ({
           id: 0,
           ...(finalIsMasterConfig ? { typeId: Number(finalTypeId), groupId: Number(finalGroupId) } : { projectId: Number(projectId) }),
           extraType: et.extraTypeId,

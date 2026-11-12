@@ -14,6 +14,7 @@ import axios from 'axios';
 import { Search, Download, FileText, ChevronDown, ChevronRight, Archive, ArchiveRestore } from 'lucide-react';
 import { useUserMap, getFirstNameFromUserId, getCurrentUserId } from '../../hooks/useUserMap';
 import useStore from '../../stores/ProjectData';
+import BatchCatchAccordion from './BatchCatchAccordion';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -737,21 +738,7 @@ const ReportTemplateManagement = ({
     if (!envLotVal) return <span style={{ color: '#94a3b8' }}>-</span>;
     const envLotNo = typeof envLotVal === 'object' ? (envLotVal?.envLotNo ?? envLotVal?.EnvLotNo ?? String(envLotVal)) : envLotVal;
     const catches = getCatchesForEnvLot(envLotNo);
-    const tip = (
-      <div style={{ padding: 8, minWidth: 180 }}>
-        <div style={{ fontWeight: 600, marginBottom: 6 }}>Batch {String(envLotNo)} — Catches</div>
-        {catches.length > 0
-          ? catches.map((c, i) => <div key={i} style={{ fontSize: 12, padding: '2px 6px', background: '#f0f0f0', borderRadius: 3, marginBottom: 2 }}>{c}</div>)
-          : <span style={{ color: '#999' }}>No catches assigned</span>}
-      </div>
-    );
-    return (
-      <Tooltip title={tip} color="#fff" overlayInnerStyle={{ color: '#333' }}>
-        <Tag color="blue" style={{ cursor: 'pointer' }}>
-          Batch {String(envLotNo)}{catches.length > 0 && <span style={{ marginLeft: 4, fontSize: 11 }}>({catches.length})</span>}
-        </Tag>
-      </Tooltip>
-    );
+    return <BatchCatchAccordion batchNo={envLotNo} catches={catches} />;
   };
 
   const resolveUserName = (userId, fallback) =>

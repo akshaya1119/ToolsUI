@@ -170,6 +170,9 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
       innerEnvelopes,
       outerEnvelopes,
       selectedBoxFields,
+      selectedUniversityExtraBoxFields,
+      selectedOfficeExtraBoxFields,
+      selectedNodalExtraBoxFields,
       selectedEnvelopeFields,
       selectedHeaderVerificationFields,
       extraTypeSelection,
@@ -1330,6 +1333,7 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
         duplicate: "duplicate tool",
         extra: "extra configuration",
         envelope: "envelope breaking",
+        envelopebreaking: "envelope breaking",
         box: "box breaking",
         envelopeSummary: "envelope summary",
         catchSummary: "catch summary report",
@@ -1359,15 +1363,20 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
 
       setShowChangeModal(false);
 
-      // Store the affected reports in sessionStorage for ProcessingPipeline to pick up
+      // Store the affected reports in sessionStorage for ProcessingPipeline to pick up and auto-run
       if (changeData) {
+        const normalizedReports = (changeData.affectedReports || []).map((r) =>
+          r === "envelope" ? "envelopebreaking" : r
+        );
+
         sessionStorage.setItem(
           "configChangeData",
           JSON.stringify({
-            projectId,
-            affectedReports: changeData.affectedReports,
+            projectId: Number(projectId),
+            affectedReports: normalizedReports,
             changedModules: changeData.changedModules,
             changes: changeData.changes,
+            autoRun: true,
           }),
         );
       }
