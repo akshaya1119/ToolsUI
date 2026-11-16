@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import React, { useEffect, useState } from "react";
 import { Table, Button, Select, Modal, Input, Space, message, Tag, Popconfirm, Tooltip } from "antd";
 import {
@@ -15,6 +16,7 @@ import useModulePermission from "../hooks/useModulePermission";
 const { Option } = Select;
 
 const Project = () => {
+    const { t } = useTranslation();
     const { canView, canCreate, canEdit, canDelete } = useModulePermission('MASTER_PROJECT');
     const location = useLocation();
     const [projects, setProjects] = useState([]); // List of project records from /Projects API
@@ -301,31 +303,31 @@ const Project = () => {
     // Define columns for the table
     const columns = [
         {
-            title: 'Project Name',
+            title: t('tables.projectName', 'Project Name'),
             dataIndex: 'projectName', // This column will now display the project name
             key: 'projectName',
             sorter: (a, b) => a.projectName.localeCompare(b.projectName),
             ...getColumnSearchProps('projectName'),
         },
         {
-            title: 'User Assigned',
+            title: t('tables.userAssigned', 'User Assigned'),
             dataIndex: 'userNames', // This column will now display the user names
             key: 'userNames',
-            render: (value) => value || 'No Users Assigned', // If no users, display "No Users Assigned"
+            render: (value) => value || t('tables.noUsersAssigned', 'No Users Assigned'), // If no users, display "No Users Assigned"
             sorter: (a, b) => a.userNames.localeCompare(b.userNames),
             ...getColumnSearchProps('userNames'),
         },
         {
-            title: 'Status',
+            title: t('tables.status', 'Status'),
             key: 'status',
             render: (_, record) => (
                 <Tag color={record.status ? 'red' : 'green'}>
-                    {record.status ? 'Archived' : 'Active'}
+                    {record.status ? t('tables.archived', 'Archived') : t('tables.active', 'Active')}
                 </Tag>
             ),
         },
         {
-            title: 'Actions',
+            title: t('tables.actions', 'Actions'),
             key: 'actions',
             render: (_, record) => (
                 <Space>
@@ -340,8 +342,8 @@ const Project = () => {
                         <Popconfirm
                             title={`Are you sure you want to ${record.status ? 'unarchive' : 'archive'} this project?`}
                             onConfirm={() => handleArchive(record)}
-                            okText="Yes"
-                            cancelText="No"
+                            okText={t("popconfirm.yes", "Yes")}
+                            cancelText={t("popconfirm.no", "No")}
                         >
                             <Button 
                                 type="link" 

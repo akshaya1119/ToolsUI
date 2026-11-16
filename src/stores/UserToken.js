@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import useStore from './ProjectData';
+import i18n from '../i18n';
 
 const USER_TOKEN_KEY = 'token';
 
@@ -15,6 +16,9 @@ const useUserTokenStore = create((set) => ({
     localStorage.clear();
     sessionStorage.clear();
     useStore.getState().resetProject();
+    if (i18n && typeof i18n.changeLanguage === 'function') {
+      i18n.changeLanguage('en');
+    }
     set({ token: "" });
   },
 

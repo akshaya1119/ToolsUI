@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import React, { useEffect, useState } from 'react';
 import { Table, Button, Modal, Input, Space, Switch, message, Tooltip } from 'antd';
 import { EditOutlined, SearchOutlined } from '@ant-design/icons';
@@ -5,6 +6,7 @@ import API from '../hooks/api';
 import useModulePermission from '../hooks/useModulePermission';
 
 const Field = () => {
+    const { t } = useTranslation();
     const { canView, canCreate, canEdit } = useModulePermission('MASTER_FIELDS');
     const [fields, setFields] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -121,14 +123,14 @@ const Field = () => {
 
     const columns = [
         {
-            title: 'Name',
+            title: t('tables.name', 'Name'),
             dataIndex: 'name',
             key: 'name',
             sorter: (a, b) => a.name.localeCompare(b.name),
             ...getColumnSearchProps('name'),
         },
         {
-            title: 'Is Unique',
+            title: t('tables.isUnique', 'Is Unique'),
             dataIndex: 'isUnique',
             key: 'isUnique',
             render: (value) => (value ? 'Yes' : 'No'),
@@ -140,7 +142,7 @@ const Field = () => {
             onFilter: (value, record) => record.isUnique === value,
         },
         {
-            title: 'Actions',
+            title: t('tables.actions', 'Actions'),
             key: 'actions',
             render: (_, record) => (
                 <Space>

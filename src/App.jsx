@@ -1,3 +1,8 @@
+import { ConfigProvider } from 'antd';
+import enUS from 'antd/locale/en_US';
+import hiIN from 'antd/locale/hi_IN';
+import { useTranslation } from 'react-i18next';
+import { loadDynamicTranslations, getInitialLanguage } from './i18n';
 import React, { useState, useEffect, use } from "react";
 import { HashRouter as Router, Route, Routes, Navigate, useNavigate, useLocation } from "react-router-dom";
 import Login from "./Login";
@@ -75,6 +80,20 @@ function TokenChecker() {
 }
 export default function App() {
   const token = useUserToken();
+  const { i18n } = useTranslation();
+  const [antdLocale, setAntdLocale] = useState(i18n.language === 'hi' ? hiIN : enUS);
+
+  useEffect(() => {
+    const activeLang = getInitialLanguage();
+    if (i18n.language !== activeLang) {
+      i18n.changeLanguage(activeLang);
+    }
+    loadDynamicTranslations(activeLang);
+  }, [token]);
+
+  useEffect(() => {
+    setAntdLocale(i18n.language === 'hi' ? hiIN : enUS);
+  }, [i18n.language]);
 
   useEffect(() => {
     if (token) {
@@ -87,7 +106,8 @@ export default function App() {
   }, [token]);
 
   return (
-    <ToastProvider position="top-right">
+    <ConfigProvider locale={antdLocale}>
+      <ToastProvider position="top-right">
       <Router>
         <TokenChecker />
         <Routes>
@@ -309,5 +329,6 @@ export default function App() {
         </Routes>
       </Router>
     </ToastProvider>
+    </ConfigProvider>
   );
 }

@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import React, { useEffect, useState } from 'react';
 import { Table, Button, Modal, Input, Space, message, Tooltip } from 'antd';
 import { EditOutlined, SearchOutlined } from '@ant-design/icons';
@@ -5,6 +6,7 @@ import API from '../hooks/api';
 import useModulePermission from '../hooks/useModulePermission';
 
 const BoxCapacity = () => {
+    const { t } = useTranslation();
     const { canView, canCreate, canEdit } = useModulePermission('MASTER_BOX_CAPACITY');
     const [boxCapacities, setBoxCapacities] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -115,14 +117,14 @@ const BoxCapacity = () => {
 
     const columns = [
         {
-            title: 'Capacity',
+            title: t('tables.capacity', 'Capacity'),
             dataIndex: 'capacity',
             key: 'capacity',
            sorter: (a, b) => a.capacity - b.capacity,
             ...getColumnSearchProps('capacity'),
         },
         {
-            title: 'Actions',
+            title: t('tables.actions', 'Actions'),
             render: (_, record) => (
                 <Space>
                     {canEdit ? (

@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import React, { useEffect, useMemo, useState } from "react";
 import {
   Progress,
@@ -78,6 +79,7 @@ class ErrorBoundary extends React.Component {
 const url3 = import.meta.env.VITE_API_FILE_URL;
 
 const ProcessingPipeline = () => {
+  const { t } = useTranslation();
   const { canExecute, canEdit } = useModulePermission('PROCESSING_PIPELINE');
   const navigate = useNavigate();
   const isConfigured = useStore((state) => state.isConfigured);
@@ -4304,7 +4306,7 @@ const loadGeneratedTemplateReports = async () => {
             <div style={{ padding: "12px 16px", borderBottom: "1px solid #f0f0f0" }}>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
 
-                <Button size="small">Download All</Button>
+                <Button size="small">{t("pipeline.downloadAll", "Download All")}</Button>
                 <Button size="small" disabled={totalSelected === 0}>
                   Download Selected ({totalSelected})
                 </Button>
@@ -4342,8 +4344,8 @@ const loadGeneratedTemplateReports = async () => {
             {/* Action Buttons */}
             <div style={{ padding: "12px 16px", borderBottom: "1px solid #f0f0f0" }}>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <Button size="small" type="primary">Generate All</Button>
-                <Button size="small">Download All</Button>
+                <Button size="small" type="primary">{t("pipeline.generateAll", "Generate All")}</Button>
+                <Button size="small">{t("pipeline.downloadAll", "Download All")}</Button>
                 <Button size="small" disabled={totalSelected === 0}>
                   Download Selected ({totalSelected})
                 </Button>

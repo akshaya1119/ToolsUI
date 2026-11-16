@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import React, { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
@@ -9,6 +10,7 @@ import { getCurrentUserRoleId } from "../hooks/useUserMap";
 import usePermissionsStore from "../stores/UserPermissions";
 
 export default function Sidebar({ collapsed }) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
   const [openGroups, setOpenGroups] = useState({});
@@ -103,13 +105,13 @@ export default function Sidebar({ collapsed }) {
 
   const allMenuItems = [
     {
-      label: projectName ? "Project Dashboard" : "Dashboard",
+      label: projectName ? t("menu.projectDashboard", "Project Dashboard") : t("menu.dashboard", "Dashboard"),
       icon: <FaHome className="text-black" />,
       path: projectName ? "/projectdashboard" : "/dashboard",
       visible: hasPermission("DASHBOARD", "View"),
     },
     {
-      label: "Masters",
+      label: t("menu.masters", "Masters"),
       icon: <FaBookmark className="text-black" />,
       path: "/masters",
       visible: hasPermission("MASTER_PROJECT", "View") ||
@@ -123,33 +125,33 @@ export default function Sidebar({ collapsed }) {
         hasPermission("ROLES_PERMISSIONS", "View"),
     },
     {
-      label: "Reports",
+      label: t("menu.reports", "Reports"),
       icon: <FaChartLine className="text-black" />,
       visible: hasPermission("REPORTS", "View"),
       children: [
-        { label: "Master Config Report", path: "/masterconfig-report", visible: hasPermission("REPORTS", "View") },
+        { label: t("menu.masterConfigReport", "Master Config Report"), path: "/masterconfig-report", visible: hasPermission("REPORTS", "View") },
       ],
     },
     ...(projectName
       ? [
         {
-          label: "Tools",
+          label: t("menu.tools", "Tools"),
           icon: <FaWrench className="text-black" />, // Filled wrench icon
           children: [
-            { label: "Project Configuration", path: "/projectconfiguration", visible: hasPermission("PROJECT_CONFIG", "View") },
-            { label: "Data Import", path: "/dataimport", disabled: !isConfigured, visible: hasPermission("DATA_IMPORT", "View") },
-            { label: "Changed NR Analysis", path: "/changedNRUpload", visible: hasPermission("CHANGED_NR", "View") },
-            { label: "Batch Wise Data", path: "/batchwisedata", visible: hasPermission("BATCH_DATA", "View") },
-            { label: "Nodal & Catch List", path: "/nodal-center-list", visible: hasPermission("NODAL_CATCH", "View") },
-            { label: "Project Templates", path: "/projecttemplates", visible: hasPermission("MASTER_RPT", "View") },
+            { label: t("menu.projectConfiguration", "Project Configuration"), path: "/projectconfiguration", visible: hasPermission("PROJECT_CONFIG", "View") },
+            { label: t("menu.dataImport", "Data Import"), path: "/dataimport", disabled: !isConfigured, visible: hasPermission("DATA_IMPORT", "View") },
+            { label: t("menu.changedNRAnalysis", "Changed NR Analysis"), path: "/changedNRUpload", visible: hasPermission("CHANGED_NR", "View") },
+            { label: t("menu.batchWiseData", "Batch Wise Data"), path: "/batchwisedata", visible: hasPermission("BATCH_DATA", "View") },
+            { label: t("menu.nodalCatchList", "Nodal & Catch List"), path: "/nodal-center-list", visible: hasPermission("NODAL_CATCH", "View") },
+            { label: t("menu.projectTemplates", "Project Templates"), path: "/projecttemplates", visible: hasPermission("MASTER_RPT", "View") },
             {
-              label: "Processing Pipeline",
+              label: t("menu.processingPipeline", "Processing Pipeline"),
               path: "/processingpipeline",
               disabled: nrDataCount === 0 || !isConfigured,
               visible: hasPermission("PROCESSING_PIPELINE", "View")
             },
             {
-              label: "Header Verification",
+              label: t("menu.headerVerification", "Header Verification"),
               path: "/headerverification",
               badge: isRoleAuthorized ? headerCorrectionCount : null,
               visible: hasPermission("HEADER_VERIFICATION", "View")
@@ -161,7 +163,7 @@ export default function Sidebar({ collapsed }) {
     ...(projectName
       ? [
         {
-          label: "Horizontal To Vertical Tool",
+          label: t("menu.horizontalToVertical", "Horizontal To Vertical Tool"),
           icon: <FaWrench className="text-black" />, // Filled wrench icon
           path: "/horizontalToVertical",
           visible: hasPermission("HTOV_TOOL", "View")
@@ -172,12 +174,12 @@ export default function Sidebar({ collapsed }) {
       ? [] // Don't show "Correction Tool" if projectName exists
       : [
         {
-          label: "Correction Tool",
+          label: t("menu.correctionTool", "Correction Tool"),
           icon: <FaWrench className="text-black" />, // Filled wrench icon
           visible: hasPermission("CORRECTION_TOOL", "View"),
           children: [
-            { label: "Excel Upload", path: "/excelupload", visible: hasPermission("CORRECTION_TOOL", "View") },
-            { label: "Correction Tool", path: "/correctiontool", visible: hasPermission("CORRECTION_TOOL", "View") },
+            { label: t("menu.excelUpload", "Excel Upload"), path: "/excelupload", visible: hasPermission("CORRECTION_TOOL", "View") },
+            { label: t("menu.correctionTool", "Correction Tool"), path: "/correctiontool", visible: hasPermission("CORRECTION_TOOL", "View") },
           ],
         },
       ]
@@ -376,7 +378,7 @@ export default function Sidebar({ collapsed }) {
       {/* Logo / Heading */}
       <div className="mb-6">
         {!collapsed && (
-          <h2 className="text-gray-800 text-xl font-bold tracking-wide">Tools Menu</h2>
+          <h2 className="text-gray-800 text-xl font-bold tracking-wide">{t("navbar.toolsMenu", "Tools Menu")}</h2>
         )}
       </div>
 

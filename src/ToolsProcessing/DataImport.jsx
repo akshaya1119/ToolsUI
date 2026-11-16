@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import React, { useEffect, useRef, useState } from 'react';
 import '@ant-design/v5-patch-for-react-19'
 import { Row, Col, Card, Select, Upload, Tooltip, Tag, Button, Typography, Space, Table, Tabs, Checkbox, Input, Modal, Radio, DatePicker, Popconfirm } from 'antd';
@@ -28,6 +29,7 @@ const { TabPane } = Tabs;
 const PRIMARY_COLOR = "#1677ff";
 
 const DataImport = () => {
+  const { t } = useTranslation();
   const { showToast } = useToast();
   const navigate = useNavigate();
   const location = useLocation();
@@ -1593,13 +1595,13 @@ const DataImport = () => {
               <EditOutlined />
             </Button>
             <Popconfirm
-              title="Delete row"
-              description={`Are you sure you want to delete this row?`}
+              title={t('popconfirm.deleteRowTitle', 'Delete row')}
+              description={t('popconfirm.deleteRowDesc', 'Are you sure you want to delete this row?')}
               onConfirm={async () => {
                 await handleDeleteRow(record);
               }}
-              okText="Yes"
-              cancelText="No"
+              okText={t('popconfirm.yes', 'Yes')}
+              cancelText={t('popconfirm.no', 'No')}
               okButtonProps={{ danger: true }}
             >
               <Button
@@ -2455,11 +2457,11 @@ const DataImport = () => {
                         maxCount={1}
                       >
                         {/* <p className="ant-upload-drag-icon">📤</p> */}
-                        <p className="ant-upload-text">Upload Excel or CSV file</p>
+                        <p className="ant-upload-text">{t("pipeline.uploadFile", "Upload Excel or CSV file")}</p>
                         <Text type="secondary" style={{ display: "block" }}>
                           Drag and drop or click to choose a file.
                         </Text>
-                        <Button icon={<UploadOutlined />}>Choose File</Button>
+                        <Button icon={<UploadOutlined />}>{t("pipeline.chooseFile", "Choose File")}</Button>
                       </Upload.Dragger>
                     </Space>
                   </div>
@@ -3037,12 +3039,12 @@ const DataImport = () => {
                 ) : null
               }
             >
-              <TabPane tab="Uploaded Data" key="1">
+              <TabPane tab={t("pipeline.uploadedData", "Uploaded Data")} key="1">
                 <Space direction="vertical" size={12} style={{ width: "100%" }}>
                   <Space wrap size={8} style={{ width: "100%", justifyContent: "space-between" }}>
                     <Space size={8}>
                       <Input.Search
-                        placeholder="Search uploaded data"
+                        placeholder={t("pipeline.searchUploadedData", "Search uploaded data")}
                         allowClear
                         value={globalSearchText}
                         loading={loading && globalSearchText !== ""}
@@ -3177,16 +3179,16 @@ const DataImport = () => {
 
               </TabPane>
 
-              <TabPane tab="Conflict Report" key="2">
+              <TabPane tab={t("pipeline.conflictReport", "Conflict Report")} key="2">
                 {renderConflicts()}
               </TabPane>
-              <TabPane tab="Fill Missing Data" key="3">
+              <TabPane tab={t("pipeline.fillMissingData", "Fill Missing Data")} key="3">
                 {activeTab === "3" && <MissingData />}
               </TabPane>
-              <TabPane tab="Lot Bifurcation" key="4">
+              <TabPane tab={t("pipeline.lotBifurcation", "Lot Bifurcation")} key="4">
                 {activeTab === "4" && <LotsBifurcation ref={lotBifurcationRef} defaultOpenBifurcation={shouldOpenBifurcation} />}
               </TabPane>
-              <TabPane tab="Merge Catch Numbers" key="5">
+              <TabPane tab={t("pipeline.mergeCatchNumbers", "Merge Catch Numbers")} key="5">
                 {activeTab === "5" && (
                   <MergeCatchNumbers
                     ref={mergeCatchRef}

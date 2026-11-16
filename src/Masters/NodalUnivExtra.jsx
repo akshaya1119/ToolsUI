@@ -1,9 +1,11 @@
+import { useTranslation } from 'react-i18next';
 import React, { useEffect, useState } from "react";
 import { Table, Button, Modal, Form, Input, InputNumber, Space, message, Tooltip } from "antd";
 import API from "../hooks/api";
 import useModulePermission from "../hooks/useModulePermission";
 
 const NodalUnivExtra = () => {
+  const { t } = useTranslation();
   const { canView, canCreate, canEdit } = useModulePermission('MASTER_NODAL_EXTRA');
   const [extras, setExtras] = useState([]);
   const [loading, setLoading] = useState(false);

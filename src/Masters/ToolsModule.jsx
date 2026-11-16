@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import React, { useEffect, useState } from 'react';
 import { Table, Button, Modal, Input, Space, message, Select, Tooltip } from 'antd';
 import { EditOutlined, SearchOutlined } from '@ant-design/icons';
@@ -7,6 +8,7 @@ import useModulePermission from '../hooks/useModulePermission';
 const { Option } = Select;
 
 const ToolModule = () => {
+    const { t } = useTranslation();
     const { canView, canCreate, canEdit } = useModulePermission('MASTER_MODULES');
     const [modules, setModules] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -127,7 +129,7 @@ const ToolModule = () => {
 
     const columns = [
         {
-            title: 'Name',
+            title: t('tables.name', 'Name'),
             dataIndex: 'name',
             key: 'name',
             sorter: (a, b) => a.name.localeCompare(b.name),
@@ -145,7 +147,7 @@ const ToolModule = () => {
             ),
         },
         {
-            title: 'Actions',
+            title: t('tables.actions', 'Actions'),
             key: 'actions',
             render: (_, record) => (
                 <Space>

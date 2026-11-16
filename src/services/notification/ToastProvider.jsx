@@ -1,15 +1,109 @@
 import React, { createContext, useCallback } from 'react';
 import { X } from 'lucide-react';
 import { useMessageStore } from '../../stores/useMessageStore';
+import i18n from '../../i18n';
 
 export const ToastContext = createContext();
+
+export const translateToastMessage = (rawMsg) => {
+  if (typeof rawMsg !== 'string') return rawMsg;
+  const trimmed = rawMsg.trim();
+
+  // Direct lookup in active i18n resources
+  if (i18n.exists(trimmed)) {
+    return i18n.t(trimmed);
+  }
+
+  const lookup = {
+    'Upload failed': 'common.feedback.uploadFailed',
+    'Upload failed.': 'common.feedback.uploadFailed',
+    'Upload successful': 'common.feedback.uploadSuccess',
+    'Confirm Deletion': 'common.feedback.confirmDeletion',
+    'Confirmation Required': 'common.feedback.confirmDeletion',
+    'Are you sure you want to delete NR data for this project?': 'common.feedback.deleteNRDataConfirm',
+    'Yes, Delete': 'common.feedback.yesDelete',
+    'Yes': 'popconfirm.yes',
+    'No': 'popconfirm.no',
+    'Cancel': 'common.feedback.cancel',
+    'Confirm': 'common.feedback.success',
+    'Failed to fetch templates.': 'common.feedback.failedToFetchTemplates',
+    'Failed to load mapping.': 'common.feedback.failedToLoadMapping',
+    'Failed to save mapping.': 'common.feedback.failedToSaveMapping',
+    'Failed to import templates. Please try again.': 'common.feedback.failedToImport',
+    'Failed to update template.': 'common.feedback.failedToUpdateTemplate',
+    'Failed to remove template.': 'common.feedback.failedToRemoveTemplate',
+    'Failed to download template.': 'common.feedback.failedToDownloadTemplate',
+    'Catch No is required': 'validation.catchNoRequired',
+    'Capacity is required': 'validation.capacityRequired',
+    'Name is required': 'validation.nameRequired',
+    'Role Name is required': 'validation.roleNameRequired',
+    'Template name is required': 'validation.templateNameRequired',
+    'Template name is required.': 'validation.templateNameRequired',
+    'Group is required': 'validation.groupRequired',
+    'Type is required': 'validation.typeRequired',
+    'Project, and at least one User is required': 'validation.projectRequired',
+    'Please complete project configuration first': 'validation.projectRequired',
+    'Saved successfully': 'common.feedback.saveSuccess',
+    'Saved successfully!': 'common.feedback.saveSuccess',
+    'Updated successfully': 'common.feedback.updateSuccess',
+    'Updated successfully!': 'common.feedback.updateSuccess',
+    'Added successfully': 'common.feedback.addSuccess',
+    'Added successfully!': 'common.feedback.addSuccess',
+    'Deleted successfully': 'common.feedback.deleteSuccess',
+    'Deleted successfully!': 'common.feedback.deleteSuccess',
+    'Operation completed successfully.': 'common.feedback.success',
+    'Operation failed': 'common.feedback.operationFailed',
+    'Save failed': 'common.feedback.saveFailed',
+    'Update failed': 'common.feedback.updateFailed',
+    'Delete failed': 'common.feedback.deleteFailed',
+    'Failed to fetch': 'common.feedback.fetchFailed',
+    'Failed to fetch box capacities': 'common.feedback.fetchFailed',
+    'Failed to fetch envelope types': 'common.feedback.fetchFailed',
+    'Failed to fetch fields': 'common.feedback.fetchFailed',
+    'Failed to fetch modules': 'common.feedback.fetchFailed',
+    'Failed to fetch extras.': 'common.feedback.fetchFailed',
+    'Please fill all fields': 'common.feedback.fillRequired',
+    'Please fill all required fields': 'common.feedback.fillRequired',
+    'Project archived': 'common.feedback.projectArchived',
+    'Project unarchived': 'common.feedback.projectUnarchived'
+  };
+
+  const matchedKey = lookup[trimmed];
+  if (matchedKey && i18n.exists(matchedKey)) {
+    return i18n.t(matchedKey);
+  }
+
+  // Dynamic pattern matching for: "X is required"
+  if (trimmed.endsWith(" is required")) {
+    const field = trimmed.replace(" is required", "");
+    return i18n.language?.startsWith('hi') ? `${field} आवश्यक है` : trimmed;
+  }
+
+  // Dynamic pattern matching for: "Please fill mandatory fields: ..."
+  if (trimmed.startsWith("Please fill mandatory fields: ")) {
+    const fields = trimmed.replace("Please fill mandatory fields: ", "");
+    return i18n.language?.startsWith('hi') ? `कृपया अनिवार्य फ़ील्ड भरें: ${fields}` : trimmed;
+  }
+
+  // Dynamic pattern matching for lot dispatched
+  if (trimmed.includes("has already been dispatched and cannot be modified")) {
+    return i18n.language?.startsWith('hi') ? "यह लॉट पहले ही भेजा जा चुका है और इसे संशोधित नहीं किया जा सकता है" : trimmed;
+  }
+
+  // Fallback check: if it starts with "Failed to"
+  if (trimmed.toLowerCase().startsWith('failed to fetch')) {
+    return i18n.t('common.feedback.fetchFailed');
+  }
+
+  return rawMsg;
+};
 
 export const ToastProvider = ({ children, position = 'top-right' }) => {
   const { messages, removeMessage, addMessage } = useMessageStore();
 
-  // Maintain the showToast API for existing components
   const showToast = useCallback((message, type = 'info', duration = 4000) => {
-    addMessage({ message, type, duration });
+    const translatedMsg = translateToastMessage(message);
+    addMessage({ message: translatedMsg, type, duration });
   }, [addMessage]);
 
   const positionClasses = {
@@ -21,7 +115,7 @@ export const ToastProvider = ({ children, position = 'top-right' }) => {
 
   const toasts = messages.filter((m) => !m.isPersistent);
   const confirms = messages.filter((m) => m.isPersistent);
-  const activeConfirm = confirms[0]; // Sequential: only one at a time
+  const activeConfirm = confirms[0];
 
   return (
     <ToastContext.Provider value={{ showToast }}>
@@ -29,144 +123,82 @@ export const ToastProvider = ({ children, position = 'top-right' }) => {
 
       {/* Background Blur Backdrop for Confirmations */}
       {activeConfirm && (
-        <div className="fixed inset-0 z-[9998] bg-slate-900/20 backdrop-blur-[2px] animate-fade-in transition-all" />
+        <div className="fixed inset-0 z-[9998] bg-slate-900/40 backdrop-blur-[2px] flex items-center justify-center p-4 animate-fade-in transition-all">
+          <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-100 p-6 space-y-4">
+            <h3 className="text-lg font-bold text-slate-900">
+              {translateToastMessage(activeConfirm.title || "Confirmation")}
+            </h3>
+            <p className="text-sm text-slate-600 leading-relaxed">
+              {translateToastMessage(activeConfirm.message)}
+            </p>
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => activeConfirm.resolve && activeConfirm.resolve(false)}
+                className="px-4 py-2 text-sm font-medium rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 transition-colors"
+              >
+                {translateToastMessage(activeConfirm.cancelText || "Cancel")}
+              </button>
+              <button
+                type="button"
+                onClick={() => activeConfirm.resolve && activeConfirm.resolve(true)}
+                className={`px-4 py-2 text-sm font-medium rounded-lg text-white transition-colors ${
+                  activeConfirm.type === 'error' ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'
+                }`}
+              >
+                {translateToastMessage(activeConfirm.confirmText || "Confirm")}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Standard Toasts (Corner) */}
       <div
         className={`fixed z-[9999] space-y-4 ${positionClasses[position] || 'top-4 right-4'} transition-all`}
       >
-        {toasts.map((toast) => (
-          <div
-            key={toast.id}
-            className={`
-              w-80 max-w-sm p-5 rounded-2xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.15)] bg-white border border-slate-100 relative animate-slide-in border-l-4 overflow-hidden
-              ${toast.type === 'success' ? 'border-l-green-500' :
-                toast.type === 'error' ? 'border-l-red-500' :
-                toast.type === 'warning' ? 'border-l-yellow-400' :
-                'border-l-blue-500'}
-            `}
-          >
-            <div className="flex flex-col gap-3">
-              <div className="flex justify-between items-start gap-3">
-                <div className="flex-1">
-                  <div className="text-sm font-bold text-slate-900 tracking-tight leading-snug">
-                    {toast.title || (typeof toast.message === 'string' ? toast.message : '')}
-                  </div>
-                  {(toast.title || typeof toast.message !== 'string') && (
-                    <div className="text-xs font-medium text-slate-500 mt-1 leading-relaxed">
-                      {toast.message}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Progress bar */}
+        {toasts.map((toast) => {
+          const displayMsg = translateToastMessage(toast.message);
+          return (
             <div
-              className={`absolute bottom-0 left-0 h-1 opacity-40 animate-progress
-                ${toast.type === 'success' ? 'bg-green-500' :
-                  toast.type === 'error' ? 'bg-red-500' :
-                  toast.type === 'warning' ? 'bg-yellow-400' :
-                  'bg-blue-500'}
+              key={toast.id}
+              className={`
+                w-80 max-w-sm p-5 rounded-2xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.15)] bg-white border border-slate-100 relative animate-slide-in border-l-4 overflow-hidden
+                ${toast.type === 'success' ? 'border-l-green-500' :
+                  toast.type === 'error' ? 'border-l-red-500' :
+                  toast.type === 'warning' ? 'border-l-yellow-400' :
+                  'border-l-blue-500'}
               `}
-              style={{ animationDuration: `${toast.duration}ms` }}
-            ></div>
-          </div>
-        ))}
-      </div>
-
-      {/* Sequential Confirmation Modal (Centered) */}
-      {activeConfirm && (
-        <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 pointer-events-auto overflow-hidden">
-          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-[4px] animate-fade-in" onClick={() => activeConfirm.resolve(false)} />
-          <div
-            className={`
-              w-full max-w-lg p-8 rounded-[2rem] shadow-[0_25px_70px_-15px_rgba(0,0,0,0.4)] bg-white border border-slate-100 relative animate-scale-up border-t-[6px] overflow-hidden z-10
-              ${activeConfirm.type === 'error' ? 'border-t-red-500' :
-                activeConfirm.type === 'warning' ? 'border-t-yellow-400' :
-                activeConfirm.type === 'info' ? 'border-t-blue-500' :
-                'border-t-blue-600'}
-            `}
-          >
-            <div className="flex flex-col gap-6">
-              <div className="flex justify-between items-start gap-4">
-                <div className="flex-1">
-                  <div className="text-2xl font-black text-slate-900 tracking-tight leading-tight">
-                    {activeConfirm.title || "Confirm Action"}
-                  </div>
-                  <div className="text-[14px] font-medium text-slate-600 mt-4 leading-relaxed max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
-                    {activeConfirm.message}
+            >
+              <div className="flex flex-col gap-3">
+                <div className="flex justify-between items-start gap-3">
+                  <div className="flex-1">
+                    <div className="text-sm font-bold text-slate-900 tracking-tight leading-snug">
+                      {toast.title || (typeof displayMsg === 'string' ? displayMsg : '')}
+                    </div>
+                    {(toast.title || typeof displayMsg !== 'string') && (
+                      <div className="text-xs font-medium text-slate-500 mt-1 leading-relaxed">
+                        {displayMsg}
+                      </div>
+                    )}
                   </div>
                 </div>
-                <button 
-                  onClick={() => activeConfirm.resolve(false)}
-                  className="p-2 hover:bg-slate-100 rounded-full transition-all text-slate-400 hover:text-slate-600 hover:rotate-90"
-                >
-                  <X size={24} />
-                </button>
               </div>
 
-              <div className="flex gap-4 mt-2">
-                 <button
-                  onClick={() => activeConfirm.resolve(false)}
-                  className="flex-1 py-4 px-6 text-[11px] font-black uppercase tracking-[0.2em] text-slate-500 bg-slate-50 hover:bg-slate-100 rounded-2xl border border-slate-200 transition-all active:scale-95"
-                >
-                  {activeConfirm.cancelText || 'Cancel'}
-                </button>
-                <button
-                  onClick={() => activeConfirm.resolve(true)}
-                  className={`
-                    flex-[2] py-4 px-6 text-[11px] font-black uppercase tracking-[0.2em] text-white rounded-2xl transition-all active:scale-95 shadow-xl
-                    ${activeConfirm.type === 'error' ? 'bg-red-500 hover:bg-red-600 shadow-red-200/50' : 
-                      activeConfirm.type === 'warning' ? 'bg-yellow-500 hover:bg-yellow-600 shadow-yellow-200/50' : 
-                      'bg-blue-600 hover:bg-blue-700 shadow-blue-200/50'}
-                  `}
-                >
-                  {activeConfirm.confirmText || 'Confirm'}
-                </button>
-              </div>
+              {/* Progress bar */}
+              <div
+                className={`absolute bottom-0 left-0 h-1 opacity-40 animate-progress
+                  ${toast.type === 'success' ? 'bg-green-500' :
+                    toast.type === 'error' ? 'bg-red-500' :
+                    toast.type === 'warning' ? 'bg-yellow-400' :
+                    'bg-blue-500'}
+                `}
+                style={{ animationDuration: `${toast.duration}ms` }}
+              ></div>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* Animations */}
-      <style>
-        {`
-          @keyframes slide-in {
-            from { opacity: 0; transform: translateX(20px); }
-            to { opacity: 1; transform: translateX(0); }
-          }
-          .animate-slide-in {
-            animation: slide-in 0.3s ease-out;
-          }
-
-          @keyframes fade-in {
-            from { opacity: 0; }
-            to { opacity: 1; }
-          }
-          .animate-fade-in {
-            animation: fade-in 0.3s ease-out;
-          }
-
-          @keyframes scale-up {
-            from { opacity: 0; transform: scale(0.95); }
-            to { opacity: 1; transform: scale(1); }
-          }
-          .animate-scale-up {
-            animation: scale-up 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-          }
-
-          @keyframes progress {
-            from { width: 100%; }
-            to { width: 0%; }
-          }
-          .animate-progress {
-            animation: progress linear forwards;
-          }
-        `}
-      </style>
+          );
+        })}
+      </div>
     </ToastContext.Provider>
   );
 };

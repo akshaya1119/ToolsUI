@@ -1,3 +1,6 @@
+import MessageManagement from './MessageManagement';
+import { TranslationOutlined } from '@ant-design/icons';
+import { useTranslation } from 'react-i18next';
 import React from 'react';
 import { FaProjectDiagram, FaBoxes, FaEnvelope, FaLayerGroup, FaCogs, FaCloudSun, FaWrench} from 'react-icons/fa'; // Filled icons from FontAwesome
 import { Tabs, Typography } from 'antd';
@@ -15,6 +18,7 @@ import usePermissionsStore from '../stores/UserPermissions';
 import RolesPermissions from './RolesPermissions';
 
 const Master = () => {
+  const { t } = useTranslation();
   const permissions = usePermissionsStore((state) => state.permissions);
   const hasPermission = usePermissionsStore((state) => state.hasPermission);
 
@@ -25,7 +29,7 @@ const Master = () => {
       label: (
         <span style={{ display: 'flex', alignItems: 'center' }}>
           <FaProjectDiagram style={{ color: '#1890ff', marginRight: 8 }} /> 
-          <span>Project</span>
+          <span>{t("masters.project", "Project")}</span>
         </span>
       ),
       children: <Project />,
@@ -35,7 +39,7 @@ const Master = () => {
       visible: hasPermission('MASTER_CONFIG', 'View'),
       label: (
         <span style={{ display: 'flex', alignItems: 'center' }}>
-          <FaWrench style={{ color: '#1890ff', marginRight: 8 }} /> <span>Master Configuration</span>
+          <FaWrench style={{ color: '#1890ff', marginRight: 8 }} /> <span>{t("masters.masterConfig", "Master Configuration")}</span>
         </span>
       ),
       children: <MasterConfig />
@@ -45,7 +49,7 @@ const Master = () => {
       visible: hasPermission('MASTER_BOX_CAPACITY', 'View'),
       label: (
         <span style={{ display: 'flex', alignItems: 'center' }}>
-          <FaBoxes style={{ color: '#1890ff', marginRight: 8 }} /> <span>Box Capacity</span>
+          <FaBoxes style={{ color: '#1890ff', marginRight: 8 }} /> <span>{t("masters.boxCapacity", "Box Capacity")}</span>
         </span>
       ),
       children: <BoxCapacity />,
@@ -55,7 +59,7 @@ const Master = () => {
       visible: hasPermission('MASTER_ENVELOPE', 'View'),
       label: (
         <span style={{ display: 'flex', alignItems: 'center' }}>
-          <FaEnvelope style={{ color: '#1890ff', marginRight: 8 }} /> <span>Envelope Type</span> 
+          <FaEnvelope style={{ color: '#1890ff', marginRight: 8 }} /> <span>{t("masters.envelopeType", "Envelope Type")}</span> 
         </span>
       ),
       children: <EnvelopeType />,
@@ -65,7 +69,7 @@ const Master = () => {
       visible: hasPermission('MASTER_FIELDS', 'View'),
       label: (
         <span style={{ display: 'flex', alignItems: 'center' }}>
-          <FaLayerGroup style={{ color: '#1890ff', marginRight: 8 }} /> <span> Field</span>
+          <FaLayerGroup style={{ color: '#1890ff', marginRight: 8 }} /> <span> {t("masters.field", "Field")}</span>
         </span>
       ),
       children: <Field />,
@@ -75,7 +79,7 @@ const Master = () => {
       visible: hasPermission('MASTER_MODULES', 'View'),
       label: (
         <span style={{ display: 'flex', alignItems: 'center' }}>
-          <FaCogs style={{ color: '#1890ff', marginRight: 8 }} /> <span>Tools Module</span> 
+          <FaCogs style={{ color: '#1890ff', marginRight: 8 }} /> <span>{t("masters.toolsModule", "Tools Module")}</span> 
         </span>
       ),
       children: <ToolsModule />,
@@ -85,7 +89,7 @@ const Master = () => {
       visible: hasPermission('MASTER_NODAL_EXTRA', 'View'),
       label: (
         <span style={{ display: 'flex', alignItems: 'center' }}>
-          <FaCloudSun style={{ color: '#1890ff', marginRight: 8 }} /> <span>Nodal Univ Extra</span> 
+          <FaCloudSun style={{ color: '#1890ff', marginRight: 8 }} /> <span>{t("masters.nodalUnivExtra", "Nodal Univ Extra")}</span> 
         </span>
       ),
       children: <NodalUnivExtra />
@@ -95,7 +99,7 @@ const Master = () => {
       visible: hasPermission('MASTER_RPT', 'View'),
       label: (
         <span style={{ display: 'flex', alignItems: 'center' }}> 
-        <HiTemplate style={{ color: '#1890ff', marginRight: 8 }} />RPT Templates </span>
+        <HiTemplate style={{ color: '#1890ff', marginRight: 8 }} />{t("masters.rptTemplates", "RPT Templates")} </span>
       ),
       children: <RPTFiles />
     },
@@ -105,10 +109,21 @@ const Master = () => {
       label: (
         <span style={{ display: 'flex', alignItems: 'center' }}>
           <SafetyCertificateOutlined style={{ color: '#1890ff', marginRight: 8 }} />
-          <span>Roles & Permissions</span>
+          <span>{t("masters.rolesPermissions", "Roles & Permissions")}</span>
         </span>
       ),
       children: <RolesPermissions />
+    },
+    {
+      key: '9',
+      visible: hasPermission('MASTER_CONFIG', 'View'),
+      label: (
+        <span style={{ display: 'flex', alignItems: 'center' }}>
+          <TranslationOutlined style={{ color: '#1890ff', marginRight: 8 }} />
+          <span>{t('menu.messageManagement', 'Message Management')}</span>
+        </span>
+      ),
+      children: <MessageManagement />
     },
   ];
 
@@ -117,7 +132,7 @@ const Master = () => {
   return (
     <div style={{ padding: 0 }}>
       <Typography.Title level={3} style={{ marginBottom: 24 }}>
-        Masters
+        {t('menu.masters', 'Masters')}
       </Typography.Title>
       {tabItems.length === 0 ? (
         <div style={{ padding: 24, background: '#fff', borderRadius: 8, border: '1px solid #ffd591' }}>

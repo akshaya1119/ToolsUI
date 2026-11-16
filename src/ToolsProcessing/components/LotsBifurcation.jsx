@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import React, {
   forwardRef,
   useEffect,
@@ -158,6 +159,7 @@ const mergeRows = (base, patch) => ({
 });
 
 const LotsBifurcation = forwardRef(({ onCatchDeleted, defaultOpenBifurcation }, ref) => {
+  const { t } = useTranslation();
   const projectId = useStore((state) => state.projectId);
   const selectedLot = useStore((state) => state.selectedLot);
   const setHasDeactivatedCatches = useStore((state) => state.setHasDeactivatedCatches);
@@ -1196,11 +1198,11 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted, defaultOpenBifurcation }, 
               />
             </Tooltip>
             <Popconfirm
-              title="Delete Catch Number"
-              description={`Are you sure you want to delete catch number ${record.CatchNo}?`}
+              title={t('popconfirm.deleteCatchTitle', 'Delete Catch Number')}
+              description={t('popconfirm.deleteCatchDesc', { catchNo: record.CatchNo, defaultValue: `Are you sure you want to delete catch number ${record.CatchNo}?` })}
               onConfirm={() => handleDeleteCatchNo(record.CatchNo, rowLotNo)}
-              okText="Yes"
-              cancelText="No"
+              okText={t('popconfirm.yes', 'Yes')}
+              cancelText={t('popconfirm.no', 'No')}
               okButtonProps={{ danger: true }}
             >
               <Button
@@ -1216,7 +1218,7 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted, defaultOpenBifurcation }, 
     });
 
     return cols;
-  }, [uniqueColumns, activeLotTab, editingCatchNo, editingField, editingValue, searchedColumn, searchText, editingRowValues]);
+  }, [uniqueColumns, activeLotTab, editingCatchNo, editingField, editingValue, searchedColumn, searchText, editingRowValues, t]);
 
   return (
     <div className="pt-0">

@@ -1,3 +1,5 @@
+import { useTranslation } from 'react-i18next';
+import LanguageSelector from './common/LanguageSelector';
 import React, { useState, useEffect, useRef } from "react";
 import { FiMenu, FiChevronDown } from "react-icons/fi";
 import { Search, Folder, Box, FileText, ChevronRight, Package } from "lucide-react";
@@ -11,6 +13,7 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL; // Using base URL for gr
 const API_URL = import.meta.env.VITE_API_URL; // Using Tools API for project data
 
 export default function Navbar({ onToggleSidebar, onLogout, searchQuery, onSearchChange, searchPlaceholder = "Search..." }) {
+  const { t } = useTranslation();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [lotFilterOpen, setLotFilterOpen] = useState(false);
   const [lots, setLots] = useState([]);
@@ -18,7 +21,7 @@ export default function Navbar({ onToggleSidebar, onLogout, searchQuery, onSearc
   const { showToast } = useToast();
   const navigate = useNavigate();
   const location = useLocation();
-  
+
   const projectId = useStore((state) => state.projectId);
   const selectedLot = useStore((state) => state.selectedLot);
   const setSelectedLot = useStore((state) => state.setSelectedLot);
@@ -31,12 +34,12 @@ export default function Navbar({ onToggleSidebar, onLogout, searchQuery, onSearc
   const [dataResults, setDataResults] = useState([]);
   const [projectResults, setProjectResults] = useState([]);
   const [groupResults, setGroupResults] = useState([]);
-  
+
   const [showSearchDropdown, setShowSearchDropdown] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const searchRef = useRef(null);
   const lotFilterRef = useRef(null);
-  
+
   const token = localStorage.getItem("token");
 
   // Fetch all projects and groups if not already in store
@@ -54,7 +57,7 @@ export default function Navbar({ onToggleSidebar, onLogout, searchQuery, onSearc
           const projRes = await axios.get(`${API_BASE_URL}/Project`, {
             headers: { Authorization: `Bearer ${token}` }
           });
-          
+
           // Also fetch user's active projects to combine
           const userProjRes = await axios.get(`${API_URL}/Projects/UserId`, {
             headers: { Authorization: `Bearer ${token}` }
@@ -119,13 +122,13 @@ export default function Navbar({ onToggleSidebar, onLogout, searchQuery, onSearc
   // Search within project when user types
   const fetchLots = async () => {
     if (!projectId) return;
-    
+
     setLoadingLots(true);
     try {
       const response = await axios.get(`${API_URL}/NRDataLots/GetByProjectId/${projectId}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      
+
       if (response.data && Array.isArray(response.data)) {
         const validLots = response.data.filter(lot => lot.lotNo > 0);
         setLots(validLots);
@@ -153,13 +156,13 @@ export default function Navbar({ onToggleSidebar, onLogout, searchQuery, onSearc
       const searchLower = value.toLowerCase();
 
       // 1. Search Groups
-      const filteredGroups = allGroups.filter(g => 
+      const filteredGroups = allGroups.filter(g =>
         g.name.toLowerCase().includes(searchLower)
       ).slice(0, 5);
       setGroupResults(filteredGroups);
 
       // 2. Search Projects
-      const filteredProjects = allProjects.filter(p => 
+      const filteredProjects = allProjects.filter(p =>
         p.name.toLowerCase().includes(searchLower)
       ).slice(0, 5);
       setProjectResults(filteredProjects);
@@ -207,10 +210,10 @@ export default function Navbar({ onToggleSidebar, onLogout, searchQuery, onSearc
 
   const handleProjectClick = (project) => {
     setProject(project.name, project.id, project.groupId, project.typeId);
-    
+
     // Log project entry to localStorage
     addRecentProject({ id: project.id, name: project.name, groupId: project.groupId, typeId: project.typeId });
-    
+
     setShowSearchDropdown(false);
     onSearchChange(""); // Clear search bar
     navigate("/projectdashboard");
@@ -285,11 +288,10 @@ export default function Navbar({ onToggleSidebar, onLogout, searchQuery, onSearc
                           setSelectedLot(null);
                           setLotFilterOpen(false);
                         }}
-                        className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-                          selectedLot === null 
-                            ? 'bg-blue-100 text-blue-700' 
+                        className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-all ${selectedLot === null
+                            ? 'bg-blue-100 text-blue-700'
                             : 'text-slate-700 hover:bg-slate-100'
-                        }`}
+                          }`}
                       >
                         All Lots
                       </button>
@@ -297,11 +299,10 @@ export default function Navbar({ onToggleSidebar, onLogout, searchQuery, onSearc
                         <button
                           key={lot.lotNo}
                           onClick={() => handleLotSelect(lot)}
-                          className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-all flex items-center justify-between gap-3 ${
-                            selectedLot === lot.lotNo
+                          className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-all flex items-center justify-between gap-3 ${selectedLot === lot.lotNo
                               ? 'bg-blue-100 text-blue-700'
                               : 'text-slate-700 hover:bg-slate-100'
-                          }`}
+                            }`}
                         >
                           <div className="flex items-center gap-1.5">
                             <span>Lot {lot.lotNo}</span>
@@ -341,7 +342,7 @@ export default function Navbar({ onToggleSidebar, onLogout, searchQuery, onSearc
                     Searching...
                   </div>
                 )}
-                
+
                 {/* Groups Section */}
                 {groupResults.length > 0 && (
                   <div>
@@ -444,22 +445,23 @@ export default function Navbar({ onToggleSidebar, onLogout, searchQuery, onSearc
             onClick={() => setDropdownOpen(!dropdownOpen)}
             className="flex items-center gap-1 text-gray-800 hover:text-blue-600 focus:outline-none font-medium"
           >
-            <span>Profile</span>
+            <span>{t("navbar.profile", "Profile")}</span>
             <FiChevronDown className="text-lg" />
           </button>
 
           {dropdownOpen && (
             <div className="absolute right-0 mt-2 w-44 bg-white border border-gray-200 rounded-md shadow-lg z-50">
               <ul className="py-1 text-sm text-gray-700">
-                <li
+                {/* <li
                   className="px-4 py-2 hover:bg-gray-100 cursor-pointer"
                   onClick={() => {
                     showToast("Profile settings clicked.", "info");
                     setDropdownOpen(false);
                   }}
                 >
-                  Profile Settings   
-                </li>
+                  {t("navbar.profileSettings", "Profile Settings")}   
+                </li> */}
+                <LanguageSelector onLanguageChanged={() => setDropdownOpen(false)} />
                 <li
                   className="px-4 py-2 hover:bg-gray-100 cursor-pointer"
                   onClick={() => {
@@ -467,7 +469,7 @@ export default function Navbar({ onToggleSidebar, onLogout, searchQuery, onSearc
                     setDropdownOpen(false);
                   }}
                 >
-                  Logout
+                  {t("navbar.logout", "Logout")}
                 </li>
               </ul>
             </div>

@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import React, { useEffect, useMemo, useState } from "react";
 import {
   Button,
@@ -82,6 +83,7 @@ import TemplatesMappingPanel from "../components/rpt/TemplatesMappingPanel";
 import TemplatesVersionsModal from "../components/rpt/TemplatesVersionsModal";
 
 const ProjectTemplates = () => {
+  const { t } = useTranslation();
   const url = import.meta.env.VITE_API_BASE_URL;
   const APIURL = import.meta.env.VITE_API_URL;
   const rptApiUrl = import.meta.env.VITE_RPT_API_URL;
@@ -1180,10 +1182,10 @@ const ProjectTemplates = () => {
 
     if (record?.isDeleted) {
       Modal.confirm({
-        title: "Restore template?",
-        content: `This will restore "${record?.templateName}" and set it as active in the ${scope} scope.`,
-        okText: "Restore",
-        cancelText: "Cancel",
+        title: t('templates.restoreTemplateTitle', 'Restore template?'),
+        content: t('templates.restoreTemplateContent', { name: record?.templateName, scope, defaultValue: `This will restore "${record?.templateName}" and set it as active in the ${scope} scope.` }),
+        okText: t('templates.restore', 'Restore'),
+        cancelText: t('templates.cancel', 'Cancel'),
         onOk: async () => {
           try {
             await restoreTemplate(APIURL, record.templateId);
@@ -1203,11 +1205,11 @@ const ProjectTemplates = () => {
     }
 
     Modal.confirm({
-      title: "Remove template?",
-      content: `This will mark "${record?.templateName}" as deleted in the ${scope} scope. It stays visible but marked deleted — you can restore it from the Versions panel.`,
-      okText: "Remove",
+      title: t('templates.removeTemplateTitle', 'Remove template?'),
+      content: t('templates.removeTemplateContent', { name: record?.templateName, scope, defaultValue: `This will mark "${record?.templateName}" as deleted in the ${scope} scope. It stays visible but marked deleted — you can restore it from the Versions panel.` }),
+      okText: t('templates.remove', 'Remove'),
       okButtonProps: { danger: true },
-      cancelText: "Cancel",
+      cancelText: t('templates.cancel', 'Cancel'),
       onOk: async () => {
         try {
           await softDeleteTemplate(APIURL, record.templateId, scope);
