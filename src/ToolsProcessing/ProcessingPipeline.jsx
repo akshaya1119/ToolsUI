@@ -329,8 +329,9 @@ const ProcessingPipeline = () => {
     catchOmrSerialing: "Catchomrserialingreport",
   };
 
-  const checkReportExistence = async (projectId) => {
+  const checkReportExistence = async (projectId, passedRerunStatus = null) => {
     loadReportVersions();
+    const currentRerunStatus = passedRerunStatus || pipelineStepStatus;
     const fileNames = {
       duplicate: "DuplicateTool.xlsx",
       extra: "ExtrasCalculation.xlsx",
@@ -340,7 +341,7 @@ const ProcessingPipeline = () => {
       envelopeSummary: "EnvelopeSummary.xlsx",
       catchSummary: "CatchSummary.xlsx",
       catchOmrSerialing: "CatchWiseBookletAndOmrSerialing.xlsx",
-};
+    };
 
     const results = {};
 
@@ -428,9 +429,21 @@ const ProcessingPipeline = () => {
             const exists = res.data.exists;
             results[fileName] = exists;
 
-            if (exists) {
+            const completedKeyMap = {
+              duplicate: "completedDuplicateLots",
+              enhancement: "completedEnhancementLots",
+              extra: "completedExtraLots",
+              envelopebreaking: "completedEnvelopeLots",
+              box: "completedBoxLots",
+            };
+            const cKey = completedKeyMap[key];
+            const isCompletedInDb = currentRerunStatus && cKey && (currentRerunStatus[cKey] || []).length > 0;
+
+            if (exists || isCompletedInDb) {
               const actualFileName = res.data?.fileName || fileName;
-              const fileUrl = `${url3}/${projectId}/${actualFileName}?DateTime=${new Date().toISOString()}`;
+              const fileUrl = exists
+                ? `${url3}/${projectId}/${actualFileName}?DateTime=${new Date().toISOString()}`
+                : null;
               console.log("Updating step", key, "to completed");
               updateStepStatus(key, {
                 status: "completed",
@@ -654,7 +667,7 @@ const ProcessingPipeline = () => {
     if (!targetProjectId) {
       setHasPendingPipelineChanges(false);
       setPipelineStepStatus(null);
-      return;
+      return null;
     }
     try {
       const res = await API.get(`/NRDatas/PipelineRerunStatus`, {
@@ -662,10 +675,12 @@ const ProcessingPipeline = () => {
       });
       setHasPendingPipelineChanges(Boolean(res.data?.hasPendingPipelineChanges));
       setPipelineStepStatus(res.data);
+      return res.data;
     } catch (err) {
       console.error("Failed to fetch pipeline rerun status", err);
       setHasPendingPipelineChanges(false);
       setPipelineStepStatus(null);
+      return null;
     }
   };
   // Load enabled modules when project changes
@@ -742,8 +757,8 @@ const ProcessingPipeline = () => {
           fileUrl: null,
         }));
         setSteps(initialSteps);
-        await checkReportExistence(projectId);
-        await fetchPipelineRerunStatus(projectId, selectedBatch);
+        const rerunData = await fetchPipelineRerunStatus(projectId, selectedBatch);
+        await checkReportExistence(projectId, rerunData);
 
         // Check for configuration changes / rerun request from sessionStorage
         const configChangeRaw = sessionStorage.getItem("configChangeData");
@@ -3093,11 +3108,20 @@ const loadGeneratedTemplateReports = async () => {
     const selectedIndices = selectedModules.map(key => allOrder.findIndex(s => s.key === key));
     const maxSelectedIndex = Math.max(...selectedIndices);
 
+    const completedKeyMap = {
+      duplicate: "completedDuplicateLots",
+      enhancement: "completedEnhancementLots",
+      extra: "completedExtraLots",
+      envelopebreaking: "completedEnvelopeLots",
+      box: "completedBoxLots",
+    };
     const unprocessedSteps = [];
     for (let i = 0; i < maxSelectedIndex; i++) {
       const stepKey = allOrder[i].key;
       const isSelected = selectedModules.includes(stepKey);
-      const isCompleted = steps.find(s => s.key === stepKey)?.status === "completed";
+      const cKey = completedKeyMap[stepKey];
+      const isCompletedInDb = pipelineStepStatus && cKey && (pipelineStepStatus[cKey] || []).length > 0;
+      const isCompleted = steps.find(s => s.key === stepKey)?.status === "completed" || isCompletedInDb;
 
       if (!isSelected && !isCompleted) {
         unprocessedSteps.push(allOrder[i]);
@@ -3433,9 +3457,18 @@ const loadGeneratedTemplateReports = async () => {
       const selectedIndex = allOrder.findIndex(s => s.key === selectedStep);
 
       const modulesToAdd = [];
+      const completedKeyMap = {
+        duplicate: "completedDuplicateLots",
+        enhancement: "completedEnhancementLots",
+        extra: "completedExtraLots",
+        envelopebreaking: "completedEnvelopeLots",
+        box: "completedBoxLots",
+      };
       for (let i = 0; i < selectedIndex; i++) {
         const stepKey = allOrder[i].key;
-        const isCompleted = steps.find(s => s.key === stepKey)?.status === "completed";
+        const cKey = completedKeyMap[stepKey];
+        const isCompletedInDb = pipelineStepStatus && cKey && (pipelineStepStatus[cKey] || []).length > 0;
+        const isCompleted = steps.find(s => s.key === stepKey)?.status === "completed" || isCompletedInDb;
 
         if (!isCompleted && !selectedModules.includes(stepKey)) {
           modulesToAdd.push(stepKey);
@@ -3566,8 +3599,8 @@ const loadGeneratedTemplateReports = async () => {
         const stepToNumMap = {
           duplicate: 1,
           enhancement: 2,
-          extra: 4,
-          envelopebreaking: 5,
+          extra: 3,
+          envelopebreaking: 4,
           box: 6,
         };
         const stepNum = stepToNumMap[step.key];
@@ -3605,8 +3638,8 @@ const loadGeneratedTemplateReports = async () => {
     const stepToNumMap = {
       duplicate: 1,
       enhancement: 2,
-      extra: 4,
-      envelopebreaking: 5,
+      extra: 3,
+      envelopebreaking: 4,
       box: 6,
     };
     if (pipelineStepStatus && stepToNumMap[step.key] !== undefined) {
@@ -3667,8 +3700,8 @@ const loadGeneratedTemplateReports = async () => {
             const stepToNumMap = {
               duplicate: 1,
               enhancement: 2,
-              extra: 4,
-              envelopebreaking: 5,
+              extra: 3,
+              envelopebreaking: 4,
               box: 6,
             };
             const stepNum = stepToNumMap[record.key];
@@ -3848,24 +3881,11 @@ const loadGeneratedTemplateReports = async () => {
 
           if (pendingLots.length > 0 || completedLots.length > 0) {
              const tags = [];
-             if (completedLots.length > 0) {
-               const compDispatched = completedLots.filter(l => dispatchedSet.has(l));
-               const compActive = completedLots.filter(l => !dispatchedSet.has(l));
-               if (compActive.length > 0) {
-                 tags.push(<Tag color="green" key="completed">Completed Lots - {compActive.join(", ")}</Tag>);
-               }
-               if (compDispatched.length > 0) {
-                 tags.push(
-                   <Tag color="red" key="completed-dispatched">
-                     Completed & Dispatched - Lot {compDispatched.join(", ")}
-                   </Tag>
-                 );
-               }
-             }
+             
+             // Classify pending lots into outdated vs truly pending
+             const truePending = [];
+             const outdated = [];
              if (pendingLots.length > 0) {
-               const truePending = [];
-               const outdated = [];
-               
                pendingLots.forEach(lot => {
                  if (record.key === "box") {
                    if (lotReportStatus && lotReportStatus[lot]) {
@@ -3884,28 +3904,49 @@ const loadGeneratedTemplateReports = async () => {
                    }
                  }
                });
+             }
 
-               if (outdated.length > 0) {
-                 const outDispatched = outdated.filter(l => dispatchedSet.has(l));
-                 const outActive = outdated.filter(l => !dispatchedSet.has(l));
-                 if (outActive.length > 0) {
-                   tags.push(<Tag color="orange" key="outdated" icon={<ExclamationCircleOutlined />}>Outdated Lots - {outActive.join(", ")}</Tag>);
-                 }
-                 if (outDispatched.length > 0) {
-                   tags.push(<Tag color="red" key="outdated-dispatched" icon={<ExclamationCircleOutlined />}>Dispatched Lots - {outDispatched.join(", ")} (Locked)</Tag>);
-                 }
+             // If a lot is in outdated or truePending, do NOT also show it under completedLots
+             const activeNeedsRunLots = new Set([...outdated, ...truePending]);
+             const cleanCompletedLots = completedLots.filter(l => !activeNeedsRunLots.has(l));
+
+             if (cleanCompletedLots.length > 0) {
+               const compDispatched = cleanCompletedLots.filter(l => dispatchedSet.has(l));
+               const compActive = cleanCompletedLots.filter(l => !dispatchedSet.has(l));
+               if (compActive.length > 0) {
+                 tags.push(<Tag color="green" key="completed">Completed Lots - {compActive.join(", ")}</Tag>);
                }
-               if (truePending.length > 0) {
-                 const penDispatched = truePending.filter(l => dispatchedSet.has(l));
-                 const penActive = truePending.filter(l => !dispatchedSet.has(l));
-                 if (penActive.length > 0) {
-                   tags.push(<Tag color="processing" key="pending" >Pending Lots - {penActive.join(", ")}</Tag>);
-                 }
-                 if (penDispatched.length > 0) {
-                   tags.push(<Tag color="red" key="pending-dispatched">Dispatched Lots - {penDispatched.join(", ")} (Locked)</Tag>);
-                 }
+               if (compDispatched.length > 0) {
+                 tags.push(
+                   <Tag color="red" key="completed-dispatched">
+                     Completed & Dispatched - Lot {compDispatched.join(", ")}
+                   </Tag>
+                 );
                }
              }
+
+             if (outdated.length > 0) {
+               const outDispatched = outdated.filter(l => dispatchedSet.has(l));
+               const outActive = outdated.filter(l => !dispatchedSet.has(l));
+               if (outActive.length > 0) {
+                 tags.push(<Tag color="orange" key="outdated" icon={<ExclamationCircleOutlined />}>Outdated Lots - {outActive.join(", ")}</Tag>);
+               }
+               if (outDispatched.length > 0) {
+                 tags.push(<Tag color="red" key="outdated-dispatched" icon={<ExclamationCircleOutlined />}>Dispatched Lots - {outDispatched.join(", ")} (Locked)</Tag>);
+               }
+             }
+
+             if (truePending.length > 0) {
+               const penDispatched = truePending.filter(l => dispatchedSet.has(l));
+               const penActive = truePending.filter(l => !dispatchedSet.has(l));
+               if (penActive.length > 0) {
+                 tags.push(<Tag color="processing" key="pending" >Pending Lots - {penActive.join(", ")}</Tag>);
+               }
+               if (penDispatched.length > 0) {
+                 tags.push(<Tag color="red" key="pending-dispatched">Dispatched Lots - {penDispatched.join(", ")} (Locked)</Tag>);
+               }
+             }
+
              return <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-start' }}>{tags}</div>;
           }
         }
