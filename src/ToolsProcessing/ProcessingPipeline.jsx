@@ -40,6 +40,7 @@ import LotWisePanel from "./components/LotWisePanel";
 import ReportTemplateManagement from './components/ReportTemplateManagement';
 import ErpSyncModal from './components/ErpSyncModal';
 import useModulePermission from "../hooks/useModulePermission";
+import usePermissionsStore from "../stores/UserPermissions";
 
 const { Text } = Typography;
 
@@ -80,7 +81,11 @@ const url3 = import.meta.env.VITE_API_FILE_URL;
 
 const ProcessingPipeline = () => {
   const { t } = useTranslation();
-  const { canExecute, canEdit } = useModulePermission('PROCESSING_PIPELINE');
+  const { canEdit } = useModulePermission('PROCESSING_PIPELINE');
+  const hasPermission = usePermissionsStore((state) => state.hasPermission);
+  const canViewReportsTemplates = hasPermission('REPORT_TEMPLATE_MANAGEMENT', 'View');
+  const hasSpecialAction = usePermissionsStore((state) => state.hasSpecialAction);
+  const canPurgeReport = hasSpecialAction('ACTION_PURGE_REPORT_RECORD');
   const navigate = useNavigate();
   const isConfigured = useStore((state) => state.isConfigured);
   const isLoadingData = useStore((state) => state.isLoadingData);
@@ -2144,6 +2149,10 @@ const loadGeneratedTemplateReports = async () => {
   };
 
   const handleDeleteEnvLotReport = async (reportId) => {
+    if (!canPurgeReport) {
+      message.error("Access Denied: You do not have permission for the special action 'Delete/Purge Report Records'.");
+      return;
+    }
     try {
       const report = envLotReports.find(r => r.id === reportId);
       if (!report) {
@@ -5129,7 +5138,7 @@ Object.keys(groupedTpl).forEach((templateKey) => {
                 }}
                 isQuantitySheetTemplate={isQuantitySheetTemplate}
                 isCompositeSummaryTemplate={isCompositeSummaryTemplate}
-                canExecute={canExecute}
+                canExecute={canEdit}
                 isDispatchExceeded={isCurrentLotExceeded}
                 dispatchedLotMessage={isCurrentLotExceeded ? `Lot ${selectedDropdownLot} has exceeded its dispatch date (${currentLotObj?.dispatchDate ? new Date(currentLotObj.dispatchDate).toLocaleDateString() : 'crossed'}) and is locked (read-only). Generating reports or re-processing is disabled.` : null}
               />
@@ -5267,7 +5276,7 @@ Object.keys(groupedTpl).forEach((templateKey) => {
             isQuantitySheetTemplate={isQuantitySheetTemplate}
             isCompositeSummaryTemplate={isCompositeSummaryTemplate}
             onClose={closeLotWisePanel}
-            canExecute={canExecute}
+            canExecute={canEdit}
           />
         </div>
       </motion.div>
@@ -5311,27 +5320,29 @@ Object.keys(groupedTpl).forEach((templateKey) => {
         selectedLot={selectedDropdownLot !== "all" && selectedDropdownLot !== null ? selectedDropdownLot : null}
         onToggleShowAssigned={(val) => setEnvLotSelectionModal(prev => ({ ...prev, showAssigned: val }))}
       />
-      <ReportTemplateManagement
-        reports={combinedReportData}
-        projectId={projectId}
-        apiBaseUrl={import.meta.env.VITE_API_URL}
-        rptApiUrl={import.meta.env.VITE_RPT_API_URL}
-        envLotReports={envLotReports}
-        availableLots={availableLots}
-        onDownload={(version, report) => {
-          if (version?.fileUrl) {
-            const link = document.createElement("a");
-            link.href = version.fileUrl;
-            let dn = report?.reportName || 'Report';
-            if (!dn.toLowerCase().endsWith('.xlsx')) dn += '.xlsx';
-            link.download = dn;
-            link.target = "_blank";
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-          }
-        }}
-      />
+      {canViewReportsTemplates && (
+        <ReportTemplateManagement
+          reports={combinedReportData}
+          projectId={projectId}
+          apiBaseUrl={import.meta.env.VITE_API_URL}
+          rptApiUrl={import.meta.env.VITE_RPT_API_URL}
+          envLotReports={envLotReports}
+          availableLots={availableLots}
+          onDownload={(version, report) => {
+            if (version?.fileUrl) {
+              const link = document.createElement("a");
+              link.href = version.fileUrl;
+              let dn = report?.reportName || 'Report';
+              if (!dn.toLowerCase().endsWith('.xlsx')) dn += '.xlsx';
+              link.download = dn;
+              link.target = "_blank";
+              document.body.appendChild(link);
+              link.click();
+              document.body.removeChild(link);
+            }
+          }}
+        />
+      )}
 
       <ExistingReportModal
         visible={existingReportModal.visible}

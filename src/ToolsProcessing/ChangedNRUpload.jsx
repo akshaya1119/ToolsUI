@@ -4,12 +4,15 @@ import { RedoOutlined, DeleteOutlined, ReloadOutlined, CloudUploadOutlined } fro
 import API from "../hooks/api";
 import { useToast } from "../hooks/useToast";
 import useStore from "../stores/ProjectData";
+import usePermissionsStore from "../stores/UserPermissions";
 import BatchComparisonTable from "./components/BatchComparisonTable";
 import "./ChangedNRUpload.css";
 
 const ChangedNRUpload = () => {
   const { showToast } = useToast();
   const projectId = useStore((state) => state.projectId);
+  const hasSpecialAction = usePermissionsStore((state) => state.hasSpecialAction);
+  const canApplyChanges = hasSpecialAction('ACTION_APPLY_CHANGED_NR');
   const [batches, setBatches] = useState([]);
   const [comparedBatch, setComparedBatch] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -249,6 +252,10 @@ const ChangedNRUpload = () => {
   };
 
   const handlePushChanges = async (selectedItems = null) => {
+    if (!canApplyChanges) {
+      showToast("Access Denied: You do not have permission for the special action 'Apply Changed NR Comparisons'.", "error");
+      return;
+    }
     if (!projectId || !comparedBatch) {
       showToast("Please select a batch to push changes", "warning");
       return;

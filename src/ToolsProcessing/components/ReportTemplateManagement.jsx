@@ -15,6 +15,7 @@ import { Search, Download, FileText, ChevronDown, ChevronRight, Archive, Archive
 import { useUserMap, getFirstNameFromUserId, getCurrentUserId } from '../../hooks/useUserMap';
 import useStore from '../../stores/ProjectData';
 import BatchCatchAccordion from './BatchCatchAccordion';
+import usePermissionsStore from '../../stores/UserPermissions';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -107,12 +108,24 @@ const ReportTemplateManagement = ({
   const { userMap } = useUserMap();
   const projectName = useStore(state => state.projectName);
 
+  const hasPermission = usePermissionsStore(state => state.hasPermission);
+  const canViewUnified = hasPermission('REPORT_TEMPLATE_MANAGEMENT', 'View');
+  const canViewReports = canViewUnified || hasPermission('REPORT_MANAGEMENT', 'View') || hasPermission('REPORTS', 'View');
+  const canViewTemplates = canViewUnified || hasPermission('TEMPLATE_MANAGEMENT', 'View') || hasPermission('MASTER_RPT', 'View');
+
+  // Viewing grants export/download capability. Deleting/purging checks Delete permission.
+  const canExportReports = canViewReports || canViewTemplates;
+  const canDeleteReports = hasPermission('REPORT_TEMPLATE_MANAGEMENT', 'Delete') || hasPermission('PROCESSING_PIPELINE', 'Delete');
+
+  // Initial viewType based on permissions
+  const initialViewType = canViewTemplates ? 'Template' : (canViewReports ? 'Report' : 'Template');
+
   // filters
   const [searchText, setSearchText] = useState('');
   const [selectedModule, setSelectedModule] = useState('ALL');
   const [selectedTemplate, setSelectedTemplate] = useState('ALL');
   const [selectedLot, setSelectedLot] = useState('ALL');
-  const [viewType, setViewType] = useState('Template');
+  const [viewType, setViewType] = useState(initialViewType);
   // show only the most recent per (template + lot + batch) — default on
   const [showRecentOnly, setShowRecentOnly] = useState(true);
 
@@ -1139,6 +1152,10 @@ const ReportTemplateManagement = ({
 
   // ── RENDER ────────────────────────────────────────────────────────────────
 
+  if (!canViewReports && !canViewTemplates) {
+    return null;
+  }
+
   const isReport = viewType === 'Report';
 
   return (
@@ -1201,10 +1218,12 @@ const ReportTemplateManagement = ({
           {bulkDownloading ? 'Downloading...' : 'Download All'}
         </Button>
 
-        <div className="flex rounded-lg border border-slate-200 bg-white p-1 ml-2">
-          <Button type={isReport ? 'primary' : 'default'} onClick={() => handleTypeChange('Report')} className="rounded-md px-4 py-2 text-sm font-medium">Reports</Button>
-          <Button type={!isReport ? 'primary' : 'default'} onClick={() => handleTypeChange('Template')} className="rounded-md px-4 py-2 text-sm font-medium">Templates</Button>
-        </div>
+        {(canViewReports && canViewTemplates) && (
+          <div className="flex rounded-lg border border-slate-200 bg-white p-1 ml-2">
+            <Button type={isReport ? 'primary' : 'default'} onClick={() => handleTypeChange('Report')} className="rounded-md px-4 py-2 text-sm font-medium">Reports</Button>
+            <Button type={!isReport ? 'primary' : 'default'} onClick={() => handleTypeChange('Template')} className="rounded-md px-4 py-2 text-sm font-medium">Templates</Button>
+          </div>
+        )}
       </div>
 
       {/* column visibility modal */}

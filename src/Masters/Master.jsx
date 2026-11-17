@@ -1,5 +1,3 @@
-import MessageManagement from './MessageManagement';
-import { TranslationOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import React from 'react';
 import { FaProjectDiagram, FaBoxes, FaEnvelope, FaLayerGroup, FaCogs, FaCloudSun, FaWrench} from 'react-icons/fa'; // Filled icons from FontAwesome
@@ -13,9 +11,7 @@ import Project from './Project';
 import MasterConfig from './MasterConfig';
 import RPTFiles from './RPTFiles';
 import { HiTemplate } from "react-icons/hi";
-import { SafetyCertificateOutlined } from '@ant-design/icons';
 import usePermissionsStore from '../stores/UserPermissions';
-import RolesPermissions from './RolesPermissions';
 
 const Master = () => {
   const { t } = useTranslation();
@@ -102,28 +98,6 @@ const Master = () => {
         <HiTemplate style={{ color: '#1890ff', marginRight: 8 }} />{t("masters.rptTemplates", "RPT Templates")} </span>
       ),
       children: <RPTFiles />
-    },
-    {
-      key: '8',
-      visible: hasPermission('ROLES_PERMISSIONS', 'View'),
-      label: (
-        <span style={{ display: 'flex', alignItems: 'center' }}>
-          <SafetyCertificateOutlined style={{ color: '#1890ff', marginRight: 8 }} />
-          <span>{t("masters.rolesPermissions", "Roles & Permissions")}</span>
-        </span>
-      ),
-      children: <RolesPermissions />
-    },
-    {
-      key: '9',
-      visible: hasPermission('MASTER_CONFIG', 'View'),
-      label: (
-        <span style={{ display: 'flex', alignItems: 'center' }}>
-          <TranslationOutlined style={{ color: '#1890ff', marginRight: 8 }} />
-          <span>{t('menu.messageManagement', 'Message Management')}</span>
-        </span>
-      ),
-      children: <MessageManagement />
     },
   ];
 

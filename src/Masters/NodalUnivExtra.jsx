@@ -145,11 +145,12 @@ const NodalUnivExtra = () => {
       />
 
       <Modal
-        title={editingExtra ? "Edit Extra" : "Add Extra"}
+        title={editingExtra ? t('masters.nodalUnivExtra.editTitle', 'Edit Extra') : t('masters.nodalUnivExtra.addTitle', 'Add Extra')}
         open={isModalOpen}
         onOk={handleSave}
         onCancel={() => setIsModalOpen(false)}
-        okText="Save"
+        okText={t('common.actions.save', 'Save')}
+        cancelText={t('common.actions.cancel', 'Cancel')}
         okButtonProps={{ disabled: editingExtra ? !canEdit : !canCreate }}
       >
         <Form form={form} layout="vertical">

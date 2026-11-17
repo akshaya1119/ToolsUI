@@ -15,8 +15,8 @@ const MessageManagement = () => {
   const { t, i18n } = useTranslation();
   const hasPermission = usePermissionsStore((state) => state.hasPermission);
 
-  const canCreate = hasPermission('MASTER_CONFIG', 'Create');
-  const canEdit = hasPermission('MASTER_CONFIG', 'Edit');
+  const canCreate = hasPermission('MESSAGE_MANAGEMENT', 'Create');
+  const canEdit = hasPermission('MESSAGE_MANAGEMENT', 'Edit');
 
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(false);

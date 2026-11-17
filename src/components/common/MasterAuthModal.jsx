@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Modal, Form, Input, Alert, Typography, Space, Button } from 'antd';
 import { LockOutlined, SafetyCertificateOutlined, EditOutlined } from '@ant-design/icons';
 import { KeyRound } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import ChangeMasterPasscodeModal from './ChangeMasterPasscodeModal';
 import API from '../../hooks/api';
 
@@ -20,6 +21,7 @@ const MasterAuthModal = ({
   loading = false,
   errorMessage = '',
 }) => {
+  const { t } = useTranslation();
   const [form] = Form.useForm();
   const [localError, setLocalError] = useState('');
   const [changeModalOpen, setChangeModalOpen] = useState(false);
@@ -94,7 +96,7 @@ const MasterAuthModal = ({
         title={
           <Space size={8} align="center">
             <SafetyCertificateOutlined style={{ color: '#1890ff', fontSize: 20 }} />
-            <Text strong style={{ fontSize: 16 }}>Master Authorization Required</Text>
+            <Text strong style={{ fontSize: 16 }}>{t('masterAuth.title', 'Master Authorization Required')}</Text>
           </Space>
         }
       >
@@ -111,10 +113,9 @@ const MasterAuthModal = ({
           }}>
             <KeyRound style={{ fontSize: 28, color: '#1890ff' }} />
           </div>
-          <Title level={5} style={{ margin: 0 }}>Authorize Action</Title>
+          <Title level={5} style={{ margin: 0 }}>{t('masterAuth.authorizeAction', 'Authorize Action')}</Title>
           <Text type="secondary" style={{ fontSize: 13 }}>
-            {/* Authorization passcode is required to continue. */}
-            Authorization passcode is required to <Text strong style={{ color: '#cf1322' }}>{operationType}</Text> on <Text strong>{moduleName}</Text>.
+            {t('masterAuth.passcodeRequired', 'Authorization passcode is required to')} <Text strong style={{ color: '#cf1322' }}>{operationType}</Text> {t('masterAuth.onModule', 'on')} <Text strong>{moduleName}</Text>.
           </Text>
         </div>
 
@@ -127,7 +128,7 @@ const MasterAuthModal = ({
             action={
               isLockoutError ? (
                 <Button size="small" type="primary" danger onClick={handleResetLockout}>
-                  Reset & Set PIN
+                  {t('masterAuth.resetAndSetPin', 'Reset & Set PIN')}
                 </Button>
               ) : null
             }
@@ -144,16 +145,16 @@ const MasterAuthModal = ({
             name="passcode"
             label={
               <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
-                <Text strong style={{ fontSize: 13 }}>Master Passcode / PIN</Text>
+                <Text strong style={{ fontSize: 13 }}>{t('masterAuth.passcodeLabel', 'Master Passcode / PIN')}</Text>
               </div>
             }
             rules={[
-              { required: true, message: 'Please enter the authorization passcode.' },
+              { required: true, message: t('masterAuth.enterPasscodeValidation', 'Please enter the authorization passcode.') },
             ]}
           >
             <Input.Password
               prefix={<LockOutlined style={{ color: '#bfbfbf' }} />}
-              placeholder="Enter passcode"
+              placeholder={t('masterAuth.enterPasscodePlaceholder', 'Enter passcode')}
               size="large"
               autoFocus
               maxLength={32}
@@ -184,13 +185,13 @@ const MasterAuthModal = ({
                   fontSize: 12,
                 }}
               >
-                Change PIN?
+                {t('masterAuth.changePin', 'Change PIN?')}
               </Button>
 
               {/* Right corner */}
               <Space>
                 <Button onClick={onCancel} disabled={loading}>
-                  Cancel
+                  {t('common.actions.cancel', 'Cancel')}
                 </Button>
 
                 <Button
@@ -199,7 +200,7 @@ const MasterAuthModal = ({
                   loading={loading}
                   icon={<SafetyCertificateOutlined />}
                 >
-                  Authorize & Proceed
+                  {t('masterAuth.authorizeAndProceed', 'Authorize & Proceed')}
                 </Button>
               </Space>
             </div>

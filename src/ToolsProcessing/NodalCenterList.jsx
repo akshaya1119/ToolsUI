@@ -5,6 +5,7 @@ import * as XLSX from "xlsx-js-style";
 import API from "../hooks/api";
 import { useToast } from "../hooks/useToast";
 import useStore from "../stores/ProjectData";
+import usePermissionsStore from "../stores/UserPermissions";
 import DataImportConflictReport from "../components/DataImportConflictReport";
 
 const { Title, Text } = Typography;
@@ -40,6 +41,8 @@ const EditableCell = ({
 export default function NodalCenterList() {
   const { showToast } = useToast();
   const projectId = useStore((state) => state.projectId);
+  const hasSpecialAction = usePermissionsStore((state) => state.hasSpecialAction);
+  const canPushNodal = hasSpecialAction('ACTION_PUSH_NODAL_TO_NR');
 
   const [activeTab, setActiveTab] = useState("1");
   const [availableDbFields, setAvailableDbFields] = useState([]);
@@ -1760,14 +1763,18 @@ export default function NodalCenterList() {
                   </Button>
                 </Popconfirm>
               )}
-              <Button
-                type="primary"
-                onClick={confirmPushToMain}
-                loading={pushingToMain}
-                disabled={tempData.length === 0}
-              >
-                Push into main NR Data
-              </Button>
+              <Tooltip title={!canPushNodal ? "Special action permission required: Push Nodal into Main NR Data" : ""}>
+                <span>
+                  <Button
+                    type="primary"
+                    onClick={confirmPushToMain}
+                    loading={pushingToMain}
+                    disabled={tempData.length === 0 || !canPushNodal}
+                  >
+                    Push into main NR Data
+                  </Button>
+                </span>
+              </Tooltip>
             </div>
           </div>
           <Form form={form} component={false}>

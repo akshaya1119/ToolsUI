@@ -172,13 +172,13 @@ const EnvelopeType = () => {
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
         {canCreate ? (
           <Button type="primary" onClick={handleAdd} style={{ marginBottom: 16 }}>
-            Add
+            {t('common.actions.add', 'Add')}
           </Button>
         ) : (
           <Tooltip title="View-only access: Creating new items is disabled">
             <span>
               <Button type="primary" disabled style={{ marginBottom: 16 }}>
-                Add
+                {t('common.actions.add', 'Add')}
               </Button>
             </span>
           </Tooltip>
@@ -192,11 +192,12 @@ const EnvelopeType = () => {
         loading={loading}
       />
       <Modal
-        title={editingItem ? 'Edit Envelope Type' : 'Add Envelope Type'}
+        title={editingItem ? t('masters.envelopeType.editTitle', 'Edit Envelope Type') : t('masters.envelopeType.addTitle', 'Add Envelope Type')}
         open={modalVisible}
         onOk={handleSave}
         onCancel={() => setModalVisible(false)}
-        okText="Save"
+        okText={t('common.actions.save', 'Save')}
+        cancelText={t('common.actions.cancel', 'Cancel')}
         okButtonProps={{ disabled: editingItem ? !canEdit : !canCreate }}
       >
 

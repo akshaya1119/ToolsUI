@@ -1,6 +1,7 @@
 import React from "react";
 import { Button, Card, Empty, Space, Table, Tag, Typography } from "antd";
 import { CopyOutlined, PlusOutlined, ReloadOutlined } from "@ant-design/icons";
+import { useTranslation } from "react-i18next";
 
 const TemplatesCard = ({
   selectionReady,
@@ -21,6 +22,7 @@ const TemplatesCard = ({
   isSavingMaster,
   rowSelection,
 }) => {
+  const { t } = useTranslation();
   const visibleTags = tags.filter(Boolean);
   return (
     <Card
@@ -28,7 +30,7 @@ const TemplatesCard = ({
       bodyStyle={{ padding: 16 }}
       title={
         <Space>
-          <Typography.Text strong>Templates</Typography.Text>
+          <Typography.Text strong>{t("templates.templates", "Templates")}</Typography.Text>
           {selectionReady &&
             visibleTags.map((tag) => (
               <Tag key={tag}>{tag}</Tag>
@@ -37,7 +39,7 @@ const TemplatesCard = ({
       }
       extra={
         <Space>
-          <Button title=" Refresh" icon={<ReloadOutlined />} onClick={onRefresh} disabled={!selectionReady} />
+          <Button title={t("common.actions.refresh", "Refresh")} icon={<ReloadOutlined />} onClick={onRefresh} disabled={!selectionReady} />
           {onSaveAsMaster && (
             <Button
               icon={<CopyOutlined />}
@@ -45,15 +47,15 @@ const TemplatesCard = ({
               disabled={!rowSelection || !rowSelection.selectedRowKeys || rowSelection.selectedRowKeys.length === 0}
               loading={isSavingMaster}
             >
-              Save as Master
+              {t("templates.saveAsMaster", "Save as Master")}
             </Button>
           )}
           <Button type="primary" icon={<PlusOutlined />} onClick={onAdd} disabled={disableAdd}>
-            Add
+            {t("common.actions.add", "Add")}
           </Button>
           {showImportAction && (
             <Button icon={<CopyOutlined />} onClick={onImport} disabled={disableImport}>
-              Import
+              {t("templates.import", "Import")}
             </Button>
           )}
         </Space>
@@ -76,11 +78,11 @@ const TemplatesCard = ({
         >
           <Space>
             <Button type="primary" icon={<PlusOutlined />} onClick={onAdd}>
-              Add Template
+              {t("templates.addTemplate", "Add Template")}
             </Button>
             {showImportAction && (
               <Button icon={<CopyOutlined />} onClick={onImport} disabled={disableImport}>
-                Import Templates
+                {t("templates.importTemplates", "Import Templates")}
               </Button>
             )}
           </Space>

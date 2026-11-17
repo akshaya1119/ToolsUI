@@ -1,7 +1,5 @@
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
-import enStatic from './locales/en.json';
-import hiStatic from './locales/hi.json';
 import axios from 'axios';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
@@ -48,12 +46,13 @@ export const getInitialLanguage = () => {
   return 'en';
 };
 
+// Initialize with empty resources - database is single source of truth
 i18n
   .use(initReactI18next)
   .init({
     resources: {
-      en: { translation: enStatic },
-      hi: { translation: hiStatic }
+      en: { translation: {} },
+      hi: { translation: {} }
     },
     lng: getInitialLanguage(),
     fallbackLng: 'en',
@@ -63,25 +62,28 @@ i18n
     keySeparator: '.'
   });
 
+/**
+ * Loads dynamic translation bundles from backend database API.
+ * Ensures English fallback is always available by fetching both en and hi bundles.
+ */
 export const loadDynamicTranslations = async (lang = i18n.language) => {
   try {
-    if (lang === 'hi') {
-      const [enRes, hiRes] = await Promise.all([
-        axios.get(`${API_BASE_URL}/Translations/bundle?lang=en`).catch(() => ({ data: {} })),
-        axios.get(`${API_BASE_URL}/Translations/bundle?lang=hi`).catch(() => ({ data: {} }))
-      ]);
+    const [enRes, hiRes] = await Promise.all([
+      axios.get(`${API_BASE_URL}/Translations/bundle?lang=en`).catch((err) => {
+        console.warn('Could not fetch English translation bundle:', err.message);
+        return { data: {} };
+      }),
+      axios.get(`${API_BASE_URL}/Translations/bundle?lang=hi`).catch((err) => {
+        console.warn('Could not fetch Hindi translation bundle:', err.message);
+        return { data: {} };
+      })
+    ]);
 
-      if (enRes.data && Object.keys(enRes.data).length > 0) {
-        i18n.addResourceBundle('en', 'translation', enRes.data, true, true);
-      }
-      if (hiRes.data && Object.keys(hiRes.data).length > 0) {
-        i18n.addResourceBundle('hi', 'translation', hiRes.data, true, true);
-      }
-    } else {
-      const enRes = await axios.get(`${API_BASE_URL}/Translations/bundle?lang=en`).catch(() => ({ data: {} }));
-      if (enRes.data && Object.keys(enRes.data).length > 0) {
-        i18n.addResourceBundle('en', 'translation', enRes.data, true, true);
-      }
+    if (enRes.data && Object.keys(enRes.data).length > 0) {
+      i18n.addResourceBundle('en', 'translation', enRes.data, true, true);
+    }
+    if (hiRes.data && Object.keys(hiRes.data).length > 0) {
+      i18n.addResourceBundle('hi', 'translation', hiRes.data, true, true);
     }
   } catch (err) {
     console.error('Failed to load dynamic translation bundle:', err);

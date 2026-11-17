@@ -178,13 +178,13 @@ const ToolModule = () => {
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
                 {canCreate ? (
                     <Button type="primary" onClick={handleAdd}>
-                        Add Module
+                        {t('common.actions.add', 'Add')}
                     </Button>
                 ) : (
                     <Tooltip title="View-only access: Creating new items is disabled">
                         <span>
                             <Button type="primary" disabled>
-                                Add Module
+                                {t('common.actions.add', 'Add')}
                             </Button>
                         </span>
                     </Tooltip>
@@ -197,11 +197,12 @@ const ToolModule = () => {
                 loading={loading}
             />
             <Modal
-                title={editingItem ? 'Edit Module' : 'Add Module'}
+                title={editingItem ? t('masters.toolsModule.editTitle', 'Edit Module') : t('masters.toolsModule.addTitle', 'Add Module')}
                 open={modalVisible}
                 onOk={handleSave}
                 onCancel={() => setModalVisible(false)}
-                okText="Save"
+                okText={t('common.actions.save', 'Save')}
+                cancelText={t('common.actions.cancel', 'Cancel')}
                 okButtonProps={{ disabled: editingItem ? !canEdit : !canCreate }}
             >
                 <Input

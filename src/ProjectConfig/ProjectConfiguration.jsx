@@ -24,11 +24,14 @@ import ImportConfig from "./components/ImportConfig";
 import { importTemplatesFromGroup } from "../services/rptTemplatesService";
 import { normalizeId } from "../utils/rptTemplateUtils";
 import useMasterAuth from "../hooks/useMasterAuth";
+import usePermissionsStore from "../stores/UserPermissions";
 
 const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, selectedGroup = null, onTypeChange = null, onGroupChange = null, typeOptions: propTypeOptions = [], groupOptions: propGroupOptions = [], onReset = null, onResetAll = null }) => {
   const { showToast } = useToast();
   const navigate = useNavigate();
   const projectId = useStore((state) => state.projectId);
+  const hasPermission = usePermissionsStore((state) => state.hasPermission);
+  const canDeleteConfig = hasPermission('PROJECT_CONFIG', 'Delete');
   const url = import.meta.env.VITE_API_BASE_URL;
   const APIURL = import.meta.env.VITE_API_URL;
   const [mssInsertPosition, setMssInsertPosition] = useState("end");
@@ -1460,19 +1463,21 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
 
         {!isMasterConfig && (
           <Space>
-            <Popconfirm
-              title="Clear all configuration?"
-              description="This will wipe all current settings locally. Changes are not permanent until you save."
-              onConfirm={handleClearAll}
-              okText="Yes, Clear"
-              cancelText="No"
-              okButtonProps={{ danger: true }}
-              overlayInnerStyle={{ width: 350 }}
-            >
-              <Button icon={<DeleteOutlined />} danger>
-                Clear All
-              </Button>
-            </Popconfirm>
+            {canDeleteConfig && (
+              <Popconfirm
+                title="Clear all configuration?"
+                description="This will wipe all current settings locally. Changes are not permanent until you save."
+                onConfirm={handleClearAll}
+                okText="Yes, Clear"
+                cancelText="No"
+                okButtonProps={{ danger: true }}
+                overlayInnerStyle={{ width: 350 }}
+              >
+                <Button icon={<DeleteOutlined />} danger>
+                  Clear All
+                </Button>
+              </Popconfirm>
+            )}
             <ImportConfig onImport={handleImport} disabled={configExists} />
           </Space>
         )}

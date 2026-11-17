@@ -22,6 +22,8 @@ import DataImportConflictReport from '../components/DataImportConflictReport';
 import LotsBifurcation from "./components/LotsBifurcation";
 import MergeCatchNumbers from "./components/MergeCatchNumbers";
 import { getCurrentUserId } from "../hooks/useUserMap";
+import useModulePermission from "../hooks/useModulePermission";
+import usePermissionsStore from "../stores/UserPermissions";
 
 const { Text } = Typography;
 const { Option } = Select;
@@ -39,6 +41,28 @@ const DataImport = () => {
   const selectedLot = useStore((state) => state.selectedLot);
   const addStaleEnvLotIds = useStore((state) => state.addStaleEnvLotIds);
   const setHasDeactivatedCatches = useStore((state) => state.setHasDeactivatedCatches);
+
+  // Independent Role-Based Permissions for Data Import Sub-tabs
+  const hasPermission = usePermissionsStore((state) => state.hasPermission);
+  const hasSpecialAction = usePermissionsStore((state) => state.hasSpecialAction);
+  const canDeleteAllNr = hasSpecialAction('ACTION_DELETE_ALL_NR_DATA');
+  const canDataImport = hasPermission("DATA_IMPORT", "View");
+  const canUploadedData = hasPermission("UPLOADED_DATA", "View");
+  const canConflictReport = hasPermission("CONFLICT_REPORT", "View");
+  const canFillMissingData = hasPermission("FILL_MISSING_DATA", "View");
+  const canLotBifurcation = hasPermission("LOT_BIFURCATION", "View");
+  const canMergeCatchNumbers = hasPermission("MERGE_CATCH_NUMBERS", "View");
+
+  // Determine available sub-tabs
+  const availableSubTabs = React.useMemo(() => {
+    const list = [];
+    if (canUploadedData) list.push("1");
+    if (canConflictReport) list.push("2");
+    if (canFillMissingData) list.push("3");
+    if (canLotBifurcation) list.push("4");
+    if (canMergeCatchNumbers) list.push("5");
+    return list;
+  }, [canUploadedData, canConflictReport, canFillMissingData, canLotBifurcation, canMergeCatchNumbers]);
 
   useEffect(() => {
     if (projectId && !isLoadingData && !isConfigured) {
@@ -120,10 +144,12 @@ const DataImport = () => {
 
   useEffect(() => {
     const savedTab = localStorage.getItem(`dataImportActiveTab_${projectId}`);
-    if (savedTab) {
+    if (savedTab && availableSubTabs.includes(savedTab)) {
       setActiveTab(savedTab);
+    } else if (availableSubTabs.length > 0 && !availableSubTabs.includes(activeTab)) {
+      setActiveTab(availableSubTabs[0]);
     }
-  }, [projectId]);
+  }, [projectId, availableSubTabs]);
 
   useEffect(() => {
     const requestedTab = location.state?.activeTab;
@@ -2339,11 +2365,12 @@ const DataImport = () => {
       </Typography.Title>
 
       {/* === DATA IMPORT SECTION (collapsible) === */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3 }}
-      >
+      {canDataImport && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+        >
         <Card
           title={
             <div
@@ -2390,21 +2417,25 @@ const DataImport = () => {
                 Load Conflict
               </Button>
 
-              <Tooltip title={isLotDispatched(selectedLot) ? `Lot ${selectedLot} is dispatched (read-only)` : ""}>
+              <Tooltip title={!canDeleteAllNr ? "Special action permission required: Delete All NR Data" : isLotDispatched(selectedLot) ? `Lot ${selectedLot} is dispatched (read-only)` : ""}>
                 <Button
                   danger
                   size="small"
-                  disabled={isLotDispatched(selectedLot)}
+                  disabled={!canDeleteAllNr || isLotDispatched(selectedLot)}
                   icon={<Trash2 size={14} />}
                   style={{
                     minWidth: 110,
                     height: 28,
                     fontSize: 12,
-                    backgroundColor: isLotDispatched(selectedLot) ? undefined : "#ff4d4f",
-                    borderColor: isLotDispatched(selectedLot) ? undefined : "#ff4d4f",
-                    color: isLotDispatched(selectedLot) ? undefined : "#fff",
+                    backgroundColor: (!canDeleteAllNr || isLotDispatched(selectedLot)) ? undefined : "#ff4d4f",
+                    borderColor: (!canDeleteAllNr || isLotDispatched(selectedLot)) ? undefined : "#ff4d4f",
+                    color: (!canDeleteAllNr || isLotDispatched(selectedLot)) ? undefined : "#fff",
                   }}
                   onClick={async () => {
+                    if (!canDeleteAllNr) {
+                      showToast("Access Denied: You do not have permission for special action 'Delete All NR Data'.", "error");
+                      return;
+                    }
                     if (isLotDispatched(selectedLot)) {
                       showToast(`Lot ${selectedLot} is dispatched and cannot be deleted`, "error");
                       return;
@@ -2695,6 +2726,7 @@ const DataImport = () => {
           )}
         </Card>
       </motion.div>
+      )}
 
       {/* === DATA AND CONFLICTS SECTION === */}
       <>
@@ -3039,163 +3071,172 @@ const DataImport = () => {
                 ) : null
               }
             >
-              <TabPane tab={t("pipeline.uploadedData", "Uploaded Data")} key="1">
-                <Space direction="vertical" size={12} style={{ width: "100%" }}>
-                  <Space wrap size={8} style={{ width: "100%", justifyContent: "space-between" }}>
-                    <Space size={8}>
-                      <Input.Search
-                        placeholder={t("pipeline.searchUploadedData", "Search uploaded data")}
-                        allowClear
-                        value={globalSearchText}
-                        loading={loading && globalSearchText !== ""}
-                        onChange={(e) => {
-                          setGlobalSearchText(e.target.value);
-                          // Top search is global search
-                          setColumnFilters({});
-                          setPagination((prev) => ({ ...prev, current: 1 }));
-                        }}
-                        onSearch={(value) => {
-                          setGlobalSearchText(value);
-                          // Top search is global search
-                          setColumnFilters({});
-                          setPagination((prev) => ({ ...prev, current: 1 }));
-                        }}
-                        style={{ width: 280 }}
-                      />
-                      {(globalSearchText || Object.keys(columnFilters).length > 0) && (
-                        <Button
-                          onClick={() => {
-                            setGlobalSearchText("");
+              {canUploadedData && (
+                <TabPane tab={t("pipeline.uploadedData", "Uploaded Data")} key="1">
+                  <Space direction="vertical" size={12} style={{ width: "100%" }}>
+                    <Space wrap size={8} style={{ width: "100%", justifyContent: "space-between" }}>
+                      <Space size={8}>
+                        <Input.Search
+                          placeholder={t("pipeline.searchUploadedData", "Search uploaded data")}
+                          allowClear
+                          value={globalSearchText}
+                          loading={loading && globalSearchText !== ""}
+                          onChange={(e) => {
+                            setGlobalSearchText(e.target.value);
+                            // Top search is global search
                             setColumnFilters({});
                             setPagination((prev) => ({ ...prev, current: 1 }));
                           }}
-                        >
-                          Reset Filters
-                        </Button>
-                      )}
+                          onSearch={(value) => {
+                            setGlobalSearchText(value);
+                            // Top search is global search
+                            setColumnFilters({});
+                            setPagination((prev) => ({ ...prev, current: 1 }));
+                          }}
+                          style={{ width: 280 }}
+                        />
+                        {(globalSearchText || Object.keys(columnFilters).length > 0) && (
+                          <Button
+                            onClick={() => {
+                              setGlobalSearchText("");
+                              setColumnFilters({});
+                              setPagination((prev) => ({ ...prev, current: 1 }));
+                            }}
+                          >
+                            Reset Filters
+                          </Button>
+                        )}
+                      </Space>
                     </Space>
-                  </Space>
-                  {enhancedColumns.length > 0 ? (
-                    <Table
-                      dataSource={existingData}
-                      columns={visibleEnhancedColumns}
-                      pagination={{
-                        ...pagination,
-                        showSizeChanger: true,
-                        pageSizeOptions: ['10', '20', '50', '100'],
-                        showQuickJumper: true,
-                      }}
-                      locale={{
-                        emptyText: (
-                          <div style={{ padding: '24px 0', textAlign: 'center' }}>
-                            <Text type="secondary" style={{ display: 'block', marginBottom: 12, fontSize: '15px' }}>
-                              No data available matching your search criteria.
-                            </Text>
-                            {(globalSearchText || Object.keys(columnFilters).length > 0) && (
-                              <Button
-                                type="primary"
-                                onClick={() => {
-                                  setGlobalSearchText("");
-                                  setColumnFilters({});
-                                  setPagination((prev) => ({ ...prev, current: 1 }));
-                                }}
-                              >
-                                Clear Search & Filters
-                              </Button>
-                            )}
-                          </div>
-                        )
-                      }}
-                      rowKey="id"
-                      rowSelection={{
-                        selectedRowKeys: selectedUploadedRowKeys,
-                        onSelect: (record, selected) => {
-                          const catchNo = record.CatchNo;
-                          if (!catchNo) {
-                            return;
-                          }
-
-                          setSelectedUploadedCatchNos((prev) => {
-                            if (selected) {
-                              if (prev.includes(catchNo)) {
-                                return prev;
-                              }
-
-                              if (prev.length >= 2) {
-                                showToast("You can select rows from only 2 catch numbers at a time.", "warning");
-                                return prev;
-                              }
-
-                              return [...prev, catchNo];
+                    {enhancedColumns.length > 0 ? (
+                      <Table
+                        dataSource={existingData}
+                        columns={visibleEnhancedColumns}
+                        pagination={{
+                          ...pagination,
+                          showSizeChanger: true,
+                          pageSizeOptions: ['10', '20', '50', '100'],
+                          showQuickJumper: true,
+                        }}
+                        locale={{
+                          emptyText: (
+                            <div style={{ padding: '24px 0', textAlign: 'center' }}>
+                              <Text type="secondary" style={{ display: 'block', marginBottom: 12, fontSize: '15px' }}>
+                                No data available matching your search criteria.
+                              </Text>
+                              {(globalSearchText || Object.keys(columnFilters).length > 0) && (
+                                <Button
+                                  type="primary"
+                                  onClick={() => {
+                                    setGlobalSearchText("");
+                                    setColumnFilters({});
+                                    setPagination((prev) => ({ ...prev, current: 1 }));
+                                  }}
+                                >
+                                  Clear Search & Filters
+                                </Button>
+                              )}
+                            </div>
+                          )
+                        }}
+                        rowKey="id"
+                        rowSelection={{
+                          selectedRowKeys: selectedUploadedRowKeys,
+                          onSelect: (record, selected) => {
+                            const catchNo = record.CatchNo;
+                            if (!catchNo) {
+                              return;
                             }
 
-                            return prev.filter((item) => item !== catchNo);
-                          });
-                        },
-                        onSelectAll: (selected, selectedRows, changeRows) => {
-                          setSelectedUploadedCatchNos((prev) => {
-                            let next = [...prev];
-
-                            changeRows.forEach((row) => {
-                              const catchNo = row.CatchNo;
-                              if (!catchNo) {
-                                return;
-                              }
-
+                            setSelectedUploadedCatchNos((prev) => {
                               if (selected) {
-                                if (!next.includes(catchNo) && next.length < 2) {
-                                  next.push(catchNo);
+                                if (prev.includes(catchNo)) {
+                                  return prev;
                                 }
-                              } else {
-                                next = next.filter((item) => item !== catchNo);
+
+                                if (prev.length >= 2) {
+                                  showToast("You can select rows from only 2 catch numbers at a time.", "warning");
+                                  return prev;
+                                }
+
+                                return [...prev, catchNo];
                               }
+
+                              return prev.filter((item) => item !== catchNo);
                             });
+                          },
+                          onSelectAll: (selected, selectedRows, changeRows) => {
+                            setSelectedUploadedCatchNos((prev) => {
+                              let next = [...prev];
 
-                            const uniqueCatchNos = Array.from(new Set(next));
-                            if (selected && uniqueCatchNos.length > 2) {
-                              showToast("You can select rows from only 2 catch numbers at a time.", "warning");
-                              return uniqueCatchNos.slice(0, 2);
-                            }
+                              changeRows.forEach((row) => {
+                                const catchNo = row.CatchNo;
+                                if (!catchNo) {
+                                  return;
+                                }
 
-                            return uniqueCatchNos;
-                          });
-                        },
-                        getCheckboxProps: (record) => ({
-                          disabled:
-                            editingRowId !== null || // Disable selection when editing
-                            (Boolean(record.CatchNo) &&
-                              selectedUploadedCatchNos.length >= 2 &&
-                              !selectedUploadedCatchNos.includes(record.CatchNo)),
-                        }),
-                      }}
-                      scroll={{ x: "max-content" }}
-                      loading={loading}
-                      onChange={handleUploadedTableChange}
+                                if (selected) {
+                                  if (!next.includes(catchNo) && next.length < 2) {
+                                    next.push(catchNo);
+                                  }
+                                } else {
+                                  next = next.filter((item) => item !== catchNo);
+                                }
+                              });
+
+                              const uniqueCatchNos = Array.from(new Set(next));
+                              if (selected && uniqueCatchNos.length > 2) {
+                                showToast("You can select rows from only 2 catch numbers at a time.", "warning");
+                                return uniqueCatchNos.slice(0, 2);
+                              }
+
+                              return uniqueCatchNos;
+                            });
+                          },
+                          getCheckboxProps: (record) => ({
+                            disabled:
+                              editingRowId !== null || // Disable selection when editing
+                              (Boolean(record.CatchNo) &&
+                                selectedUploadedCatchNos.length >= 2 &&
+                                !selectedUploadedCatchNos.includes(record.CatchNo)),
+                          }),
+                        }}
+                        scroll={{ x: "max-content" }}
+                        loading={loading}
+                        onChange={handleUploadedTableChange}
+                      />
+                    ) : (
+                      <Typography.Text type="secondary">No data found</Typography.Text>
+                    )}
+                  </Space>
+                </TabPane>
+              )}
+
+              {canConflictReport && (
+                <TabPane tab={t("pipeline.conflictReport", "Conflict Report")} key="2">
+                  {renderConflicts()}
+                </TabPane>
+              )}
+              {canFillMissingData && (
+                <TabPane tab={t("pipeline.fillMissingData", "Fill Missing Data")} key="3">
+                  {activeTab === "3" && <MissingData />}
+                </TabPane>
+              )}
+              {canLotBifurcation && (
+                <TabPane tab={t("pipeline.lotBifurcation", "Lot Bifurcation")} key="4">
+                  {activeTab === "4" && <LotsBifurcation ref={lotBifurcationRef} defaultOpenBifurcation={shouldOpenBifurcation} />}
+                </TabPane>
+              )}
+              {canMergeCatchNumbers && (
+                <TabPane tab={t("pipeline.mergeCatchNumbers", "Merge Catch Numbers")} key="5">
+                  {activeTab === "5" && (
+                    <MergeCatchNumbers
+                      ref={mergeCatchRef}
+                      onSelectionCountChange={setMergeSelectionCount}
                     />
-                  ) : (
-                    <Typography.Text type="secondary">No data found</Typography.Text>
                   )}
-                </Space>
-
-              </TabPane>
-
-              <TabPane tab={t("pipeline.conflictReport", "Conflict Report")} key="2">
-                {renderConflicts()}
-              </TabPane>
-              <TabPane tab={t("pipeline.fillMissingData", "Fill Missing Data")} key="3">
-                {activeTab === "3" && <MissingData />}
-              </TabPane>
-              <TabPane tab={t("pipeline.lotBifurcation", "Lot Bifurcation")} key="4">
-                {activeTab === "4" && <LotsBifurcation ref={lotBifurcationRef} defaultOpenBifurcation={shouldOpenBifurcation} />}
-              </TabPane>
-              <TabPane tab={t("pipeline.mergeCatchNumbers", "Merge Catch Numbers")} key="5">
-                {activeTab === "5" && (
-                  <MergeCatchNumbers
-                    ref={mergeCatchRef}
-                    onSelectionCountChange={setMergeSelectionCount}
-                  />
-                )}
-              </TabPane>
+                </TabPane>
+              )}
             </Tabs>
 
 

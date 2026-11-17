@@ -173,13 +173,13 @@ const Field = () => {
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
                 {canCreate ? (
                     <Button type="primary" onClick={handleAdd}>
-                        Add
+                        {t('common.actions.add', 'Add')}
                     </Button>
                 ) : (
                     <Tooltip title="View-only access: Creating new items is disabled">
                         <span>
                             <Button type="primary" disabled>
-                                Add
+                                {t('common.actions.add', 'Add')}
                             </Button>
                         </span>
                     </Tooltip>
@@ -192,11 +192,12 @@ const Field = () => {
                 loading={loading}
             />
             <Modal
-                title={editingItem ? 'Edit Field' : 'Add Field'}
+                title={editingItem ? t('masters.field.editTitle', 'Edit Field') : t('masters.field.addTitle', 'Add Field')}
                 open={modalVisible}
                 onOk={handleSave}
                 onCancel={() => setModalVisible(false)}
-                okText="Save"
+                okText={t('common.actions.save', 'Save')}
+                cancelText={t('common.actions.cancel', 'Cancel')}
                 okButtonProps={{ disabled: editingItem ? !canEdit : !canCreate }}
             >
                 <Input

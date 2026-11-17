@@ -1,5 +1,6 @@
 import React from "react";
 import { Select, Typography } from "antd";
+import { useTranslation } from "react-i18next";
 
 const RPTFilesHeader = ({
   templateScope,
@@ -12,20 +13,22 @@ const RPTFilesHeader = ({
   typeOptions,
   groupLabel,
 }) => {
+  const { t } = useTranslation();
+
   return (
     <div className="rpt-header">
       <Typography.Title level={4} style={{ margin: 0 }}>
-        RPT Templates
+        {t("masters.rptTemplates", "RPT Templates")}
       </Typography.Title>
       <div className="rpt-filters">
         <div className="rpt-filter">
           <Select
-            placeholder="Scope"
+            placeholder={t("templates.scope", "Scope")}
             value={templateScope}
             onChange={onScopeChange}
             options={[
-              { label: "Group", value: "group" },
-              { label: "Standard", value: "standard" },
+              { label: t("templates.group", "Group"), value: "group" },
+              { label: t("templates.standard", "Standard"), value: "standard" },
             ]}
             style={{ width: "100%" }}
             size="large"
@@ -35,7 +38,7 @@ const RPTFilesHeader = ({
           <Select
             showSearch
             optionFilterProp="label"
-            placeholder="Select Group"
+            placeholder={t("templates.selectGroup", "Select Group")}
             value={selectedGroup}
             onChange={onGroupChange}
             options={groupOptions}
@@ -47,13 +50,13 @@ const RPTFilesHeader = ({
           />
           {!selectedGroup && templateScope === "group" && (
             <Typography.Text type="danger" style={{ fontSize: 11, display: "block", marginTop: 2 }}>
-              Please select a group
+              {t("templates.pleaseSelectGroup", "Please select a group")}
             </Typography.Text>
           )}
         </div>
         <div className="rpt-filter">
           <Select
-            placeholder="Select Type"
+            placeholder={t("templates.selectType", "Select Type")}
             value={selectedType}
             onChange={onTypeChange}
             options={typeOptions}
@@ -64,7 +67,7 @@ const RPTFilesHeader = ({
           />
           {!selectedType && (
             <Typography.Text type="danger" style={{ fontSize: 11, display: "block", marginTop: 2 }}>
-              Please select a type
+              {t("templates.pleaseSelectType", "Please select a type")}
             </Typography.Text>
           )}
         </div>

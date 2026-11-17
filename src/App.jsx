@@ -19,6 +19,8 @@ import DataImport from "./ToolsProcessing/DataImport";
 import ProjectTemplates from "./ToolsProcessing/ProjectTemplates";
 import DuplicateTool from "./ToolsProcessing/DuplicateTool";
 import Master from "./Masters/Master";
+import RolesPermissions from "./Masters/RolesPermissions";
+import MessageManagement from "./Masters/MessageManagement";
 import EnvelopeBreaking from "./ToolsProcessing/Envelope/EnvelopeBreaking";
 import ProcessingPipeline from "./ToolsProcessing/ProcessingPipeline";
 
@@ -81,14 +83,24 @@ function TokenChecker() {
 export default function App() {
   const token = useUserToken();
   const { i18n } = useTranslation();
+  const [translationsLoaded, setTranslationsLoaded] = useState(false);
   const [antdLocale, setAntdLocale] = useState(i18n.language === 'hi' ? hiIN : enUS);
 
   useEffect(() => {
-    const activeLang = getInitialLanguage();
-    if (i18n.language !== activeLang) {
-      i18n.changeLanguage(activeLang);
-    }
-    loadDynamicTranslations(activeLang);
+    let isMounted = true;
+    const initAppTranslations = async () => {
+      const activeLang = getInitialLanguage();
+      if (i18n.language !== activeLang) {
+        await i18n.changeLanguage(activeLang);
+      }
+      await loadDynamicTranslations(activeLang);
+      if (isMounted) {
+        setTranslationsLoaded(true);
+      }
+    };
+
+    initAppTranslations();
+    return () => { isMounted = false; };
   }, [token]);
 
   useEffect(() => {
@@ -108,227 +120,251 @@ export default function App() {
   return (
     <ConfigProvider locale={antdLocale}>
       <ToastProvider position="top-right">
-      <Router>
-        <TokenChecker />
-        <Routes>
-          <Route
-            path="/"
-            element={token ? <Navigate to="/dashboard" /> : <Navigate to="/login" />}
-          />
-          <Route path="/login" element={<Login />} />
+        <Router>
+          <TokenChecker />
+          <Routes>
+            <Route
+              path="/"
+              element={token ? <Navigate to="/dashboard" /> : <Navigate to="/login" />}
+            />
+            <Route path="/login" element={<Login />} />
 
-          {token && (
-            <>
-              <Route
-                path="/dashboard"
-                element={
-                  <ProtectedRoute token={token}>
-                    <MainLayout >
-                      <Dashboard />
-                    </MainLayout>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/archive"
-                element={
-                  <ProtectedRoute token={token}>
-                    <MainLayout >
-                      <Archive />
-                    </MainLayout>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/masters"
-                element={
-                  <ProtectedRoute token={token}>
-                    <MainLayout >
-                      <Master />
-                    </MainLayout>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/projectconfiguration"
-                element={
-                  <ProtectedRoute token={token}>
-                    <MainLayout >
-                      <ProjectConfiguration />
-                    </MainLayout>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/dataimport"
-                element={
-                  <ProtectedRoute token={token}>
-                    <MainLayout >
-                      <DataImport />
-                    </MainLayout>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/projecttemplates"
-                element={
-                  <ProtectedRoute token={token}>
-                    <MainLayout >
-                      <ProjectTemplates />
-                    </MainLayout>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/duplicate"
-                element={
-                  <ProtectedRoute token={token}>
-                    <MainLayout >
-                      <DuplicateTool />
-                    </MainLayout></ProtectedRoute>
-                }
-              />
-              <Route
-                path="/horizontalToVertical"
-                element={
-                  <ProtectedRoute token={token}>
-                    <MainLayout >
-                      <PermissionRoute moduleCode="HTOV_TOOL">
-                        <HToV />
-                      </PermissionRoute>
-                    </MainLayout></ProtectedRoute>
-                }
-              />
-              <Route
-                path="/correctiontool"
-                element={
-                  <ProtectedRoute token={token}>
-                    <MainLayout >
-                      <CorrectionTool />
-                    </MainLayout></ProtectedRoute>
-                }
-              />
-              <Route
-                path="/excelupload"
-                element={
-                  <ProtectedRoute token={token}>
-                    <MainLayout >
-                      <ExcelUpload />
-                    </MainLayout></ProtectedRoute>
-                }
-              />
+            {token && (
+              <>
+                <Route
+                  path="/dashboard"
+                  element={
+                    <ProtectedRoute token={token}>
+                      <MainLayout >
+                        <Dashboard />
+                      </MainLayout>
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/archive"
+                  element={
+                    <ProtectedRoute token={token}>
+                      <MainLayout >
+                        <Archive />
+                      </MainLayout>
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/masters"
+                  element={
+                    <ProtectedRoute token={token}>
+                      <MainLayout >
+                        <Master />
+                      </MainLayout>
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/roles-permissions"
+                  element={
+                    <ProtectedRoute token={token}>
+                      <MainLayout >
+                        <PermissionRoute moduleCode="ROLES_PERMISSIONS">
+                          <RolesPermissions />
+                        </PermissionRoute>
+                      </MainLayout>
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/message-management"
+                  element={
+                    <ProtectedRoute token={token}>
+                      <MainLayout >
+                        <PermissionRoute moduleCode="MESSAGE_MANAGEMENT">
+                          <MessageManagement />
+                        </PermissionRoute>
+                      </MainLayout>
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/projectconfiguration"
+                  element={
+                    <ProtectedRoute token={token}>
+                      <MainLayout >
+                        <ProjectConfiguration />
+                      </MainLayout>
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/dataimport"
+                  element={
+                    <ProtectedRoute token={token}>
+                      <MainLayout >
+                        <DataImport />
+                      </MainLayout>
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/projecttemplates"
+                  element={
+                    <ProtectedRoute token={token}>
+                      <MainLayout >
+                        <ProjectTemplates />
+                      </MainLayout>
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/duplicate"
+                  element={
+                    <ProtectedRoute token={token}>
+                      <MainLayout >
+                        <DuplicateTool />
+                      </MainLayout></ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/horizontalToVertical"
+                  element={
+                    <ProtectedRoute token={token}>
+                      <MainLayout >
+                        <PermissionRoute moduleCode="HTOV_TOOL">
+                          <HToV />
+                        </PermissionRoute>
+                      </MainLayout></ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/correctiontool"
+                  element={
+                    <ProtectedRoute token={token}>
+                      <MainLayout >
+                        <CorrectionTool />
+                      </MainLayout></ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/excelupload"
+                  element={
+                    <ProtectedRoute token={token}>
+                      <MainLayout >
+                        <ExcelUpload />
+                      </MainLayout></ProtectedRoute>
+                  }
+                />
 
-              <Route
-                path="/envelopebreaking"
-                element={
-                  <ProtectedRoute token={token}>
-                    <MainLayout >
-                      <EnvelopeBreaking />
-                    </MainLayout></ProtectedRoute>
-                }
-              />
-              <Route
-                path="/processingpipeline"
-                element={
-                  <ProtectedRoute token={token}>
-                    <MainLayout >
-                      <ProcessingPipeline />
-                    </MainLayout></ProtectedRoute>
-                }
-              />
-              
-              <Route
-                path="/rptreports"
-                element={
-                  <ProtectedRoute token={token}>
-                    <MainLayout >
-                      <RPTReports />
-                    </MainLayout></ProtectedRoute>
-                }
-              />
-              <Route
-                path="/reports"
-                element={
-                  <ProtectedRoute token={token}>
-                    <MainLayout >
-                      <Report />
-                    </MainLayout></ProtectedRoute>
-                }
-              />
-              <Route
-                path="/reportbuilder"
-                element={
-                  <ProtectedRoute token={token}>
-                    <MainLayout >
-                      <ReportBuilder />
-                    </MainLayout></ProtectedRoute>
-                }
-              />
-              <Route
-                path="/projectdashboard"
-                element={
-                  <ProtectedRoute token={token}>
-                    <MainLayout >
-                      <ProjectDashboard />
-                    </MainLayout></ProtectedRoute>
-                }
-              />
-              <Route
-                path="/headerverification"
-                element={
-                  <ProtectedRoute token={token}>
-                    <MainLayout >
-                      <HeaderVerification />
-                    </MainLayout></ProtectedRoute>
-                }
-              />
-               <Route
-                path="/changedNRUpload"
-                element={
-                  <ProtectedRoute token={token}>
-                    <MainLayout >
-                      <ChangedNRUpload />
-                    </MainLayout></ProtectedRoute>
-                }
-              />
-               <Route
-                path="/batchwisedata"
-                element={
-                  <ProtectedRoute token={token}>
-                    <MainLayout >
-                      <BatchWiseData />
-                    </MainLayout></ProtectedRoute>
-                }
-              />
-               <Route
-                path="/nodal-center-list"
-                element={
-                  <ProtectedRoute token={token}>
-                    <MainLayout >
-                      <NodalCenterList />
-                    </MainLayout>
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/masterconfig-report"
-                element={
-                  <ProtectedRoute token={token}>
-                    <MainLayout >
-                      <MasterConfigReport />
-                    </MainLayout>
-                  </ProtectedRoute>
-                }
-              />
-            </>
-          )}
-          <Route
-            path="*"
-            element={<Navigate to={token ? "/dashboard" : "/login"} />}
-          />
-        </Routes>
-      </Router>
-    </ToastProvider>
+                <Route
+                  path="/envelopebreaking"
+                  element={
+                    <ProtectedRoute token={token}>
+                      <MainLayout >
+                        <EnvelopeBreaking />
+                      </MainLayout></ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/processingpipeline"
+                  element={
+                    <ProtectedRoute token={token}>
+                      <MainLayout >
+                        <ProcessingPipeline />
+                      </MainLayout></ProtectedRoute>
+                  }
+                />
+
+                <Route
+                  path="/rptreports"
+                  element={
+                    <ProtectedRoute token={token}>
+                      <MainLayout >
+                        <RPTReports />
+                      </MainLayout></ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/reports"
+                  element={
+                    <ProtectedRoute token={token}>
+                      <MainLayout >
+                        <Report />
+                      </MainLayout></ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/reportbuilder"
+                  element={
+                    <ProtectedRoute token={token}>
+                      <MainLayout >
+                        <ReportBuilder />
+                      </MainLayout></ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/projectdashboard"
+                  element={
+                    <ProtectedRoute token={token}>
+                      <MainLayout >
+                        <ProjectDashboard />
+                      </MainLayout></ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/headerverification"
+                  element={
+                    <ProtectedRoute token={token}>
+                      <MainLayout >
+                        <HeaderVerification />
+                      </MainLayout></ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/changedNRUpload"
+                  element={
+                    <ProtectedRoute token={token}>
+                      <MainLayout >
+                        <ChangedNRUpload />
+                      </MainLayout></ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/batchwisedata"
+                  element={
+                    <ProtectedRoute token={token}>
+                      <MainLayout >
+                        <BatchWiseData />
+                      </MainLayout></ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/nodal-center-list"
+                  element={
+                    <ProtectedRoute token={token}>
+                      <MainLayout >
+                        <NodalCenterList />
+                      </MainLayout>
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/masterconfig-report"
+                  element={
+                    <ProtectedRoute token={token}>
+                      <MainLayout >
+                        <MasterConfigReport />
+                      </MainLayout>
+                    </ProtectedRoute>
+                  }
+                />
+              </>
+            )}
+            <Route
+              path="*"
+              element={<Navigate to={token ? "/dashboard" : "/login"} />}
+            />
+          </Routes>
+        </Router>
+      </ToastProvider>
     </ConfigProvider>
   );
 }

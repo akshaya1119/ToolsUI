@@ -13,6 +13,7 @@ import StatusBadgeHV from './components/HeaderVerification/StatusBadgeHV';
 import PrintPreviewHV from './components/HeaderVerification/PrintPreviewHV';
 import { normalizeStatus, statusLabels, statusDropdownOptions } from './components/HeaderVerification/statusUtils';
 import { getCurrentUserId, getCurrentUserRoleId } from '../hooks/useUserMap';
+import usePermissionsStore from '../stores/UserPermissions';
 
 const customTableStyles = `
   .header-verification-table tbody tr:hover td {
@@ -38,6 +39,7 @@ const HeaderVerification = () => {
   const initVerificationStatus = searchParams.get('status');
 
   const [correctionFilter, setCorrectionFilter] = useState(false);
+  const hasSpecialAction = usePermissionsStore((state) => state.hasSpecialAction);
   const currentUserRoleId = getCurrentUserRoleId();
   const isRoleAuthorized = currentUserRoleId !== null && Number(currentUserRoleId) <= 4 && Number(currentUserRoleId) > 0;
   const canShowCorrection = isRoleAuthorized && ((summaryStats.correctionCount ?? 0) > 0 || correctionFilter);
@@ -948,7 +950,7 @@ const HeaderVerification = () => {
             <p className="text-sm text-gray-500 mt-1">Search, filter, edit, and verify academic papers</p>
           </div>
           <div className="flex items-center gap-3">
-            {isRoleAuthorized && (() => {
+            {isRoleAuthorized && hasSpecialAction('ACTION_BULK_VERIFY_CATCHES') && (() => {
               const allVerified = summaryStats.total > 0 && summaryStats.notVerified === 0 && summaryStats.unclear === 0;
               return (
                 <button

@@ -11,20 +11,6 @@ export const useModulePermission = (moduleCode) => {
   const initialized = usePermissionsStore((state) => state.initialized);
   const error = usePermissionsStore((state) => state.error);
 
-  // Fail-safe: Superuser always maintains access to Roles & Permissions management so they cannot be locked out
-  if (isSuperuser && moduleCode === 'ROLES_PERMISSIONS') {
-    return {
-      canView: true,
-      canCreate: true,
-      canEdit: true,
-      canDelete: true,
-      canExecute: true,
-      canExport: true,
-      isSuperuser: true,
-      loading: !initialized
-    };
-  }
-
   // Safe fallback: If not yet initialized or on error, allow viewing but block mutating actions
   if (!initialized || error) {
     return {

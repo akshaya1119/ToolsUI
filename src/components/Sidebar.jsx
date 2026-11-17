@@ -2,7 +2,7 @@ import { useTranslation } from 'react-i18next';
 import React, { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
-import { FaHome, FaWrench, FaChartBar, FaSignOutAlt, FaBookmark, FaBook, FaChevronDown, FaChevronRight, FaChartLine } from "react-icons/fa";
+import { FaHome, FaWrench, FaChartBar, FaSignOutAlt, FaBookmark, FaBook, FaChevronDown, FaChevronRight, FaChartLine, FaShieldAlt, FaComments } from "react-icons/fa";
 import useStore from "../stores/ProjectData";
 import API from "../hooks/api";
 import Footer from "./Footer";
@@ -80,9 +80,9 @@ export default function Sidebar({ collapsed }) {
     const isReportsChild = ["/masterconfig-report"].includes(location.pathname);
 
     if (isToolsChild) {
-      setOpenGroups({ Tools: true, Reports: false });
+      setOpenGroups({ tools: true, reports: false, correctionTool: false });
     } else if (isReportsChild) {
-      setOpenGroups({ Tools: false, Reports: true });
+      setOpenGroups({ tools: false, reports: true, correctionTool: false });
     }
   }, [location.pathname]);
 
@@ -108,7 +108,7 @@ export default function Sidebar({ collapsed }) {
       label: projectName ? t("menu.projectDashboard", "Project Dashboard") : t("menu.dashboard", "Dashboard"),
       icon: <FaHome className="text-black" />,
       path: projectName ? "/projectdashboard" : "/dashboard",
-      visible: hasPermission("DASHBOARD", "View"),
+      visible: true,
     },
     {
       label: t("menu.masters", "Masters"),
@@ -121,10 +121,22 @@ export default function Sidebar({ collapsed }) {
         hasPermission("MASTER_FIELDS", "View") ||
         hasPermission("MASTER_MODULES", "View") ||
         hasPermission("MASTER_NODAL_EXTRA", "View") ||
-        hasPermission("MASTER_RPT", "View") ||
-        hasPermission("ROLES_PERMISSIONS", "View"),
+        hasPermission("MASTER_RPT", "View"),
     },
     {
+      label: t("menu.rolesPermissions", "Roles & Permissions"),
+      icon: <FaShieldAlt className="text-black" />,
+      path: "/roles-permissions",
+      visible: hasPermission("ROLES_PERMISSIONS", "View"),
+    },
+    {
+      label: t("menu.messageManagement", "Message Management"),
+      icon: <FaComments className="text-black" />,
+      path: "/message-management",
+      visible: hasPermission("MESSAGE_MANAGEMENT", "View"),
+    },
+    {
+      key: "reports",
       label: t("menu.reports", "Reports"),
       icon: <FaChartLine className="text-black" />,
       visible: hasPermission("REPORTS", "View"),
@@ -135,20 +147,21 @@ export default function Sidebar({ collapsed }) {
     ...(projectName
       ? [
         {
+          key: "tools",
           label: t("menu.tools", "Tools"),
           icon: <FaWrench className="text-black" />, // Filled wrench icon
           children: [
             { label: t("menu.projectConfiguration", "Project Configuration"), path: "/projectconfiguration", visible: hasPermission("PROJECT_CONFIG", "View") },
-            { label: t("menu.dataImport", "Data Import"), path: "/dataimport", disabled: !isConfigured, visible: hasPermission("DATA_IMPORT", "View") },
+            { label: t("menu.dataImport", "Data Import"), path: "/dataimport", disabled: !isConfigured, visible: hasPermission("DATA_IMPORT", "View") || hasPermission("UPLOADED_DATA", "View") || hasPermission("CONFLICT_REPORT", "View") || hasPermission("FILL_MISSING_DATA", "View") || hasPermission("LOT_BIFURCATION", "View") || hasPermission("MERGE_CATCH_NUMBERS", "View") },
             { label: t("menu.changedNRAnalysis", "Changed NR Analysis"), path: "/changedNRUpload", visible: hasPermission("CHANGED_NR", "View") },
             { label: t("menu.batchWiseData", "Batch Wise Data"), path: "/batchwisedata", visible: hasPermission("BATCH_DATA", "View") },
             { label: t("menu.nodalCatchList", "Nodal & Catch List"), path: "/nodal-center-list", visible: hasPermission("NODAL_CATCH", "View") },
-            { label: t("menu.projectTemplates", "Project Templates"), path: "/projecttemplates", visible: hasPermission("MASTER_RPT", "View") },
+            { label: t("menu.projectTemplates", "Project Templates"), path: "/projecttemplates", visible: hasPermission("REPORT_TEMPLATE_MANAGEMENT", "View") || hasPermission("MASTER_RPT", "View") },
             {
               label: t("menu.processingPipeline", "Processing Pipeline"),
               path: "/processingpipeline",
               disabled: nrDataCount === 0 || !isConfigured,
-              visible: hasPermission("PROCESSING_PIPELINE", "View")
+              visible: hasPermission("PROCESSING_PIPELINE", "View") || hasPermission("REPORT_TEMPLATE_MANAGEMENT", "View")
             },
             {
               label: t("menu.headerVerification", "Header Verification"),
@@ -174,6 +187,7 @@ export default function Sidebar({ collapsed }) {
       ? [] // Don't show "Correction Tool" if projectName exists
       : [
         {
+          key: "correctionTool",
           label: t("menu.correctionTool", "Correction Tool"),
           icon: <FaWrench className="text-black" />, // Filled wrench icon
           visible: hasPermission("CORRECTION_TOOL", "View"),
@@ -288,14 +302,15 @@ export default function Sidebar({ collapsed }) {
   );
 
   const renderGroupItem = (group) => {
-    const isOpen = openGroups[group.label];
+    const groupKey = group.key || group.label;
+    const isOpen = openGroups[groupKey];
     const groupBadgeCount = group.children?.reduce((sum, child) => sum + (Number(child.badge) || 0), 0) || 0;
     const isGroupActive = group.children?.some(child => location.pathname === child.path);
 
     return (
-      <li key={group.label} className="flex flex-col relative group">
+      <li key={groupKey} className="flex flex-col relative group">
         <div
-          onClick={() => !collapsed && toggleGroup(group.label)}
+          onClick={() => !collapsed && toggleGroup(groupKey)}
           className={`flex items-center justify-between px-3 py-2 rounded-md transition-all duration-150 
             ${collapsed ? "justify-center cursor-default" : "cursor-pointer"} 
             ${isGroupActive ? "bg-blue-100 text-blue-700 font-medium " + (collapsed ? "" : "border-l-4 border-blue-500") : "text-gray-800 hover:bg-gray-100"}`}

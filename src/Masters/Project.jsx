@@ -382,13 +382,13 @@ const Project = () => {
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
                 {canCreate ? (
                     <Button type="primary" onClick={handleAdd}>
-                        Add
+                        {t('common.actions.add', 'Add')}
                     </Button>
                 ) : (
                     <Tooltip title="View-only access: Creating new projects is disabled">
                         <span>
                             <Button type="primary" disabled>
-                                Add
+                                {t('common.actions.add', 'Add')}
                             </Button>
                         </span>
                     </Tooltip>
@@ -409,11 +409,12 @@ const Project = () => {
             />
 
             <Modal
-                title={editingItem ? 'Edit Project' : 'Add Project'}
+                title={editingItem ? t('masters.project.editTitle', 'Edit Project') : t('masters.project.addTitle', 'Add Project')}
                 open={modalVisible}
                 onOk={handleSave}
                 onCancel={() => setModalVisible(false)}
-                okText="Save"
+                okText={t('common.actions.save', 'Save')}
+                cancelText={t('common.actions.cancel', 'Cancel')}
                 okButtonProps={{ disabled: editingItem ? !canEdit : !canCreate }}
             >
                 <Select
