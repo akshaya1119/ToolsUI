@@ -3,19 +3,20 @@ import {
   Input,
   Select,
   Tag,
-  message,
   Button,
   Tooltip,
   Modal,
   Checkbox,
   Pagination,
 } from 'antd';
+import { useTranslation } from 'react-i18next';
 import axios from 'axios';
 import { Search, Download, FileText, ChevronDown, ChevronRight, Archive, ArchiveRestore } from 'lucide-react';
 import { useUserMap, getFirstNameFromUserId, getCurrentUserId } from '../../hooks/useUserMap';
 import useStore from '../../stores/ProjectData';
 import BatchCatchAccordion from './BatchCatchAccordion';
 import usePermissionsStore from '../../stores/UserPermissions';
+import message from '../../utils/appMessage';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -105,6 +106,7 @@ const ReportTemplateManagement = ({
   envLotReports = [],
   availableLots = [],
 }) => {
+  const { t } = useTranslation();
   const { userMap } = useUserMap();
   const projectName = useStore(state => state.projectName);
 
@@ -706,11 +708,11 @@ const ReportTemplateManagement = ({
     if (!dbId) return;
 
     Modal.confirm({
-      title: 'Archive Report',
-      content: 'Are you sure you want to archive this report?',
-      okText: 'Yes, Archive',
+      title: t('rtm.archiveConfirmTitle', 'Archive Report'),
+      content: t('rtm.archiveConfirmContent', 'Are you sure you want to archive this report?'),
+      okText: t('rtm.yesArchive', 'Yes, Archive'),
       okType: 'danger',
-      cancelText: 'Cancel',
+      cancelText: t('common.actions.cancel', 'Cancel'),
       onOk: async () => {
         try {
           await axios.put(`${apiBaseUrl}/EnvelopeLotReports/${dbId}/archive`);
@@ -1164,40 +1166,40 @@ const ReportTemplateManagement = ({
       {/* card header */}
       <div className="flex flex-col gap-4 border-b border-slate-200 px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-lg font-semibold text-slate-800">Report &amp; Template Management</h2>
-          <p className="mt-1 text-sm text-slate-500">Click any row to expand and view all versions.</p>
+          <h2 className="text-lg font-semibold text-slate-800">{t('rtm.title', 'Report & Template Management')}</h2>
+          <p className="mt-1 text-sm text-slate-500">{t('rtm.subtitle', 'Click any row to expand and view all versions.')}</p>
         </div>
         <div className="flex flex-col items-end gap-2">
           <div className="rounded-full bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-700">
-            {totalReportsCount} {isReport ? 'Reports' : 'Templates'}
+            {totalReportsCount} {isReport ? t('rtm.reportsTab', 'Reports') : t('common.labels.templates', 'Templates')}
           </div>
-          <Button size="small" onClick={() => setColumnVisibilityModalOpen(true)}>Column Settings</Button>
+          <Button size="small" onClick={() => setColumnVisibilityModalOpen(true)}>{t('rtm.columnSettings', 'Column Settings')}</Button>
         </div>
       </div>
 
       {/* filter bar */}
       <div className="flex items-center gap-3 border-b border-slate-200 bg-slate-50/50 px-6 py-4 flex-wrap">
         <Input allowClear prefix={<Search size={16} />}
-          placeholder={isReport ? 'Search by module or report...' : 'Search by module or template...'}
+          placeholder={isReport ? t('rtm.searchReportsPlaceholder', 'Search by module or report...') : t('rtm.searchTemplatesPlaceholder', 'Search by module or template...')}
           value={searchText} onChange={e => setSearchText(e.target.value)}
           className="min-w-[280px] flex-1" />
 
         <Select value={selectedModule} onChange={setSelectedModule} className="w-[170px]">
-          <Select.Option value="ALL">All Modules</Select.Option>
+          <Select.Option value="ALL">{t('rtm.allModules', 'All Modules')}</Select.Option>
           {moduleOptions.map(m => <Select.Option key={m} value={m}>{m}</Select.Option>)}
         </Select>
 
         {!isReport && (
           <Select value={selectedTemplate} onChange={setSelectedTemplate} className="w-[170px]">
-            <Select.Option value="ALL">All Templates</Select.Option>
-            {templateOptions.map(t => <Select.Option key={t} value={t}>{t}</Select.Option>)}
-            <Select.Option value="ARCHIVED_TEMPLATES">Archived Templates</Select.Option>
+            <Select.Option value="ALL">{t('rtm.allTemplates', 'All Templates')}</Select.Option>
+            {templateOptions.map(tOption => <Select.Option key={tOption} value={tOption}>{tOption}</Select.Option>)}
+            <Select.Option value="ARCHIVED_TEMPLATES">{t('rtm.archivedTemplates', 'Archived Templates')}</Select.Option>
           </Select>
         )}
 
         <Select value={selectedLot} onChange={setSelectedLot} className="w-[140px]">
-          <Select.Option value="ALL">All Lots</Select.Option>
-          {getLotNumbers.map(l => <Select.Option key={l} value={l}>Lot {l}</Select.Option>)}
+          <Select.Option value="ALL">{t('rtm.allLots', 'All Lots')}</Select.Option>
+          {getLotNumbers.map(l => <Select.Option key={l} value={l}>{t('common.labels.lot', 'Lot')} {l}</Select.Option>)}
         </Select>
 
         {/* Version filter dropdown — only shown in Template view */}
@@ -1208,48 +1210,55 @@ const ReportTemplateManagement = ({
             className="w-[150px]"
             style={{ flexShrink: 0 }}
           >
-            <Select.Option value="recent">Most Recent</Select.Option>
-            <Select.Option value="all">All Versions</Select.Option>
+            <Select.Option value="recent">{t('rtm.mostRecent', 'Most Recent')}</Select.Option>
+            <Select.Option value="all">{t('rtm.allVersions', 'All Versions')}</Select.Option>
           </Select>
         )}
 
         <Button type="primary" loading={bulkDownloading} disabled={bulkDownloading || accordionGroups.length === 0}
           icon={<Download size={15} />} onClick={handleDownloadAll}>
-          {bulkDownloading ? 'Downloading...' : 'Download All'}
+          {bulkDownloading ? t('common.feedback.loading', 'Downloading...') : t('common.actions.downloadAll', 'Download All')}
         </Button>
 
         {(canViewReports && canViewTemplates) && (
           <div className="flex rounded-lg border border-slate-200 bg-white p-1 ml-2">
-            <Button type={isReport ? 'primary' : 'default'} onClick={() => handleTypeChange('Report')} className="rounded-md px-4 py-2 text-sm font-medium">Reports</Button>
-            <Button type={!isReport ? 'primary' : 'default'} onClick={() => handleTypeChange('Template')} className="rounded-md px-4 py-2 text-sm font-medium">Templates</Button>
+            <Button type={isReport ? 'primary' : 'default'} onClick={() => handleTypeChange('Report')} className="rounded-md px-4 py-2 text-sm font-medium">{t('rtm.reportsTab', 'Reports')}</Button>
+            <Button type={!isReport ? 'primary' : 'default'} onClick={() => handleTypeChange('Template')} className="rounded-md px-4 py-2 text-sm font-medium">{t('common.labels.templates', 'Templates')}</Button>
           </div>
         )}
       </div>
 
       {/* column visibility modal */}
-      <Modal title={`Column Settings — ${viewType} View`} open={columnVisibilityModalOpen}
+      <Modal title={`${t('rtm.columnSettings', 'Column Settings')} — ${isReport ? t('rtm.reportsTab', 'Reports') : t('common.labels.templates', 'Templates')}`} open={columnVisibilityModalOpen}
         onCancel={() => setColumnVisibilityModalOpen(false)} width={400}
         footer={
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
             <div style={{ display: 'flex', gap: 8 }}>
-              <Button onClick={handleSelectAllColumns}>Select All</Button>
-              <Button onClick={handleDeselectAllColumns}>Deselect All</Button>
+              <Button onClick={handleSelectAllColumns}>{t('common.actions.selectAll', 'Select All')}</Button>
+              <Button onClick={handleDeselectAllColumns}>{t('common.actions.deselectAll', 'Deselect All')}</Button>
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
-              <Button onClick={() => setColumnVisibilityModalOpen(false)}>Cancel</Button>
-              <Button type="primary" onClick={() => setColumnVisibilityModalOpen(false)}>OK</Button>
+              <Button onClick={() => setColumnVisibilityModalOpen(false)}>{t('common.actions.cancel', 'Cancel')}</Button>
+              <Button type="primary" onClick={() => setColumnVisibilityModalOpen(false)}>{t('common.actions.ok', 'OK')}</Button>
             </div>
           </div>
         }
       >
         <div className="space-y-2">
-          <p className="text-sm font-medium text-slate-700 mb-3">Select columns to display:</p>
+          <p className="text-sm font-medium text-slate-700 mb-3">{t('rtm.selectColumnsDisplay', 'Select columns to display:')}</p>
           {Object.entries(isReport ? reportVisibleColumns : templateVisibleColumns).map(([key, val]) => {
             const labels = {
-              module: 'Module', lot: 'Lot', reportName: 'Report', templateName: 'Template Name',
-              subName: 'Sub Name', envLot: 'Batch', version: 'Version',
-              generated: 'Generated (By + On)', downloaded: 'Downloaded (By + At)',
-              status: 'Status', action: 'Action',
+              module: t('common.labels.module', 'Module'),
+              lot: t('common.labels.lot', 'Lot'),
+              reportName: t('rtm.colReport', 'Report'),
+              templateName: t('common.labels.templateName', 'Template Name'),
+              subName: t('common.labels.subName', 'Sub Name'),
+              envLot: t('common.labels.batch', 'Batch'),
+              version: t('common.labels.version', 'Version'),
+              generated: t('rtm.colGenerated', 'Generated (By + On)'),
+              downloaded: t('rtm.colDownloaded', 'Downloaded (By + At)'),
+              status: t('common.labels.status', 'Status'),
+              action: t('common.labels.actions', 'Action'),
             };
             return (
               <label key={key} className="flex items-center gap-2 cursor-pointer">
@@ -1269,8 +1278,8 @@ const ReportTemplateManagement = ({
         {accordionGroups.length === 0 ? (
           <div className="py-10 text-center">
             <FileText size={22} className="mx-auto mb-3 text-slate-400" />
-            <p className="text-sm font-medium text-slate-600">No {isReport ? 'reports' : 'templates'} found</p>
-            <p className="mt-1 text-xs text-slate-400">Try changing your filters.</p>
+            <p className="text-sm font-medium text-slate-600">{isReport ? t('rtm.noReportsFound', 'No reports found') : t('rtm.noTemplatesFound', 'No templates found')}</p>
+            <p className="mt-1 text-xs text-slate-400">{t('rtm.tryChangingFilters', 'Try changing your filters.')}</p>
           </div>
         ) : (
           <>
@@ -1278,24 +1287,24 @@ const ReportTemplateManagement = ({
             <div className="rtm-col-header" style={{ gridTemplateColumns: isReport ? reportGridCols : templateGridCols }}>
               <span />
               {(isReport ? rvc('module') : tvc('module')) && (
-                <span className="rtm-col-sortable" onClick={() => handleSort('module')}>Module <SortIcon field="module" /></span>
+                <span className="rtm-col-sortable" onClick={() => handleSort('module')}>{t('common.labels.module', 'Module')} <SortIcon field="module" /></span>
               )}
               {isReport
-                ? rvc('lot') && <span className="rtm-col-sortable" onClick={() => handleSort('lot')}>Lot <SortIcon field="lot" /></span>
+                ? rvc('lot') && <span className="rtm-col-sortable" onClick={() => handleSort('lot')}>{t('common.labels.lot', 'Lot')} <SortIcon field="lot" /></span>
                 : <>
-                  {tvc('lot') && <span className="rtm-col-sortable" onClick={() => handleSort('lot')}>Lot <SortIcon field="lot" /></span>}
-                  {tvc('envLot') && <span>Batch</span>}
+                  {tvc('lot') && <span className="rtm-col-sortable" onClick={() => handleSort('lot')}>{t('common.labels.lot', 'Lot')} <SortIcon field="lot" /></span>}
+                  {tvc('envLot') && <span>{t('common.labels.batch', 'Batch')}</span>}
                 </>
               }
-              {(isReport ? rvc('reportName') : tvc('templateName')) && <span>{isReport ? 'Report' : 'Template'}</span>}
-              {!isReport && tvc('subName') && <span>Sub Name</span>}
-              {(isReport ? rvc('version') : tvc('version')) && <span>Version</span>}
+              {(isReport ? rvc('reportName') : tvc('templateName')) && <span>{isReport ? t('rtm.colReport', 'Report') : t('rtm.colTemplate', 'Template')}</span>}
+              {!isReport && tvc('subName') && <span>{t('common.labels.subName', 'Sub Name')}</span>}
+              {(isReport ? rvc('version') : tvc('version')) && <span>{t('common.labels.version', 'Version')}</span>}
               {(isReport ? rvc('generated') : tvc('generated')) && (
-                <span className="rtm-col-sortable" onClick={() => handleSort('generatedOn')}>Generated <SortIcon field="generatedOn" /></span>
+                <span className="rtm-col-sortable" onClick={() => handleSort('generatedOn')}>{t('common.labels.generated', 'Generated')} <SortIcon field="generatedOn" /></span>
               )}
-              {!isReport && tvc('downloaded') && <span>Downloaded</span>}
-              {(isReport ? rvc('status') : tvc('status')) && <span>Status</span>}
-              <span>Action</span>
+              {!isReport && tvc('downloaded') && <span>{t('rtm.colDownloadedHeader', 'Downloaded')}</span>}
+              {(isReport ? rvc('status') : tvc('status')) && <span>{t('common.labels.status', 'Status')}</span>}
+              <span>{t('common.labels.actions', 'Action')}</span>
             </div>
 
             <div className="rtm-list">

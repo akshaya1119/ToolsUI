@@ -1,8 +1,10 @@
 import React from 'react';
 import { ClipboardList, CheckCircle2, AlertCircle, XCircle } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { normalizeStatus } from './statusUtils';
 
 const SummaryCardsHV = ({ records = [], summaryStats, onSelectCard, selectedCardKey }) => {
+  const { t } = useTranslation();
   const getNumericStatus = normalizeStatus;
 
   // Use API-provided stats when available, fall back to computing from records
@@ -14,7 +16,7 @@ const SummaryCardsHV = ({ records = [], summaryStats, onSelectCard, selectedCard
   const cards = [
     {
       key: 'ALL',
-      label: 'TOTAL CATCH',
+      label: t('headerVerification.totalCatch', 'TOTAL CATCH'),
       value: totalCatch,
       icon: ClipboardList,
       bgClass: 'bg-white',
@@ -25,7 +27,7 @@ const SummaryCardsHV = ({ records = [], summaryStats, onSelectCard, selectedCard
     },
     {
       key: 'VERIFIED',
-      label: 'VERIFIED',
+      label: t('headerVerification.verifiedUpper', 'VERIFIED'),
       value: verified,
       icon: CheckCircle2,
       bgClass: 'bg-white',
@@ -36,7 +38,7 @@ const SummaryCardsHV = ({ records = [], summaryStats, onSelectCard, selectedCard
     },
     {
       key: 'UNCLEAR',
-      label: 'NEEDS REVIEW',
+      label: t('headerVerification.needsReviewUpper', 'NEEDS REVIEW'),
       value: unclear,
       icon: AlertCircle,
       bgClass: 'bg-white',
@@ -47,7 +49,7 @@ const SummaryCardsHV = ({ records = [], summaryStats, onSelectCard, selectedCard
     },
     {
       key: 'NOT_VERIFIED',
-      label: 'NOT VERIFIED',
+      label: t('headerVerification.notVerifiedUpper', 'NOT VERIFIED'),
       value: notVerified,
       icon: XCircle,
       bgClass: 'bg-white',

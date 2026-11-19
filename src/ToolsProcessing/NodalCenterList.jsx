@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { Typography, Card, Tabs, Upload, Button, Select, Table, Tag, Row, Col, Popover, Checkbox, Tooltip, Input, Form, Modal, Popconfirm, Space, InputNumber, Alert, Badge, Radio, Collapse } from "antd";
 import { UploadOutlined, CheckCircleOutlined, SettingOutlined, SearchOutlined, DeleteOutlined, WarningOutlined } from "@ant-design/icons";
+import { useTranslation } from "react-i18next";
 import * as XLSX from "xlsx-js-style";
 import API from "../hooks/api";
 import { useToast } from "../hooks/useToast";
@@ -39,6 +40,7 @@ const EditableCell = ({
 };
 
 export default function NodalCenterList() {
+  const { t } = useTranslation();
   const { showToast } = useToast();
   const projectId = useStore((state) => state.projectId);
   const hasSpecialAction = usePermissionsStore((state) => state.hasSpecialAction);
@@ -839,8 +841,10 @@ export default function NodalCenterList() {
         : col;
 
       const colWidth = columnWidthMap[col] || 120;
+      const colLabelKey = col.charAt(0).toLowerCase() + col.slice(1);
+      const colTitle = t(`columns.${colLabelKey}`, col);
       const colDef = {
-        title: col,
+        title: colTitle,
         dataIndex: dataIndex,
         key: col,
         sorter: true,
@@ -851,7 +855,7 @@ export default function NodalCenterList() {
         filterDropdown: ({ setSelectedKeys, selectedKeys, confirm, clearFilters }) => (
           <div style={{ padding: 8 }}>
             <Input
-              placeholder={`Search ${col}`}
+              placeholder={t('tables.searchColumn', { column: colTitle, defaultValue: `Search ${col}` })}
               value={selectedKeys[0]}
               onChange={(e) => setSelectedKeys(e.target.value ? [e.target.value] : [])}
               onPressEnter={() => confirm()}
@@ -1359,7 +1363,7 @@ export default function NodalCenterList() {
         <Card
           className="shadow-sm border-gray-200"
           title={title}
-          extra={<Button type="text" onClick={() => setIsUploadSectionVisible(false)}>Close</Button>}
+          extra={<Button type="text" onClick={() => setIsUploadSectionVisible(false)}>{t('nodalCatch.close', 'Close')}</Button>}
         >
           <div className="flex flex-col gap-4">
             <Upload.Dragger
@@ -1369,8 +1373,8 @@ export default function NodalCenterList() {
               accept=".xls,.xlsx,.csv"
               maxCount={1}
             >
-              <p className="ant-upload-text">Upload Excel or CSV file</p>
-              <Button icon={<UploadOutlined />}>Choose File</Button>
+              <p className="ant-upload-text">{t('common.actions.uploadExcelCsv', 'Upload Excel or CSV file')}</p>
+              <Button icon={<UploadOutlined />}>{t('nodalCatch.chooseFile', 'Choose File')}</Button>
             </Upload.Dragger>
 
             {fileHeaders.length > 0 && (
@@ -1383,7 +1387,7 @@ export default function NodalCenterList() {
                     loading={uploading}
                     disabled={uploading}
                   >
-                    Upload Data
+                    {t('nodalCatch.uploadData', 'Upload Data')}
                   </Button>
                 </div>
               </div>
@@ -1396,12 +1400,12 @@ export default function NodalCenterList() {
       <Card className="shadow-sm border-gray-200">
         <div className="flex justify-between items-center mb-4">
           <div className="flex items-center gap-2">
-            <Typography.Title level={5} className="mb-0">Uploaded Data</Typography.Title>
-            <Tag color="blue">{pagination.total} Records</Tag>
+            <Typography.Title level={5} className="mb-0">{t('common.labels.uploadedData', 'Uploaded Data')}</Typography.Title>
+            <Tag color="blue">{pagination.total} {t('nodalCatch.records', 'Records')}</Tag>
           </div>
           <div className="flex gap-4 items-center">
             <Input.Search
-              placeholder="Search table..."
+              placeholder={t('nodalCatch.searchTable', 'Search table...')}
               onSearch={handleSearch}
               value={localSearch}
               onChange={(e) => {
@@ -1417,36 +1421,36 @@ export default function NodalCenterList() {
               </Button>
             )}
             <Button onClick={() => setIsAddModalVisible(true)} disabled={tempData.length > 0}>
-              + Add Record
+              {t('nodalCatch.addRecord', '+ Add Record')}
             </Button>
             {selectedRowKeys.length > 0 && (
               <Popconfirm
-                title={`Are you sure you want to delete ${selectedRowKeys.length} selected record(s)?`}
+                title={t('nodalCatch.confirmDeleteSelected', `Are you sure you want to delete ${selectedRowKeys.length} selected record(s)?`)}
                 onConfirm={handleDeleteSelected}
-                okText="Yes, Delete"
-                cancelText="Cancel"
+                okText={t('common.actions.yes', 'Yes')}
+                cancelText={t('common.actions.cancel', 'Cancel')}
                 okButtonProps={{ danger: true }}
               >
                 <Button danger icon={<DeleteOutlined />}>
-                  Delete Selected ({selectedRowKeys.length})
+                  {t('nodalCatch.deleteSelected', 'Delete Selected')} ({selectedRowKeys.length})
                 </Button>
               </Popconfirm>
             )}
             {pagination.total > 0 && (
               <Popconfirm
-                title={`Are you sure you want to delete ALL (${pagination.total}) records for ${activeTab === "1" ? "Catch List" : "Nodal List"} in this project?`}
+                title={t('nodalCatch.confirmDeleteAll', `Are you sure you want to delete ALL (${pagination.total}) records for ${activeTab === "1" ? "Catch List" : "Nodal List"} in this project?`)}
                 onConfirm={handleDeleteAll}
-                okText="Yes, Delete All"
-                cancelText="Cancel"
+                okText={t('common.actions.yes', 'Yes')}
+                cancelText={t('common.actions.cancel', 'Cancel')}
                 okButtonProps={{ danger: true }}
               >
                 <Button danger type="primary" icon={<DeleteOutlined />}>
-                  Delete All
+                  {t('nodalCatch.deleteAll', 'Delete All')}
                 </Button>
               </Popconfirm>
             )}
-            <Popover content={columnVisibilityContent} title="Column Visibility" trigger="click" placement="bottomRight">
-              <Button icon={<SettingOutlined />}>Columns</Button>
+            <Popover content={columnVisibilityContent} title={t('nodalCatch.columnVisibility', 'Column Visibility')} trigger="click" placement="bottomRight">
+              <Button icon={<SettingOutlined />}>{t('common.labels.columns', 'Columns')}</Button>
             </Popover>
           </div>
         </div>
@@ -1497,8 +1501,10 @@ export default function NodalCenterList() {
       .map(col => {
         const dataIndex = col === "NRQuantity" ? "nrQuantity" : (col.charAt(0).toLowerCase() + col.slice(1));
         const tempColWidth = columnWidthMap[col] || 120;
+        const colLabelKey = col.charAt(0).toLowerCase() + col.slice(1);
+        const colTitle = t(`columns.${colLabelKey}`, col);
         const colDef = {
-          title: col,
+          title: colTitle,
           dataIndex: dataIndex,
           key: col,
           sorter: true,
@@ -1508,7 +1514,7 @@ export default function NodalCenterList() {
           filterDropdown: ({ setSelectedKeys, selectedKeys, confirm, clearFilters }) => (
             <div style={{ padding: 8 }}>
               <Input
-                placeholder={`Search ${col}`}
+                placeholder={t('tables.searchColumn', { column: colTitle, defaultValue: `Search ${col}` })}
                 value={selectedKeys[0]}
                 onChange={(e) => setSelectedKeys(e.target.value ? [e.target.value] : [])}
                 onPressEnter={() => confirm()}
@@ -1594,7 +1600,7 @@ export default function NodalCenterList() {
     tempColumns.unshift(tempCheckboxCol);
 
     tempColumns.push({
-      title: 'Action',
+      title: t('nodalCatch.action', 'Action'),
       dataIndex: 'operation',
       fixed: 'right',
       width: 120,
@@ -1603,28 +1609,28 @@ export default function NodalCenterList() {
         const recId = record.id ?? record.Id;
         return editable ? (
           <Space size="middle">
-            <Typography.Link onClick={() => save(recId)}>Save</Typography.Link>
-            <Popconfirm title="Sure to cancel?" onConfirm={cancel}>
-              <a>Cancel</a>
+            <Typography.Link onClick={() => save(recId)}>{t('common.actions.save', 'Save')}</Typography.Link>
+            <Popconfirm title={t('nodalCatch.sureToCancel', 'Sure to cancel?')} onConfirm={cancel}>
+              <a>{t('common.actions.cancel', 'Cancel')}</a>
             </Popconfirm>
           </Space>
         ) : (
           <Space size="middle">
             <Typography.Link disabled={editingKey !== ''} onClick={() => edit(record)}>
-              Edit
+              {t('common.actions.edit', 'Edit')}
             </Typography.Link>
             <Popconfirm
-              title="Are you sure you want to delete this record?"
+              title={t('nodalCatch.confirmDeleteRow', 'Are you sure you want to delete this record?')}
               onConfirm={() => handleDelete(recId)}
-              okText="Yes"
-              cancelText="No"
+              okText={t('common.actions.yes', 'Yes')}
+              cancelText={t('common.actions.no', 'No')}
               disabled={editingKey !== ''}
             >
               <Typography.Link
                 type="danger"
                 disabled={editingKey !== ''}
               >
-                Delete
+                {t('common.actions.delete', 'Delete')}
               </Typography.Link>
             </Popconfirm>
           </Space>
@@ -2387,7 +2393,7 @@ export default function NodalCenterList() {
 
   return (
     <div className="p-6">
-      <Title level={4} className="mb-6">Nodal Center List</Title>
+      <Title level={4} className="mb-6">{t("menu.nodalCenterList", "Nodal Center List")}</Title>
 
       <Tabs
         activeKey={activeTab}
@@ -2396,37 +2402,37 @@ export default function NodalCenterList() {
         tabBarStyle={{ paddingLeft: '16px', marginBottom: 0 }}
         destroyInactiveTabPane={true}
       >
-        <TabPane tab="Add Catch List" key="1">
-          {renderUploadSection("Upload Catch List")}
+        <TabPane tab={t("nodalCatch.addCatchListTab", "Add Catch List")} key="1">
+          {renderUploadSection(t("nodalCatch.uploadCatchList", "Upload Catch List"))}
         </TabPane>
-        <TabPane tab="Add Nodal List" key="2">
-          {renderUploadSection("Upload Nodal List")}
+        <TabPane tab={t("nodalCatch.addNodalListTab", "Add Nodal List")} key="2">
+          {renderUploadSection(t("nodalCatch.uploadNodalList", "Upload Nodal List"))}
         </TabPane>
         <TabPane
           tab={
             formattedConflictErrors.length > 0 ? (
               <Badge count={formattedConflictErrors.length} style={{ backgroundColor: "#faad14" }} offset={[10, 0]} size="small">
-                <span>Conflict Report</span>
+                <span>{t("nodalCatch.conflictReportTab", "Conflict Report")}</span>
               </Badge>
             ) : (
-              "Conflict Report"
+              t("nodalCatch.conflictReportTab", "Conflict Report")
             )
           }
           key="3"
         >
           {renderConflicts()}
         </TabPane>
-        <TabPane tab="Merge & Preview" key="4">
+        <TabPane tab={t("nodalCatch.mergePreviewTab", "Merge & Preview")} key="4">
           {renderMergeTab()}
         </TabPane>
       </Tabs>
       <Modal
-        title={activeTab === "1" ? "Add Catch List Record" : "Add Nodal List Record"}
+        title={activeTab === "1" ? t("nodalCatch.addCatchRecord", "Add Catch List Record") : t("nodalCatch.addNodalRecord", "Add Nodal List Record")}
         open={isAddModalVisible}
         onOk={handleAddRecord}
         onCancel={() => { setIsAddModalVisible(false); addForm.resetFields(); }}
         confirmLoading={addingRecord}
-        okText="Add Record"
+        okText={t("nodalCatch.addRecord", "Add Record")}
         width={720}
         centered
         destroyOnClose

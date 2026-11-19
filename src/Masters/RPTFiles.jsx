@@ -47,11 +47,16 @@ import TemplatesMappingPanel from "../components/rpt/TemplatesMappingPanel";
 import TemplatesVersionsModal from "../components/rpt/TemplatesVersionsModal";
 import useMasterAuth from "../hooks/useMasterAuth";
 import useModulePermission from "../hooks/useModulePermission";
+import usePermissionsStore from "../stores/UserPermissions";
+import { useTranslation } from 'react-i18next';
 
 const RPTFiles = () => {
   const url = import.meta.env.VITE_API_BASE_URL;
   const APIURL = import.meta.env.VITE_API_URL;
   const { canView, canCreate, canEdit, canDelete } = useModulePermission('MASTER_RPT');
+  const hasSpecialAction = usePermissionsStore((state) => state.hasSpecialAction);
+  const canUploadTemplateSpecial = hasSpecialAction('ACTION_UPLOAD_RPT_TEMPLATE');
+  const canMapTemplateSpecial = hasSpecialAction('ACTION_MAP_RPT_TEMPLATE');
   const { requireAuth, authModalComponent } = useMasterAuth();
   const token = localStorage.getItem("token");
   const [useBoxLabelSP, setUseBoxLabelSP] = useState(false);
@@ -119,7 +124,7 @@ const RPTFiles = () => {
   const importGroupId = Form.useWatch("sourceGroupId", importForm);
   const importProjectId = Form.useWatch("sourceProjectId", importForm);
   const importTypeId = Form.useWatch("sourceTypeId", importForm);
-
+  const { t } = useTranslation();
   const [importableTemplates, setImportableTemplates] = useState([]);
   const [importableTemplatesLoading, setImportableTemplatesLoading] = useState(false);
 
@@ -141,14 +146,14 @@ const RPTFiles = () => {
         setImportableTemplates([]);
         return;
       }
-      
+
       setImportableTemplatesLoading(true);
       try {
         const payload = { sourceScope: importScope };
         if (importScope === "group") payload.sourceGroupId = importGroupId;
         if (importScope === "project") payload.sourceProjectId = importProjectId;
         if (importTypeId) payload.sourceTypeId = importTypeId;
-        
+
         const data = await fetchImportableTemplates(APIURL, payload);
         setImportableTemplates(data || []);
       } catch (err) {
@@ -158,7 +163,7 @@ const RPTFiles = () => {
         setImportableTemplatesLoading(false);
       }
     };
-    
+
     fetchTemplates();
   }, [importModalOpen, importScope, importGroupId, importProjectId, importTypeId, APIURL]);
 
@@ -644,10 +649,10 @@ const RPTFiles = () => {
       } catch (err) {
         const data = err?.response?.data;
         const allowForce = (err?.response?.status === 409 && data?.allowForceUpload) || data?.DesignCheck || data?.designCheck;
-        
+
         if (allowForce) {
           setAddSubmitting(false);
-          
+
           if (data?.DesignCheck || data?.designCheck) {
             const check = data.DesignCheck || data.designCheck;
             if (check.changed || check.Changed) {
@@ -795,16 +800,16 @@ const RPTFiles = () => {
     setMappingLoading(true);
     setMappingNotFound(false);
     setParsedFields(extractParsedFields(template));
-    
+
     fetchMappingOptions(template);
     try {
       const details = await fetchTemplateDetails(APIURL, template.templateId);
       let currentFields = details;
 
-      const needsRefresh = !currentFields.requiredFieldsJson && 
-                           !currentFields.RequiredFieldsJson &&
-                           (!currentFields.parsedFieldsJson || currentFields.parsedFieldsJson === "[]") &&
-                           (!currentFields.ParsedFieldsJson || currentFields.ParsedFieldsJson === "[]");
+      const needsRefresh = !currentFields.requiredFieldsJson &&
+        !currentFields.RequiredFieldsJson &&
+        (!currentFields.parsedFieldsJson || currentFields.parsedFieldsJson === "[]") &&
+        (!currentFields.ParsedFieldsJson || currentFields.ParsedFieldsJson === "[]");
 
       if (needsRefresh) {
         setParsedFieldsLoading(true);
@@ -824,7 +829,7 @@ const RPTFiles = () => {
       const res = await fetchTemplateMapping(APIURL, template.templateId);
       const mapping = res?.mappingJson ?? res?.MappingJson ?? "";
       const parsed = parseMappingJson(mapping);
-      
+
       setStaticVariables(parsed.staticVariables || {});
       setFilterMode(parsed.filterMode || null);
       setUseBoxLabelSP(parsed.useBoxLabelSP || false);
@@ -874,8 +879,8 @@ const RPTFiles = () => {
   };
 
   const handleSaveMapping = async () => {
-    if (!canEdit) {
-      message.error("You do not have permission to save mapping.");
+    if (!canEdit || !canMapTemplateSpecial) {
+      message.error("Special action permission required: Configure Template Mapping.");
       return;
     }
     if (!mappingTemplate?.templateId) return;
@@ -929,7 +934,7 @@ const RPTFiles = () => {
       console.error("Failed to save mapping", err);
       showError(err, "Failed to save mapping.");
     } finally {
-    setSavingMapping(false);
+      setSavingMapping(false);
     }
   };
 
@@ -1296,6 +1301,8 @@ const RPTFiles = () => {
         canEdit,
         canDelete,
         canCreate,
+        canUpload: canCreate && canUploadTemplateSpecial,
+        canMap: canEdit && canMapTemplateSpecial,
       }),
     [
       userMap,
@@ -1467,11 +1474,10 @@ const RPTFiles = () => {
       )}
 
       <div
-        className={`rpt-main ${
-          showMappingPanel || showSidePanel
-            ? "rpt-main--with-panel"
-            : "rpt-main--single"
-        }`}
+        className={`rpt-main ${showMappingPanel || showSidePanel
+          ? "rpt-main--with-panel"
+          : "rpt-main--single"
+          }`}
       >
         <TemplatesCard
           selectionReady={selectionReady}
@@ -1482,7 +1488,7 @@ const RPTFiles = () => {
           data={availableRPTFiles}
           columns={columns}
           loading={loadingTemplates}
-          selectionEmptyText="Select a group and type to view templates."
+          selectionEmptyText={t("rptTemplate.selectGroupAndType")}
           noTemplatesTitle="No templates found for this group and type."
           noTemplatesSubtitle="You can import from an existing group or add a new template."
           onRefresh={fetchAvailableRPTFiles}
@@ -1502,7 +1508,12 @@ const RPTFiles = () => {
             importForm.resetFields();
             importForm.setFieldsValue({ copyMappings: true });
           }}
-          disableAdd={!canCreate || !selectionReady}
+          disableAdd={!canCreate || !canUploadTemplateSpecial || !selectionReady}
+          disableAddTooltip={
+            !canCreate || !canUploadTemplateSpecial
+              ? t('permission.uploadNotPermitted', 'You do not have permission to upload templates.')
+              : undefined
+          }
           disableImport={!canCreate || !selectionReady || templateScope !== "group"}
           showImportAction
         />
@@ -1530,12 +1541,12 @@ const RPTFiles = () => {
                       name="groupId"
                       rules={[{ required: true, message: "Group is required" }]}
                     >
-                      <Select 
+                      <Select
                         showSearch
                         optionFilterProp="label"
                         allowClear
-                        options={groupOptions} 
-                        placeholder="Select group" 
+                        options={groupOptions}
+                        placeholder="Select group"
                       />
                     </Form.Item>
                   )}
@@ -1571,37 +1582,38 @@ const RPTFiles = () => {
           />
         )}
 
-       <TemplatesMappingPanel
-  showMappingPanel={showMappingPanel}
-  mappingTemplate={mappingTemplate}
-  mappingNotFound={mappingNotFound}
-  mappingOptionsLoading={mappingOptionsLoading}
-  parsedFields={parsedFields}
-  mappingRows={mappingRows}
-  sourceOptionGroups={sourceOptionGroups}
-  mappingSelections={mappingSelections}
-  setMappingSelections={setMappingSelections}
-  mappedFieldNames={mappedFieldNames}
-  groupBySelections={groupBySelections}
-  setGroupBySelections={setGroupBySelections}
-  orderBySelections={orderBySelections}
-  setOrderBySelections={setOrderBySelections}
-  qrConfiguration={qrConfiguration}
-  setQrConfiguration={setQrConfiguration}
-  labelCopies={labelCopies}
-  setLabelCopies={setLabelCopies}
-  staticVariables={staticVariables}
-  setStaticVariables={setStaticVariables}
-  filterMode={filterMode}
-  setFilterMode={setFilterMode}
-  useBoxLabelSP={useBoxLabelSP}
-    savingMapping={savingMapping}
-  setUseBoxLabelSP={setUseBoxLabelSP}
-  handleSaveMapping={handleSaveMapping}
-  mappingLoading={mappingLoading}
-  closeMappingPanel={closeMappingPanel}
-  canEdit={canEdit}
-/>
+        <TemplatesMappingPanel
+          showMappingPanel={showMappingPanel}
+          mappingTemplate={mappingTemplate}
+          mappingNotFound={mappingNotFound}
+          mappingOptionsLoading={mappingOptionsLoading}
+          parsedFields={parsedFields}
+          mappingRows={mappingRows}
+          sourceOptionGroups={sourceOptionGroups}
+          mappingSelections={mappingSelections}
+          setMappingSelections={setMappingSelections}
+          mappedFieldNames={mappedFieldNames}
+          groupBySelections={groupBySelections}
+          setGroupBySelections={setGroupBySelections}
+          orderBySelections={orderBySelections}
+          setOrderBySelections={setOrderBySelections}
+          qrConfiguration={qrConfiguration}
+          setQrConfiguration={setQrConfiguration}
+          labelCopies={labelCopies}
+          setLabelCopies={setLabelCopies}
+          staticVariables={staticVariables}
+          setStaticVariables={setStaticVariables}
+          filterMode={filterMode}
+          setFilterMode={setFilterMode}
+          useBoxLabelSP={useBoxLabelSP}
+          savingMapping={savingMapping}
+          setUseBoxLabelSP={setUseBoxLabelSP}
+          handleSaveMapping={handleSaveMapping}
+          mappingLoading={mappingLoading}
+          closeMappingPanel={closeMappingPanel}
+          canEdit={canEdit}
+          canMap={canEdit && canMapTemplateSpecial}
+        />
       </div>
 
       <TemplatesVersionsModal

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Card, Input, Checkbox, Button, Table, Typography, Space, Empty, message, Select, Spin } from "antd";
 import { SearchOutlined, DragOutlined, ReloadOutlined, DownloadOutlined, EyeOutlined, CloseOutlined } from "@ant-design/icons";
+import { useTranslation } from "react-i18next";
 import API from "../../hooks/api";
 import axios from "axios";
 import { DndContext, closestCenter } from "@dnd-kit/core";
@@ -57,6 +58,7 @@ const SortableFieldItem = ({ field, onRemove }) => {
 };
 
 const ReportBuilder = () => {
+  const { t } = useTranslation();
   // State management
   const [groups, setGroups] = useState([]);
   const [types, setTypes] = useState([]);
@@ -379,9 +381,9 @@ const ReportBuilder = () => {
         {/* Group, Type, and Module Selection */}
                     <Space wrap>
                       <Space direction="vertical" size={4}>
-                        <Text strong>Group:</Text>
+                        <Text strong>{t('common.labels.group', 'Group:')}</Text>
                         <Select
-                          placeholder="Select group"
+                          placeholder={t('common.placeholders.selectGroup', 'Select group')}
                           style={{ width: 200 }}
                           value={selectedGroup}
                           onChange={handleGroupChange}
@@ -396,9 +398,9 @@ const ReportBuilder = () => {
                       </Space>
           
                       <Space direction="vertical" size={4}>
-                        <Text strong>Type:</Text>
+                        <Text strong>{t('common.labels.type', 'Type:')}</Text>
                         <Select
-                          placeholder="Select type"
+                          placeholder={t('common.placeholders.selectType', 'Select type')}
                           style={{ width: 200 }}
                           value={selectedType}
                           onChange={handleTypeChange}
@@ -413,9 +415,9 @@ const ReportBuilder = () => {
                       </Space>
           
                       <Space direction="vertical" size={4}>
-                        <Text strong>Module:</Text>
+                        <Text strong>{t('common.labels.module', 'Module:')}</Text>
                         <Select
-                          placeholder="Select module"
+                          placeholder={t('reportBuilder.selectModulePlaceholder', 'Select module')}
                           style={{ width: 200 }}
                           value={selectedModule}
                           onChange={handleModuleChange}
@@ -433,7 +435,7 @@ const ReportBuilder = () => {
                     </Card>
         {/* Available Fields Panel */}
         <Card 
-          title="Available Fields" 
+          title={t('reportBuilder.availableFieldsTitle', 'Available Fields')} 
           style={{ 
             flex: 1,
             display: "flex",
@@ -451,7 +453,7 @@ const ReportBuilder = () => {
   }}
 >
   <Input
-    placeholder="Search fields..."
+    placeholder={t('reportBuilder.searchFieldsPlaceholder', 'Search fields...')}
     prefix={<SearchOutlined />}
     value={searchTerm}
     onChange={(e) => setSearchTerm(e.target.value)}
@@ -465,7 +467,7 @@ const ReportBuilder = () => {
     onClick={handleSelectAll}
     disabled={!selectedModule || loadingFields || availableFields.length === 0}
   >
-    Select All
+    {t('common.actions.selectAll', 'Select All')}
   </Button>
 
   <Button
@@ -473,23 +475,23 @@ const ReportBuilder = () => {
     onClick={handleClearSelection}
     disabled={selectedFields.length === 0}
   >
-    Clear Selection
+    {t('common.actions.clearSelection', 'Clear Selection')}
   </Button>
 </div>
 
           {loadingFields ? (
             <div style={{ flex: 1, display: "flex", justifyContent: "center", alignItems: "center" }}>
-              <Spin tip="Loading fields..." />
+              <Spin tip={t('reportBuilder.loadingFields', 'Loading fields...')} />
             </div>
           ) : !selectedModule ? (
             <Empty
-              description="Please select a module to view fields"
+              description={t('reportBuilder.selectModulePrompt', 'Please select a module to view fields')}
               style={{ margin: "auto" }}
               image={Empty.PRESENTED_IMAGE_SIMPLE}
             />
           ) : availableFields.length === 0 ? (
             <Empty
-              description="No fields available for this module"
+              description={t('reportBuilder.noFieldsAvailable', 'No fields available for this module')}
               style={{ margin: "auto" }}
               image={Empty.PRESENTED_IMAGE_SIMPLE}
             />
@@ -555,7 +557,7 @@ const ReportBuilder = () => {
       {showPreview && selectedFields.length > 0 && (
         <Card 
           ref={previewRef}
-          title="Report Preview" 
+          title={t('reportBuilder.reportPreviewTitle', 'Report Preview')} 
           style={{ 
             flex: 1,
             display: "flex",
@@ -573,7 +575,7 @@ const ReportBuilder = () => {
         >
           {loadingPreview ? (
             <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "100%" }}>
-              <Spin tip="Generating preview..." />
+              <Spin tip={t('reportBuilder.generatingPreview', 'Generating preview...')} />
             </div>
           ) : (
             <Table

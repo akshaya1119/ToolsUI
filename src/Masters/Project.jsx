@@ -318,16 +318,16 @@ const Project = () => {
             ...getColumnSearchProps('userNames'),
         },
         {
-            title: t('tables.status', 'Status'),
+            title: t('common.labels.status', 'Status'),
             key: 'status',
             render: (_, record) => (
                 <Tag color={record.status ? 'red' : 'green'}>
-                    {record.status ? t('tables.archived', 'Archived') : t('tables.active', 'Active')}
+                    {record.status ? t('tables.archived', 'Archived') : t('common.status.active', 'Active')}
                 </Tag>
             ),
         },
         {
-            title: t('tables.actions', 'Actions'),
+            title: t('common.labels.actions', 'Actions'),
             key: 'actions',
             render: (_, record) => (
                 <Space>
@@ -342,8 +342,8 @@ const Project = () => {
                         <Popconfirm
                             title={`Are you sure you want to ${record.status ? 'unarchive' : 'archive'} this project?`}
                             onConfirm={() => handleArchive(record)}
-                            okText={t("popconfirm.yes", "Yes")}
-                            cancelText={t("popconfirm.no", "No")}
+                            okText={t("common.labels.yes", "Yes")}
+                            cancelText={t("common.labels.no", "No")}
                         >
                             <Button 
                                 type="link" 
@@ -419,7 +419,7 @@ const Project = () => {
             >
                 <Select
                     style={{ width: "100%", marginTop: 4 }}
-                    placeholder="Choose a project..."
+                    placeholder={t('masters.project.chooseProject', 'Choose a project...')}
                     onChange={setSelectedProjectId}
                     value={selectedProjectId != null ? Number(selectedProjectId) : undefined}
                     showSearch
@@ -447,7 +447,7 @@ const Project = () => {
                 </Select>
                 <Select
                     style={{ width: '100%', marginTop: 4 }}
-                    placeholder="Select Users..."
+                    placeholder={t('masters.project.selectUsers', 'Select Users...')}
                     onChange={(vals) => setSelectedUserIds(vals)}
                     value={selectedUserIds.map(v => !isNaN(Number(v)) ? Number(v) : v)}
                     mode="multiple" // Allow multiple selections

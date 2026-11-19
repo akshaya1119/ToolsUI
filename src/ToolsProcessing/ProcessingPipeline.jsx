@@ -81,11 +81,12 @@ const url3 = import.meta.env.VITE_API_FILE_URL;
 
 const ProcessingPipeline = () => {
   const { t } = useTranslation();
-  const { canEdit } = useModulePermission('PROCESSING_PIPELINE');
+  const { canView, canEdit } = useModulePermission('PROCESSING_PIPELINE');
   const hasPermission = usePermissionsStore((state) => state.hasPermission);
   const canViewReportsTemplates = hasPermission('REPORT_TEMPLATE_MANAGEMENT', 'View');
   const hasSpecialAction = usePermissionsStore((state) => state.hasSpecialAction);
   const canPurgeReport = hasSpecialAction('ACTION_PURGE_REPORT_RECORD');
+  const canSendToErp = hasSpecialAction('ACTION_SEND_TO_ERP');
   const navigate = useNavigate();
   const isConfigured = useStore((state) => state.isConfigured);
   const isLoadingData = useStore((state) => state.isLoadingData);
@@ -3016,7 +3017,7 @@ const loadGeneratedTemplateReports = async () => {
     if (!projectConfig) return null;
 
     const getNames = (criteria) => {
-      if (!criteria) return ["Not configured"]; // return as array
+      if (!criteria) return [t('pipeline.notConfigured', 'Not configured')]; // return as array
       if (Array.isArray(criteria)) {
         return criteria.map(item => {
           // If item is an object with 'name' property, return the name
@@ -3038,45 +3039,45 @@ const loadGeneratedTemplateReports = async () => {
 
     const configMap = {
       duplicate: {
-        value: [`Duplicate Remove: ${getNames(projectConfig.duplicateCriteria).join(", ")}`],
+        value: [t('pipeline.duplicateRemoveLabel', { fields: getNames(projectConfig.duplicateCriteria).join(", "), defaultValue: `Duplicate Remove: ${getNames(projectConfig.duplicateCriteria).join(", ")}` })],
       },
       enhancement: {
         value: projectConfig.enhancement
-          ? [`Enhancement: ${getNames([projectConfig.enhancement])[0]}`]
-          : ["Not configured"],
+          ? [t('pipeline.enhancementLabel', { fields: getNames([projectConfig.enhancement])[0], defaultValue: `Enhancement: ${getNames([projectConfig.enhancement])[0]}` })]
+          : [t('pipeline.notConfigured', 'Not configured')],
       },
       extra: {
         value: extraConfigData && extraConfigData.length > 0
           ? (extraConfigData.some(ec => ec.isExtraProcessingAsPerNR || ec.IsExtraProcessingAsPerNR)
-              ? ["Extra Processing as per NR"]
+              ? [t('projectConfig.extraProcessingAsPerNr', 'Extra Processing as per NR')]
               : extraConfigData.map(ec => {
                 const type = ec.extraType ?? ec.ExtraType;
                 const mode = ec.mode ?? ec.Mode;
                 const nodalValue = ec.nodalValue ?? ec.NodalValue;
-                const typeName = type === 1 ? "Nodal" : type === 2 ? "University" : "Office";
-                const isPerNodal = nodalValue ? " (Different per Nodal)" : " (Unified)";
+                const typeName = type === 1 ? t('pipeline.nodalType', 'Nodal') : type === 2 ? t('pipeline.universityType', 'University') : t('pipeline.officeType', 'Office');
+                const isPerNodal = nodalValue ? ` (${t('pipeline.differentPerNodal', 'Different per Nodal')})` : ` (${t('pipeline.unified', 'Unified')})`;
                 return `${typeName}: ${mode}${isPerNodal}`;
               }))
-          : ["Not configured"],
+          : [t('pipeline.notConfigured', 'Not configured')],
       },
       envelopebreaking: {
-        value: [`Sorting: ${getNames(projectConfig.envelopeMakingCriteria)}`],
+        value: [t('pipeline.sortingLabel', { fields: getNames(projectConfig.envelopeMakingCriteria).join(", "), defaultValue: `Sorting: ${getNames(projectConfig.envelopeMakingCriteria)}` })],
       },
       box: {
         value: [
-          `Box Breaking: ${getNames(projectConfig.boxBreakingCriteria).join(", ")}`,
-          `Sorting: ${getNames(projectConfig.sortingBoxReport).join(", ")}`,
-          `Duplicate Removal: ${getNames(projectConfig.duplicateRemoveFields).join(", ")}`,
+          t('pipeline.boxBreakingLabel', { fields: getNames(projectConfig.boxBreakingCriteria).join(", "), defaultValue: `Box Breaking: ${getNames(projectConfig.boxBreakingCriteria).join(", ")}` }),
+          t('pipeline.sortingLabel', { fields: getNames(projectConfig.sortingBoxReport).join(", "), defaultValue: `Sorting: ${getNames(projectConfig.sortingBoxReport).join(", ")}` }),
+          t('pipeline.duplicateRemovalLabel', { fields: getNames(projectConfig.duplicateRemoveFields).join(", "), defaultValue: `Duplicate Removal: ${getNames(projectConfig.duplicateRemoveFields).join(", ")}` }),
         ],
       },
       envelopeSummary: {
-        value: ["Summary Report"],
+        value: [t('pipeline.summaryReport', 'Summary Report')],
       },
       catchSummary: {
-        value: ["Summary Report"],
+        value: [t('pipeline.summaryReport', 'Summary Report')],
       },
       catchOmrSerialing: {
-        value: ["Catch Wise Booklet & OMR Serialing"],
+        value: [t('pipeline.catchWiseBookletOmrSerialing', 'Catch Wise Booklet & OMR Serialing')],
       },
     };
 
@@ -3495,9 +3496,21 @@ const loadGeneratedTemplateReports = async () => {
     }
   };
 
+  const getLocalizedModuleName = (name, key) => {
+    const raw = String(name || "").toLowerCase();
+    if (key === "duplicate" || raw.includes("duplicate")) return t('projectConfig.duplicateTool', 'Duplicate Tool');
+    if (key === "enhancement" || raw.includes("enhancement") || raw.includes("envelope setup")) return t('projectConfig.envelopeSetupEnhancement', 'Envelope Setup & Enhancement');
+    if (key === "extra" || raw.includes("extra")) return t('projectConfig.extraProcessing', 'Extra Configuration');
+    if (key === "envelopebreaking" || raw.includes("envelope breaking")) return t('projectConfig.envelopeBreaking', 'Envelope Breaking');
+    if (key === "box" || raw.includes("box")) return t('projectConfig.boxBreaking', 'Box Breaking');
+    if (key === "envelopeSummary" || raw.includes("envelope summary")) return t('pipeline.envelopeSummary', 'Envelope Summary');
+    if (key === "catchSummary" || raw.includes("catch summary")) return t('pipeline.catchSummary', 'Catch Summary Report');
+    return name;
+  };
+
   // Build table data
   const data = steps.map((step) => {
-    const moduleName = enabledModuleNames.find((name) => {
+    const rawModuleName = enabledModuleNames.find((name) => {
       const normalized = String(name).toLowerCase();
       // Exact matching for summary steps
       if (step.key === "envelopeSummary") return normalized.includes("envelope summary");
@@ -3505,6 +3518,8 @@ const loadGeneratedTemplateReports = async () => {
       // For other steps, use the key
       return normalized.includes(step.key);
     }) || step.title;
+
+    const moduleName = getLocalizedModuleName(rawModuleName, step.key);
 
     // Default lot counts from step
     let completedLots = step.completedLots ?? 0;
@@ -3689,7 +3704,7 @@ const loadGeneratedTemplateReports = async () => {
             onChange={(e) => handleSelectAll(e.target.checked)}
             disabled={isProcessing || selectableCount === 0}
           >
-            Select
+            {t('pipeline.select', 'Select')}
           </Checkbox>
         );
       },
@@ -3739,7 +3754,7 @@ const loadGeneratedTemplateReports = async () => {
       },
     },
     {
-      title: "Module Name",
+      title: t('tables.moduleName', 'Module Name'),
       dataIndex: "moduleName",
       key: "moduleName",
       render: (text, record) => (
@@ -3750,14 +3765,14 @@ const loadGeneratedTemplateReports = async () => {
               style={{ marginTop: 3, fontSize: 11, color: "#0871d4ff", cursor: "pointer" }}
               onClick={() => navigate("/dataimport", { state: { activeTab: "4", openBifurcationPanel: true } })}
             >
-               Bifurcate Lot
+               {t('pipeline.bifurcateLot', 'Bifurcate Lot')}
             </div>
           )}
         </div>
       ),
     },
     {
-      title: "Configuration",
+      title: t('pipeline.configuration', 'Configuration'),
       dataIndex: "configuration",
       key: "configuration",
       render: (_, record) => {
@@ -3785,7 +3800,7 @@ const loadGeneratedTemplateReports = async () => {
       },
     },
     {
-      title: "Status",
+      title: t('common.labels.status', 'Status'),
       dataIndex: "status",
       key: "status",
       render: (status, record) => {
@@ -3923,12 +3938,12 @@ const loadGeneratedTemplateReports = async () => {
                const compDispatched = cleanCompletedLots.filter(l => dispatchedSet.has(l));
                const compActive = cleanCompletedLots.filter(l => !dispatchedSet.has(l));
                if (compActive.length > 0) {
-                 tags.push(<Tag color="green" key="completed">Completed Lots - {compActive.join(", ")}</Tag>);
+                 tags.push(<Tag color="green" key="completed">{t('pipeline.completedLotsTag', { lots: compActive.join(", "), defaultValue: `Completed Lots - ${compActive.join(", ")}` })}</Tag>);
                }
                if (compDispatched.length > 0) {
                  tags.push(
                    <Tag color="red" key="completed-dispatched">
-                     Completed & Dispatched - Lot {compDispatched.join(", ")}
+                     {t('pipeline.completedDispatchedTag', { lots: compDispatched.join(", "), defaultValue: `Completed & Dispatched - Lot ${compDispatched.join(", ")}` })}
                    </Tag>
                  );
                }
@@ -3938,10 +3953,10 @@ const loadGeneratedTemplateReports = async () => {
                const outDispatched = outdated.filter(l => dispatchedSet.has(l));
                const outActive = outdated.filter(l => !dispatchedSet.has(l));
                if (outActive.length > 0) {
-                 tags.push(<Tag color="orange" key="outdated" icon={<ExclamationCircleOutlined />}>Outdated Lots - {outActive.join(", ")}</Tag>);
+                 tags.push(<Tag color="orange" key="outdated" icon={<ExclamationCircleOutlined />}>{t('pipeline.outdatedLotsTag', { lots: outActive.join(", "), defaultValue: `Outdated Lots - ${outActive.join(", ")}` })}</Tag>);
                }
                if (outDispatched.length > 0) {
-                 tags.push(<Tag color="red" key="outdated-dispatched" icon={<ExclamationCircleOutlined />}>Dispatched Lots - {outDispatched.join(", ")} (Locked)</Tag>);
+                 tags.push(<Tag color="red" key="outdated-dispatched" icon={<ExclamationCircleOutlined />}>{t('pipeline.dispatchedLotsTag', { lots: outDispatched.join(", "), defaultValue: `Dispatched Lots - ${outDispatched.join(", ")} (Locked)` })}</Tag>);
                }
              }
 
@@ -3949,10 +3964,10 @@ const loadGeneratedTemplateReports = async () => {
                const penDispatched = truePending.filter(l => dispatchedSet.has(l));
                const penActive = truePending.filter(l => !dispatchedSet.has(l));
                if (penActive.length > 0) {
-                 tags.push(<Tag color="processing" key="pending" >Pending Lots - {penActive.join(", ")}</Tag>);
+                 tags.push(<Tag color="processing" key="pending" >{t('pipeline.pendingLotsTag', { lots: penActive.join(", "), defaultValue: `Pending Lots - ${penActive.join(", ")}` })}</Tag>);
                }
                if (penDispatched.length > 0) {
-                 tags.push(<Tag color="red" key="pending-dispatched">Dispatched Lots - {penDispatched.join(", ")} (Locked)</Tag>);
+                 tags.push(<Tag color="red" key="pending-dispatched">{t('pipeline.dispatchedLotsTag', { lots: penDispatched.join(", "), defaultValue: `Dispatched Lots - ${penDispatched.join(", ")} (Locked)` })}</Tag>);
                }
              }
 
@@ -3973,7 +3988,7 @@ const loadGeneratedTemplateReports = async () => {
       },
     },
     {
-      title: "Templates",
+      title: t('common.labels.templates', 'Templates'),
       dataIndex: "templates",
       key: "templates",
       render: (_, record) => {
@@ -4096,9 +4111,9 @@ const loadGeneratedTemplateReports = async () => {
           if (!outdatedInfo) return null;
           if (Array.isArray(outdatedInfo)) {
             // Box Breaking: show lot numbers
-            return `Outdated - Lot ${outdatedInfo.join(", ")}`;
+            return t('pipeline.outdatedLotBadge', { lots: outdatedInfo.join(", "), defaultValue: `Outdated - Lot ${outdatedInfo.join(", ")}` });
           }
-          return "Outdated";
+          return t('pipeline.outdated', 'Outdated');
         })();
 
         return (
@@ -4112,7 +4127,9 @@ const loadGeneratedTemplateReports = async () => {
               }
               disabled={!isReady || !hasTemplates}
             >
-              Templates{hasTemplates ? ` (${moduleTemplates.length})` : ""}
+              {hasTemplates
+                ? t('pipeline.templatesWithCount', { count: moduleTemplates.length, defaultValue: `Templates (${moduleTemplates.length})` })
+                : t('common.labels.templates', 'Templates')}
             </Button>
 
             {outdatedLabel && (
@@ -4356,7 +4373,7 @@ const loadGeneratedTemplateReports = async () => {
             <div style={{ padding: "12px 16px", borderBottom: "1px solid #f0f0f0" }}>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
 
-                <Button size="small">{t("pipeline.downloadAll", "Download All")}</Button>
+                <Button size="small">{t("common.actions.downloadAll", "Download All")}</Button>
                 <Button size="small" disabled={totalSelected === 0}>
                   Download Selected ({totalSelected})
                 </Button>
@@ -4395,7 +4412,7 @@ const loadGeneratedTemplateReports = async () => {
             <div style={{ padding: "12px 16px", borderBottom: "1px solid #f0f0f0" }}>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <Button size="small" type="primary">{t("pipeline.generateAll", "Generate All")}</Button>
-                <Button size="small">{t("pipeline.downloadAll", "Download All")}</Button>
+                <Button size="small">{t("common.actions.downloadAll", "Download All")}</Button>
                 <Button size="small" disabled={totalSelected === 0}>
                   Download Selected ({totalSelected})
                 </Button>
@@ -4769,6 +4786,8 @@ Object.keys(groupedTpl).forEach((templateKey) => {
   return (
     <ErrorBoundary>
       <div className="p-4">
+      {canView && (
+      <>
       <StaticVariablesModal
         open={staticVarModal.open}
         template={staticVarModal.template}
@@ -4786,8 +4805,8 @@ Object.keys(groupedTpl).forEach((templateKey) => {
 
       {configChanged && (
         <Alert
-          message="Configuration Updated"
-          description={`The following settings have changed: ${changedFieldsInfo.join(", ")}. Please re-run the reports to ensure accuracy.`}
+          message={t('pipeline.configUpdated', 'Configuration Updated')}
+          description={`${t('pipeline.configUpdatedDesc', 'The following settings have changed: ')} ${changedFieldsInfo.join(", ")}.`}
           type="warning"
           showIcon
           closable
@@ -4798,10 +4817,10 @@ Object.keys(groupedTpl).forEach((templateKey) => {
 
       {outdatedModules.length > 0 && (
         <Alert
-          message="Outdated Reports Detected"
+          message={t('pipeline.outdatedDetected', 'Outdated Reports Detected')}
           description={
             <div>
-              Recent updates have modified the pipeline. The following reports need to be re-run:{" "}
+              {t('pipeline.outdatedDesc', 'Recent updates have modified the pipeline. The following reports need to be re-run: ')}{" "}
               <strong>{outdatedModules.join(", ")}</strong>.
             </div>
           }
@@ -4821,7 +4840,7 @@ Object.keys(groupedTpl).forEach((templateKey) => {
         if (isCurrentLotExceeded) {
           return (
             <Alert
-              message={`Lot ${selectedDropdownLot} Dispatched & Locked (Read-Only)`}
+              message={`${t('common.labels.lot', 'Lot')} ${selectedDropdownLot} ${t('pipeline.lotDispatchedTitle', 'Dispatched & Locked (Read-Only)')}`}
               description={`Lot ${selectedDropdownLot} has completed dispatch (${currentLotObj?.dispatchDate ? new Date(currentLotObj.dispatchDate).toLocaleDateString() : 'dispatched'}). Pipeline execution, re-processing, and modifications are blocked for this lot.`}
               type="error"
               showIcon
@@ -4831,7 +4850,7 @@ Object.keys(groupedTpl).forEach((templateKey) => {
         } else if (!isSpecificLot && dispatchedLots.length > 0) {
           return (
             <Alert
-              message={`Dispatched Lots Detected: Lot ${dispatchedLots.map(l => l.lotNo).join(", ")}`}
+              message={`${t('pipeline.dispatchedLotsDetected', 'Dispatched Lots Detected')}: Lot ${dispatchedLots.map(l => l.lotNo).join(", ")}`}
               description={`The following lot(s) have crossed their dispatch dates and are locked in read-only mode: Lot ${dispatchedLots.map(l => `${l.lotNo} (Dispatched: ${l.dispatchDate ? new Date(l.dispatchDate).toLocaleDateString() : 'Yes'})`).join(", ")}.`}
               type="info"
               showIcon
@@ -4844,7 +4863,7 @@ Object.keys(groupedTpl).forEach((templateKey) => {
 
       <div className="flex justify-between items-center mb-4">
         <Typography.Title level={3} style={{ marginBottom: 6 }}>
-          Processing Pipeline
+          {t('menu.processingPipeline', 'Processing Pipeline')}
         </Typography.Title>
         <div className="text-sm flex items-center gap-2">
           <Select
@@ -4853,11 +4872,11 @@ Object.keys(groupedTpl).forEach((templateKey) => {
             style={{ display: 'none' }}
             options={batches.map((b) => ({ label: `Batch ${b}`, value: b }))}
           />
-          <span>Status:</span>
+          <span>{t('pipeline.status', 'Status:')}</span>
           {isProcessing ? (
-            <Badge status="processing" text="Processing" color="blue" />
+            <Badge status="processing" text={t('pipeline.processing', 'Processing')} color="blue" />
           ) : (
-            <Badge status="default" text="Idle" color="gray" />
+            <Badge status="default" text={t('pipeline.idle', 'Idle')} color="gray" />
           )}
           {(() => {
             const isSpecificLot = selectedDropdownLot !== "all" && selectedDropdownLot !== null;
@@ -4975,7 +4994,7 @@ Object.keys(groupedTpl).forEach((templateKey) => {
             return (
           <Tooltip
             title={
-              !canExecute
+              !canEdit
                 ? "View-only access: Pipeline execution is disabled"
                 : isDispatchBlocked
                 ? (isCurrentLotExceeded ? `Lot ${selectedDropdownLot} has exceeded its dispatch date and is read-only.` : "All lots in this project have exceeded their dispatch date and are read-only.")
@@ -4988,12 +5007,12 @@ Object.keys(groupedTpl).forEach((templateKey) => {
                     : "")
             }
           >
-            <span style={{ cursor: (!canExecute || isDispatchBlocked || !canStartByData) || selectedModules.length === 0 ? "not-allowed" : "default" }}>
+            <span style={{ cursor: (!canEdit || isDispatchBlocked || !canStartByData) || selectedModules.length === 0 ? "not-allowed" : "default" }}>
               <Button
                 type="primary"
                 onClick={handleAudit}
                 disabled={
-                  !canExecute ||
+                  !canEdit ||
                   isDispatchBlocked ||
                   !projectId ||
                   isProcessing ||
@@ -5001,34 +5020,36 @@ Object.keys(groupedTpl).forEach((templateKey) => {
                   (!hasModulePendingData && !configChanged)
                 }
               >
-                Start {selectedModules.length > 0 && `(${selectedModules.length} selected)`}
+                {t('pipeline.start', 'Start')} {selectedModules.length > 0 && `(${selectedModules.length} selected)`}
               </Button>
             </span>
           </Tooltip>
           );
           })()}
-          <Button
-            icon={<CloudUploadOutlined />}
-            onClick={() => setErpSyncModalOpen(true)}
-            title="Send lot catches, quantities, envelopes, and pages to ERP"
-            style={{
-              borderColor: "#2563eb",
-              color: "#2563eb",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 4,
-            }}
-          >
-            Send to ERP
-          </Button>
+          {canSendToErp && (
+            <Button
+              icon={<CloudUploadOutlined />}
+              onClick={() => setErpSyncModalOpen(true)}
+              title={t('pipeline.sendToErpTooltip', 'Send lot catches, quantities, envelopes, and pages to ERP')}
+              style={{
+                borderColor: "#2563eb",
+                color: "#2563eb",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+              }}
+            >
+              {t('pipeline.sendToErp', 'Send to ERP')}
+            </Button>
+          )}
         </div>
       </div>
 
       <div className="mb-2">
-        <p className="text-sm font-medium mb-1">Overall Progress</p>
+        <p className="text-sm font-medium mb-1">{t('pipeline.overallProgress', 'Overall Progress')}</p>
         <Progress percent={percent} showInfo={false} />
         <div className="text-right text-sm mt-1">
-          Step {Math.max(currentStep, 0)} of {Math.max(steps.length, 0)}
+          {t('pipeline.stepPrefix', 'Step')} {Math.max(currentStep, 0)} {t('pipeline.stepOf', 'of')} {Math.max(steps.length, 0)}
         </div>
       </div>
 
@@ -5042,7 +5063,7 @@ Object.keys(groupedTpl).forEach((templateKey) => {
         >
           <Card
             size="small"
-            title={<span>Enabled Modules Status & Reports</span>}
+            title={<span>{t('pipeline.enabledModulesStatusReports', 'Enabled Modules Status & Reports')}</span>}
             className="pipeline-table-card"
             style={{
               marginBottom: 12,
@@ -5051,7 +5072,7 @@ Object.keys(groupedTpl).forEach((templateKey) => {
             }}
           >
             {enabledModuleNames.length === 0 ? (
-              <p>No modules selected for this project</p>
+              <p>{t('pipeline.noModulesSelected', 'No modules selected for this project')}</p>
             ) : (
               <Table
                 columns={columns}
@@ -5138,7 +5159,7 @@ Object.keys(groupedTpl).forEach((templateKey) => {
                 }}
                 isQuantitySheetTemplate={isQuantitySheetTemplate}
                 isCompositeSummaryTemplate={isCompositeSummaryTemplate}
-                canExecute={canEdit}
+                canEdit={canEdit}
                 isDispatchExceeded={isCurrentLotExceeded}
                 dispatchedLotMessage={isCurrentLotExceeded ? `Lot ${selectedDropdownLot} has exceeded its dispatch date (${currentLotObj?.dispatchDate ? new Date(currentLotObj.dispatchDate).toLocaleDateString() : 'crossed'}) and is locked (read-only). Generating reports or re-processing is disabled.` : null}
               />
@@ -5276,10 +5297,12 @@ Object.keys(groupedTpl).forEach((templateKey) => {
             isQuantitySheetTemplate={isQuantitySheetTemplate}
             isCompositeSummaryTemplate={isCompositeSummaryTemplate}
             onClose={closeLotWisePanel}
-            canExecute={canEdit}
+            canEdit={canEdit}
           />
         </div>
       </motion.div>
+      </>
+      )}
 
       <DependencyModal
         visible={dependencyModal.visible}

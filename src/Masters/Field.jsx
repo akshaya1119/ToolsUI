@@ -21,7 +21,7 @@ const Field = () => {
             const res = await API.get('/Fields');
             setFields(res.data);
         } catch (err) {
-            message.error('Failed to fetch fields');
+            message.error(t('masters.field.fetchFailed', 'Failed to fetch fields'));
         } finally {
             setLoading(false);
         }
@@ -49,7 +49,7 @@ const Field = () => {
 
     const handleSave = async () => {
         if (!name) {
-            message.warning('Name is required');
+            message.warning(t('common.validation.nameRequired', 'Name is required'));
             return;
         }
 
@@ -60,7 +60,7 @@ const Field = () => {
         );
 
         if (isDuplicate) {
-            message.warning('This field name already exists');
+            message.warning(t('masters.field.fieldExists', 'This field name already exists'));
             return;
         }
 
@@ -71,20 +71,20 @@ const Field = () => {
                     name,
                     isUnique,
                 });
-                message.success('Updated successfully');
+                message.success(t('common.feedback.updateSuccess', 'Updated successfully'));
             } else {
                 await API.post('/Fields', {
                     fieldId: 0, // or omit if backend generates it
                     name,
                     isUnique,
                 });
-                message.success('Added successfully');
+                message.success(t('common.feedback.addSuccess', 'Added successfully'));
             }
 
             setModalVisible(false);
             fetchFields();
         } catch {
-            message.error('Save failed');
+            message.error(t('common.feedback.saveFailed', 'Save failed'));
         }
     };
 
@@ -92,7 +92,7 @@ const Field = () => {
         filterDropdown: ({ setSelectedKeys, selectedKeys, confirm, clearFilters }) => (
             <div style={{ padding: 8 }}>
                 <Input
-                    placeholder={`Search ${dataIndex}`}
+                    placeholder={t('tables.searchColumn', { column: t(`tables.${dataIndex}`, dataIndex), defaultValue: `Search ${dataIndex}` })}
                     value={selectedKeys[0]}
                     onChange={(e) => setSelectedKeys(e.target.value ? [e.target.value] : [])}
                     onPressEnter={() => confirm()}
@@ -106,10 +106,10 @@ const Field = () => {
                         size="small"
                         style={{ width: 90 }}
                     >
-                        Search
+                        {t('common.actions.search', 'Search')}
                     </Button>
                     <Button onClick={() => clearFilters()} size="small" style={{ width: 90 }}>
-                        Reset
+                        {t('common.actions.reset', 'Reset')}
                     </Button>
                 </Space>
             </div>
@@ -133,23 +133,23 @@ const Field = () => {
             title: t('tables.isUnique', 'Is Unique'),
             dataIndex: 'isUnique',
             key: 'isUnique',
-            render: (value) => (value ? 'Yes' : 'No'),
+            render: (value) => (value ? t('common.labels.yes', 'Yes') : t('common.labels.no', 'No')),
             sorter: (a, b) => a.isUnique - b.isUnique,
             filters: [
-                { text: 'Yes', value: true },
-                { text: 'No', value: false },
+                { text: t('common.labels.yes', 'Yes'), value: true },
+                { text: t('common.labels.no', 'No'), value: false },
             ],
             onFilter: (value, record) => record.isUnique === value,
         },
         {
-            title: t('tables.actions', 'Actions'),
+            title: t('common.labels.actions', 'Actions'),
             key: 'actions',
             render: (_, record) => (
                 <Space>
                     {canEdit ? (
                         <Button type="link" icon={<EditOutlined />} onClick={() => handleEdit(record)} />
                     ) : (
-                        <Tooltip title="View-only access: Editing is disabled">
+                        <Tooltip title={t('common.actions.viewOnlyEditDisabled', 'View-only access: Editing is disabled')}>
                             <span><Button type="link" icon={<EditOutlined />} disabled /></span>
                         </Tooltip>
                     )}
@@ -176,7 +176,7 @@ const Field = () => {
                         {t('common.actions.add', 'Add')}
                     </Button>
                 ) : (
-                    <Tooltip title="View-only access: Creating new items is disabled">
+                    <Tooltip title={t('common.actions.viewOnlyAddDisabled', 'View-only access: Creating new items is disabled')}>
                         <span>
                             <Button type="primary" disabled>
                                 {t('common.actions.add', 'Add')}
@@ -203,11 +203,11 @@ const Field = () => {
                 <Input
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    placeholder="Enter name"
+                    placeholder={t('masters.field.enterName', 'Enter name')}
                     style={{ marginBottom: 16 }}
                 />
                 <div>
-                    <span style={{ marginRight: 8 }}>Is Unique:</span>
+                    <span style={{ marginRight: 8 }}>{t('masters.field.isUnique', 'Is Unique:')}</span>
                     <Switch checked={isUnique} onChange={setIsUnique} />
                 </div>
             </Modal>

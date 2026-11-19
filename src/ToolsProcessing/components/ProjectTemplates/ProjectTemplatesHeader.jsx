@@ -1,5 +1,6 @@
 import React from "react";
 import { Input, Typography } from "antd";
+import { useTranslation } from 'react-i18next';
 
 const ProjectTemplatesHeader = ({
   projectLoading,
@@ -11,10 +12,11 @@ const ProjectTemplatesHeader = ({
   typeLabel,
   projectTypeId,
 }) => {
+  const { t } = useTranslation();
   return (
     <div className="rpt-header">
       <Typography.Title level={4} style={{ margin: 0 }}>
-        Project Templates
+        {t("menu.projectTemplates")}
       </Typography.Title>
       <div className="rpt-filters">
         <div className="rpt-filter">
@@ -24,8 +26,8 @@ const ProjectTemplatesHeader = ({
               projectLoading
                 ? "Loading project..."
                 : projectLabel ||
-                  projectName ||
-                  (projectId ? `Project ${projectId}` : "")
+                projectName ||
+                (projectId ? `Project ${projectId}` : "")
             }
             size="large"
             disabled

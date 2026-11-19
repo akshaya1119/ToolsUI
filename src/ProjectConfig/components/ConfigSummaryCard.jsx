@@ -1,5 +1,6 @@
 import { Card, List, Button, Typography, Row, Col } from "antd";
 import { CarryOutFilled } from "@ant-design/icons";
+import { useTranslation } from "react-i18next";
 import AnimatedCard from "./AnimatedCard";
 import { cardStyle, iconStyle } from "./constants";
 
@@ -17,6 +18,7 @@ const ConfigSummaryCard = ({
   selectedType,
   selectedGroup,
 }) => {
+  const { t } = useTranslation();
 
   // In project config mode, type/group come from localStorage (set when project was selected on dashboard)
   const effectiveType = selectedType ?? localStorage.getItem("selectedType");
@@ -25,28 +27,28 @@ const ConfigSummaryCard = ({
   const isAnyConfigMade = envelopeConfigured || boxConfigured || extraConfigured || duplicateConfigured;
   const summaryItems = [
     {
-      label: "Enabled Modules",
+      label: t('projectConfig.enabledModules', "Enabled Modules"),
       value: enabledModules.length,
       strong: true,
     },
     {
-      label: "Envelope Setup & Enhancement",
-      value: envelopeConfigured ? "Configured" : "Not Configured",
+      label: t('projectConfig.envelopeSetupEnhancement', "Envelope Setup & Enhancement"),
+      value: envelopeConfigured ? t('projectConfig.configured', "Configured") : t('projectConfig.notConfigured', "Not Configured"),
       danger: !envelopeConfigured,
     },
     {
-      label: "Box Breaking",
-      value: boxConfigured ? "Configured" : "Not Configured",
+      label: t('projectConfig.boxBreaking', "Box Breaking"),
+      value: boxConfigured ? t('projectConfig.configured', "Configured") : t('projectConfig.notConfigured', "Not Configured"),
       danger: !boxConfigured,
     },
     {
-      label: "Extra Processing",
-      value: extraConfigured ? "Configured" : "Not Configured",
+      label: t('projectConfig.extraProcessing', "Extra Processing"),
+      value: extraConfigured ? t('projectConfig.configured', "Configured") : t('projectConfig.notConfigured', "Not Configured"),
       danger: !extraConfigured,
     },
     {
-      label: "Duplicate Tool",
-      value: duplicateConfigured ? "Configured" : "Not Configured",
+      label: t('projectConfig.duplicateTool', "Duplicate Tool"),
+      value: duplicateConfigured ? t('projectConfig.configured', "Configured") : t('projectConfig.notConfigured', "Not Configured"),
       danger: !duplicateConfigured
     },
   ];
@@ -58,11 +60,11 @@ const ConfigSummaryCard = ({
         title={
           <div>
             <span>
-              <CarryOutFilled style={iconStyle} />Configuration Summary
+              <CarryOutFilled style={iconStyle} />{t('projectConfig.summaryTitle', "Configuration Summary")}
             </span>
             <br />
             <Text type="secondary">
-              Please review the summary before saving configurations
+              {t('projectConfig.summaryDesc', "Please review the summary before saving configurations")}
             </Text>
           </div>
         }
@@ -98,7 +100,7 @@ const ConfigSummaryCard = ({
             disabled={!isAnyConfigMade}
             className="mt-4"
           >
-            Save
+            {t('common.actions.save', "Save")}
           </Button>
         )}
 
@@ -112,7 +114,7 @@ const ConfigSummaryCard = ({
               disabled={!projectId || !isAnyConfigMade}
               className="mt-4 mb-2"
             >
-              Save Configuration
+              {t('projectConfig.saveConfiguration', "Save Configuration")}
             </Button>
             <Button
               type="default"
@@ -121,7 +123,7 @@ const ConfigSummaryCard = ({
               disabled={!isAnyConfigMade || !effectiveType || !effectiveGroup}
               style={{ marginTop: '8px' }}
             >
-              Save as Master Configuration
+              {t('projectConfig.saveAsMaster', "Save as Master Configuration")}
             </Button>
           </>
         )}

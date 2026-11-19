@@ -1,6 +1,7 @@
 import React from "react";
 import { Card, Select, Typography, Tag, Checkbox, InputNumber, Button } from "antd";
 import { DatabaseFilled, LockFilled, UndoOutlined, DeleteOutlined } from "@ant-design/icons";
+import { useTranslation } from "react-i18next";
 import AnimatedCard from "./AnimatedCard";
 import { cardStyle, iconStyle, PRIMARY_COLOR } from "./constants";
 
@@ -39,6 +40,7 @@ const BoxBreakingCard = ({
   onClear,
   importedSnapshot,
 }) => {
+  const { t } = useTranslation();
   const isDirty = (current, snapshotVal) => {
     if (!importedSnapshot || importedSnapshot === "pending") return false;
     return JSON.stringify(current) !== JSON.stringify(snapshotVal);
@@ -104,13 +106,13 @@ const BoxBreakingCard = ({
 
   const getDynamicSortLabel = (selectedIds) => {
     if (!selectedIds || selectedIds.length === 0) {
-      return "Sort by this field then by this after comma separated";
+      return t('projectConfig.sortByDefaultHelper', "Sort by this field then by this after comma separated");
     }
     const names = selectedIds.map(id => {
       const field = fields.find(f => f.fieldId === id);
       return field ? field.name : id;
     });
-    return `Sort by ${names.join(" then by ")}`;
+    return t('projectConfig.sortByHelper', { fields: names.join(` ${t('common.actions.thenBy', 'then by')} `), defaultValue: `Sort by ${names.join(" then by ")}` });
   };
 
   const isExtraConfigured = (keyword) => {
@@ -137,11 +139,11 @@ const BoxBreakingCard = ({
         title={
           <div>
             <span>
-              <DatabaseFilled style={iconStyle} /> Box Breaking Criteria
+              <DatabaseFilled style={iconStyle} /> {t('projectConfig.boxBreakingConfig', 'Box Breaking Criteria')}
             </span>
             <br />
             <Text type="secondary">
-              Define conditions that trigger creation of new boxes
+              {t('projectConfig.boxBreakingSubtitle', 'Define conditions that trigger creation of new boxes')}
             </Text>
           </div>
         }
@@ -156,7 +158,7 @@ const BoxBreakingCard = ({
                   onClick={onReset}
                   style={{ color: PRIMARY_COLOR }}
                 >
-                  Reset
+                  {t('common.actions.reset', 'Reset')}
                 </Button>
                 <Button
                   type="text"
@@ -165,13 +167,13 @@ const BoxBreakingCard = ({
                   onClick={onClear}
                   style={{ color: "#ff4d4f" }}
                 >
-                  Clear
+                  {t('common.actions.clear', 'Clear')}
                 </Button>
               </>
             )}
             {!isEnabled("Box Breaking") && (
               <Tag icon={<LockFilled style={{ color: PRIMARY_COLOR }} />}>
-                Disabled
+                {t('projectConfig.disabledTag', 'Disabled')}
               </Tag>
             )}
           </div>
@@ -194,7 +196,7 @@ const BoxBreakingCard = ({
                 checked={true} // Always enabled
                 disabled
               >
-                Breaking by Capacity <Text type="secondary"></Text>
+                {t('projectConfig.breakingByCapacity', 'Breaking by Capacity')} <Text type="secondary"></Text>
               </Checkbox>
 
               <Select
@@ -202,7 +204,7 @@ const BoxBreakingCard = ({
                 value={selectedCapacity}
                 onChange={setSelectedCapacity}
                 style={{ width: "100%" }}
-                placeholder="Select or enter capacity"
+                placeholder={t('projectConfig.selectOrEnterCapacity', 'Select or enter capacity')}
               >
                 {boxCapacities.map((capacity) => (
                   <Option key={capacity.boxCapacityId} value={capacity.boxCapacityId}>
@@ -212,13 +214,13 @@ const BoxBreakingCard = ({
               </Select>
             </div>
             <div>
-              <Text type="secondary">Starting Box Number</Text>
+              <Text type="secondary">{t('projectConfig.startingBoxNumber', 'Starting Box Number')}</Text>
               <InputNumber
                 disabled={!isEnabled("Box Breaking")}
                 min={1}
                 value={startBoxNumber}
                 onChange={(value) => setStartBoxNumber(value)}
-                placeholder="Enter Start Box Number"
+                placeholder={t('projectConfig.enterStartBoxNumber', 'Enter Start Box Number')}
                 style={{ width: "100%" }}
               />
             </div>
@@ -232,19 +234,19 @@ const BoxBreakingCard = ({
               onChange={(e) => setResetOnSymbolChange(e.target.checked)}
               disabled={!isEnabled("Box Breaking")}
             >
-              Reset Box Number on Course Change
+              {t('projectConfig.resetBoxNumberOnCourseChange', 'Reset Box Number on Course Change')}
             </Checkbox>
           </div>
           {/* Select fields to concatenate */}
           <div style={isDirty(selectedDuplicatefields, importedSnapshot?.selectedDuplicatefields) ? DIRTY_STYLE : {}}>
-            <Text strong>Fields on which Duplicates has to be removed</Text>
+            <Text strong>{t('projectConfig.duplicateRemovalFields', 'Fields on which Duplicates has to be removed')}</Text>
             <Select
               mode="multiple"
               disabled={!isEnabled("Box Breaking")}
               allowClear
               showSearch
               style={{ width: "100%", marginTop: 4 }}
-              placeholder="Select one or more fields"
+              placeholder={t('projectConfig.selectOneOrMoreFields', 'Select one or more fields')}
               value={selectedDuplicatefields}
               onChange={handleDuplicateFields}
               optionFilterProp="children"
@@ -257,14 +259,14 @@ const BoxBreakingCard = ({
             </Select>
           </div>
           <div style={isDirty(selectedSortingField, importedSnapshot?.selectedSortingField) ? DIRTY_STYLE : {}}>
-            <Text strong>Sorting Report Fields</Text>
+            <Text strong>{t('projectConfig.sortingReportFields', 'Sorting Report Fields')}</Text>
             <Select
               mode="multiple"
               disabled={!isEnabled("Box Breaking")}
               allowClear
               showSearch
               style={{ width: "100%", marginTop: 4 }}
-              placeholder="Select one or more fields"
+              placeholder={t('projectConfig.selectOneOrMoreFields', 'Select one or more fields')}
               value={selectedSortingField}
               onChange={handleSorting}
               optionFilterProp="children"
@@ -287,7 +289,7 @@ const BoxBreakingCard = ({
                 onChange={(e) => setIsInnerBundlingDone(e.target.checked)}
                 disabled={!isEnabled("Box Breaking")}
               >
-                <Text strong>Is Inner Bundling in this project?</Text>
+                <Text strong>{t('projectConfig.isInnerBundlingInProject', 'Is Inner Bundling in this project?')}</Text>
               </Checkbox>
             </div>
             <Select
@@ -296,7 +298,7 @@ const BoxBreakingCard = ({
               allowClear
               showSearch
               style={{ width: "100%", marginTop: 4 }}
-              placeholder="Select fields for inner bundling criteria"
+              placeholder={t('projectConfig.innerBundlingCriteriaPlaceholder', 'Select fields for inner bundling criteria')}
               value={innerBundlingCriteria}
               onChange={handleInnerBundling}
               optionFilterProp="children"
@@ -309,14 +311,14 @@ const BoxBreakingCard = ({
             </Select>
           </div>
           <div style={isDirty(selectedBoxFields, importedSnapshot?.selectedBoxFields) ? DIRTY_STYLE : {}}>
-            <Text strong>Select Box Breaking field</Text>
+            <Text strong>{t('projectConfig.selectBoxBreakingField', 'Select Box Breaking field')}</Text>
             <Select
               mode="multiple"
               disabled={!isEnabled("Box Breaking")}
               allowClear
               showSearch
               style={{ width: "100%", marginTop: 4 }}
-              placeholder="Select one or more fields"
+              placeholder={t('projectConfig.selectOneOrMoreFields', 'Select one or more fields')}
               value={selectedBoxFields}
               onChange={handleBoxBreakingFields}
               optionFilterProp="children"
@@ -330,14 +332,14 @@ const BoxBreakingCard = ({
 
           </div>
           <div style={isDirty(selectedUniversityExtraBoxFields, importedSnapshot?.selectedUniversityExtraBoxFields) ? DIRTY_STYLE : {}}>
-            <Text strong>Select Box Breaking field for University Extra</Text>
+            <Text strong>{t('projectConfig.selectBoxBreakingFieldUniv', 'Select Box Breaking field for University Extra')}</Text>
             <Select
               mode="multiple"
               disabled={!isUniversityEnabled}
               allowClear
               showSearch
               style={{ width: "100%", marginTop: 4 }}
-              placeholder="Select one or more fields"
+              placeholder={t('projectConfig.selectOneOrMoreFields', 'Select one or more fields')}
               value={selectedUniversityExtraBoxFields}
               onChange={handleUniversityExtraBoxBreakingFields}
               optionFilterProp="children"
@@ -350,14 +352,14 @@ const BoxBreakingCard = ({
             </Select>
           </div>
           <div style={isDirty(selectedOfficeExtraBoxFields, importedSnapshot?.selectedOfficeExtraBoxFields) ? DIRTY_STYLE : {}}>
-            <Text strong>Select Box Breaking field for Office Extra</Text>
+            <Text strong>{t('projectConfig.selectBoxBreakingFieldOffice', 'Select Box Breaking field for Office Extra')}</Text>
             <Select
               mode="multiple"
               disabled={!isOfficeEnabled}
               allowClear
               showSearch
               style={{ width: "100%", marginTop: 4 }}
-              placeholder="Select one or more fields"
+              placeholder={t('projectConfig.selectOneOrMoreFields', 'Select one or more fields')}
               value={selectedOfficeExtraBoxFields}
               onChange={handleOfficeExtraBoxBreakingFields}
               optionFilterProp="children"
@@ -370,14 +372,14 @@ const BoxBreakingCard = ({
             </Select>
           </div>
           <div style={isDirty(selectedNodalExtraBoxFields, importedSnapshot?.selectedNodalExtraBoxFields) ? DIRTY_STYLE : {}}>
-            <Text strong>Select Box Breaking field for Nodal Extra</Text>
+            <Text strong>{t('projectConfig.selectBoxBreakingFieldNodal', 'Select Box Breaking field for Nodal Extra')}</Text>
             <Select
               mode="multiple"
               disabled={!isNodalEnabled}
               allowClear
               showSearch
               style={{ width: "100%", marginTop: 4 }}
-              placeholder="Select one or more fields"
+              placeholder={t('projectConfig.selectOneOrMoreFields', 'Select one or more fields')}
               value={selectedNodalExtraBoxFields}
               onChange={handleNodalExtraBoxBreakingFields}
               optionFilterProp="children"

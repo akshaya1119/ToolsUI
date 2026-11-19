@@ -1,5 +1,6 @@
 import React from "react";
 import { Card, Button, Typography, Tag, Space, Tooltip } from "antd";
+import { useTranslation } from "react-i18next";
 import EnvLotReportsManager from "../EnvLotReportsManager";
 
 const { Text } = Typography;
@@ -30,10 +31,11 @@ const TemplatesPanel = ({
   onClose,
   checkIsEnvelopeDependent,
   isQuantitySheetTemplate,
-  canExecute = true,
+  canEdit = false,
   isDispatchExceeded = false,
   dispatchedLotMessage = null,
 }) => {
+  const { t } = useTranslation();
   if (!open) return null;
 
   const hasAnyTemplateFile = templates && templates.some(template => (template.hasFileOnDisk !== false && template.HasFileOnDisk !== false) && !!(template.rptFilePath || template.RPTFilePath));
@@ -48,16 +50,16 @@ const TemplatesPanel = ({
             Templates{moduleTitle ? ` - ${moduleTitle}` : ""}
           </Typography.Text>
           <div className="pipeline-panel-actions">
-            <Tooltip title={isDispatchExceeded ? (dispatchedLotMessage || "Dispatch date has exceeded (Read-Only)") : !canExecute ? "View-only access: Generating reports is disabled" : !hasAnyTemplateFile ? "Upload at least one template first" : ""}>
+            <Tooltip title={isDispatchExceeded ? (dispatchedLotMessage || "Dispatch date has exceeded (Read-Only)") : !canEdit ? "View-only access: Generating reports is disabled" : !hasAnyTemplateFile ? "Upload at least one template first" : ""}>
               <span>
                 <Button
                   size="small"
                   type="primary"
                   onClick={handleGenerateAllTemplates}
                   loading={bulkGenerating}
-                  disabled={!canExecute || isDispatchExceeded || !templates || templates.length === 0 || !hasAnyTemplateFile}
+                  disabled={!canEdit || isDispatchExceeded || !templates || templates.length === 0 || !hasAnyTemplateFile}
                 >
-                  Generate All
+                  {t("pipeline.generateAll", "Generate All")}
                 </Button>
               </span>
             </Tooltip>
@@ -126,23 +128,23 @@ const TemplatesPanel = ({
                         <div style={{ fontWeight: 600 }}>
                           {resolveTemplateName(template)}
                           {alreadyGenerated && (
-                            <Tag color="green" style={{ marginLeft: 8 }}>Ready</Tag>
+                            <Tag color="green" style={{ marginLeft: 8 }}>{t("pipeline.ready", "Ready")}</Tag>
                           )}
                           {reportExists && needsRegenerate && (
-                            <Tag color="orange" style={{ marginLeft: 8 }}>Outdated</Tag>
+                            <Tag color="orange" style={{ marginLeft: 8 }}>{t("pipeline.outdated", "Outdated")}</Tag>
                           )}
                         </div>
                         <Space>
-                          <Tooltip title={isDispatchExceeded ? (dispatchedLotMessage || "Dispatch date has exceeded (Read-Only)") : !canExecute ? "View-only access: Generating reports is disabled" : !hasTemplateFile ? "Upload template first" : ""}>
+                          <Tooltip title={isDispatchExceeded ? (dispatchedLotMessage || "Dispatch date has exceeded (Read-Only)") : !canEdit ? "View-only access: Generating reports is disabled" : !hasTemplateFile ? "Upload template first" : ""}>
                             <span>
                               <Button
                                 size="small"
                                 type={alreadyGenerated ? "default" : "primary"}
                                 onClick={() => handleGenerateTemplate(template, alreadyGenerated ? "regenerate" : "generate")}
                                 loading={isGenerating}
-                                disabled={!canExecute || isDispatchExceeded || !hasTemplateFile}
+                                disabled={!canEdit || isDispatchExceeded || !hasTemplateFile}
                               >
-                                Generate
+                                {t("common.actions.generate", "Generate")}
                               </Button>
                             </span>
                           </Tooltip>

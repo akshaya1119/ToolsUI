@@ -25,7 +25,7 @@ const Master = () => {
       label: (
         <span style={{ display: 'flex', alignItems: 'center' }}>
           <FaProjectDiagram style={{ color: '#1890ff', marginRight: 8 }} /> 
-          <span>{t("masters.project", "Project")}</span>
+          <span>{t("common.labels.project", "Project")}</span>
         </span>
       ),
       children: <Project />,

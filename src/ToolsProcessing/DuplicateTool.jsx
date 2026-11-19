@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Card, Select, Typography, Tag, Button } from "antd";
+import { useTranslation } from "react-i18next";
 import API from "./../hooks/api";
 import useStore from "./../stores/ProjectData";
 import { CopyFilled, LockFilled, UndoOutlined, DeleteOutlined } from "@ant-design/icons";
@@ -9,6 +10,7 @@ const { Text } = Typography;
 const { Option } = Select;
 
 const DuplicateTool = ({ isEnabled, duplicateConfig = {}, setDuplicateConfig, onReset, onClear, importedSnapshot }) => {
+  const { t } = useTranslation();
   const projectId = useStore((state) => state.projectId);
   const [fields, setFields] = useState([]);
 
@@ -36,11 +38,11 @@ const DuplicateTool = ({ isEnabled, duplicateConfig = {}, setDuplicateConfig, on
       title={
         <div>
           <span>
-            <CopyFilled style={iconStyle} /> Duplicate Tool
+            <CopyFilled style={iconStyle} /> {t('projectConfig.duplicateTool', 'Duplicate Tool')}
           </span>
           <br />
           <Text type="secondary">
-            Define conditions that trigger creation of new boxes
+            {t('projectConfig.duplicateToolSubtitle', 'Define conditions that trigger creation of new boxes')}
           </Text>
         </div>
       }
@@ -55,7 +57,7 @@ const DuplicateTool = ({ isEnabled, duplicateConfig = {}, setDuplicateConfig, on
                 onClick={onReset}
                 style={{ color: PRIMARY_COLOR }}
               >
-                Reset
+                {t('common.actions.reset', 'Reset')}
               </Button>
               <Button
                 type="text"
@@ -64,12 +66,12 @@ const DuplicateTool = ({ isEnabled, duplicateConfig = {}, setDuplicateConfig, on
                 onClick={onClear}
                 style={{ color: "#ff4d4f" }}
               >
-                Clear
+                {t('common.actions.clear', 'Clear')}
               </Button>
             </>
           )}
           {!enabled && (
-            <Tag icon={<LockFilled style={{ color: PRIMARY_COLOR }} />}>Disabled</Tag>
+            <Tag icon={<LockFilled style={{ color: PRIMARY_COLOR }} />}>{t('projectConfig.disabledTag', 'Disabled')}</Tag>
           )}
         </div>
       }
@@ -77,14 +79,14 @@ const DuplicateTool = ({ isEnabled, duplicateConfig = {}, setDuplicateConfig, on
       style={{ marginTop: 16, marginBottom: 16, boxShadow: "0 4px 8px rgba(0,0,0,0.1)" }}
     >
       <div style={isDirty(duplicateConfig?.duplicateCriteria, importedSnapshot?.duplicateConfig?.duplicateCriteria) ? DIRTY_STYLE : {}}>
-        <Text strong>Select fields to concatenate</Text>
+        <Text strong>{t('projectConfig.selectFieldsToConcatenate', 'Select fields to concatenate')}</Text>
         <Select
           mode="multiple"
           allowClear
           showSearch
           disabled={!enabled}
           style={{ width: "100%", marginTop: 4 }}
-          placeholder="Select one or more fields"
+          placeholder={t('projectConfig.selectOneOrMoreFields', 'Select one or more fields')}
           value={duplicateConfig?.duplicateCriteria || []}
           onChange={handleFieldChange}
           optionFilterProp="children"

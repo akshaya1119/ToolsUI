@@ -1,6 +1,7 @@
 import React, { useState } from "react";
-import { Button, Card, Checkbox, Input, InputNumber, Select, Space, Switch, Table, Typography } from "antd";
+import { Button, Card, Checkbox, Input, InputNumber, Select, Space, Switch, Table, Tooltip, Typography } from "antd";
 import { CloseOutlined, DeleteOutlined, PlusOutlined, ReloadOutlined } from "@ant-design/icons";
+import { useTranslation } from "react-i18next";
 
 // Map raw SQL expressions or calc: values to friendly display labels
 const RAW_EXPR_LABELS = {
@@ -57,7 +58,9 @@ const TemplatesMappingPanel = ({
   parsedFieldsLoading,
   mappingLoading,
   closeMappingPanel,
+  canMap = true,
 }) => {
+  const { t } = useTranslation();
   if (!showMappingPanel) return null;
 
   // Normalize: orderBySelections can be [{column, direction}] (legacy) or plain string[]
@@ -139,15 +142,19 @@ const TemplatesMappingPanel = ({
                   style={{ width: 60 }}
                   size="small"
                 />
-                <Button
-                  type="primary"
-                  onClick={handleSaveMapping}
-                  htmlType="button"
-                  loading={savingMapping}
-                  disabled={!mappingTemplate?.templateId}
-                >
-                  Save Mapping
-                </Button>
+                <Tooltip title={!canMap ? t("permission.mappingNotPermitted", "You do not have permission to perform template mapping.") : undefined}>
+                  <span>
+                    <Button
+                      type="primary"
+                      onClick={handleSaveMapping}
+                      htmlType="button"
+                      loading={savingMapping}
+                      disabled={!canMap || !mappingTemplate?.templateId}
+                    >
+                      Save Mapping
+                    </Button>
+                  </span>
+                </Tooltip>
               </Space>
             </Space>
             <Typography.Text type="secondary" style={{ fontSize: 11, display: "block" }}>

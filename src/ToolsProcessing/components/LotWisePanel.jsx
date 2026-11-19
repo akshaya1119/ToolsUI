@@ -1,5 +1,6 @@
 import React from "react";
 import { Card, Button, Typography, Space, Tag, Tabs, Select, Skeleton, Spin, Tooltip } from "antd";
+import { useTranslation } from "react-i18next";
 
 const { Text } = Typography;
 
@@ -33,8 +34,9 @@ const LotWisePanel = ({
   isCompositeSummaryTemplate,
   staleTemplateIds,
   getMappingUpdateTime,
-  canExecute = true,
+  canEdit = false,
 }) => {
+  const { t } = useTranslation();
   if (!open) return null;
 
   const lotTemplates = getTemplatesForModuleKey("box");
@@ -135,21 +137,21 @@ const LotWisePanel = ({
                                         {resolveTemplateName(template)}
                                       </Text>
                                       {status?.exists && !isStale && (
-                                        <Tag color="green" style={{ margin: 0 }}>Ready</Tag>
+                                        <Tag color="green" style={{ margin: 0 }}>{t("pipeline.ready", "Ready")}</Tag>
                                       )}
                                     </div>
                                   </div>
                                   <Space size="small">
-                                    <Tooltip title={!canExecute ? "View-only access: Generating reports is disabled" : !hasTemplateFile ? "Upload template first" : ""}>
+                                    <Tooltip title={!canEdit ? "View-only access: Generating reports is disabled" : !hasTemplateFile ? "Upload template first" : ""}>
                                       <span>
                                         <Button
                                           size="small"
                                           type="primary"
                                           onClick={() => handleGenerateTemplate(template)}
                                           loading={isGenerating}
-                                          disabled={!canExecute || !hasTemplateFile}
+                                          disabled={!canEdit || !hasTemplateFile}
                                         >
-                                          Generate
+                                          {t("common.actions.generate", "Generate")}
                                         </Button>
                                       </span>
                                     </Tooltip>
@@ -222,16 +224,16 @@ const LotWisePanel = ({
                             Templates
                           </Text>
                           <Space size="small">
-                            <Tooltip title={lot.isDispatchExceeded ? "Dispatch date has exceeded (Read-Only)" : !canExecute ? "View-only access: Generating reports is disabled" : !hasAnyTemplateFile ? "Upload at least one template first" : ""}>
+                            <Tooltip title={lot.isDispatchExceeded ? "Dispatch date has exceeded (Read-Only)" : !canEdit ? "View-only access: Generating reports is disabled" : !hasAnyTemplateFile ? "Upload at least one template first" : ""}>
                               <span>
                                 <Button
                                   size="small"
                                   type="primary"
                                   onClick={() => handleGenerateAllLotTemplates(lot.lotNo)}
                                   loading={bulkGeneratingLots}
-                                  disabled={!canExecute || lot.isDispatchExceeded || !lotReportStatus?.[lot.lotNo] || lotTemplates.length === 0 || !hasAnyTemplateFile}
+                                  disabled={!canEdit || lot.isDispatchExceeded || !lotReportStatus?.[lot.lotNo] || lotTemplates.length === 0 || !hasAnyTemplateFile}
                                 >
-                                  Generate All
+                                  {t("pipeline.generateAll", "Generate All")}
                                 </Button>
                               </span>
                             </Tooltip>
@@ -276,7 +278,7 @@ const LotWisePanel = ({
                                           {resolveTemplateName(template)}
                                         </Text>
                                         {((status?.exists && !isStale) || (template.reportStatus && !isStale)) && (
-                                          <Tag color="green" style={{ margin: 0 }}>Ready</Tag>
+                                          <Tag color="green" style={{ margin: 0 }}>{t("pipeline.ready", "Ready")}</Tag>
                                         )}
                                         {status?.exists && !isStale && status.generatedAt && (
                                           <Text type="secondary" style={{ fontSize: "11px" }}>
@@ -291,7 +293,7 @@ const LotWisePanel = ({
                                       )}
                                     </div>
                                     <Space size="small">
-                                      <Tooltip title={lot.isDispatchExceeded ? "Dispatch date has exceeded (Read-Only)" : !canExecute ? "View-only access: Generating reports is disabled" : !hasTemplateFile ? "Upload template first" : ""}>
+                                      <Tooltip title={lot.isDispatchExceeded ? "Dispatch date has exceeded (Read-Only)" : !canEdit ? "View-only access: Generating reports is disabled" : !hasTemplateFile ? "Upload template first" : ""}>
                                         <span>
                                           <Button
                                             size="small"
@@ -304,9 +306,9 @@ const LotWisePanel = ({
                                               }
                                             }}
                                             loading={isGenerating}
-                                            disabled={!canExecute || lot.isDispatchExceeded || !lotReportStatus?.[lot.lotNo] || !hasTemplateFile}
+                                            disabled={!canEdit || lot.isDispatchExceeded || !lotReportStatus?.[lot.lotNo] || !hasTemplateFile}
                                           >
-                                            Generate
+                                            {t("common.actions.generate", "Generate")}
                                           </Button>
                                         </span>
                                       </Tooltip>

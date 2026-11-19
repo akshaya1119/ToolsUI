@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import {
   Progress,
   Button,
@@ -18,6 +19,7 @@ const { Text, Title } = Typography;
 const url3 = import.meta.env.VITE_API_FILE_URL;
 
 const ProjectDashboard = () => {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const projectId = useStore((state) => state.projectId);
   const projectName = useStore((state) => state.projectName);
@@ -357,7 +359,7 @@ const ProjectDashboard = () => {
   return (
     <div className="p-6 bg-gray-50 min-h-screen">
       <Title level={2} className="mb-4">
-        Project: {projectName}
+        {t("common.labels.project", "Project")}: {projectName}
       </Title>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

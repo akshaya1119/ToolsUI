@@ -1,5 +1,6 @@
 import React from "react";
 import { Button, Input, Select, Space, Tag, Tooltip, Typography, Upload } from "antd";
+import i18n from "../../i18n";
 import {
   CheckOutlined,
   CloseOutlined,
@@ -132,19 +133,24 @@ export const buildTemplateColumns = ({
   cancelInlineEdit,
   inlineEditSaving,
   onRemove,
+  canEdit = true,
+  canDelete = true,
+  canCreate = true,
+  canUpload = true,
+  canMap = true,
 }) => [
   {
-    title: "Template",
+    title: i18n.t("common.labels.templateName", "Template"),
     dataIndex: "templateName",
     key: "templateName",
     fixed: "left",
     width: 220,
     render: (value, record) => {
       const scopeLabel = record?.projectId
-        ? "Project"
+        ? i18n.t("common.labels.project", "Project")
         : record?.groupId
-          ? "Group"
-          : "Standard";
+          ? i18n.t("common.labels.group", "Group")
+          : i18n.t("templates.standard", "Standard");
       if (editingTemplateId === record?.templateId) {
         return (
           <Space direction="vertical" size={4}>
@@ -152,10 +158,10 @@ export const buildTemplateColumns = ({
               size="small"
               value={editingTemplateName}
               onChange={(event) => setEditingTemplateName(event.target.value)}
-              placeholder="Template name"
+              placeholder={i18n.t("common.labels.templateName", "Template name")}
             />
             <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              {scopeLabel} template
+              {i18n.t("templates.templateWithScope", { scope: scopeLabel, defaultValue: `${scopeLabel} template` })}
             </Typography.Text>
           </Space>
         );
@@ -165,20 +171,20 @@ export const buildTemplateColumns = ({
           <Space size={6}>
             <Typography.Text strong>{value}</Typography.Text>
             {record?.isDeleted && (
-              <Tag color="red" style={{ fontSize: 11 }}>Deleted</Tag>
+              <Tag color="red" style={{ fontSize: 11 }}>{i18n.t("templates.deleted", "Deleted")}</Tag>
             )}
             {!record?.isDeleted && !record?.hasMapping && (
-              <Tooltip title="No mapping configured — this template will not appear in the processing pipeline.">
+              <Tooltip title={i18n.t("templates.noMappingWarning", "No mapping configured — this template will not appear in the processing pipeline.")}>
                 <WarningOutlined style={{ color: "#faad14", fontSize: 14 }} />
               </Tooltip>
             )}
           </Space>
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            {scopeLabel} template
+            {i18n.t("templates.templateWithScope", { scope: scopeLabel, defaultValue: `${scopeLabel} template` })}
           </Typography.Text>
           {!record?.isDeleted && !record?.hasMapping && (
             <Typography.Text type="warning" style={{ fontSize: 11, color: "#d46b08" }}>
-              No mapping — excluded from pipeline
+              {i18n.t("templates.noMappingExcluded", "No mapping — excluded from pipeline")}
             </Typography.Text>
           )}
         </Space>
@@ -186,7 +192,7 @@ export const buildTemplateColumns = ({
     },
   },
   {
-    title: "Generated",
+    title: i18n.t("common.labels.generated", "Generated"),
     key: "createdDate",
     width: 180,
     sorter: (a, b) => {
@@ -201,7 +207,7 @@ export const buildTemplateColumns = ({
     },
   },
   {
-    title: "Sub Name",
+    title: i18n.t("common.labels.subName", "Sub Name"),
     dataIndex: "subName",
     key: "subName",
     width: 150,
@@ -212,7 +218,7 @@ export const buildTemplateColumns = ({
     ),
   },
   {
-    title: "Version",
+    title: i18n.t("common.labels.version", "Version"),
     dataIndex: "version",
     key: "version",
     width: 100,
@@ -225,7 +231,7 @@ export const buildTemplateColumns = ({
             options={editingVersionOptions}
             loading={editingVersionsLoading}
             onChange={(next) => setEditingVersionId(next)}
-            placeholder="Select version"
+            placeholder={i18n.t("templates.selectVersion", "Select version")}
             style={{ width: "100%" }}
           />
         );
@@ -234,7 +240,7 @@ export const buildTemplateColumns = ({
     },
   },
   {
-    title: "Uploaded By",
+    title: i18n.t("templates.uploadedBy", "Uploaded By"),
     key: "uploadedBy",
     width: 160,
     render: (_, record) => (
@@ -242,7 +248,7 @@ export const buildTemplateColumns = ({
     ),
   },
   {
-    title: "Dependent Modules",
+    title: i18n.t("templates.dependentModules", "Dependent Modules"),
     key: "dependentModules",
     width: 220,
     render: (_, record) => {
@@ -254,7 +260,7 @@ export const buildTemplateColumns = ({
             options={moduleOptions}
             value={editingModuleIds}
             onChange={(values) => setEditingModuleIds(values)}
-            placeholder="Select modules"
+            placeholder={i18n.t("templates.selectModules", "Select modules")}
             showSearch
             optionFilterProp="label"
             style={{ width: "100%" }}
@@ -298,7 +304,7 @@ export const buildTemplateColumns = ({
                 </Typography.Text>
                 {display.more > 0 && (
                   <Typography.Text>
-                    +{display.more > 0 ? display.more : 0} more
+                    {i18n.t("templates.more", { count: display.more, defaultValue: `+${display.more} more` })}
                   </Typography.Text>
                 )}
               </div>
@@ -309,21 +315,26 @@ export const buildTemplateColumns = ({
     },
   },
   {
-    title: "Mapping",
+    title: i18n.t("templates.mapping", "Mapping"),
     key: "mapping",
     width: 110,
     render: (_, record) => (
-      <Button
-        size="small"
-        icon={<SettingOutlined />}
-        onClick={() => openMappingModal(record)}
-      >
-        Mapping
-      </Button>
+      <Tooltip title={!canMap ? i18n.t("permission.mappingNotPermitted", "You do not have permission to perform template mapping.") : undefined}>
+        <span>
+          <Button
+            size="small"
+            icon={<SettingOutlined />}
+            onClick={() => openMappingModal(record)}
+            disabled={!canMap}
+          >
+            {i18n.t("templates.mapping", "Mapping")}
+          </Button>
+        </span>
+      </Tooltip>
     ),
   },
   {
-    title: "History",
+    title: i18n.t("templates.history", "History"),
     key: "history",
     width: 110,
     render: (_, record) => (
@@ -332,18 +343,18 @@ export const buildTemplateColumns = ({
         icon={<HistoryOutlined />}
         onClick={() => openVersionsModal(record)}
       >
-        Versions
+        {i18n.t("templates.versions", "Versions")}
       </Button>
     ),
   },
   {
-    title: "Actions",
+    title: i18n.t("common.labels.actions", "Actions"),
     key: "actions",
     width: 180,
     render: (_, record) =>
       editingTemplateId === record?.templateId ? (
         <Space size={6}>
-          <Tooltip title="Save">
+          <Tooltip title={i18n.t("common.actions.save", "Save")}>
             <Button
               size="small"
               type="primary"
@@ -353,7 +364,7 @@ export const buildTemplateColumns = ({
               loading={inlineEditSaving}
             />
           </Tooltip>
-          <Tooltip title="Cancel">
+          <Tooltip title={i18n.t("common.actions.cancel", "Cancel")}>
             <Button
               size="small"
               shape="circle"
@@ -367,31 +378,45 @@ export const buildTemplateColumns = ({
         <Space size={6}>
           <Button
             size="small"
-            title="Download"
+            title={i18n.t("common.actions.download", "Download")}
             icon={<DownloadOutlined />}
             onClick={() => handleDownload(record)}
           >
             {" "}
           </Button>
-          <Upload {...rowUploadProps(record)}>
-            <Button
-              size="small"
-              icon={<UploadOutlined />}
-              title="Upload New Version"
-            >
-              {" "}
-            </Button>
-          </Upload>
+          {canUpload ? (
+            <Upload {...rowUploadProps(record)}>
+              <Button
+                size="small"
+                icon={<UploadOutlined />}
+                title={i18n.t("templates.uploadNewVersion", "Upload New Version")}
+              >
+                {" "}
+              </Button>
+            </Upload>
+          ) : (
+            <Tooltip title={i18n.t("permission.uploadNotPermitted", "You do not have permission to upload templates.")}>
+              <span>
+                <Button
+                  size="small"
+                  icon={<UploadOutlined />}
+                  disabled
+                >
+                  {" "}
+                </Button>
+              </span>
+            </Tooltip>
+          )}
           <Button
             size="small"
             icon={<EditOutlined />}
-            title="Edit Template"
+            title={i18n.t("templates.editTemplate", "Edit Template")}
             onClick={() => startInlineEdit(record)}
           >
             {" "}
           </Button>
           {onRemove && (
-            <Tooltip title={record?.isDeleted ? "Restore template" : "Remove from this scope"}>
+            <Tooltip title={record?.isDeleted ? i18n.t("templates.restoreTemplateTooltip", "Restore template") : i18n.t("templates.removeFromScopeTooltip", "Remove from this scope")}>
               <Button
                 size="small"
                 danger={!record?.isDeleted}

@@ -3,7 +3,7 @@ import usePermissionsStore from '../stores/UserPermissions';
 /**
  * Hook to retrieve effective permissions for a specific module.
  * @param {string} moduleCode The uppercase module code (e.g. 'DATA_IMPORT', 'MASTER_PROJECT')
- * @returns {{ canView: boolean, canCreate: boolean, canEdit: boolean, canDelete: boolean, canExecute: boolean, canExport: boolean, isSuperuser: boolean }}
+ * @returns {{ canView: boolean, canCreate: boolean, canEdit: boolean, canDelete: boolean, isSuperuser: boolean, loading: boolean }}
  */
 export const useModulePermission = (moduleCode) => {
   const isSuperuser = usePermissionsStore((state) => state.isSuperuser);
@@ -11,15 +11,13 @@ export const useModulePermission = (moduleCode) => {
   const initialized = usePermissionsStore((state) => state.initialized);
   const error = usePermissionsStore((state) => state.error);
 
-  // Safe fallback: If not yet initialized or on error, allow viewing but block mutating actions
+  // Safe fallback: If not yet initialized or on error, block mutating actions
   if (!initialized || error) {
     return {
-      canView: true,
+      canView: false,
       canCreate: false,
       canEdit: false,
       canDelete: false,
-      canExecute: false,
-      canExport: false,
       isSuperuser,
       loading: !initialized
     };
@@ -32,8 +30,6 @@ export const useModulePermission = (moduleCode) => {
       canCreate: false,
       canEdit: false,
       canDelete: false,
-      canExecute: false,
-      canExport: false,
       isSuperuser,
       loading: false
     };
@@ -49,8 +45,6 @@ export const useModulePermission = (moduleCode) => {
     canCreate: getFlag('create'),
     canEdit: getFlag('edit'),
     canDelete: getFlag('delete'),
-    canExecute: getFlag('execute'),
-    canExport: getFlag('export'),
     isSuperuser,
     loading: false
   };

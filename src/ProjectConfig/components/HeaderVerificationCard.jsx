@@ -1,6 +1,7 @@
 import React from "react";
 import { Card, Select, Typography, Tag, Button } from "antd";
 import { TableOutlined, LockFilled, UndoOutlined, DeleteOutlined } from "@ant-design/icons";
+import { useTranslation } from "react-i18next";
 import AnimatedCard from "./AnimatedCard";
 import { cardStyle, iconStyle, PRIMARY_COLOR } from "./constants";
 
@@ -19,6 +20,7 @@ const HeaderVerificationCard = ({
   onClear,
   importedSnapshot
 }) => {
+  const { t } = useTranslation();
   const isDirty = (current, snapshotVal) => {
     if (!importedSnapshot || importedSnapshot === "pending") return false;
     return JSON.stringify(current) !== JSON.stringify(snapshotVal);
@@ -38,11 +40,11 @@ const HeaderVerificationCard = ({
         title={
           <div>
             <span>
-              <TableOutlined style={iconStyle} /> Header Verification Fields
+              <TableOutlined style={iconStyle} /> {t('projectConfig.headerVerificationFields', 'Header Verification Fields')}
             </span>
             <br />
             <Text type="secondary">
-              Select imported/uploaded DB fields to display during Header Verification.
+              {t('projectConfig.headerVerificationSubtitle', 'Select imported/uploaded DB fields to display during Header Verification.')}
             </Text>
           </div>
         }
@@ -57,7 +59,7 @@ const HeaderVerificationCard = ({
                   onClick={onReset}
                   style={{ color: PRIMARY_COLOR }}
                 >
-                  Reset
+                  {t('common.actions.reset', 'Reset')}
                 </Button>
                 <Button
                   type="text"
@@ -66,13 +68,13 @@ const HeaderVerificationCard = ({
                   onClick={onClear}
                   style={{ color: "#ff4d4f" }}
                 >
-                  Clear
+                  {t('common.actions.clear', 'Clear')}
                 </Button>
               </>
             )}
             {!isEnabled && (
               <Tag icon={<LockFilled style={{ color: PRIMARY_COLOR }} />}>
-                Disabled
+                {t('projectConfig.disabledTag', 'Disabled')}
               </Tag>
             )}
           </div>
@@ -80,14 +82,14 @@ const HeaderVerificationCard = ({
       >
         <div style={{ marginTop: 12 }}>
           <div style={isDirty(selectedHeaderVerificationFields, importedSnapshot?.selectedHeaderVerificationFields) ? DIRTY_STYLE : {}}>
-            <Text strong>Select Display Fields</Text>
+            <Text strong>{t('projectConfig.selectDisplayFields', 'Select Display Fields')}</Text>
             <Select
               mode="multiple"
               disabled={!isEnabled}
               allowClear
               showSearch
               style={{ width: "100%", marginTop: 4 }}
-              placeholder="Select optional fields for Header Verification"
+              placeholder={t('projectConfig.headerVerificationPlaceholder', 'Select optional fields for Header Verification')}
               value={selectedHeaderVerificationFields}
               onChange={setSelectedHeaderVerificationFields}
               optionFilterProp="children"

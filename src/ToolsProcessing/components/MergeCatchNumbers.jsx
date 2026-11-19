@@ -22,6 +22,7 @@ import {
   Collapse,
 } from "antd";
 import { SearchOutlined } from "@ant-design/icons";
+import { useTranslation } from "react-i18next";
 import { motion } from "framer-motion";
 import API from "../../hooks/api";
 import useStore from "../../stores/ProjectData";
@@ -86,6 +87,7 @@ const mergeRows = (base, patch) => ({
 });
 
 const MergeCatchNumbers = forwardRef(({ onSelectionCountChange }, ref) => {
+  const { t } = useTranslation();
   const projectId = useStore((state) => state.projectId);
   const selectedLot = useStore((state) => state.selectedLot);
   const { showToast } = useToast();

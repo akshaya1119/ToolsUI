@@ -15,6 +15,7 @@ import {
   Checkbox,
   Alert,
 } from "antd";
+import { useTranslation } from "react-i18next";
 import API from "../../hooks/api";
 import { FolderAddFilled, LockFilled, UndoOutlined, PlusOutlined, MinusCircleOutlined, DeleteOutlined } from "@ant-design/icons";
 import AnimatedCard from "./AnimatedCard";
@@ -41,6 +42,7 @@ const ExtraProcessingCard = ({
   projectId,
   allowNodalConfig = true,
 }) => {
+  const { t } = useTranslation();
   const isDirty = (current, snapshotVal) => {
     if (!importedSnapshot || importedSnapshot === "pending") return false;
     return JSON.stringify(current) !== JSON.stringify(snapshotVal);
@@ -52,6 +54,23 @@ const ExtraProcessingCard = ({
   };
 
   const extraEnabled = isEnabled(EXTRA_ALIAS_NAME);
+
+  const getLocalizedExtraType = (type) => {
+    const lower = (type || '').toLowerCase();
+    if (lower.includes('nodal')) {
+      return t('projectConfig.nodalExtra', 'Nodal Extra');
+    }
+    if (lower.includes('univ')) {
+      return t('projectConfig.universityExtra', 'University Extra');
+    }
+    if (lower.includes('office')) {
+      return t('projectConfig.officeExtra', 'Office Copy');
+    }
+    if (lower.includes('center')) {
+      return t('projectConfig.centerExtra', 'Center Extra');
+    }
+    return type;
+  };
 
   const getOuterCapacity = (type) => {
     const config = extraProcessingConfig[type];
@@ -123,11 +142,10 @@ useEffect(() => {
         title={
           <div>
             <span>
-              <FolderAddFilled style={iconStyle} /> Extra Processing
-              Configuration
+              <FolderAddFilled style={iconStyle} /> {t('projectConfig.extraProcessing', 'Extra Processing Configuration')}
             </span>
             <br />
-            <Text type="secondary">Configure extra packet calculations</Text>
+            <Text type="secondary">{t('projectConfig.extraProcessingSubtitle', 'Configure extra packet calculations')}</Text>
           </div>
         }
         extra={
@@ -141,7 +159,7 @@ useEffect(() => {
                   onClick={onReset}
                   style={{ color: PRIMARY_COLOR }}
                 >
-                  Reset
+                  {t('common.actions.reset', 'Reset')}
                 </Button>
                 <Button
                   type="text"
@@ -150,13 +168,13 @@ useEffect(() => {
                   onClick={onClear}
                   style={{ color: "#ff4d4f" }}
                 >
-                  Clear
+                  {t('common.actions.clear', 'Clear')}
                 </Button>
               </>
             )}
             {!extraEnabled && (
               <Tag icon={<LockFilled style={{ color: PRIMARY_COLOR }} />}>
-                Disabled
+                {t('projectConfig.disabledTag', 'Disabled')}
               </Tag>
             )}
           </div>
@@ -174,14 +192,14 @@ useEffect(() => {
               }
               disabled={!extraEnabled}
             >
-              Extra Processing as per NR
+              {t('projectConfig.extraProcessingAsPerNr', 'Extra Processing as per NR')}
             </Checkbox>
             {extraProcessingConfig?.extraProcessingAsPerNR && (
               <Alert
                 type="info"
                 showIcon
                 style={{ marginTop: 8 }}
-                message="Extra Processing as per NR is enabled"
+                message={t('projectConfig.extraProcessingAsPerNrEnabled', 'Extra Processing as per NR is enabled')}
               />
             )}
           </Col>
@@ -224,7 +242,7 @@ useEffect(() => {
                       : {}),
                   }}
                 >
-                  <Title level={5}>{et.type}</Title>
+                  <Title level={5}>{getLocalizedExtraType(et.type)}</Title>
 
                   {/* Envelope Dropdowns */}
                   <div style={{ marginTop: 12 }}>
@@ -234,10 +252,10 @@ useEffect(() => {
                           strong
                           style={{ display: "block", marginBottom: 4 }}
                         >
-                          Inner Envelope
+                          {t('projectConfig.innerEnvelope', 'Inner Envelope')}
                         </Text>
                         <Select
-                          placeholder="Select Inner Envelopes"
+                          placeholder={t('projectConfig.selectInnerEnvelopes', 'Select Inner Envelopes')}
                           style={{ width: "100%" }}
                           disabled={!extraEnabled}
                           value={
@@ -276,10 +294,10 @@ useEffect(() => {
                           strong
                           style={{ display: "block", marginBottom: 4 }}
                         >
-                          Outer Envelope
+                          {t('projectConfig.outerEnvelope', 'Outer Envelope')}
                         </Text>
                         <Select
-                          placeholder="Select Outer Envelopes"
+                          placeholder={t('projectConfig.selectOuterEnvelopes', 'Select Outer Envelopes')}
                           style={{ width: "100%" }}
                           disabled={!extraEnabled}
                           value={
@@ -325,7 +343,7 @@ useEffect(() => {
                           <Row align="middle" style={{ marginTop: 12, marginBottom: 8, padding: '8px', background: '#fafafa', borderRadius: '4px', border: '1px solid #f0f0f0' }}>
                            <Col span={24}>
                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                               <Text strong>Nodal Configuration:</Text>
+                               <Text strong>{t('projectConfig.nodalConfiguration', 'Nodal Configuration:')}</Text>
                                <Radio.Group
                                  value={isPerNodal ? 'different' : 'same'}
                                  onChange={(e) => {
@@ -342,8 +360,8 @@ useEffect(() => {
                                  }}
                                  disabled={!extraEnabled}
                                >
-                                 <Radio value="same">Apply to all</Radio>
-                                 <Radio value="different">Custom per nodal</Radio>
+                                 <Radio value="same">{t('projectConfig.applyToAll', 'Apply to all')}</Radio>
+                                 <Radio value="different">{t('projectConfig.customPerNodal', 'Custom per nodal')}</Radio>
                                </Radio.Group>
                              </div>
                              <div style={{ borderTop: '1px dashed #d9d9d9', paddingTop: 6 }}>
@@ -357,7 +375,7 @@ useEffect(() => {
                                  }
                                  disabled={!extraEnabled}
                                >
-                                 Attach extra for each catch for all nodal
+                                 {t('projectConfig.attachExtraForEachCatchForAllNodal', 'Attach extra for each catch for all nodal')}
                                </Checkbox>
                              </div>
                            </Col>
@@ -409,16 +427,16 @@ useEffect(() => {
                       }));
                     }}
                   >
-                    <Radio value="Fixed">Fixed Qty</Radio>
-                    <Radio value="Range">Range</Radio>
-                    <Radio value="Percentage">Percentage</Radio>
+                    <Radio value="Fixed">{t('projectConfig.fixedQty', 'Fixed Qty')}</Radio>
+                    <Radio value="Range">{t('projectConfig.range', 'Range')}</Radio>
+                    <Radio value="Percentage">{t('common.labels.percentage', 'Percentage')}</Radio>
                   </Radio.Group>
 
                   {/* Inputs depending on type selection */}
                   {(extraTypeSelection[et.type] ?? "Fixed") === "Fixed" && (
                     <Form.Item style={{ marginTop: 12, marginBottom: 0 }}>
                       <InputNumber
-                        placeholder="Enter fixed quantity"
+                        placeholder={t('projectConfig.enterFixedQuantity', 'Enter fixed quantity')}
                         min={0}
                         value={extraProcessingConfig[et.type]?.fixedQty || 0}
                         onChange={(v) =>
@@ -436,7 +454,7 @@ useEffect(() => {
                         if (outerValue && outerValue > 0 && qty > 0 && qty % outerValue !== 0) {
                           return (
                             <div style={{ color: "#ff4d4f", fontSize: "12px", marginTop: "4px", padding: '4px', background: '#fff2f0', borderRadius: '4px', border: '1px solid #ffccc7' }}>
-                              Quantities must be multiples of outer envelope capacity ({outerValue}).
+                              {t('projectConfig.multiplesOfOuterCapacity', { capacity: outerValue, defaultValue: `Quantities must be multiples of outer envelope capacity (${outerValue}).` })}
                             </div>
                           );
                         }

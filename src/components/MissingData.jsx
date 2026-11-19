@@ -23,6 +23,7 @@ import {
     SearchOutlined,
     UploadOutlined,
 } from "@ant-design/icons";
+import { useTranslation } from "react-i18next";
 import { motion } from "framer-motion";
 import * as XLSX from "xlsx";
 import dayjs from "dayjs";
@@ -138,6 +139,7 @@ const summaryItems = (loadingTemplateData, templateRows, reviewRows, completedCo
 ];
 
 const MissingData = () => {
+    const { t } = useTranslation();
     const projectId = useStore((state) => state.projectId);
     const selectedLot = useStore((state) => state.selectedLot);
     const { showToast } = useToast();

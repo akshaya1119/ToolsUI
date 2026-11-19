@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Card, Select, Typography, Tag, InputNumber, Checkbox, Button } from "antd";
 import { ContainerFilled, LockFilled, UndoOutlined, DeleteOutlined } from "@ant-design/icons";
+import { useTranslation } from "react-i18next";
 import AnimatedCard from "./AnimatedCard";
 import { cardStyle, iconStyle, PRIMARY_COLOR } from "./constants";
 
@@ -29,6 +30,7 @@ const EnvelopeMakingCriteriaCard = ({
   mssInsertPosition,
   setMssInsertPosition,
 }) => {
+  const { t } = useTranslation();
   const isDirty = (current, snapshotVal) => {
     if (!importedSnapshot || importedSnapshot === "pending") return false;
     return JSON.stringify(current) !== JSON.stringify(snapshotVal);
@@ -38,13 +40,13 @@ const EnvelopeMakingCriteriaCard = ({
 
   const getDynamicSortLabel = (selectedIds) => {
     if (!selectedIds || selectedIds.length === 0) {
-      return "Sort by this field then by this after comma separated";
+      return t('projectConfig.sortByDefaultHelper', "Sort by this field then by this after comma separated");
     }
     const names = selectedIds.map(id => {
       const field = fields.find(f => f.fieldId === id);
       return field ? field.name : id;
     });
-    return `Sort by ${names.join(" then by ")}`;
+    return t('projectConfig.sortByHelper', { fields: names.join(` ${t('common.actions.thenBy', 'then by')} `), defaultValue: `Sort by ${names.join(" then by ")}` });
   };
 
   return (
@@ -54,11 +56,11 @@ const EnvelopeMakingCriteriaCard = ({
         title={
           <div>
             <span>
-              <ContainerFilled style={iconStyle} /> Envelope Making Criteria (Serial Numbering)
+              <ContainerFilled style={iconStyle} /> {t('projectConfig.envelopeMakingTitle', 'Envelope Making Criteria (Serial Numbering)')}
             </span>
             <br />
             <Text type="secondary">
-              Define conditions that numbers Envelope
+              {t('projectConfig.envelopeMakingSubtitle', 'Define conditions that numbers Envelope')}
             </Text>
           </div>
         }
@@ -73,7 +75,7 @@ const EnvelopeMakingCriteriaCard = ({
                   onClick={onReset}
                   style={{ color: PRIMARY_COLOR }}
                 >
-                  Reset
+                  {t('common.actions.reset', 'Reset')}
                 </Button>
                 <Button
                   type="text"
@@ -82,13 +84,13 @@ const EnvelopeMakingCriteriaCard = ({
                   onClick={onClear}
                   style={{ color: "#ff4d4f" }}
                 >
-                  Clear
+                  {t('common.actions.clear', 'Clear')}
                 </Button>
               </>
             )}
             {!isEnabled("Envelope Setup and Enhancement") && (
               <Tag icon={<LockFilled style={{ color: PRIMARY_COLOR }} />}>
-                Disabled
+                {t('projectConfig.disabledTag', 'Disabled')}
               </Tag>
             )}
           </div>
@@ -104,14 +106,14 @@ const EnvelopeMakingCriteriaCard = ({
         >
           {/* Select Sort Fields - Full Width */}
           <div style={{ flex: "1 1 100%", ...( isDirty(selectedEnvelopeFields, importedSnapshot?.selectedEnvelopeFields) ? DIRTY_STYLE : {}) }}>
-            <Text strong>Select sort fields</Text>
+            <Text strong>{t('projectConfig.selectSortFields', 'Select sort fields')}</Text>
             <Select
               mode="multiple"
               disabled={!isEnabled("Envelope Setup and Enhancement")}
               allowClear
               showSearch
               style={{ width: "100%", marginTop: 4 }}
-              placeholder="Select one or more fields"
+              placeholder={t('projectConfig.selectOneOrMoreFields', 'Select one or more fields')}
               value={selectedEnvelopeFields}
               onChange={setSelectedEnvelopeFields}
               optionFilterProp="children"
@@ -139,19 +141,19 @@ const EnvelopeMakingCriteriaCard = ({
                 setResetOmrSerialOnCatchChange(e.target.checked)
               }
             >
-              <Text strong>Reset OMR Serial on Catch Change</Text>
+              <Text strong>{t('projectConfig.resetOmrOnCatchChange', 'Reset OMR Serial on Catch Change')}</Text>
             </Checkbox>
           </div>
 
           {/* Starting OMR - 50% */}
           <div style={{ flex: "1 1 48%", ...(isDirty(startOmrEnvelopeNumber, importedSnapshot?.startOmrEnvelopeNumber) ? DIRTY_STYLE : {}) }}>
-            <Text strong>Starting OMR Serial Number</Text>
+            <Text strong>{t('projectConfig.startingOmrSerialNumber', 'Starting OMR Serial Number')}</Text>
             <InputNumber
               min={0}
               disabled={!isEnabled("Envelope Setup and Enhancement")}
               value={startOmrEnvelopeNumber}
               onChange={(value) => setStartOmrEnvelopeNumber(value ?? 0)}
-              placeholder="Enter Start OMR Serial Number"
+              placeholder={t('projectConfig.enterStartOmrPlaceholder', 'Enter Start OMR Serial Number')}
               style={{ width: "100%", marginTop: 4 }}
             />
           </div>
@@ -165,26 +167,26 @@ const EnvelopeMakingCriteriaCard = ({
                 setResetBookletSerialOnCatchChange(e.target.checked)
               }
             >
-              <Text strong>Reset Booklet Serial on Catch Change</Text>
+              <Text strong>{t('projectConfig.resetBookletOnCatchChange', 'Reset Booklet Serial on Catch Change')}</Text>
             </Checkbox>
           </div>
 
           {/* Starting Booklet Serial - 50% */}
           <div style={{ flex: "1 1 48%", ...(isDirty(startBookletSerialNumber, importedSnapshot?.startBookletSerialNumber) ? DIRTY_STYLE : {}) }}>
-            <Text strong>Starting Booklet Serial Number</Text>
+            <Text strong>{t('projectConfig.startingBookletSerialNumber', 'Starting Booklet Serial Number')}</Text>
             <InputNumber
               min={0}
               disabled={!isEnabled("Envelope Setup and Enhancement")}
               value={startBookletSerialNumber}
               onChange={(value) => setStartBookletSerialNumber(value ?? 0)}
-              placeholder="Enter Start Booklet Serial Number"
+              placeholder={t('projectConfig.enterStartBookletPlaceholder', 'Enter Start Booklet Serial Number')}
               style={{ width: "100%", marginTop: 4 }}
             />
           </div>
 
           {/* MSS Types */}
           <div style={{ flex: "1 1 48%", ...(isDirty(selectedMss, importedSnapshot?.selectedMss) ? DIRTY_STYLE : {}) }}>
-            <Text strong style={{ display: "block", marginBottom: 4 }}>MSS Types</Text>
+            <Text strong style={{ display: "block", marginBottom: 4 }}>{t('projectConfig.mssTypes', 'MSS Types')}</Text>
             {mssList && mssList.length > 0 ? (
               <Checkbox.Group
                 disabled={!isEnabled("Envelope Setup and Enhancement")}
@@ -194,21 +196,21 @@ const EnvelopeMakingCriteriaCard = ({
                 style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}
               />
             ) : (
-              <Text type="secondary">No MSS Types available</Text>
+              <Text type="secondary">{t('projectConfig.noMssTypesAvailable', 'No MSS Types available')}</Text>
             )}
           </div>
 
           {/* MSS Row Insert Position - 50% */}
           <div style={{ flex: "1 1 48%", ...(isDirty(mssInsertPosition, importedSnapshot?.mssInsertPosition) ? DIRTY_STYLE : {}) }}>
-            <Text strong>MSS Row Insert Position</Text>
+            <Text strong>{t('projectConfig.mssRowInsertPosition', 'MSS Row Insert Position')}</Text>
             <Select
               disabled={!isEnabled("Envelope Setup and Enhancement")}
               value={mssInsertPosition}
               onChange={setMssInsertPosition}
               style={{ width: "100%", marginTop: 4 }}
             >
-              <Option value="start">Start</Option>
-              <Option value="end">End</Option>
+              <Option value="start">{t('projectConfig.positionStart', 'Start')}</Option>
+              <Option value="end">{t('projectConfig.positionEnd', 'End')}</Option>
             </Select>
           </div>
         </div>

@@ -1,5 +1,5 @@
 import React from "react";
-import { Button, Card, Empty, Space, Table, Tag, Typography } from "antd";
+import { Button, Card, Empty, Space, Table, Tag, Tooltip, Typography } from "antd";
 import { CopyOutlined, PlusOutlined, ReloadOutlined } from "@ant-design/icons";
 import { useTranslation } from "react-i18next";
 
@@ -10,6 +10,7 @@ const TemplatesCard = ({
   onAdd,
   onImport,
   disableAdd = false,
+  disableAddTooltip,
   disableImport = false,
   selectionEmptyText,
   noTemplatesTitle,
@@ -30,7 +31,7 @@ const TemplatesCard = ({
       bodyStyle={{ padding: 16 }}
       title={
         <Space>
-          <Typography.Text strong>{t("templates.templates", "Templates")}</Typography.Text>
+          <Typography.Text strong>{t("common.labels.templates", "Templates")}</Typography.Text>
           {selectionReady &&
             visibleTags.map((tag) => (
               <Tag key={tag}>{tag}</Tag>
@@ -50,12 +51,16 @@ const TemplatesCard = ({
               {t("templates.saveAsMaster", "Save as Master")}
             </Button>
           )}
-          <Button type="primary" icon={<PlusOutlined />} onClick={onAdd} disabled={disableAdd}>
-            {t("common.actions.add", "Add")}
-          </Button>
+          <Tooltip title={disableAdd ? disableAddTooltip : undefined}>
+            <span>
+              <Button type="primary" icon={<PlusOutlined />} onClick={onAdd} disabled={disableAdd}>
+                {t("common.actions.add", "Add")}
+              </Button>
+            </span>
+          </Tooltip>
           {showImportAction && (
             <Button icon={<CopyOutlined />} onClick={onImport} disabled={disableImport}>
-              {t("templates.import", "Import")}
+              {t("common.actions.import", "Import")}
             </Button>
           )}
         </Space>

@@ -81,6 +81,7 @@ import TemplatesCard from "../components/rpt/TemplatesCard";
 import TemplatesSidePanel from "../components/rpt/TemplatesSidePanel";
 import TemplatesMappingPanel from "../components/rpt/TemplatesMappingPanel";
 import TemplatesVersionsModal from "../components/rpt/TemplatesVersionsModal";
+import usePermissionsStore from "../stores/UserPermissions";
 
 const ProjectTemplates = () => {
   const { t } = useTranslation();
@@ -88,6 +89,12 @@ const ProjectTemplates = () => {
   const APIURL = import.meta.env.VITE_API_URL;
   const rptApiUrl = import.meta.env.VITE_RPT_API_URL;
   const { requireAuth, authModalComponent } = useMasterAuth();
+  const hasPermission = usePermissionsStore((state) => state.hasPermission);
+  const hasSpecialAction = usePermissionsStore((state) => state.hasSpecialAction);
+  const canCreate = hasPermission('REPORT_TEMPLATE_MANAGEMENT', 'Create');
+  const canEdit = hasPermission('REPORT_TEMPLATE_MANAGEMENT', 'Edit');
+  const canUploadTemplateSpecial = hasSpecialAction('ACTION_UPLOAD_RPT_TEMPLATE');
+  const canMapTemplateSpecial = hasSpecialAction('ACTION_MAP_RPT_TEMPLATE');
   const token = localStorage.getItem("token");
   const [savingMapping, setSavingMapping] = useState(false);
   const projectId = useStore((state) => state.projectId);
@@ -929,6 +936,10 @@ const ProjectTemplates = () => {
   };
 
   const handleSaveMapping = async () => {
+    if (!canEdit || !canMapTemplateSpecial) {
+      message.error("Special action permission required: Configure Template Mapping.");
+      return;
+    }
     if (!mappingTemplate?.templateId) return;
     setSavingMapping(true);
     try {
@@ -1185,7 +1196,7 @@ const ProjectTemplates = () => {
         title: t('templates.restoreTemplateTitle', 'Restore template?'),
         content: t('templates.restoreTemplateContent', { name: record?.templateName, scope, defaultValue: `This will restore "${record?.templateName}" and set it as active in the ${scope} scope.` }),
         okText: t('templates.restore', 'Restore'),
-        cancelText: t('templates.cancel', 'Cancel'),
+        cancelText: t('common.actions.cancel', 'Cancel'),
         onOk: async () => {
           try {
             await restoreTemplate(APIURL, record.templateId);
@@ -1209,7 +1220,7 @@ const ProjectTemplates = () => {
       content: t('templates.removeTemplateContent', { name: record?.templateName, scope, defaultValue: `This will mark "${record?.templateName}" as deleted in the ${scope} scope. It stays visible but marked deleted — you can restore it from the Versions panel.` }),
       okText: t('templates.remove', 'Remove'),
       okButtonProps: { danger: true },
-      cancelText: t('templates.cancel', 'Cancel'),
+      cancelText: t('common.actions.cancel', 'Cancel'),
       onOk: async () => {
         try {
           await softDeleteTemplate(APIURL, record.templateId, scope);
@@ -1401,6 +1412,10 @@ const ProjectTemplates = () => {
         cancelInlineEdit,
         inlineEditSaving,
         onRemove: handleRemoveTemplate,
+        canEdit,
+        canCreate,
+        canUpload: canCreate && canUploadTemplateSpecial,
+        canMap: canEdit && canMapTemplateSpecial,
       }),
     [
       userMap,
@@ -1590,12 +1605,12 @@ const ProjectTemplates = () => {
       >
         <TemplatesCard
           selectionReady={selectionReady}
-          tags={["Project", groupLabel, typeLabel]}
+          tags={[t("common.labels.project", "Project"), groupLabel, typeLabel]}
           data={availableRPTFiles}
           columns={columns}
-          selectionEmptyText="Select a project with group and type to view templates."
-          noTemplatesTitle="No templates found for this project."
-          noTemplatesSubtitle="Uploading here creates a project-only version."
+          selectionEmptyText={t("templates.selectProjectWithGroupType", "Select a project with group and type to view templates.")}
+          noTemplatesTitle={t("templates.noTemplatesFoundForProject", "No templates found for this project.")}
+          noTemplatesSubtitle={t("templates.uploadingCreatesProjectVersion", "Uploading here creates a project-only version.")}
           onRefresh={fetchAvailableRPTFiles}
           onAdd={() => {
             setAddModalOpen(true);
@@ -1613,8 +1628,13 @@ const ProjectTemplates = () => {
             importForm.resetFields();
             importForm.setFieldsValue({ copyMappings: true });
           }}
-          disableAdd={!selectionReady}
-          disableImport={!selectionReady}
+          disableAdd={!canCreate || !canUploadTemplateSpecial || !selectionReady}
+          disableAddTooltip={
+            !canCreate || !canUploadTemplateSpecial
+              ? t('permission.uploadNotPermitted', 'You do not have permission to upload templates.')
+              : undefined
+          }
+          disableImport={!canCreate || !selectionReady}
           loading={loadingTemplates}
           rowSelection={{
             selectedRowKeys,
@@ -1741,6 +1761,8 @@ const ProjectTemplates = () => {
           closeMappingPanel={closeMappingPanel}
           useBoxLabelSP={useBoxLabelSP}
           setUseBoxLabelSP={setUseBoxLabelSP}
+          canEdit={canEdit}
+          canMap={canEdit && canMapTemplateSpecial}
         />
       </div>
 

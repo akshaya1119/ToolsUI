@@ -1,6 +1,6 @@
 import React from "react";
 import { Button, Form, Input, Select, Space, Switch, Typography } from "antd";
-
+import { useTranslation } from 'react-i18next';
 const ImportTemplatesForm = ({
   form,
   importScope,
@@ -30,7 +30,7 @@ const ImportTemplatesForm = ({
 
   const showProjectTypeMissing =
     importScope === "project" && importProjectId && !selectedImportProjectTypeLabel;
-
+  const { t } = useTranslation();
   return (
     <Form
       layout="vertical"
@@ -240,7 +240,7 @@ const ImportTemplatesForm = ({
       <Space style={{ display: "flex", justifyContent: "flex-end" }}>
         <Button onClick={onCancel}>Cancel</Button>
         <Button type="primary" onClick={onSubmit} loading={importSubmitting}>
-          Import Templates
+          {t("templates.importTemplates")}
         </Button>
       </Space>
     </Form>

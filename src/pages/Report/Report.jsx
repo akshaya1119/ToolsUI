@@ -17,6 +17,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { FileText, Download, Play, ChevronLeft, Calendar, Database, CheckCircle, XCircle } from "lucide-react";
 import axios from "axios";
+import { useTranslation } from "react-i18next";
 import API from "../../hooks/api";
 import useStore from "../../stores/ProjectData";
 
@@ -36,6 +37,7 @@ const possibleReports = [
 ];
 
 const Report = () => {
+  const { t } = useTranslation();
   const storeProjectId = useStore((state) => state.projectId);
   const storeProjectName = useStore((state) => state.projectName);
   
@@ -259,18 +261,18 @@ const Report = () => {
             <FileText size={24} />
           </div>
           <div>
-            <Title level={2} style={{ margin: 0 }}>Reports Workspace</Title>
-            <Text type="secondary">Generate and download batch reports for your projects</Text>
+            <Title level={2} style={{ margin: 0 }}>{t('reports.workspaceTitle', 'Reports Workspace')}</Title>
+            <Text type="secondary">{t('reports.workspaceSubtitle', 'Generate and download batch reports for your projects')}</Text>
           </div>
         </div>
 
         <Card className="shadow-sm border-slate-200 mb-8 rounded-2xl overflow-hidden backdrop-blur-sm bg-white/80">
           <Row gutter={24} align="bottom">
             <Col xs={24} md={10}>
-              <Text strong className="block mb-2">Select Project</Text>
+              <Text strong className="block mb-2">{t('common.placeholders.selectProject', 'Select Project')}</Text>
               <Select
                 style={{ width: "100%" }}
-                placeholder="Choose a project"
+                placeholder={t('reports.chooseProjectPlaceholder', 'Choose a project')}
                 onChange={handleProjectChange}
                 value={selectedProjectId}
                 loading={projectsLoading}
@@ -286,10 +288,10 @@ const Report = () => {
             </Col>
             
             <Col xs={24} md={10}>
-              <Text strong className="block mb-2">Select Upload Version</Text>
+              <Text strong className="block mb-2">{t('reports.selectUploadVersion', 'Select Upload Version')}</Text>
               <Select
                 style={{ width: "100%" }}
-                placeholder="Select batch version"
+                placeholder={t('reports.selectVersionPlaceholder', 'Select batch version')}
                 value={selectedVersion}
                 onChange={setSelectedVersion}
                 disabled={!selectedProjectId || uploadVersions.length === 0}
@@ -297,7 +299,7 @@ const Report = () => {
                 size="large"
               >
                 {uploadVersions.map((v) => (
-                  <Select.Option key={v} value={v}>Batch Version {v}</Select.Option>
+                  <Select.Option key={v} value={v}>{t('reports.batchVersionPrefix', 'Batch Version')} {v}</Select.Option>
                 ))}
               </Select>
             </Col>
@@ -310,7 +312,7 @@ const Report = () => {
                 onClick={() => handleProjectChange(storeProjectId)}
                 disabled={!storeProjectId || Number(selectedProjectId) === Number(storeProjectId)}
               >
-                Current
+                {t('reports.currentProjectBtn', 'Current')}
               </Button>
             </Col>
           </Row>
@@ -318,7 +320,7 @@ const Report = () => {
           {!selectedProjectId && (
             <div className="mt-6 p-4 bg-blue-50 rounded-xl border border-blue-100 flex items-center gap-3">
               <CheckCircle size={18} className="text-blue-600" />
-              <Text type="secondary">Please select a project to see available data batches.</Text>
+              <Text type="secondary">{t('reports.selectProjectAlert', 'Please select a project to see available data batches.')}</Text>
             </div>
           )}
         </Card>
@@ -336,13 +338,13 @@ const Report = () => {
                 title={
                   <div className="flex items-center gap-3">
                     <Database size={18} className="text-blue-600" />
-                    <span>Available Reports for Version {selectedVersion || "None"}</span>
+                    <span>{t('reports.availableReportsTitle', 'Available Reports for Version')} {selectedVersion || "None"}</span>
                   </div>
                 }
                 className="shadow-sm border-slate-200 rounded-2xl"
               >
                 {uploadVersions.length === 0 && !versionsLoading ? (
-                  <Empty description={selectedProjectId ? "No data batches found for this project. Ensure data has been imported." : "Please select a project."} />
+                  <Empty description={selectedProjectId ? t('reports.noBatchesFound', "No data batches found for this project. Ensure data has been imported.") : t('reports.selectProjectAlert', "Please select a project.")} />
                 ) : (
                   <List
                     loading={checkingFiles || versionsLoading}
@@ -362,7 +364,7 @@ const Report = () => {
                                 onClick={() => window.open(fileInfo.url, "_blank")}
                                 className="flex items-center"
                               >
-                                Download
+                                {t('common.actions.download', 'Download')}
                               </Button>
                             ) : (
                               <Button 
@@ -371,7 +373,7 @@ const Report = () => {
                                 onClick={() => handleGenerateReport(report.key, selectedVersion)}
                                 className="flex items-center bg-blue-600"
                               >
-                                Generate
+                                {t('common.actions.generate', 'Generate')}
                               </Button>
                             )
                           ]}
@@ -385,11 +387,11 @@ const Report = () => {
                             title={<span className="font-semibold text-slate-800">{report.title}</span>}
                             description={
                               <Space split={<Divider type="vertical" />}>
-                                <Text type="secondary">Filename: {report.fileName}</Text>
+                                <Text type="secondary">{t('reports.filenameLabel', 'Filename:')} {report.fileName}</Text>
                                 {isGenerated ? (
-                                  <Tag color="success" icon={<CheckCircle size={12} />}>Ready</Tag>
+                                  <Tag color="success" icon={<CheckCircle size={12} />}>{t('reports.statusReady', 'Ready')}</Tag>
                                 ) : (
-                                  <Tag color="default" icon={<XCircle size={12} />}>Not Generated</Tag>
+                                  <Tag color="default" icon={<XCircle size={12} />}>{t('reports.statusNotGenerated', 'Not Generated')}</Tag>
                                 )}
                               </Space>
                             }

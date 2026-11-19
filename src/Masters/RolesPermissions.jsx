@@ -31,7 +31,14 @@ const RolesPermissions = () => {
   const { t } = useTranslation();
   const { canView, canCreate, canEdit, canDelete } = useModulePermission('ROLES_PERMISSIONS');
   // Tab 1: Roles Management (Default), Tab 2: Role Permissions
-  const [activeTab, setActiveTab] = useState('1');
+  const [activeTab, setActiveTabState] = useState(() => {
+    return sessionStorage.getItem('roles_permissions_active_tab') || '1';
+  });
+
+  const setActiveTab = (tab) => {
+    setActiveTabState(tab);
+    sessionStorage.setItem('roles_permissions_active_tab', tab);
+  };
 
   // Shared Data
   const [roles, setRoles] = useState([]);
@@ -845,9 +852,6 @@ const RolesPermissions = () => {
                 <span style={{ fontWeight: 600, color: '#0f172a', fontSize: 14 }}>
                   Role Access Matrix: {selectedRole?.roleName || 'Role'}
                 </span>
-                <span style={{ color: '#64748b', fontSize: 13, marginLeft: 8 }}>
-                  (Permissions assigned strictly by role)
-                </span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 {hasUnsavedChanges && (
@@ -895,87 +899,135 @@ const RolesPermissions = () => {
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <ThunderboltOutlined style={{ color: '#d97706', fontSize: 18 }} />
                 <Title level={5} style={{ margin: 0, color: '#0f172a' }}>
-                  Dedicated Special Actions
+                  {t('rolesPermissions.specialActionsTitle', 'Dedicated Special Actions')}
                 </Title>
               </div>
               <Text type="secondary" style={{ fontSize: 13 }}>
-                High-impact business operations requiring explicit role assignment in addition to module View and standard permissions.
+                {t('rolesPermissions.specialActionsDesc', 'High-impact business operations requiring explicit role assignment in addition to module View and standard permissions.')}
               </Text>
             </div>
 
-            <Row gutter={[16, 16]}>
-              {specialActionDefs.map((sa) => {
-                const isChecked = !!specialActions[sa.code];
-                const parentMod = modules.find((m) => m.code === sa.parentModule);
-                const roleModPerm = rolePermissions.find((p) => p.moduleCode === sa.parentModule);
-                const hasParentView = !!roleModPerm?.canView;
-
-                // Handle both enum integer values (0=View, 1=Create, 2=Edit, 3=Delete, 4=Execute, 5=Export) and string names
-                const ACTION_ENUM_MAP = {
-                  0: 'View',
-                  1: 'Create',
-                  2: 'Edit',
-                  3: 'Delete',
-                  4: 'Execute',
-                  5: 'Export'
-                };
-                const actionName = typeof sa.requiredStandardAction === 'number'
-                  ? ACTION_ENUM_MAP[sa.requiredStandardAction] || 'Edit'
-                  : sa.requiredStandardAction;
-
-                const hasParentAction = !!roleModPerm?.[`can${actionName}`];
-                const isPrereqSatisfied = hasParentView && hasParentAction;
-
-                return (
-                  <Col xs={24} md={12} key={sa.code}>
-                    <div
-                      style={{
-                        padding: 16,
-                        border: '1px solid #e2e8f0',
-                        borderRadius: 8,
-                        backgroundColor: isChecked ? '#fffbeb' : '#fafafa',
-                        transition: 'all 0.2s',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        justifyContent: 'space-between',
-                        height: '100%'
-                      }}
-                    >
-                      <div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
-                          <span style={{ fontWeight: 600, color: '#1e293b', fontSize: 14 }}>{sa.displayName}</span>
-                          <Checkbox
-                            checked={isChecked}
-                            disabled={!canEdit}
-                            onChange={(e) => handleSpecialActionChange(sa.code, e.target.checked)}
-                          />
-                        </div>
-                        <p style={{ fontSize: 12, color: '#64748b', marginBottom: 12 }}>
-                          {sa.description}
-                        </p>
+            <Table
+              size="middle"
+              rowKey="code"
+              pagination={false}
+              bordered
+              dataSource={specialActionDefs}
+              columns={[
+                {
+                  title: t('rolesPermissions.actionName', 'Special Action'),
+                  key: 'actionName',
+                  width: '38%',
+                  render: (_, sa) => (
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontWeight: 600, color: '#0f172a', fontSize: 13.5 }}>
+                          {sa.displayName}
+                        </span>
+                        <Tag color="blue" style={{ fontFamily: 'monospace', fontSize: 10, margin: 0 }}>
+                          {sa.code}
+                        </Tag>
                       </div>
-
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', fontSize: 11 }}>
-                        <span style={{ color: '#94a3b8' }}>Parent:</span>
-                        <Tag color="default" style={{ margin: 0, fontSize: 11 }}>
-                          {parentMod?.displayName || sa.parentModule}
-                        </Tag>
-                        <Tag color="orange" style={{ margin: 0, fontSize: 11 }}>
-                          Requires {actionName}
-                        </Tag>
-                        {!isPrereqSatisfied && isChecked && (
-                          <Tooltip title={`Role lacks ${parentMod?.displayName || sa.parentModule} View or ${actionName}. Action remains blocked until prerequisites are granted.`}>
-                            <Tag color="error" style={{ margin: 0, fontSize: 11 }}>
-                              Prerequisites Missing
-                            </Tag>
-                          </Tooltip>
-                        )}
+                      <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>
+                        {sa.description}
                       </div>
                     </div>
-                  </Col>
-                );
-              })}
-            </Row>
+                  ),
+                },
+                {
+                  title: t('rolesPermissions.parentModulePrereq', 'Parent Module & Prerequisite'),
+                  key: 'parentModule',
+                  width: '32%',
+                  render: (_, sa) => {
+                    const parentMod = modules.find((m) => m.code === sa.parentModule);
+                    const ACTION_ENUM_MAP = {
+                      0: 'View',
+                      1: 'Create',
+                      2: 'Edit',
+                      3: 'Delete',
+                      4: 'Execute',
+                      5: 'Export'
+                    };
+                    const actionName = typeof sa.requiredStandardAction === 'number'
+                      ? ACTION_ENUM_MAP[sa.requiredStandardAction] || 'Edit'
+                      : sa.requiredStandardAction;
+
+                    return (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span style={{ fontSize: 11, color: '#94a3b8' }}>Parent:</span>
+                          <Tag color="geekblue" style={{ margin: 0, fontSize: 11 }}>
+                            {parentMod?.displayName || sa.parentModule}
+                          </Tag>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span style={{ fontSize: 11, color: '#94a3b8' }}>Requires:</span>
+                          <Tag color="orange" style={{ margin: 0, fontSize: 11 }}>
+                            {actionName}
+                          </Tag>
+                        </div>
+                      </div>
+                    );
+                  },
+                },
+                {
+                  title: t('rolesPermissions.prerequisiteStatus', 'Prerequisite Status'),
+                  key: 'prereqStatus',
+                  width: '18%',
+                  align: 'center',
+                  render: (_, sa) => {
+                    const parentMod = modules.find((m) => m.code === sa.parentModule);
+                    const roleModPerm = rolePermissions.find((p) => p.moduleCode === sa.parentModule);
+                    const hasParentView = !!roleModPerm?.canView;
+                    const ACTION_ENUM_MAP = {
+                      0: 'View',
+                      1: 'Create',
+                      2: 'Edit',
+                      3: 'Delete',
+                      4: 'Execute',
+                      5: 'Export'
+                    };
+                    const actionName = typeof sa.requiredStandardAction === 'number'
+                      ? ACTION_ENUM_MAP[sa.requiredStandardAction] || 'Edit'
+                      : sa.requiredStandardAction;
+                    const hasParentAction = !!roleModPerm?.[`can${actionName}`];
+                    const isPrereqSatisfied = hasParentView && hasParentAction;
+
+                    if (isPrereqSatisfied) {
+                      return (
+                        <Tag color="success" style={{ margin: 0, fontSize: 11 }}>
+                          {t('rolesPermissions.prerequisitesMet', 'Prerequisites Met')}
+                        </Tag>
+                      );
+                    }
+
+                    return (
+                      <Tooltip title={`Role lacks ${parentMod?.displayName || sa.parentModule} View or ${actionName}. Action remains blocked until prerequisites are granted.`}>
+                        <Tag color="warning" style={{ margin: 0, fontSize: 11 }}>
+                          {t('rolesPermissions.prerequisitesMissing', 'Prerequisites Missing')}
+                        </Tag>
+                      </Tooltip>
+                    );
+                  },
+                },
+                {
+                  title: t('rolesPermissions.granted', 'Granted'),
+                  key: 'granted',
+                  width: '12%',
+                  align: 'center',
+                  render: (_, sa) => {
+                    const isChecked = !!specialActions[sa.code];
+                    return (
+                      <Checkbox
+                        checked={isChecked}
+                        disabled={!canEdit}
+                        onChange={(e) => handleSpecialActionChange(sa.code, e.target.checked)}
+                      />
+                    );
+                  },
+                },
+              ]}
+            />
           </Card>
 
           {/* Floating Save Footer when changes exist */}

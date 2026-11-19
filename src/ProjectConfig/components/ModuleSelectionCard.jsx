@@ -1,4 +1,5 @@
 import React from "react";
+import { useTranslation } from "react-i18next";
 import { Card, Checkbox, Typography, Button } from "antd";
 import { SettingFilled, LockFilled, UndoOutlined, DeleteOutlined } from "@ant-design/icons";
 import AnimatedCard from "./AnimatedCard";
@@ -10,6 +11,7 @@ const { Text } = Typography;
 const ALWAYS_ALLOWED = ["Duplicate Tool", "Extra Configuration"];
 
 const ModuleSelectionCard = ({ mergedModules, enabledModules, setEnabledModules, onReset, onClear, importedSnapshot }) => {
+  const { t } = useTranslation();
   const isDirty = (current, snapshotVal) => {
     if (!importedSnapshot || importedSnapshot === "pending") return false;
     return JSON.stringify(current) !== JSON.stringify(snapshotVal);
@@ -27,6 +29,23 @@ const ModuleSelectionCard = ({ mergedModules, enabledModules, setEnabledModules,
     }
   };
 
+  const getLocalizedModuleName = (name) => {
+    switch (name) {
+      case "Duplicate Tool":
+        return t('projectConfig.duplicateTool', 'Duplicate Tool');
+      case "Envelope Setup and Enhancement":
+        return t('projectConfig.envelopeSetupEnhancement', 'Envelope Setup and Enhancement');
+      case "Box Breaking":
+        return t('projectConfig.boxBreaking', 'Box Breaking');
+      case "Extra Configuration":
+        return t('projectConfig.extraProcessing', 'Extra Configuration');
+      case "Envelope Breaking":
+        return t('projectConfig.envelopeBreaking', 'Envelope Breaking');
+      default:
+        return name;
+    }
+  };
+
   return (
     <AnimatedCard>
       <Card
@@ -34,11 +53,11 @@ const ModuleSelectionCard = ({ mergedModules, enabledModules, setEnabledModules,
         title={
           <div>
             <span>
-              <SettingFilled style={iconStyle} /> Module Selection
+              <SettingFilled style={iconStyle} /> {t('projectConfig.moduleSelectionTitle', 'Module Selection')}
             </span>
             <br />
             <Text type="secondary">
-              Enable or disable modules based on project requirements
+              {t('projectConfig.moduleSelectionDesc', 'Enable or disable modules based on project requirements')}
             </Text>
           </div>
         }
@@ -51,7 +70,7 @@ const ModuleSelectionCard = ({ mergedModules, enabledModules, setEnabledModules,
               onClick={onReset}
               style={{ color: PRIMARY_COLOR }}
             >
-              Reset
+              {t('common.actions.reset', 'Reset')}
             </Button>
             <Button
               type="text"
@@ -60,7 +79,7 @@ const ModuleSelectionCard = ({ mergedModules, enabledModules, setEnabledModules,
               onClick={onClear}
               style={{ color: "#ff4d4f" }}
             >
-              Clear
+              {t('projectConfig.clear', 'Clear')}
             </Button>
           </div>
         }
@@ -85,7 +104,7 @@ const ModuleSelectionCard = ({ mergedModules, enabledModules, setEnabledModules,
               const isDisabled = !envelopeEnabled && !isAlwaysAllowed && !isGateModule;
               return (
                 <Checkbox key={tool.id} value={tool.name} disabled={isDisabled}>
-                  <b style={{ color: isDisabled ? "#aaa" : undefined }}>{tool.name}</b>
+                  <b style={{ color: isDisabled ? "#aaa" : undefined }}>{getLocalizedModuleName(tool.name)}</b>
                   <br />
                   <Text type="secondary" style={{ fontSize: 12 }}>
                     {tool.description}

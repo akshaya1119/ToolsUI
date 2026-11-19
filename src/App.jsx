@@ -104,8 +104,33 @@ export default function App() {
   }, [token]);
 
   useEffect(() => {
-    setAntdLocale(i18n.language === 'hi' ? hiIN : enUS);
-  }, [i18n.language]);
+    const isHindi = i18n.language === 'hi';
+    const baseLocale = isHindi ? hiIN : enUS;
+    const targetLng = isHindi ? 'hi' : 'en';
+
+    // Helper: only override Table property if the key genuinely exists in the database bundle for the active language
+    const getActiveTranslation = (key) => {
+      const existsInActive = i18n.hasResourceBundle(targetLng, 'translation') &&
+        Boolean(i18n.getResource(targetLng, 'translation', key));
+      return existsInActive ? i18n.t(key, { lng: targetLng }) : undefined;
+    };
+
+    const sortTitle = getActiveTranslation('common.actions.sortBy') ?? baseLocale.Table?.sortTitle;
+    const triggerAsc = getActiveTranslation('common.table.triggerAsc') ?? baseLocale.Table?.triggerAsc;
+    const triggerDesc = getActiveTranslation('common.table.triggerDesc') ?? baseLocale.Table?.triggerDesc;
+    const cancelSort = getActiveTranslation('common.table.cancelSort') ?? baseLocale.Table?.cancelSort;
+
+    setAntdLocale({
+      ...baseLocale,
+      Table: {
+        ...baseLocale.Table,
+        sortTitle,
+        triggerAsc,
+        triggerDesc,
+        cancelSort
+      }
+    });
+  }, [i18n.language, translationsLoaded]);
 
   useEffect(() => {
     if (token) {
@@ -190,7 +215,9 @@ export default function App() {
                   element={
                     <ProtectedRoute token={token}>
                       <MainLayout >
-                        <ProjectConfiguration />
+                        <PermissionRoute moduleCode="PROJECT_CONFIG">
+                          <ProjectConfiguration />
+                        </PermissionRoute>
                       </MainLayout>
                     </ProtectedRoute>
                   }
@@ -210,7 +237,9 @@ export default function App() {
                   element={
                     <ProtectedRoute token={token}>
                       <MainLayout >
-                        <ProjectTemplates />
+                        <PermissionRoute moduleCode="REPORT_TEMPLATE_MANAGEMENT">
+                          <ProjectTemplates />
+                        </PermissionRoute>
                       </MainLayout>
                     </ProtectedRoute>
                   }
@@ -220,7 +249,9 @@ export default function App() {
                   element={
                     <ProtectedRoute token={token}>
                       <MainLayout >
-                        <DuplicateTool />
+                        <PermissionRoute moduleCode="PROCESSING_PIPELINE">
+                          <DuplicateTool />
+                        </PermissionRoute>
                       </MainLayout></ProtectedRoute>
                   }
                 />
@@ -240,7 +271,9 @@ export default function App() {
                   element={
                     <ProtectedRoute token={token}>
                       <MainLayout >
-                        <CorrectionTool />
+                        <PermissionRoute moduleCode="CORRECTION_TOOL">
+                          <CorrectionTool />
+                        </PermissionRoute>
                       </MainLayout></ProtectedRoute>
                   }
                 />
@@ -249,7 +282,9 @@ export default function App() {
                   element={
                     <ProtectedRoute token={token}>
                       <MainLayout >
-                        <ExcelUpload />
+                        <PermissionRoute moduleCode="DATA_IMPORT">
+                          <ExcelUpload />
+                        </PermissionRoute>
                       </MainLayout></ProtectedRoute>
                   }
                 />
@@ -259,7 +294,9 @@ export default function App() {
                   element={
                     <ProtectedRoute token={token}>
                       <MainLayout >
-                        <EnvelopeBreaking />
+                        <PermissionRoute moduleCode="PROCESSING_PIPELINE">
+                          <EnvelopeBreaking />
+                        </PermissionRoute>
                       </MainLayout></ProtectedRoute>
                   }
                 />
@@ -268,7 +305,9 @@ export default function App() {
                   element={
                     <ProtectedRoute token={token}>
                       <MainLayout >
-                        <ProcessingPipeline />
+                        <PermissionRoute moduleCodes={["PROCESSING_PIPELINE", "REPORT_TEMPLATE_MANAGEMENT"]}>
+                          <ProcessingPipeline />
+                        </PermissionRoute>
                       </MainLayout></ProtectedRoute>
                   }
                 />
@@ -278,7 +317,9 @@ export default function App() {
                   element={
                     <ProtectedRoute token={token}>
                       <MainLayout >
-                        <RPTReports />
+                        <PermissionRoute moduleCode="REPORT_TEMPLATE_MANAGEMENT">
+                          <RPTReports />
+                        </PermissionRoute>
                       </MainLayout></ProtectedRoute>
                   }
                 />
@@ -287,7 +328,9 @@ export default function App() {
                   element={
                     <ProtectedRoute token={token}>
                       <MainLayout >
-                        <Report />
+                        <PermissionRoute moduleCode="REPORTS">
+                          <Report />
+                        </PermissionRoute>
                       </MainLayout></ProtectedRoute>
                   }
                 />
@@ -296,7 +339,9 @@ export default function App() {
                   element={
                     <ProtectedRoute token={token}>
                       <MainLayout >
-                        <ReportBuilder />
+                        <PermissionRoute moduleCode="REPORTS">
+                          <ReportBuilder />
+                        </PermissionRoute>
                       </MainLayout></ProtectedRoute>
                   }
                 />
@@ -314,7 +359,9 @@ export default function App() {
                   element={
                     <ProtectedRoute token={token}>
                       <MainLayout >
-                        <HeaderVerification />
+                        <PermissionRoute moduleCode="HEADER_VERIFICATION">
+                          <HeaderVerification />
+                        </PermissionRoute>
                       </MainLayout></ProtectedRoute>
                   }
                 />
@@ -323,7 +370,9 @@ export default function App() {
                   element={
                     <ProtectedRoute token={token}>
                       <MainLayout >
-                        <ChangedNRUpload />
+                        <PermissionRoute moduleCode="CHANGED_NR">
+                          <ChangedNRUpload />
+                        </PermissionRoute>
                       </MainLayout></ProtectedRoute>
                   }
                 />
@@ -332,7 +381,9 @@ export default function App() {
                   element={
                     <ProtectedRoute token={token}>
                       <MainLayout >
-                        <BatchWiseData />
+                        <PermissionRoute moduleCode="BATCH_DATA">
+                          <BatchWiseData />
+                        </PermissionRoute>
                       </MainLayout></ProtectedRoute>
                   }
                 />
@@ -341,7 +392,9 @@ export default function App() {
                   element={
                     <ProtectedRoute token={token}>
                       <MainLayout >
-                        <NodalCenterList />
+                        <PermissionRoute moduleCode="NODAL_CATCH">
+                          <NodalCenterList />
+                        </PermissionRoute>
                       </MainLayout>
                     </ProtectedRoute>
                   }
@@ -351,7 +404,9 @@ export default function App() {
                   element={
                     <ProtectedRoute token={token}>
                       <MainLayout >
-                        <MasterConfigReport />
+                        <PermissionRoute moduleCode="MASTER_CONFIG">
+                          <MasterConfigReport />
+                        </PermissionRoute>
                       </MainLayout>
                     </ProtectedRoute>
                   }

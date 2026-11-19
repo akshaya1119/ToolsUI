@@ -22,9 +22,9 @@ export const translateToastMessage = (rawMsg) => {
     'Confirmation Required': 'common.feedback.confirmDeletion',
     'Are you sure you want to delete NR data for this project?': 'common.feedback.deleteNRDataConfirm',
     'Yes, Delete': 'common.feedback.yesDelete',
-    'Yes': 'popconfirm.yes',
-    'No': 'popconfirm.no',
-    'Cancel': 'common.feedback.cancel',
+    'Yes': 'common.labels.yes',
+    'No': 'common.labels.no',
+    'Cancel': 'common.actions.cancel',
     'Confirm': 'common.feedback.success',
     'Failed to fetch templates.': 'common.feedback.failedToFetchTemplates',
     'Failed to load mapping.': 'common.feedback.failedToLoadMapping',
@@ -35,10 +35,10 @@ export const translateToastMessage = (rawMsg) => {
     'Failed to download template.': 'common.feedback.failedToDownloadTemplate',
     'Catch No is required': 'validation.catchNoRequired',
     'Capacity is required': 'validation.capacityRequired',
-    'Name is required': 'validation.nameRequired',
+    'Name is required': 'common.validation.nameRequired',
     'Role Name is required': 'validation.roleNameRequired',
-    'Template name is required': 'validation.templateNameRequired',
-    'Template name is required.': 'validation.templateNameRequired',
+    'Template name is required': 'common.validation.templateNameRequired',
+    'Template name is required.': 'common.validation.templateNameRequired',
     'Group is required': 'validation.groupRequired',
     'Type is required': 'validation.typeRequired',
     'Project, and at least one User is required': 'validation.projectRequired',
@@ -65,7 +65,53 @@ export const translateToastMessage = (rawMsg) => {
     'Please fill all fields': 'common.feedback.fillRequired',
     'Please fill all required fields': 'common.feedback.fillRequired',
     'Project archived': 'common.feedback.projectArchived',
-    'Project unarchived': 'common.feedback.projectUnarchived'
+    'Project unarchived': 'common.feedback.projectUnarchived',
+    'Report archived successfully': 'rtm.archiveSuccess',
+    'Report unarchived successfully': 'rtm.unarchiveSuccess',
+    'Failed to archive report': 'rtm.archiveFailed',
+    'Failed to unarchive report': 'rtm.unarchiveFailed',
+    'Download started.': 'rtm.downloadStarted',
+    'Download completed.': 'rtm.downloadCompleted',
+    'Failed to download.': 'rtm.downloadFailed',
+    'Reports downloaded.': 'rtm.reportsDownloaded',
+    'Templates downloaded.': 'rtm.templatesDownloaded',
+    'Failed to download files.': 'rtm.downloadFailed',
+    'Configuration saved successfully!': 'common.feedback.saveSuccess',
+    'Please select Group and Type first': 'validation.typeGroupRequired',
+    'Project ID is required': 'validation.projectIdRequired',
+    'Access Denied: You do not have permission for the special action \'Delete/Purge Report Records\'.': 'rtm.accessDeniedPurge',
+    'Report not found.': 'rtm.reportNotFound',
+    'Conflict report loaded': 'dataImport.conflictReportLoaded',
+    'No conflicts found': 'dataImport.noConflictsFound',
+    'Failed to load conflict report': 'dataImport.failedToLoadConflict',
+    'Conflict ignored': 'dataImport.conflictIgnored',
+    'Failed to ignore conflict': 'dataImport.failedToIgnoreConflict',
+    'Failed to resolve conflict': 'dataImport.failedToResolveConflict',
+    'Please enter or select a value before saving.': 'dataImport.enterValueBeforeSaving',
+    'Please enter a valid whole number for NRQuantity.': 'dataImport.validWholeNumberNRQuantity',
+    'NRQuantity must be greater than 0.': 'dataImport.nrQuantityGreaterThanZero',
+    'Please select rows from exactly 2 catch numbers.': 'dataImport.selectRowsExactlyTwoCatches',
+    'You can select rows from only 2 catch numbers at a time.': 'dataImport.selectRowsOnlyTwoCatches',
+    'Selected rows merged successfully.': 'dataImport.selectedRowsMergedSuccess',
+    'No conflicts available to download.': 'dataImport.noConflictsToDownload',
+    'No valid rows to upload. Please map correctly and upload a file with data.': 'dataImport.noValidRowsToUpload',
+    'Processing duplicates...': 'dataImport.processingDuplicates',
+    'Row deleted successfully': 'dataImport.rowDeletedSuccess',
+    'Data added successfully': 'dataImport.dataAddedSuccess',
+    'Data updated successfully': 'dataImport.dataUpdatedSuccess',
+    'No changes to save': 'dataImport.noChangesToSave',
+    'No skipped rows to download': 'dataImport.noSkippedRowsToDownload',
+    'Access Denied: You do not have permission for special action \'Delete All NR Data\'.': 'dataImport.accessDeniedDeleteAllNr',
+    'NR data deleted successfully!': 'dataImport.nrDataDeletedSuccess',
+    'No Master Configuration found for this Group and Type': 'projectConfig.noMasterConfigFound',
+    'Error fetching Master Configuration': 'projectConfig.errorFetchingMasterConfig',
+    'Configuration imported successfully! Review and save.': 'projectConfig.configImportedReviewSave',
+    'Templates imported successfully': 'projectConfig.templatesImportedSuccess',
+    'Configuration imported, but template import failed.': 'projectConfig.templateImportFailed',
+    'Import failed': 'projectConfig.importFailed',
+    'Configuration cleared. You can now import or configure from scratch.': 'projectConfig.configClearedMsg',
+    'Reports re-generation initiated successfully': 'projectConfig.reportsRegenInitiated',
+    'Failed to initiate report re-run': 'projectConfig.failedInitiateReportRerun'
   };
 
   const matchedKey = lookup[trimmed];
@@ -142,9 +188,8 @@ export const ToastProvider = ({ children, position = 'top-right' }) => {
               <button
                 type="button"
                 onClick={() => activeConfirm.resolve && activeConfirm.resolve(true)}
-                className={`px-4 py-2 text-sm font-medium rounded-lg text-white transition-colors ${
-                  activeConfirm.type === 'error' ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'
-                }`}
+                className={`px-4 py-2 text-sm font-medium rounded-lg text-white transition-colors ${activeConfirm.type === 'error' ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'
+                  }`}
               >
                 {translateToastMessage(activeConfirm.confirmText || "Confirm")}
               </button>
@@ -166,8 +211,8 @@ export const ToastProvider = ({ children, position = 'top-right' }) => {
                 w-80 max-w-sm p-5 rounded-2xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.15)] bg-white border border-slate-100 relative animate-slide-in border-l-4 overflow-hidden
                 ${toast.type === 'success' ? 'border-l-green-500' :
                   toast.type === 'error' ? 'border-l-red-500' :
-                  toast.type === 'warning' ? 'border-l-yellow-400' :
-                  'border-l-blue-500'}
+                    toast.type === 'warning' ? 'border-l-yellow-400' :
+                      'border-l-blue-500'}
               `}
             >
               <div className="flex flex-col gap-3">
@@ -190,8 +235,8 @@ export const ToastProvider = ({ children, position = 'top-right' }) => {
                 className={`absolute bottom-0 left-0 h-1 opacity-40 animate-progress
                   ${toast.type === 'success' ? 'bg-green-500' :
                     toast.type === 'error' ? 'bg-red-500' :
-                    toast.type === 'warning' ? 'bg-yellow-400' :
-                    'bg-blue-500'}
+                      toast.type === 'warning' ? 'bg-yellow-400' :
+                        'bg-blue-500'}
                 `}
                 style={{ animationDuration: `${toast.duration}ms` }}
               ></div>

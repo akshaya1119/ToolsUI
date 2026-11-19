@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Typography, Row, Col, Card, Button, Select, Space, Spin, Empty, Tag, Modal } from "antd";
 import { RedoOutlined, DeleteOutlined, ReloadOutlined, CloudUploadOutlined } from "@ant-design/icons";
+import { useTranslation } from "react-i18next";
 import API from "../hooks/api";
 import { useToast } from "../hooks/useToast";
 import useStore from "../stores/ProjectData";
@@ -9,6 +10,7 @@ import BatchComparisonTable from "./components/BatchComparisonTable";
 import "./ChangedNRUpload.css";
 
 const ChangedNRUpload = () => {
+  const { t } = useTranslation();
   const { showToast } = useToast();
   const projectId = useStore((state) => state.projectId);
   const hasSpecialAction = usePermissionsStore((state) => state.hasSpecialAction);
@@ -266,15 +268,15 @@ const ChangedNRUpload = () => {
 
     const isAll = !selectedItems || selectedItems.length === 0;
     const confirmTitle = isAll
-      ? `Are you sure you want to push ALL changes from Batch ${comparedBatch} to Base Batch (Batch 1)?`
-      : `Are you sure you want to push ${selectedItems.length} selected change(s) to Base Batch (Batch 1)?`;
+      ? t('changedNr.confirmPushAll', { batch: comparedBatch, defaultValue: `Are you sure you want to push ALL changes from Batch ${comparedBatch} to Base Batch (Batch 1)?` })
+      : t('changedNr.confirmPushSelected', { count: selectedItems.length, defaultValue: `Are you sure you want to push ${selectedItems.length} selected change(s) to Base Batch (Batch 1)?` });
 
     Modal.confirm({
-      title: "Confirm Push to Base Batch",
+      title: t('changedNr.confirmPushTitle', 'Confirm Push to Base Batch'),
       content: confirmTitle,
-      okText: "Yes, Push Changes",
+      okText: t('changedNr.yesPushChanges', 'Yes, Push Changes'),
       okType: "primary",
-      cancelText: "Cancel",
+      cancelText: t('common.actions.cancel', 'Cancel'),
       onOk: async () => {
         setPushLoading(true);
         try {
@@ -422,10 +424,10 @@ const ChangedNRUpload = () => {
     <div className="changed-nr-upload-container">
       <div style={{ marginBottom: 24 }}>
         <Typography.Title level={3} style={{ marginBottom: 8 }}>
-          Batch Comparison & Analysis
+          {t('changedNr.title', 'Batch Comparison & Analysis')}
         </Typography.Title>
         <Typography.Text type="secondary">
-          Compare NR data between two batches to identify changes and differences
+          {t('changedNr.subtitle', 'Compare NR data between two batches to identify changes and differences')}
         </Typography.Text>
       </div>
 
@@ -434,9 +436,9 @@ const ChangedNRUpload = () => {
         <Spin spinning={loadingBatches || loadingLots || loadingProcesses || loadingFields}>
           <Row gutter={[12, 12]} align="bottom">
             <Col xs={24} sm={12} md={4}>
-              <label className="batch-label">Select Lot</label>
+              <label className="batch-label">{t('changedNr.selectLot', 'Select Lot')}</label>
               <Select
-                placeholder="Select lot (optional)"
+                placeholder={t('changedNr.selectLotPlaceholder', 'Select lot (optional)')}
                 value={selectedLot}
                 onChange={handleLotChange}
                 loading={loadingLots}
@@ -445,20 +447,20 @@ const ChangedNRUpload = () => {
                 allowClear
               >
                 <Select.Option value={0} title="">
-                  All Records (No Lot)
+                  {t('changedNr.allRecordsNoLot', 'All Records (No Lot)')}
                 </Select.Option>
                 {lots.filter(lot => lot !== 0).map((lot) => (
                   <Select.Option key={lot} value={lot} title="">
-                    Lot {lot}
+                    {t('common.labels.lot', 'Lot')} {lot}
                   </Select.Option>
                 ))}
               </Select>
             </Col>
 
             <Col xs={24} sm={12} md={4}>
-              <label className="batch-label">Select Process</label>
+              <label className="batch-label">{t('changedNr.selectProcess', 'Select Process')}</label>
               <Select
-                placeholder="Select process"
+                placeholder={t('changedNr.selectProcessPlaceholder', 'Select process')}
                 value={selectedProcess}
                 onChange={handleProcessChange}
                 loading={loadingProcesses}
@@ -474,9 +476,9 @@ const ChangedNRUpload = () => {
             </Col>
 
             <Col xs={24} sm={12} md={3}>
-              <label className="batch-label">Select Batch</label>
+              <label className="batch-label">{t('common.placeholders.selectBatch', 'Select Batch')}</label>
               <Select
-                placeholder="Select batch"
+                placeholder={t('common.placeholders.selectBatch', 'Select batch')}
                 value={comparedBatch}
                 onChange={handleBatchChange}
                 loading={loadingBatches}
@@ -485,7 +487,7 @@ const ChangedNRUpload = () => {
                 {batches.map((batch) => (
                   batch !== 1 && (
                     <Select.Option key={batch} value={batch} title="">
-                      Batch {batch}
+                      {t('common.labels.batch', 'Batch')} {batch}
                     </Select.Option>
                   )
                 ))}
@@ -493,15 +495,15 @@ const ChangedNRUpload = () => {
             </Col>
 
             <Col xs={24} sm={12} md={6}>
-              <label className="batch-label">Additional Fields</label>
+              <label className="batch-label">{t('changedNr.additionalFields', 'Additional Fields')}</label>
               <Select
                 mode="multiple"
-                placeholder="Select fields"
+                placeholder={t('changedNr.selectFieldsPlaceholder', 'Select fields')}
                 value={additionalFields}
                 onChange={handleFieldsChange}
                 style={{ width: "100%" }}
                 maxTagCount={1}
-                notFoundContent={availableFields.length === 0 ? "Loading fields..." : "No fields available"}
+                notFoundContent={availableFields.length === 0 ? t('changedNr.loadingFields', 'Loading fields...') : t('changedNr.noFieldsAvailable', 'No fields available')}
                 loading={loadingFields}
                 disabled={loadingFields || availableFields.length === 0}
                 allowClear
@@ -524,14 +526,14 @@ const ChangedNRUpload = () => {
                   disabled={!comparedBatch}
                   size="middle"
                 >
-                  Compare
+                  {t('changedNr.compare', 'Compare')}
                 </Button>
                 <Button
                   icon={<DeleteOutlined />}
                   onClick={handleReset}
                   size="middle"
                 >
-                  Reset
+                  {t('common.actions.reset', 'Reset')}
                 </Button>
                 <Button
                   icon={<ReloadOutlined />}
@@ -539,7 +541,7 @@ const ChangedNRUpload = () => {
                   loading={loadingBatches}
                   size="middle"
                 >
-                  Reload
+                  {t('changedNr.reload', 'Reload')}
                 </Button>
               </Space>
             </Col>
@@ -572,7 +574,7 @@ const ChangedNRUpload = () => {
       {!comparisonData && !loading && batches.length > 1 && (
         <Card style={{ textAlign: "center", padding: "48px 24px" }}>
           <Empty
-            description="Select a batch to compare with Batch 1 and click 'Compare Batches'"
+            description={t('changedNr.emptySelectBatch', "Select a batch to compare with Batch 1 and click 'Compare Batches'")}
             style={{ marginTop: 0 }}
           />
         </Card>
@@ -581,7 +583,7 @@ const ChangedNRUpload = () => {
       {batches.length <= 1 && !loadingBatches && (
         <Card style={{ textAlign: "center", padding: "48px 24px" }}>
           <Empty
-            description="No additional batches available. Upload more batches to compare."
+            description={t('changedNr.emptyNoBatches', "No additional batches available. Upload more batches to compare.")}
             style={{ marginTop: 0 }}
           />
         </Card>

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { X, ChevronLeft, ChevronRight, CheckCircle2, AlertCircle, Circle } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { normalizeStatus } from './statusUtils';
 import { getCurrentUserRoleId } from '../../../hooks/useUserMap';
 
@@ -13,6 +14,7 @@ const PrintPreviewHV = ({
   userMap = {},
   headerFields = [],
 }) => {
+  const { t } = useTranslation();
   const userRoleId = getCurrentUserRoleId();
   const canEditVerified = userRoleId !== null && Number(userRoleId) <= 4 && Number(userRoleId) > 0;
 
@@ -199,8 +201,8 @@ const PrintPreviewHV = ({
       {/* Header */}
       <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 flex-shrink-0">
         <div className="flex flex-col">
-          <h2 className="text-lg font-bold text-gray-800">Print Preview</h2>
-          <span className="text-xs text-gray-500">{currentIndex + 1} of {allRecords.length}</span>
+          <h2 className="text-lg font-bold text-gray-800">{t('headerVerification.printPreview', 'Print Preview')}</h2>
+          <span className="text-xs text-gray-500">{currentIndex + 1} {t('common.actions.of', 'of')} {allRecords.length}</span>
         </div>
         <div className="flex items-center gap-2">
           {isEditing ? (
@@ -211,14 +213,14 @@ const PrintPreviewHV = ({
                 disabled={loading}
                 className="flex items-center justify-center gap-1 px-3 py-1 text-xs font-medium rounded-md transition-all duration-200 text-white bg-blue-500 hover:bg-blue-600 active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
               >
-                Save changes
+                {t('common.actions.saveChanges', 'Save changes')}
               </button>
               <button
                 onClick={handleCancelEdit}
                 disabled={loading}
                 className="flex items-center justify-center gap-1 px-3 py-1 text-xs font-medium rounded-md transition-all duration-200 text-gray-700 bg-gray-200 hover:bg-gray-300 active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
               >
-                Cancel
+                {t('common.actions.cancel', 'Cancel')}
               </button>
             </>
           ) : (
@@ -228,9 +230,9 @@ const PrintPreviewHV = ({
               onClick={() => handleStatusChange('edit')}
               disabled={loading}
               className="flex items-center justify-center gap-1 px-3 py-1 text-xs font-medium rounded-md transition-all duration-200 whitespace-nowrap text-white bg-blue-500 hover:bg-blue-600 active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-              title="Edit this record"
+              title={t('common.actions.editRecord', 'Edit this record')}
             >
-              Edit
+              {t('common.actions.edit', 'Edit')}
             </button>
           )}
           <button
@@ -249,11 +251,11 @@ const PrintPreviewHV = ({
           {/* Centered main content */}
           <div className="flex-1 flex flex-col items-center justify-center space-y-5 pt-8">
             <div className="text-sm font-bold text-gray-900">
-              Catch No: <span className="text-lg font-bold text-gray-900">{currentRecord?.catchNo || '-'}</span>
+              {t('headerVerification.catchNo', 'Catch No')}: <span className="text-lg font-bold text-gray-900">{currentRecord?.catchNo || '-'}</span>
             </div>
             {currentRecord?.envLotNo && currentRecord?.envLotNo !== '0' && (
               <div className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-800">
-                Batch: {currentRecord?.envLotNo}
+                {t('common.labels.batch', 'Batch')}: {currentRecord?.envLotNo}
               </div>
             )}
             
@@ -261,7 +263,7 @@ const PrintPreviewHV = ({
             {hasNoValidValues && (
               <div className="w-full bg-red-50 border border-red-200 rounded-lg p-4 text-center">
                 <p className="text-sm font-semibold text-red-700">
-                  ⚠ At least one of the fields is required if you want to verify this record
+                  ⚠ {t('headerVerification.fieldRequiredWarning', 'At least one of the fields is required if you want to verify this record')}
                 </p>
               </div>
             )}
@@ -275,37 +277,39 @@ const PrintPreviewHV = ({
               ))}
             </div>
             <div className="text-sm text-gray-600 mt-2 flex items-center justify-center gap-1">
-              <span className="font-semibold text-gray-500">Remark:</span>
-              {editableField('Remark', 'remark', false, 'Enter remark...')}
+              <span className="font-semibold text-gray-500">{t('headerVerification.colRemark', 'Remark')}:</span>
+              {editableField('Remark', 'remark', false, t('headerVerification.enterRemarkPlaceholder', 'Enter remark...'))}
             </div>
           </div>
 
           {/* Bottom section — always below content */}
           <div className="flex-shrink-0">
             <div className="flex justify-between items-center mt-6 border-t border-gray-200 pt-4 text-sm text-gray-600 font-medium">
-              <span>Exam Date: {currentRecord?.date}</span>
-              <span>Exam Time: {currentRecord?.time}</span>
+              <span>{t('headerVerification.colExamDate', 'Exam Date')}: {currentRecord?.date}</span>
+              <span>{t('headerVerification.colExamTime', 'Exam Time')}: {currentRecord?.time}</span>
             </div>
 
             {/* Verification Info Section */}
             <div className="mt-4 flex items-center justify-center gap-2">
               {normalizeStatus(currentRecord?.status) === 1 && (
                 <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-800">
-                  <CheckCircle2 className="w-3.5 h-3.5" /> Verified
+                  <CheckCircle2 className="w-3.5 h-3.5" /> {t('headerVerification.verified', 'Verified')}
                 </span>
               )}
               {normalizeStatus(currentRecord?.status) === 2 && (
                 <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-orange-100 text-orange-800">
-                  <AlertCircle className="w-3.5 h-3.5" /> Needs Review
+                  <AlertCircle className="w-3.5 h-3.5" /> {t('headerVerification.needsReview', 'Needs Review')}
                 </span>
               )}
               {normalizeStatus(currentRecord?.status) === 0 && (
                 <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-800">
-                  <Circle className="w-3.5 h-3.5" /> Not Verified
+                  <Circle className="w-3.5 h-3.5" /> {t('headerVerification.notVerified', 'Not Verified')}
                 </span>
               )}
               {currentRecord?.verifiedBy && currentRecord?.verifiedBy !== 0 && currentRecord?.verifiedOn && (
-                <span className="text-xs text-gray-500">by {getUserFirstName(currentRecord?.verifiedBy)} on {currentRecord?.verifiedOn}</span>
+                <span className="text-xs text-gray-500">
+                  {t('headerVerification.by', 'by')} {getUserFirstName(currentRecord?.verifiedBy)} {t('headerVerification.on', 'on')} {currentRecord?.verifiedOn}
+                </span>
               )}
             </div>
           </div>
@@ -326,10 +330,10 @@ const PrintPreviewHV = ({
                 ? 'bg-orange-100 text-orange-400 cursor-not-allowed opacity-60'
                 : 'bg-orange-400 text-white hover:bg-orange-500 active:scale-95 cursor-pointer'
             }`}
-          title={hasNoValidValues ? 'At least one of A, B, C, D is required' : (normalizeStatus(currentRecord?.status) === 1 && !canEditVerified) ? 'Cannot change verified records' : 'Mark as Needs Review'}
+          title={hasNoValidValues ? t('headerVerification.abcdRequiredTooltip', 'At least one of A, B, C, D is required') : (normalizeStatus(currentRecord?.status) === 1 && !canEditVerified) ? t('headerVerification.cannotChangeVerifiedTooltip', 'Cannot change verified records') : t('headerVerification.markUnclear', 'Mark as Needs Review')}
         >
           <AlertCircle className="w-3 h-3" />
-          Needs Review
+          {t('headerVerification.needsReview', 'Needs Review')}
         </button>
         <button
           type="button"
@@ -340,10 +344,10 @@ const PrintPreviewHV = ({
               ? 'bg-green-100 text-green-400 cursor-not-allowed opacity-60'
               : 'bg-green-500 text-white hover:bg-green-600 active:scale-95 cursor-pointer'
             }`}
-          title={hasNoValidValues ? 'At least one field is required' : (normalizeStatus(currentRecord?.status) === 1 && !canEditVerified) ? 'Already verified' : 'Mark as Verified (or press Enter)'}
+          title={hasNoValidValues ? t('headerVerification.atLeastOneFieldRequiredTooltip', 'At least one field is required') : (normalizeStatus(currentRecord?.status) === 1 && !canEditVerified) ? t('headerVerification.alreadyVerifiedTooltip', 'Already verified') : t('headerVerification.markVerifiedTooltip', 'Mark as Verified (or press Enter)')}
         >
           <CheckCircle2 className="w-3 h-3" />
-          Verified
+          {t('headerVerification.verified', 'Verified')}
         </button>
       </div>
 
@@ -355,15 +359,15 @@ const PrintPreviewHV = ({
           className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-900 disabled:opacity-40 disabled:cursor-not-allowed"
         >
           <ChevronLeft className="w-4 h-4" />
-          Previous
+          {t('common.actions.previous', 'Previous')}
         </button>
-        <span className="text-xs text-gray-400">{currentIndex + 1} of {allRecords.length}</span>
+        <span className="text-xs text-gray-400">{currentIndex + 1} {t('common.actions.of', 'of')} {allRecords.length}</span>
         <button
           onClick={handleNext}
           disabled={currentIndex === allRecords.length - 1 || loading}
           className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-900 disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          Next
+          {t('common.actions.next', 'Next')}
           <ChevronRight className="w-4 h-4" />
         </button>
       </div>

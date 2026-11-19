@@ -27,7 +27,7 @@ const RPTFilesHeader = ({
             value={templateScope}
             onChange={onScopeChange}
             options={[
-              { label: t("templates.group", "Group"), value: "group" },
+              { label: t("common.labels.group", "Group"), value: "group" },
               { label: t("templates.standard", "Standard"), value: "standard" },
             ]}
             style={{ width: "100%" }}
@@ -38,7 +38,7 @@ const RPTFilesHeader = ({
           <Select
             showSearch
             optionFilterProp="label"
-            placeholder={t("templates.selectGroup", "Select Group")}
+            placeholder={t("common.placeholders.selectGroup", "Select Group")}
             value={selectedGroup}
             onChange={onGroupChange}
             options={groupOptions}
@@ -50,13 +50,13 @@ const RPTFilesHeader = ({
           />
           {!selectedGroup && templateScope === "group" && (
             <Typography.Text type="danger" style={{ fontSize: 11, display: "block", marginTop: 2 }}>
-              {t("templates.pleaseSelectGroup", "Please select a group")}
+              {t("common.validation.pleaseSelectGroup", "Please select a group")}
             </Typography.Text>
           )}
         </div>
         <div className="rpt-filter">
           <Select
-            placeholder={t("templates.selectType", "Select Type")}
+            placeholder={t("common.placeholders.selectType", "Select Type")}
             value={selectedType}
             onChange={onTypeChange}
             options={typeOptions}
@@ -67,7 +67,7 @@ const RPTFilesHeader = ({
           />
           {!selectedType && (
             <Typography.Text type="danger" style={{ fontSize: 11, display: "block", marginTop: 2 }}>
-              {t("templates.pleaseSelectType", "Please select a type")}
+              {t("common.validation.pleaseSelectType", "Please select a type")}
             </Typography.Text>
           )}
         </div>

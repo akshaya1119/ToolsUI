@@ -12,8 +12,10 @@ import { addRecentProject } from '../utils/recentProjects';
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL; // Using base URL for groups/projects
 const API_URL = import.meta.env.VITE_API_URL; // Using Tools API for project data
 
-export default function Navbar({ onToggleSidebar, onLogout, searchQuery, onSearchChange, searchPlaceholder = "Search..." }) {
+export default function Navbar({ onToggleSidebar, onLogout, searchQuery, onSearchChange, searchPlaceholder }) {
   const { t } = useTranslation();
+  const defaultPlaceholder = t('common.placeholders.search', 'Search...');
+  const effectivePlaceholder = searchPlaceholder || defaultPlaceholder;
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [lotFilterOpen, setLotFilterOpen] = useState(false);
   const [lots, setLots] = useState([]);
@@ -264,10 +266,10 @@ export default function Navbar({ onToggleSidebar, onLogout, searchQuery, onSearc
             >
               <Package size={16} className="text-blue-600" />
               <div className="flex items-center gap-1.5">
-                <span>Lot: {selectedLot ? selectedLot : 'All'}</span>
+                <span>{t('common.labels.lot', 'Lot')}: {selectedLot ? selectedLot : t('navbar.all', 'All')}</span>
                 {selectedLot && lots.find(l => l.lotNo === selectedLot)?.isDispatchExceeded && (
                   <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-100 text-red-700 font-semibold border border-red-200">
-                    Dispatched
+                    {t('navbar.dispatched', 'Dispatched')}
                   </span>
                 )}
               </div>
@@ -278,9 +280,9 @@ export default function Navbar({ onToggleSidebar, onLogout, searchQuery, onSearc
               <div className="absolute top-full left-0 mt-2 bg-white border border-slate-200 rounded-xl shadow-2xl z-[100] min-w-max">
                 <div className="p-2">
                   {loadingLots ? (
-                    <div className="px-3 py-2 text-xs text-slate-500 animate-pulse">Loading lots...</div>
+                    <div className="px-3 py-2 text-xs text-slate-500 animate-pulse">{t('navbar.loadingLots', 'Loading lots...')}</div>
                   ) : lots.length === 0 ? (
-                    <div className="px-3 py-2 text-xs text-slate-500">No lots available</div>
+                    <div className="px-3 py-2 text-xs text-slate-500">{t('navbar.noLotsAvailable', 'No lots available')}</div>
                   ) : (
                     <div className="space-y-1 max-h-48 overflow-y-auto">
                       <button
@@ -293,7 +295,7 @@ export default function Navbar({ onToggleSidebar, onLogout, searchQuery, onSearc
                             : 'text-slate-700 hover:bg-slate-100'
                           }`}
                       >
-                        All Lots
+                        {t('common.actions.allLots', 'All Lots')}
                       </button>
                       {lots.map((lot) => (
                         <button
@@ -305,14 +307,14 @@ export default function Navbar({ onToggleSidebar, onLogout, searchQuery, onSearc
                             }`}
                         >
                           <div className="flex items-center gap-1.5">
-                            <span>Lot {lot.lotNo}</span>
+                            <span>{t('common.labels.lot', 'Lot')} {lot.lotNo}</span>
                             {lot.isDispatchExceeded && (
                               <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-100 text-red-700 font-semibold border border-red-200">
-                                Dispatched
+                                {t('navbar.dispatched', 'Dispatched')}
                               </span>
                             )}
                           </div>
-                          <span className="text-xs text-slate-500">({lot.catchCount} catches)</span>
+                          <span className="text-xs text-slate-500">({t('navbar.catchesCount', { count: lot.catchCount, defaultValue: `${lot.catchCount} catches` })})</span>
                         </button>
                       ))}
                     </div>
@@ -328,7 +330,7 @@ export default function Navbar({ onToggleSidebar, onLogout, searchQuery, onSearc
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5 pointer-events-none" />
           <input
             type="text"
-            placeholder={searchPlaceholder}
+            placeholder={effectivePlaceholder}
             value={searchQuery}
             onChange={handleSearchChange}
             className="w-72 pl-11 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-slate-700 text-sm font-medium placeholder:text-slate-400 shadow-sm"
@@ -339,7 +341,7 @@ export default function Navbar({ onToggleSidebar, onLogout, searchQuery, onSearc
               <div className="p-2 space-y-4">
                 {isSearching && (
                   <div className="text-xs font-semibold text-slate-500 px-3 py-2 animate-pulse">
-                    Searching...
+                    {t('navbar.searching', 'Searching...')}
                   </div>
                 )}
 
@@ -348,7 +350,7 @@ export default function Navbar({ onToggleSidebar, onLogout, searchQuery, onSearc
                   <div>
                     <div className="flex items-center gap-2 px-3 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-50 mb-1">
                       <Folder size={12} className="text-blue-500" />
-                      Business Groups
+                      {t('navbar.businessGroups', 'Business Groups')}
                     </div>
                     <div className="space-y-0.5">
                       {groupResults.map((group) => (
@@ -375,7 +377,7 @@ export default function Navbar({ onToggleSidebar, onLogout, searchQuery, onSearc
                   <div>
                     <div className="flex items-center gap-2 px-3 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-50 mb-1">
                       <Box size={12} className="text-indigo-500" />
-                      Projects
+                      {t('navbar.projects', 'Projects')}
                     </div>
                     <div className="space-y-0.5">
                       {projectResults.map((project) => (
@@ -390,7 +392,7 @@ export default function Navbar({ onToggleSidebar, onLogout, searchQuery, onSearc
                             </div>
                             <div>
                               <div className="text-sm font-semibold text-slate-700 group-hover:text-indigo-700">{project.name}</div>
-                              <div className="text-[10px] text-slate-400 font-medium">Click to enter workspace</div>
+                              <div className="text-[10px] text-slate-400 font-medium">{t('navbar.clickToEnterWorkspace', 'Click to enter workspace')}</div>
                             </div>
                           </div>
                           <ChevronRight size={14} className="text-slate-300 opacity-0 group-hover:opacity-100 transition-all -translate-x-2 group-hover:translate-x-0" />
@@ -405,7 +407,7 @@ export default function Navbar({ onToggleSidebar, onLogout, searchQuery, onSearc
                   <div>
                     <div className="flex items-center gap-2 px-3 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-50 mb-1">
                       <FileText size={12} className="text-emerald-500" />
-                      Current Project Data
+                      {t('navbar.currentProjectData', 'Current Project Data')}
                     </div>
                     <div className="space-y-0.5">
                       {dataResults.map((result, index) => (
@@ -415,12 +417,12 @@ export default function Navbar({ onToggleSidebar, onLogout, searchQuery, onSearc
                           className="px-4 py-3 hover:bg-emerald-50/50 cursor-pointer rounded-lg transition-colors border-l-2 border-transparent hover:border-emerald-500"
                         >
                           <div className="text-sm font-bold text-slate-700">
-                            Catch No: {result.catchNo}
+                            {t('navbar.catchNoLabel', { catchNo: result.catchNo, defaultValue: `Catch No: ${result.catchNo}` })}
                           </div>
                           <div className="flex items-center gap-2 mt-1 text-[11px] text-slate-500 font-medium">
-                            <span>Serial: {result.serialNumber || "N/A"}</span>
+                            <span>{t('navbar.serialLabel', { serial: result.serialNumber || "N/A", defaultValue: `Serial: ${result.serialNumber || "N/A"}` })}</span>
                             <span className="w-1 h-1 rounded-full bg-slate-300" />
-                            <span>Qty: {result.nrQuantity || "N/A"}</span>
+                            <span>{t('navbar.qtyLabel', { qty: result.nrQuantity || "N/A", defaultValue: `Qty: ${result.nrQuantity || "N/A"}` })}</span>
                           </div>
                         </div>
                       ))}

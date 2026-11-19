@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from "react";
 import { Button, Modal, Select, message, Radio, Space, Checkbox, Alert, Typography } from "antd";
+import { useTranslation } from "react-i18next";
 import API from "../../hooks/api";
 import axios from "axios";
 
 const url = import.meta.env.VITE_API_BASE_URL;
 
 const ImportConfig = ({ onImport, disabled }) => {
+  const { t } = useTranslation();
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [importMethod, setImportMethod] = useState("project"); // "project" or "groupType"
 
@@ -207,21 +209,21 @@ const ImportConfig = ({ onImport, disabled }) => {
   return (
     <>
       <Button type="primary" onClick={showModal} disabled={disabled}>
-        Import Configuration
+        {t('projectConfig.importConfiguration', 'Import Configuration')}
       </Button>
 
       <Modal
-        title="Import Configuration"
+        title={t('projectConfig.importConfiguration', 'Import Configuration')}
         open={isModalVisible}
         onOk={handleOk}
         onCancel={handleCancel}
-        okText="Import"
+        okText={t('common.actions.import', 'Import')}
         confirmLoading={loading}
         okButtonProps={{
           disabled: importMethod === "project" ? !selectedProjectId : (!selectedGroup || !selectedType)
         }}
       >
-        <p>Select a source to import configuration. This will overwrite any unsaved changes.</p>
+        <p>{t('projectConfig.importModalDesc', 'Select a source to import configuration. This will overwrite any unsaved changes.')}</p>
 
         <div style={{ marginBottom: 16, marginTop: 16 }}>
           <Radio.Group
@@ -230,17 +232,17 @@ const ImportConfig = ({ onImport, disabled }) => {
             optionType="button"
             buttonStyle="solid"
           >
-            <Radio.Button value="project">By Project</Radio.Button>
-            <Radio.Button value="groupType">By Group & Type</Radio.Button>
+            <Radio.Button value="project">{t('projectConfig.byProject', 'By Project')}</Radio.Button>
+            <Radio.Button value="groupType">{t('projectConfig.byGroupType', 'By Group & Type')}</Radio.Button>
           </Radio.Group>
         </div>
 
         {importMethod === "project" ? (
           <div>
-            <label>Select Project:</label>
+            <label>{t('common.placeholders.selectProject', 'Select Project:')}</label>
             <Select
               style={{ width: "100%", marginTop: 8 }}
-              placeholder="Select a project"
+              placeholder={t('projectConfig.selectProjectPlaceholder', 'Select a project')}
               showSearch
               optionFilterProp="children"
               onChange={(value) => setSelectedProjectId(value)}
@@ -265,10 +267,10 @@ const ImportConfig = ({ onImport, disabled }) => {
         ) : (
           <Space direction="vertical" style={{ width: '100%', marginTop: 8 }}>
             <div>
-              <label>Select Group:</label>
+              <label>{t('common.placeholders.selectGroup', 'Select Group:')}</label>
               <Select
                 style={{ width: "100%", marginTop: 8 }}
-                placeholder="Select a group"
+                placeholder={t('common.placeholders.selectGroup', 'Select Group')}
                 showSearch
                 optionFilterProp="label"
                 onChange={handleGroupChange}
@@ -278,10 +280,10 @@ const ImportConfig = ({ onImport, disabled }) => {
               />
             </div>
             <div style={{ marginTop: 8 }}>
-              <label>Select Type:</label>
+              <label>{t('projectConfig.selectTypeLabel', 'Select Type:')}</label>
               <Select
                 style={{ width: "100%", marginTop: 8 }}
-                placeholder="Select a type"
+                placeholder={t('common.placeholders.selectType', 'Select Type')}
                 showSearch
                 optionFilterProp="label"
                 onChange={(value) => setSelectedType(value)}
@@ -320,10 +322,10 @@ const ImportConfig = ({ onImport, disabled }) => {
             onChange={(e) => setImportTemplates(e.target.checked)}
             disabled={templatesExist === false}
           >
-            Import Templates (RPT) from source
+            {t('projectConfig.importTemplatesCheckbox', 'Import Templates (RPT) from source')}
           </Checkbox>
           <p style={{ color: '#8c8c8c', fontSize: '12px', marginTop: 4, marginLeft: 24 }}>
-            Ensures all report designs are also synchronized with the source.
+            {t('projectConfig.importTemplatesDesc', 'Ensures all report designs are also synchronized with the source.')}
           </p>
         </div>
       </Modal>

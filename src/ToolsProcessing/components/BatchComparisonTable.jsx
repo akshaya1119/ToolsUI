@@ -2,6 +2,7 @@ import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { Table, Empty, Pagination, Row, Col, Input, Tabs, Tag, Space, Spin, Button, Tooltip, Dropdown } from 'antd';
 import { SearchOutlined, CloudUploadOutlined, CheckCircleOutlined, ClearOutlined, DownloadOutlined, FileExcelOutlined, FilePdfOutlined } from '@ant-design/icons';
 import { ChevronUp, ChevronDown } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import API from '../../hooks/api';
 import { useToast } from '../../hooks/useToast';
 import { exportBatchComparisonExcel, categorizeComparisonRecords } from '../utils/batchComparisonExcelExport';
@@ -23,6 +24,7 @@ const BatchComparisonTable = ({
   processes = [],
   additionalFields = []
 }) => {
+  const { t } = useTranslation();
   const { showToast } = useToast();
   const [searchText, setSearchText] = useState('');
   const [sortField, setSortField] = useState(null);
@@ -171,13 +173,13 @@ const BatchComparisonTable = ({
   const downloadMenuItems = [
     {
       key: 'excel',
-      label: selectedCount > 0 ? `Download in Excel (${selectedCount} selected)` : 'Download in Excel',
+      label: selectedCount > 0 ? `${t('batchComparison.downloadExcel', 'Download in Excel')} (${selectedCount})` : t('batchComparison.downloadExcel', 'Download in Excel'),
       icon: <FileExcelOutlined style={{ color: '#52c41a' }} />,
       onClick: () => handleDownload('excel')
     },
     {
       key: 'pdf',
-      label: selectedCount > 0 ? `Download in PDF (${selectedCount} selected)` : 'Download in PDF',
+      label: selectedCount > 0 ? `${t('batchComparison.downloadPdf', 'Download in PDF')} (${selectedCount})` : t('batchComparison.downloadPdf', 'Download in PDF'),
       icon: <FilePdfOutlined style={{ color: '#ff4d4f' }} />,
       onClick: () => handleDownload('pdf')
     }
@@ -382,7 +384,7 @@ const BatchComparisonTable = ({
   // Add Centers column only for catch-level changes
   if (activeTab === 'catchLevel') {
     baseColumns.push({
-      title: 'Centers Affected',
+      title: t('batchComparison.centersAffected', 'Centers Affected'),
       dataIndex: 'centers',
       key: 'centers',
       width: 200,
@@ -397,7 +399,7 @@ const BatchComparisonTable = ({
     });
   } else {
     baseColumns.push({
-      title: 'Centre Code',
+      title: t('batchComparison.centreCode', 'Centre Code'),
       dataIndex: 'centerCode',
       key: 'centerCode',
       width: 120,
@@ -442,7 +444,7 @@ const BatchComparisonTable = ({
   const columns = [
     ...baseColumns,
     {
-      title: 'Extras',
+      title: t('batchComparison.extras', 'Extras'),
       key: 'extras',
       width: 150,
       render: (_, record) => {
@@ -455,7 +457,7 @@ const BatchComparisonTable = ({
       }
     },
     {
-      title: 'Status',
+      title: t('common.labels.status', 'Status'),
       dataIndex: 'status',
       key: 'status',
       width: 180,
@@ -643,7 +645,7 @@ const BatchComparisonTable = ({
       }
     })),
     {
-      title: 'Recommendation',
+      title: t('batchComparison.recommendation', 'Recommendation'),
       key: 'recommendation',
       width: 320,
       render: (_, record) => {
@@ -725,44 +727,44 @@ const BatchComparisonTable = ({
   const tabs = [
     {
       key: 'allChanges',
-      label: `All Changes (${allChangesCount})`,
+      label: `${t('batchComparison.allChanges', 'All Changes')} (${allChangesCount})`,
       count: allChangesCount,
       bold: true
     },
     {
       key: 'catchLevel',
-      label: `Catch-Level Changes (${catchLevelCount})`,
+      label: `${t('batchComparison.catchLevelChanges', 'Catch-Level Changes')} (${catchLevelCount})`,
       count: catchLevelCount,
       bold: true,
       color: '#1890ff'
     },
     {
       key: 'added',
-      label: `Added (${addedCount})`,
+      label: `${t('batchComparison.added', 'Added')} (${addedCount})`,
       count: addedCount,
       color: '#52c41a'
     },
     {
       key: 'removed',
-      label: `Removed (${removedCount})`,
+      label: `${t('batchComparison.removed', 'Removed')} (${removedCount})`,
       count: removedCount,
       color: '#ff4d4f'
     },
     {
       key: 'centre',
-      label: `Centre Qty Changed (${centreQtyCount})`,
+      label: `${t('batchComparison.centreQtyChanged', 'Centre Qty Changed')} (${centreQtyCount})`,
       count: centreQtyCount,
       color: '#faad14'
     },
     {
       key: 'nodal',
-      label: `Nodal Change (${nodalCount})`,
+      label: `${t('batchComparison.nodalChange', 'Nodal Change')} (${nodalCount})`,
       count: nodalCount,
       color: '#722ed1'
     },
     {
       key: 'centerCode',
-      label: `Center Code Changed (${centerCodeCount})`,
+      label: `${t('batchComparison.centerCodeChanged', 'Center Code Changed')} (${centerCodeCount})`,
       count: centerCodeCount,
       color: '#eb2f96'
     }
@@ -792,7 +794,7 @@ const BatchComparisonTable = ({
             <Space align="center" wrap>
               <Spin spinning={loading} size="small">
                 <Input.Search
-                  placeholder="Search by Catch No or Centre Code (min 2 characters, searches after 2 secs)"
+                  placeholder={t('batchComparison.searchPlaceholder', 'Search by Catch No or Centre Code (min 2 characters, searches after 2 secs)')}
                   prefix={<SearchOutlined />}
                   value={searchText}
                   onChange={(e) => setSearchText(e.target.value)}
@@ -813,7 +815,7 @@ const BatchComparisonTable = ({
                     gap: 6
                   }}
                 >
-                  {selectedCount > 0 ? `Download (${selectedCount})` : 'Download'} <ChevronDown size={14} />
+                  {selectedCount > 0 ? `${t('common.actions.download', 'Download')} (${selectedCount})` : t('common.actions.download', 'Download')} <ChevronDown size={14} />
                 </Button>
               </Dropdown>
             </Space>
@@ -822,7 +824,7 @@ const BatchComparisonTable = ({
               {selectedCount > 0 && (
                 <Space>
                   <Tag color="blue" style={{ fontSize: 13, padding: '3px 8px' }}>
-                    {selectedCount} row{selectedCount > 1 ? 's' : ''} selected
+                    {selectedCount} {selectedCount > 1 ? 'rows selected' : 'row selected'}
                   </Tag>
                   <Button
                     size="small"
@@ -832,7 +834,7 @@ const BatchComparisonTable = ({
                     }}
                     style={{ fontSize: 12 }}
                   >
-                    Clear Selection
+                    {t('common.actions.clearSelection', 'Clear Selection')}
                   </Button>
                 </Space>
               )}
@@ -852,7 +854,7 @@ const BatchComparisonTable = ({
                     backgroundColor: selectedCount === 0 ? undefined : '#1890ff'
                   }}
                 >
-                  {selectedCount > 0 ? `Push Changes (${selectedCount})` : 'Push Changes'}
+                  {selectedCount > 0 ? `${t('batchComparison.pushChanges', 'Push Changes')} (${selectedCount})` : t('batchComparison.pushChanges', 'Push Changes')}
                 </Button>
               )}
             </Space>
@@ -880,7 +882,7 @@ const BatchComparisonTable = ({
           </Spin>
 
           {/* Table */}
-          <Spin spinning={loading} size="large" tip="Loading data...">
+          <Spin spinning={loading} size="large" tip={t('batchComparison.loadingData', 'Loading data...')}>
             <Table
               columns={columns}
               dataSource={loading ? [] : currentTableData}
@@ -890,7 +892,7 @@ const BatchComparisonTable = ({
               scroll={{ x: 1200 }}
               size="middle"
               onChange={handleTableChange}
-              locale={{ emptyText: loading ? "Loading..." : <Empty description="No records found for this status" /> }}
+              locale={{ emptyText: loading ? t('batchComparison.loadingData', 'Loading data...') : <Empty description={t('batchComparison.noRecordsFound', 'No records found for this status')} /> }}
             />
           </Spin>
 
@@ -916,7 +918,7 @@ const BatchComparisonTable = ({
           </Row>
         </>
       ) : (
-        <Empty description="No comparison data available" />
+        <Empty description={t('batchComparison.noDataAvailable', 'No comparison data available')} />
       )}
     </>
   );

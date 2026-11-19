@@ -1201,8 +1201,8 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted, defaultOpenBifurcation }, 
               title={t('popconfirm.deleteCatchTitle', 'Delete Catch Number')}
               description={t('popconfirm.deleteCatchDesc', { catchNo: record.CatchNo, defaultValue: `Are you sure you want to delete catch number ${record.CatchNo}?` })}
               onConfirm={() => handleDeleteCatchNo(record.CatchNo, rowLotNo)}
-              okText={t('popconfirm.yes', 'Yes')}
-              cancelText={t('popconfirm.no', 'No')}
+              okText={t('common.labels.yes', 'Yes')}
+              cancelText={t('common.labels.no', 'No')}
               okButtonProps={{ danger: true }}
             >
               <Button

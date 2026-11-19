@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
+import { useTranslation } from 'react-i18next';
 import API from '../hooks/api';
 import ProjectConfiguration from '../ProjectConfig/ProjectConfiguration';
 
 const MasterConfig = () => {
+  const { t } = useTranslation();
   const url = import.meta.env.VITE_API_BASE_URL;
 
   // Type and Group selection
@@ -29,11 +31,13 @@ const MasterConfig = () => {
       setConfiguredGroupIds(confIds);
 
       const rawGroups = groupsRes.status === 'fulfilled' ? (groupsRes.value.data || []) : [];
+      const configuredSuffix = ` ✓ (${t('projectConfig.configured', 'Configured')})`;
       const formattedGroups = rawGroups.map(group => {
         const id = group.id || group.groupId;
         const isConfigured = confIds.includes(id);
+        const name = group.name || group.groupName;
         return {
-          label: isConfigured ? `${group.name || group.groupName} ✓ (Configured)` : (group.name || group.groupName),
+          label: isConfigured ? `${name}${configuredSuffix}` : name,
           value: id,
           isConfigured,
         };
@@ -101,11 +105,12 @@ const MasterConfig = () => {
   // Memoize options to prevent unnecessary re-renders
   const memoizedTypeOptions = useMemo(() => {
     if (!configuredTypeIds.length) return typeOptions;
-    return typeOptions.map(t => ({
-      ...t,
-      label: configuredTypeIds.includes(t.value) ? `${t.label} ✓ (Configured)` : t.label,
+    const configuredSuffix = ` ✓ (${t('projectConfig.configured', 'Configured')})`;
+    return typeOptions.map(tOption => ({
+      ...tOption,
+      label: configuredTypeIds.includes(tOption.value) ? `${tOption.label}${configuredSuffix}` : tOption.label,
     }));
-  }, [typeOptions, configuredTypeIds]);
+  }, [typeOptions, configuredTypeIds, t]);
 
   const memoizedGroupOptions = useMemo(() => groupOptions, [groupOptions]);
 

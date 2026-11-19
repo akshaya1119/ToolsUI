@@ -1,6 +1,7 @@
 import React from "react";
 import { Card, Select, Typography, Tag, Button, InputNumber, Checkbox, Row, Col } from "antd";
 import { MailFilled, LockFilled, UndoOutlined, DeleteOutlined } from "@ant-design/icons";
+import { useTranslation } from "react-i18next";
 import AnimatedCard from "./AnimatedCard";
 import { cardStyle, iconStyle, PRIMARY_COLOR } from "./constants";
 
@@ -20,6 +21,7 @@ const EnvelopeSetupCard = ({
   duplicateConfig,
   setDuplicateConfig,
 }) => {
+  const { t } = useTranslation();
   const isDirty = (current, snapshotVal) => {
     if (!importedSnapshot || importedSnapshot === "pending") return false;
     return JSON.stringify(current) !== JSON.stringify(snapshotVal);
@@ -55,11 +57,11 @@ const EnvelopeSetupCard = ({
         title={
           <div>
             <span>
-              <MailFilled style={iconStyle} /> Envelope Setup and Enhancement
+              <MailFilled style={iconStyle} /> {t('projectConfig.envelopeSetupEnhancement', 'Envelope Setup and Enhancement')}
             </span>
             <br />
             <Text type="secondary">
-              Configure inner and outer envelope types and capacities
+              {t('projectConfig.envelopeSetupSubtitle', 'Configure inner and outer envelope types and capacities')}
             </Text>
           </div>
         }
@@ -74,7 +76,7 @@ const EnvelopeSetupCard = ({
                   onClick={onReset}
                   style={{ color: PRIMARY_COLOR }}
                 >
-                  Reset
+                  {t('common.actions.reset', 'Reset')}
                 </Button>
                 <Button
                   type="text"
@@ -83,12 +85,12 @@ const EnvelopeSetupCard = ({
                   onClick={onClear}
                   style={{ color: "#ff4d4f" }}
                 >
-                  Clear
+                  {t('common.actions.clear', 'Clear')}
                 </Button>
               </>
             )}
             {!envelopeModuleEnabled && (
-              <Tag icon={<LockFilled style={{ color: PRIMARY_COLOR }} />}>Disabled</Tag>
+              <Tag icon={<LockFilled style={{ color: PRIMARY_COLOR }} />}>{t('projectConfig.disabledTag', 'Disabled')}</Tag>
             )}
           </div>
         }
@@ -96,7 +98,7 @@ const EnvelopeSetupCard = ({
         <Row gutter={[16, 12]} style={{ marginTop: 12 }}>
           <Col xs={24} md={8}>
             <div style={isDirty(duplicateConfig?.enhancement, importedSnapshot?.duplicateConfig?.enhancement) ? DIRTY_STYLE : {}}>
-              <Text strong>Enhancement</Text>
+              <Text strong>{t('projectConfig.enhancement', 'Enhancement')}</Text>
               
               <InputNumber
                 value={enhancementValue}
@@ -117,7 +119,7 @@ const EnvelopeSetupCard = ({
                     roundOffBeforeEnhancement: e.target.checked
                   }))}
                 >
-                  Round before processing
+                  {t('projectConfig.roundBeforeProcessing', 'Round before processing')}
                 </Checkbox>
               </div>
             </div>
@@ -125,7 +127,7 @@ const EnvelopeSetupCard = ({
 
           <Col xs={24} md={8}>
             <div style={isDirty(innerEnvelopes, importedSnapshot?.innerEnvelopes) ? DIRTY_STYLE : {}}>
-              <Text strong>Inner Envelopes</Text>
+              <Text strong>{t('projectConfig.innerEnvelopes', 'Inner Envelopes')}</Text>
               <Select
                 mode="multiple"
                 disabled={!envelopeModuleEnabled}
@@ -149,7 +151,7 @@ const EnvelopeSetupCard = ({
 
           <Col xs={24} md={8}>
             <div style={isDirty(outerEnvelopes, importedSnapshot?.outerEnvelopes) ? DIRTY_STYLE : {}}>
-              <Text strong>Outer Envelopes</Text>
+              <Text strong>{t('projectConfig.outerEnvelopes', 'Outer Envelopes')}</Text>
               <Select
                 mode="multiple"
                 disabled={!envelopeModuleEnabled}

@@ -23,7 +23,7 @@ const ToolModule = () => {
             const res = await API.get('/Modules');
             setModules(res.data);
         } catch (err) {
-            message.error('Failed to fetch modules');
+            message.error(t('masters.toolsModule.fetchFailed', 'Failed to fetch modules'));
         } finally {
             setLoading(false);
         }
@@ -51,7 +51,7 @@ const ToolModule = () => {
 
     const handleSave = async () => {
         if (!name) {
-            message.warning('Name is required');
+            message.warning(t('common.validation.nameRequired', 'Name is required'));
             return;
         }
 
@@ -62,13 +62,13 @@ const ToolModule = () => {
         );
 
         if (isDuplicate) {
-            message.warning('This module name already exists');
+            message.warning(t('masters.toolsModule.moduleExists', 'This module name already exists'));
             return;
         }
 
         // Prevent self-dependency
         if (editingItem && dependencyIds.includes(editingItem.id)) {
-            message.error("Module cannot depend on itself");
+            message.error(t('masters.toolsModule.selfDependencyError', "Module cannot depend on itself"));
             return;
         }
 
@@ -81,16 +81,16 @@ const ToolModule = () => {
         try {
             if (editingItem) {
                 await API.put(`/Modules/${editingItem.id}`, payload);
-                message.success('Updated successfully');
+                message.success(t('common.feedback.updateSuccess', 'Updated successfully'));
             } else {
                 await API.post('/Modules', payload);
-                message.success('Added successfully');
+                message.success(t('common.feedback.addSuccess', 'Added successfully'));
             }
 
             setModalVisible(false);
             fetchModules();
         } catch {
-            message.error('Save failed');
+            message.error(t('common.feedback.saveFailed', 'Save failed'));
         }
     };
 
@@ -98,7 +98,7 @@ const ToolModule = () => {
         filterDropdown: ({ setSelectedKeys, selectedKeys, confirm, clearFilters }) => (
             <div style={{ padding: 8 }}>
                 <Input
-                    placeholder={`Search ${dataIndex}`}
+                    placeholder={t('tables.searchColumn', { column: t(`tables.${dataIndex}`, dataIndex), defaultValue: `Search ${dataIndex}` })}
                     value={selectedKeys[0]}
                     onChange={(e) => setSelectedKeys(e.target.value ? [e.target.value] : [])}
                     onPressEnter={() => confirm()}
@@ -112,10 +112,10 @@ const ToolModule = () => {
                         size="small"
                         style={{ width: 90 }}
                     >
-                        Search
+                        {t('common.actions.search', 'Search')}
                     </Button>
                     <Button onClick={() => clearFilters()} size="small" style={{ width: 90 }}>
-                        Reset
+                        {t('common.actions.reset', 'Reset')}
                     </Button>
                 </Space>
             </div>
@@ -136,7 +136,7 @@ const ToolModule = () => {
             ...getColumnSearchProps('name'),
         },
         {
-            title: 'Depends On',
+            title: t('masters.toolsModule.dependsOn', 'Depends On'),
             key: 'dependsOn',
             render: (_, record) => (
                 <span>
@@ -147,14 +147,14 @@ const ToolModule = () => {
             ),
         },
         {
-            title: t('tables.actions', 'Actions'),
+            title: t('common.labels.actions', 'Actions'),
             key: 'actions',
             render: (_, record) => (
                 <Space>
                     {canEdit ? (
                         <Button type="link" icon={<EditOutlined />} onClick={() => handleEdit(record)} />
                     ) : (
-                        <Tooltip title="View-only access: Editing is disabled">
+                        <Tooltip title={t('common.actions.viewOnlyEditDisabled', 'View-only access: Editing is disabled')}>
                             <span><Button type="link" icon={<EditOutlined />} disabled /></span>
                         </Tooltip>
                     )}
@@ -181,7 +181,7 @@ const ToolModule = () => {
                         {t('common.actions.add', 'Add')}
                     </Button>
                 ) : (
-                    <Tooltip title="View-only access: Creating new items is disabled">
+                    <Tooltip title={t('common.actions.viewOnlyAddDisabled', 'View-only access: Creating new items is disabled')}>
                         <span>
                             <Button type="primary" disabled>
                                 {t('common.actions.add', 'Add')}
@@ -208,12 +208,12 @@ const ToolModule = () => {
                 <Input
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    placeholder="Enter module name"
+                    placeholder={t('masters.toolsModule.enterModuleName', 'Enter module name')}
                     style={{ marginBottom: 12 }}
                 />
                 <Select
                     mode="multiple" // 👈 allow multiple selection
-                    placeholder="Select dependent modules (optional)"
+                    placeholder={t('masters.toolsModule.selectDependentModules', 'Select dependent modules (optional)')}
                     value={dependencyIds}
                     onChange={(value) => setDependencyIds(value)}
                     allowClear

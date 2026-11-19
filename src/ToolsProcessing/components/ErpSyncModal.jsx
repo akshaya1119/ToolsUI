@@ -27,6 +27,7 @@ import {
 } from '@ant-design/icons';
 import API from '../../hooks/api';
 import { getCurrentUserId } from '../../hooks/useUserMap';
+import usePermissionsStore from '../../stores/UserPermissions';
 
 const { Text } = Typography;
 
@@ -46,6 +47,8 @@ const ErpSyncModal = ({
   const [searchText, setSearchText] = useState('');
   const [jsonModalOpen, setJsonModalOpen] = useState(false);
   const [lastResult, setLastResult] = useState(null);
+  const hasSpecialAction = usePermissionsStore((state) => state.hasSpecialAction);
+  const canSendToErp = hasSpecialAction('ACTION_SEND_TO_ERP');
 
   // Normalize available lots into numeric array
   const lotOptions = useMemo(() => {
@@ -424,31 +427,33 @@ const ErpSyncModal = ({
                 </Button>
               </Popconfirm>
             )}
-            <Tooltip
-              title={
-                !isLotFinalized
-                  ? 'Please finalize the lot before pushing details to ERP'
-                  : isLotSynced
-                  ? 'This lot has already been pushed to ERP. To push again, click Reopen Lot first.'
-                  : 'Push verified catch details to ERP'
-              }
-            >
-              <span>
-                <Button
-                  type="primary"
-                  icon={isLotSynced ? <CheckCircleOutlined /> : <CloudUploadOutlined />}
-                  loading={sending}
-                  onClick={handleSendToErp}
-                  disabled={!isLotFinalized || isLotSynced || !lotData || lotData.catches?.length === 0 || loading}
-                  style={{
-                    background: isLotFinalized && !isLotSynced ? '#2563eb' : undefined,
-                    borderColor: isLotFinalized && !isLotSynced ? '#2563eb' : undefined,
-                  }}
-                >
-                  {sending ? 'Pushing to ERP...' : isLotSynced ? 'Pushed to ERP' : 'Push to ERP'}
-                </Button>
-              </span>
-            </Tooltip>
+            {canSendToErp && (
+              <Tooltip
+                title={
+                  !isLotFinalized
+                    ? 'Please finalize the lot before pushing details to ERP'
+                    : isLotSynced
+                    ? 'This lot has already been pushed to ERP. To push again, click Reopen Lot first.'
+                    : 'Push verified catch details to ERP'
+                }
+              >
+                <span>
+                  <Button
+                    type="primary"
+                    icon={isLotSynced ? <CheckCircleOutlined /> : <CloudUploadOutlined />}
+                    loading={sending}
+                    onClick={handleSendToErp}
+                    disabled={!isLotFinalized || isLotSynced || !lotData || lotData.catches?.length === 0 || loading}
+                    style={{
+                      background: isLotFinalized && !isLotSynced ? '#2563eb' : undefined,
+                      borderColor: isLotFinalized && !isLotSynced ? '#2563eb' : undefined,
+                    }}
+                  >
+                    {sending ? 'Pushing to ERP...' : isLotSynced ? 'Pushed to ERP' : 'Push to ERP'}
+                  </Button>
+                </span>
+              </Tooltip>
+            )}
           </div>
         }
       >

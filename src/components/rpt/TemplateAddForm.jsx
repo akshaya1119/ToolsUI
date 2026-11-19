@@ -24,15 +24,15 @@ const TemplateAddForm = ({
   return (
     <Form layout="vertical" form={form}>
       <Form.Item
-        label={t("templates.templateName", "Template Name")}
+        label={t("common.labels.templateName", "Template Name")}
         name="templateName"
-        rules={[{ required: true, message: t("templates.templateNameRequired", "Template name is required") }]}
+        rules={[{ required: true, message: t("common.validation.templateNameRequired", "Template name is required") }]}
         required
       >
         <Input placeholder={t("templates.enterTemplateName", "Enter template name")} />
       </Form.Item>
       <Form.Item
-        label={t("templates.subName", "Sub Name")}
+        label={t("common.labels.subName", "Sub Name")}
         name="subName"
       >
         <Input placeholder={t("templates.enterSubName", "Enter template subname")} />
@@ -69,7 +69,7 @@ const TemplateAddForm = ({
         </Upload.Dragger>
       </Form.Item>
       <Space style={{ display: "flex", justifyContent: "flex-end" }}>
-        <Button onClick={onCancel}>{t("templates.cancel", "Cancel")}</Button>
+        <Button onClick={onCancel}>{t("common.actions.cancel", "Cancel")}</Button>
         <Button type="primary" onClick={onSubmit} loading={submitting}>
           {t("templates.uploadTemplate", "Upload Template")}
         </Button>

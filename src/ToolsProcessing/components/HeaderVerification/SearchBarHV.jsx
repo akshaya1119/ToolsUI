@@ -1,17 +1,18 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Search, ChevronDown, Columns } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
-const COLUMN_LABELS = {
+const getColumnLabels = (t) => ({
   a: 'A',
   b: 'B',
   c: 'C',
   d: 'D',
-  remark: 'Remark',
-  lotNo: 'Lot',
-  date: 'Exam Date',
-  time: 'Exam Time',
-  batch: 'Batch'
-};
+  remark: t('headerVerification.colRemark', 'Remark'),
+  lotNo: t('common.labels.lot', 'Lot'),
+  date: t('headerVerification.colExamDate', 'Exam Date'),
+  time: t('headerVerification.colExamTime', 'Exam Time'),
+  batch: t('common.labels.batch', 'Batch')
+});
 
 const SearchBarHV = ({
   globalSearch,
@@ -38,10 +39,13 @@ const SearchBarHV = ({
   onCorrectionFilterToggle,
   correctionCount = 0,
 }) => {
+  const { t } = useTranslation();
   const [lotDropdownOpen, setLotDropdownOpen] = useState(false);
   const [colMenuOpen, setColMenuOpen] = useState(false);
   const lotRef = useRef(null);
   const colRef = useRef(null);
+
+  const columnLabels = getColumnLabels(t);
 
   const isRoleAuthorized = (userRoleId !== null && Number(userRoleId) <= 4 && Number(userRoleId) > 0) || isRole4;
   const canShowCorrection = showCorrection !== null 
@@ -57,7 +61,7 @@ const SearchBarHV = ({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const uniqueLots = ["All Lots", ...new Set(lots)];
+  const uniqueLots = [t('common.actions.allLots', 'All Lots'), ...new Set(lots)];
 
   return (
     <div className="flex items-center gap-3">
@@ -67,7 +71,7 @@ const SearchBarHV = ({
         <input
           type="text"
           className="w-full pl-10 pr-4 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-700 placeholder:text-gray-400 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/30 transition-all"
-          placeholder="Quick search..."
+          placeholder={t('headerVerification.quickSearchPlaceholder', 'Quick search...')}
           value={globalSearch}
           onChange={(e) => onGlobalSearchChange(e.target.value)}
         />
@@ -90,9 +94,9 @@ const SearchBarHV = ({
                   ? 'bg-white hover:bg-gray-50 border-gray-300 text-gray-700'
                   : 'opacity-60 cursor-not-allowed bg-gray-50 border-gray-200 text-gray-400'
               }`}
-              title="Reset filters"
+              title={t('common.actions.resetFilters', 'Reset filters')}
             >
-              Reset
+              {t('common.actions.reset', 'Reset')}
             </button>
           );
         })()}
@@ -107,7 +111,7 @@ const SearchBarHV = ({
               ? 'bg-red-600 hover:bg-red-700 text-white border border-red-700 shadow-md ring-2 ring-red-300/80'
               : 'bg-red-50 hover:bg-red-100 text-red-700 border border-red-300 hover:border-red-400'
           }`}
-          title={isCorrectionFilter ? "Showing only catches with remarks (Click to show all)" : "Filter catches with remarks (clears all other filters)"}
+          title={isCorrectionFilter ? t('headerVerification.correctionFilterActive', 'Showing only catches with remarks (Click to show all)') : t('headerVerification.correctionFilterInactive', 'Filter catches with remarks (clears all other filters)')}
         >
           {/* Blinking attention dot */}
           <span className="relative flex h-2 w-2">
@@ -119,7 +123,7 @@ const SearchBarHV = ({
             }`} />
           </span>
 
-          <span>Correction</span>
+          <span>{t('headerVerification.correction', 'Correction')}</span>
 
           {/* Backend Unique Catches Count Badge */}
           <span className={`inline-flex items-center justify-center px-2 py-0.2 text-xs font-bold rounded-full min-w-[20px] transition-colors ${
@@ -137,10 +141,10 @@ const SearchBarHV = ({
         <button
           onClick={() => setColMenuOpen(!colMenuOpen)}
           className="flex items-center gap-1.5 px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-600 hover:border-gray-400 transition-colors"
-          title="Show/hide columns"
+          title={t('headerVerification.showHideColumns', 'Show/hide columns')}
         >
           <Columns className="w-4 h-4" />
-          Columns
+          {t('common.labels.columns', 'Columns')}
         </button>
         {colMenuOpen && (
           <div className="absolute top-full right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-20 py-2 min-w-[160px]">
@@ -155,7 +159,7 @@ const SearchBarHV = ({
                   onChange={() => onColumnToggle?.(col)}
                   className="accent-amber-500"
                 />
-                {COLUMN_LABELS[col] || col}
+                {columnLabels[col] || col}
               </label>
             ))}
           </div>

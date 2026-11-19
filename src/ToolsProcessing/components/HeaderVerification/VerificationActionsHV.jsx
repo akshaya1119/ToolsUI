@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { CheckCircle2, AlertCircle } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { normalizeStatus } from './statusUtils';
 
 const VerificationActionsHV = ({
@@ -7,6 +8,7 @@ const VerificationActionsHV = ({
   onStatusChange,
   loading
 }) => {
+  const { t } = useTranslation();
   const [activeAction, setActiveAction] = useState(null);
   const currentStatus = normalizeStatus(record?.status);
   const verifiedActive = currentStatus === 1;
@@ -59,9 +61,9 @@ const VerificationActionsHV = ({
               `
           }
         `}
-        title="Edit this record"
+        title={t('common.actions.editRecord', 'Edit this record')}
       >
-        ✏️ Edit
+        ✏️ {t('common.actions.edit', 'Edit')}
       </button>
 
 
@@ -103,13 +105,13 @@ const VerificationActionsHV = ({
               `
           }
         `}
-        title="Mark as Verified"
+        title={t('headerVerification.markVerified', 'Mark as Verified')}
       >
         <CheckCircle2 className="w-4 h-4" />
 
         {activeAction === 'Verified' && loading
-          ? 'Verifying...'
-          : 'Verified'}
+          ? t('headerVerification.verifying', 'Verifying...')
+          : t('headerVerification.verified', 'Verified')}
       </button>
 
 
@@ -151,13 +153,13 @@ const VerificationActionsHV = ({
               `
           }
         `}
-        title="Mark as Unclear"
+        title={t('headerVerification.markUnclear', 'Mark as Unclear')}
       >
         <AlertCircle className="w-4 h-4" />
 
         {activeAction === 'Unclear' && loading
-          ? 'Marking...'
-          : 'Needs Review'}
+          ? t('headerVerification.marking', 'Marking...')
+          : t('headerVerification.needsReview', 'Needs Review')}
       </button>
 
     </div>

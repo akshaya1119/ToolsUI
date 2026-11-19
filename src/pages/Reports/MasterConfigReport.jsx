@@ -4,6 +4,7 @@ import axios from "axios";
 import { Table, Select, Input, Tag, Empty, Dropdown, Button } from "antd";
 import { SearchOutlined, DownloadOutlined } from "@ant-design/icons";
 import { Columns } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import jsPDF from "jspdf";
 import "jspdf-autotable";
 import * as XLSX from "xlsx";
@@ -11,6 +12,7 @@ import * as XLSX from "xlsx";
 const { Option } = Select;
 
 export default function MasterConfigReport() {
+  const { t } = useTranslation();
   const url = import.meta.env.VITE_API_BASE_URL;
 
   const [data, setData] = useState([]);
@@ -127,15 +129,15 @@ export default function MasterConfigReport() {
         id: t.typeId ?? t.id,
         name: t.types ?? t.name,
       }));
-      
+
       setGroups(groupsData);
       setTypes(typesData);
-      
+
       const gMap = {};
       groupsData.forEach(g => gMap[g.id] = g.name);
       const tMap = {};
       typesData.forEach(t => tMap[t.id] = t.name);
-      
+
       setGroupMap(gMap);
       setTypeMap(tMap);
     } catch {
@@ -259,7 +261,7 @@ export default function MasterConfigReport() {
   // Prepare row data based on visible columns
   const prepareRowData = (row, colKeys) => {
     const rowData = {};
-    
+
     colKeys.forEach(colKey => {
       switch (colKey) {
         case "groupId":
@@ -326,7 +328,7 @@ export default function MasterConfigReport() {
           break;
       }
     });
-    
+
     return rowData;
   };
 
@@ -338,13 +340,13 @@ export default function MasterConfigReport() {
         return;
       }
 
-      const visibleColKeys = Array.from(visibleColumns).filter(col => 
+      const visibleColKeys = Array.from(visibleColumns).filter(col =>
         !ALWAYS_VISIBLE.includes(col) || col === "groupId" || col === "typeId"
       );
 
       const formattedData = allData.map(row => prepareRowData(row, visibleColKeys));
       const worksheet = XLSX.utils.json_to_sheet(formattedData);
-      
+
       // Adjust column widths
       const columnWidths = Object.keys(formattedData[0] || {}).map(() => 20);
       worksheet["!cols"] = columnWidths.map(w => ({ wch: w }));
@@ -366,7 +368,7 @@ export default function MasterConfigReport() {
         return;
       }
 
-      const visibleColKeys = Array.from(visibleColumns).filter(col => 
+      const visibleColKeys = Array.from(visibleColumns).filter(col =>
         !ALWAYS_VISIBLE.includes(col) || col === "groupId" || col === "typeId"
       );
 
@@ -379,15 +381,15 @@ export default function MasterConfigReport() {
         unit: "mm",
         format: "a4"
       });
-      
+
       const pageWidth = pdf.internal.pageSize.getWidth();
-      
+
       // Add title
       pdf.setFontSize(16);
       pdf.text("Master Configuration Report", pageWidth / 2, 15, { align: "center" });
 
       // Create table
-      const tableData = formattedData.map(row => 
+      const tableData = formattedData.map(row =>
         headers.map(header => row[header])
       );
 
@@ -551,11 +553,11 @@ export default function MasterConfigReport() {
         if (!text || text === "-") return "-";
         const fields = text.split(",").map(f => f.trim()).filter(f => f);
         if (fields.length === 0) return "-";
-        
+
         if (fields.length === 1) {
           return `Sort by ${fields[0]}`;
         }
-        
+
         const lastField = fields[fields.length - 1];
         const otherFields = fields.slice(0, -1);
         return `Sort by ${otherFields.join(" then by ")} then by ${lastField}`;
@@ -571,11 +573,11 @@ export default function MasterConfigReport() {
         if (!text || text === "-") return "-";
         const fields = text.split(",").map(f => f.trim()).filter(f => f);
         if (fields.length === 0) return "-";
-        
+
         if (fields.length === 1) {
           return `Sort by ${fields[0]}`;
         }
-        
+
         const lastField = fields[fields.length - 1];
         const otherFields = fields.slice(0, -1);
         return `Sort by ${otherFields.join(" then by ")} then by ${lastField}`;
@@ -703,7 +705,7 @@ export default function MasterConfigReport() {
   return (
     <div style={{ padding: "24px", height: "100vh", display: "flex", flexDirection: "column", overflow: "hidden", gap: "16px" }}>
       <h1 style={{ fontSize: 32, fontWeight: 700, margin: "0 0 8px 0", color: "#1f2937", flexShrink: 0 }}>
-        Master Configuration Report
+        {t('masterConfigReport.title', 'Master Configuration Report')}
       </h1>
 
       <div style={{
@@ -783,7 +785,7 @@ export default function MasterConfigReport() {
                       onClick={(e) => e.stopPropagation()}
                       style={{ cursor: "pointer" }}
                     />
-                    <strong>Select All</strong>
+                    <strong>{t('common.actions.selectAll', 'Select All')}</strong>
                   </div>
                 ),
               },
@@ -820,7 +822,7 @@ export default function MasterConfigReport() {
         >
           <Button style={{ display: "flex", alignItems: "center", gap: "6px" }}>
             <Columns size={16} />
-            Columns
+            {t('common.labels.columns', 'Columns')}
           </Button>
         </Dropdown>
 
@@ -830,12 +832,12 @@ export default function MasterConfigReport() {
             items: [
               {
                 key: "excel",
-                label: "Download as Excel",
+                label: t('masterConfigReport.downloadExcel', 'Download as Excel'),
                 onClick: () => handleDownload("excel"),
               },
               {
                 key: "pdf",
-                label: "Download as PDF",
+                label: t('masterConfigReport.downloadPdf', 'Download as PDF'),
                 onClick: () => handleDownload("pdf"),
               },
             ],
@@ -846,7 +848,7 @@ export default function MasterConfigReport() {
             icon={<DownloadOutlined />}
             style={{ display: "flex", alignItems: "center", gap: "6px" }}
           >
-            Download
+            {t('common.actions.download', 'Download')}
           </Button>
         </Dropdown>
 
@@ -855,9 +857,8 @@ export default function MasterConfigReport() {
           <strong>
             {data.length === 0
               ? 0
-              : `${(pagination.current - 1) * pagination.pageSize + 1}-${
-                  (pagination.current - 1) * pagination.pageSize + data.length
-                }`}
+              : `${(pagination.current - 1) * pagination.pageSize + 1}-${(pagination.current - 1) * pagination.pageSize + data.length
+              }`}
           </strong>{" "}
           of <strong>{pagination.total}</strong> records
         </div>

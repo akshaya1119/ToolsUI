@@ -21,7 +21,7 @@ const NodalUnivExtra = () => {
       const res = await API.get('/ExtraTypes');
       setExtras(res.data);
     } catch (error) {
-      message.error("Failed to fetch extras.");
+      message.error(t('masters.nodalUnivExtra.fetchFailed', "Failed to fetch extras."));
     } finally {
       setLoading(false);
     }
@@ -54,51 +54,51 @@ const NodalUnivExtra = () => {
           ...editingExtra,
           ...values,
         });
-        message.success("Extra updated successfully.");
+        message.success(t('common.feedback.updateSuccess', "Extra updated successfully."));
       } else {
         // Create
         await API.post('/ExtraTypes', values);
-        message.success("Extra added successfully.");
+        message.success(t('common.feedback.addSuccess', "Extra added successfully."));
       }
       fetchExtras();
       setIsModalOpen(false);
     } catch (error) {
-      message.error("Save failed. Please try again.");
+      message.error(t('common.feedback.saveFailed', "Save failed. Please try again."));
     }
   };
 
   // Table columns
   const columns = [
     {
-      title: "ID",
+      title: t('masters.nodalUnivExtra.id', "ID"),
       dataIndex: "extraTypeId",
       key: "extraTypeId",
       width: 80,
     },
     {
-      title: "Type",
+      title: t('common.labels.type', "Type"),
       dataIndex: "type",
       key: "type",
     },
     {
-      title: "Order",
+      title: t('masters.nodalUnivExtra.order', "Order"),
       dataIndex: "order",
       key: "order",
     },
     {
-      title: "Actions",
+      title: t('common.labels.actions', "Actions"),
       key: "actions",
       render: (_, record) => (
         <Space>
           {canEdit ? (
             <Button type="link" onClick={() => openModal(record)}>
-              Edit
+              {t('common.actions.edit', 'Edit')}
             </Button>
           ) : (
-            <Tooltip title="View-only access: Editing is disabled">
+            <Tooltip title={t('common.actions.viewOnlyEditDisabled', "View-only access: Editing is disabled")}>
               <span>
                 <Button type="link" disabled>
-                  Edit
+                  {t('common.actions.edit', 'Edit')}
                 </Button>
               </span>
             </Tooltip>
@@ -123,13 +123,13 @@ const NodalUnivExtra = () => {
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
         {canCreate ? (
           <Button type="primary" onClick={() => openModal()}>
-            Add Extra
+            {t('masters.nodalUnivExtra.addExtraButton', 'Add Extra')}
           </Button>
         ) : (
-          <Tooltip title="View-only access: Creating new items is disabled">
+          <Tooltip title={t('common.actions.viewOnlyAddDisabled', "View-only access: Creating new items is disabled")}>
             <span>
               <Button type="primary" disabled>
-                Add Extra
+                {t('masters.nodalUnivExtra.addExtraButton', 'Add Extra')}
               </Button>
             </span>
           </Tooltip>
@@ -156,15 +156,15 @@ const NodalUnivExtra = () => {
         <Form form={form} layout="vertical">
           <Form.Item
             name="type"
-            label="Type"
-            rules={[{ required: true, message: "Please enter type" }]}
+            label={t('common.labels.type', "Type")}
+            rules={[{ required: true, message: t('masters.nodalUnivExtra.enterTypeRequired', "Please enter type") }]}
           >
-            <Input placeholder="Enter type (e.g., Nodal, University, Office Copy)" />
+            <Input placeholder={t('masters.nodalUnivExtra.enterTypePlaceholder', "Enter type (e.g., Nodal, University, Office Copy)")} />
           </Form.Item>
           <Form.Item
             name="order"
-            label="Order"
-            rules={[{ required: true, message: "Please enter order" }]}
+            label={t('masters.nodalUnivExtra.order', "Order")}
+            rules={[{ required: true, message: t('masters.nodalUnivExtra.enterOrderRequired', "Please enter order") }]}
           >
             <InputNumber style={{ width: "100%" }} min={1} />
           </Form.Item>

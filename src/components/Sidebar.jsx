@@ -402,7 +402,7 @@ export default function Sidebar({ collapsed }) {
         {!collapsed && projectName && (
           <div className="mb-6 flex items-center gap-2">
             <div className="px-4 py-2 bg-blue-900 text-white rounded-lg text-sm">
-              Project : {projectName}
+              {t("common.labels.project", "Project")} : {projectName}
             </div>
           </div>
         )}
@@ -421,14 +421,14 @@ export default function Sidebar({ collapsed }) {
             className={`flex items-center px-3 py-2 rounded-md cursor-pointer text-gray-800 hover:bg-gray-100 transition-all duration-150 relative group ${collapsed ? "justify-center" : "gap-3"}`}
           >
             <FaSignOutAlt className={`${collapsed ? "text-2xl" : "text-base"} shrink-0`} />
-            {!collapsed && <span>Logout</span>}
+            {!collapsed && <span>{t("navbar.logout")}</span>}
 
             {collapsed && (
               <div className="absolute left-full ml-4 top-1/2 -translate-y-1/2 
                 opacity-0 group-hover:opacity-100 pointer-events-none
                 bg-gray-800 text-white text-[12px] px-2.5 py-1.5 rounded-md whitespace-nowrap
                 shadow-lg transition-all duration-200 z-[60]">
-                Logout
+                {t("navbar.logout")}
               </div>
             )}
           </div>

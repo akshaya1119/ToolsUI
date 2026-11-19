@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
+import { useTranslation } from "react-i18next";
 import { useToast } from './../hooks/useToast';
 import { RiFilter3Fill, RiListCheck2 } from "react-icons/ri";
 import API from "./../hooks/api";
 const fieldOptions = ["type", "language", "subject", "course", "examType", "catch", "paperNumber"];
 
 export default function CorrectionTool() {
+  const { t } = useTranslation();
   const [groups, setGroups] = useState([]);
   const [selectedGroupId, setSelectedGroupId] = useState("");
   const [groupData, setGroupData] = useState([]);
@@ -194,12 +196,12 @@ export default function CorrectionTool() {
   return (
     <div className="p-4">
       <h2 className="text-2xl font-bold text-gray-800 flex justify-center items-center text-center gap-2 mb-3.5">
-        <i className="ri-upload-cloud-line text-blue-600"></i> Correction Page
+        <i className="ri-upload-cloud-line text-blue-600"></i> {t('correctionTool.title', 'Correction Page')}
       </h2>
       <div className="bg-white p-4 rounded shadow mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         {/* Left - Group Selector */}
         <div className="flex-1">
-          <label className="block text-sm font-medium mb-1">Select Group</label>
+          <label className="block text-sm font-medium mb-1">{t('common.placeholders.selectGroup', 'Select Group')}</label>
           <select
             value={selectedGroupId}
             onChange={(e) => {
@@ -212,7 +214,7 @@ export default function CorrectionTool() {
             }}
             className="w-full border rounded px-3 py-2"
           >
-            <option value="">-- Select Group --</option>
+            <option value="">{t('common.placeholders.selectGroup', '-- Select Group --')}</option>
             {groups.map((group) => (
               <option key={group.id} value={group.id}>{group.name}</option>
             ))}
@@ -221,7 +223,7 @@ export default function CorrectionTool() {
 
         {/* Middle - Column Selectors */}
         <div className="flex-1">
-          <label className="block text-sm font-medium mb-1">Select Columns for Correction</label>
+          <label className="block text-sm font-medium mb-1">{t('correctionTool.selectColumns', 'Select Columns for Correction')}</label>
           <div className="grid grid-cols-2 gap-2 bg-gray-100 p-3 rounded">
             {fieldOptions.map((field) => (
               <label key={field} className="flex items-center space-x-2 text-sm font-medium">
@@ -242,7 +244,7 @@ export default function CorrectionTool() {
             onClick={handleCorrect}
             className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-sm font-semibold"
           >
-            Correct Data
+            {t('correctionTool.correctData', 'Correct Data')}
           </button>
           <button
             onClick={() => {
@@ -252,7 +254,7 @@ export default function CorrectionTool() {
             }}
             className="border px-4 py-2 rounded hover:bg-gray-100 text-sm font-semibold"
           >
-            Reset
+            {t('common.actions.reset', 'Reset')}
           </button>
         </div>
       </div>
@@ -260,16 +262,16 @@ export default function CorrectionTool() {
 
       {/* Data Records Display */}
       <div className="bg-white p-4 rounded shadow">
-        <h2 className="text-xl font-semibold mb-2">Data Records - {groups.find(g => g.id === selectedGroupId)?.name || 'Group'}</h2>
+        <h2 className="text-xl font-semibold mb-2">{t('correctionTool.dataRecords', 'Data Records')} - {groups.find(g => g.id === selectedGroupId)?.name || 'Group'}</h2>
 
         {/* Counts */}
         <div className="flex justify-between mb-4">
 
 
           <div className="flex flex-wrap gap-2 mb-3 text-sm">
-            <span className="px-3 py-1 border rounded">Total: {groupData.length}</span>
-            <span className="px-3 py-1 bg-blue-500 text-white rounded">Corrected: {correctedData.correctedCount || 0}</span>
-            <span className="px-3 py-1 border rounded">Mismatch: {mismatchCount}</span>
+            <span className="px-3 py-1 border rounded">{t('correctionTool.total', 'Total')}: {groupData.length}</span>
+            <span className="px-3 py-1 bg-blue-500 text-white rounded">{t('correctionTool.corrected', 'Corrected')}: {correctedData.correctedCount || 0}</span>
+            <span className="px-3 py-1 border rounded">{t('correctionTool.mismatch', 'Mismatch')}: {mismatchCount}</span>
           </div>
           <div className="flex flex-wrap gap-2 mb-3 text-sm">
 
@@ -294,7 +296,7 @@ export default function CorrectionTool() {
               onClick={handleAudit}
               className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 font-semibold"
             >
-              Audit Data
+              {t('correctionTool.auditData', 'Audit Data')}
             </button>
             <button
               onClick={async () => {
@@ -308,20 +310,20 @@ export default function CorrectionTool() {
               className={`px-4 py-2 rounded font-semibold ${editMode ? "bg-green-600 text-white hover:bg-green-700" : "bg-yellow-500 text-white hover:bg-yellow-600"
                 }`}
             >
-              {editMode ? "Save Changes" : "Edit Data"}
+              {editMode ? t('common.actions.saveChanges', 'Save Changes') : t('correctionTool.editData', 'Edit Data')}
             </button>
             {editMode && (
               <div className="flex flex-wrap gap-2">
                 <input
                   type="text"
-                  placeholder="Find"
+                  placeholder={t('correctionTool.find', 'Find')}
                   value={findText}
                   onChange={(e) => setFindText(e.target.value)}
                   className="border px-2 py-1 rounded"
                 />
                 <input
                   type="text"
-                  placeholder="Replace"
+                  placeholder={t('correctionTool.replace', 'Replace')}
                   value={replaceText}
                   onChange={(e) => setReplaceText(e.target.value)}
                   className="border px-2 py-1 rounded"
@@ -330,13 +332,13 @@ export default function CorrectionTool() {
                   onClick={handleFind}
                   className="bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700"
                 >
-                  Find ({foundCount})
+                  {t('correctionTool.find', 'Find')} ({foundCount})
                 </button>
                 <button
                   onClick={handleFindReplaceAll}
                   className="bg-purple-600 text-white px-3 py-1 rounded hover:bg-purple-700"
                 >
-                  Replace All ({replacedCount})
+                  {t('correctionTool.replaceAll', 'Replace All')} ({replacedCount})
                 </button>
               </div>
             )}
@@ -353,12 +355,12 @@ export default function CorrectionTool() {
                 {fieldOptions.map((field) => (
                   <th key={field} className="p-2 capitalize">{field}</th>
                 ))}
-                <th className="p-2">Status</th>
+                <th className="p-2">{t('common.labels.status', 'Status')}</th>
               </tr>
             </thead>
             <tbody>
               {displayedRows.length === 0 ? (
-                <tr><td colSpan={fieldOptions.length + 2} className="text-center p-3 text-gray-400">No Data Found</td></tr>
+                <tr><td colSpan={fieldOptions.length + 2} className="text-center p-3 text-gray-400">{t('correctionTool.noDataFound', 'No Data Found')}</td></tr>
               ) : (
 
                 displayedRows.map((row, index) => {
@@ -410,11 +412,11 @@ export default function CorrectionTool() {
                       })}
                       <td className="p-2">
                         {auditRow ? (
-                          <span className="text-red-600 font-semibold">Mismatch</span>
+                          <span className="text-red-600 font-semibold">{t('correctionTool.mismatch', 'Mismatch')}</span>
                         ) : correctedRow ? (
-                          <span className="text-yellow-700 font-semibold">Corrected</span>
+                          <span className="text-yellow-700 font-semibold">{t('correctionTool.corrected', 'Corrected')}</span>
                         ) : (
-                          <span className="text-green-600 font-semibold">Valid</span>
+                          <span className="text-green-600 font-semibold">{t('correctionTool.valid', 'Valid')}</span>
                         )}
                       </td>
                     </tr>

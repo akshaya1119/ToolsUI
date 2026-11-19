@@ -1,12 +1,15 @@
 import React from 'react';
 import { CheckCircle2, AlertCircle, XCircle } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { normalizeStatus } from './statusUtils';
 
 const StatusBadgeHV = ({ status }) => {
+  const { t } = useTranslation();
+
   const configs = {
     1: {
       icon: CheckCircle2,
-      label: 'Verified',
+      label: t('headerVerification.verified', 'Verified'),
       bgClass: 'bg-green-50',
       textClass: 'text-green-700',
       iconClass: 'text-green-500',
@@ -14,7 +17,7 @@ const StatusBadgeHV = ({ status }) => {
     },
     2: {
       icon: AlertCircle,
-      label: 'Needs Review',
+      label: t('headerVerification.needsReview', 'Needs Review'),
       bgClass: 'bg-orange-50',
       textClass: 'text-orange-700',
       iconClass: 'text-orange-500',
@@ -22,7 +25,7 @@ const StatusBadgeHV = ({ status }) => {
     },
     0: {
       icon: XCircle,
-      label: 'Not Verified',
+      label: t('headerVerification.notVerified', 'Not Verified'),
       bgClass: 'bg-gray-50',
       textClass: 'text-gray-600',
       iconClass: 'text-gray-400',

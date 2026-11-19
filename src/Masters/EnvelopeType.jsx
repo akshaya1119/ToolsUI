@@ -21,7 +21,7 @@ const EnvelopeType = () => {
       const res = await API.get('/EnvelopeTypes');
       setEnvelopes(res.data);
     } catch {
-      message.error('Failed to fetch envelope types');
+      message.error(t('masters.envelopeType.fetchFailed', 'Failed to fetch envelope types'));
     } finally {
       setLoading(false);
     }
@@ -49,7 +49,7 @@ const EnvelopeType = () => {
 
   const handleSave = async () => {
     if (!envelopeName || capacity === '') {
-      message.warning('Please fill all fields');
+      message.warning(t('masters.envelopeType.fillAllFields', 'Please fill all fields'));
       return;
     }
 
@@ -60,11 +60,12 @@ const EnvelopeType = () => {
     );
 
     if (isDuplicate) {
-      message.warning('This envelope name already exists');
+      message.warning(t('masters.envelopeType.envelopeExists', 'This envelope name already exists'));
       return;
     }
     if(!(capacity>0)){
-      message.error('Capacity should be greater than 0')
+      message.error(t('masters.envelopeType.capacityGreaterThanZero', 'Capacity should be greater than 0'));
+      return;
     }
 
     const payload = {
@@ -79,16 +80,16 @@ const EnvelopeType = () => {
           `/EnvelopeTypes/${editingItem.envelopeId}`,
           payload
         );
-        message.success('Updated successfully');
+        message.success(t('common.feedback.updateSuccess', 'Updated successfully'));
       } else {
         await API.post('/EnvelopeTypes', payload);
-        message.success('Added successfully');
+        message.success(t('common.feedback.addSuccess', 'Added successfully'));
       }
 
       setModalVisible(false);
       fetchEnvelopes();
     } catch {
-      message.error('Save failed');
+      message.error(t('common.feedback.saveFailed', 'Save failed'));
     }
   };
 
@@ -96,7 +97,7 @@ const EnvelopeType = () => {
     filterDropdown: ({ setSelectedKeys, selectedKeys, confirm, clearFilters }) => (
       <div style={{ padding: 8 }}>
         <Input
-          placeholder={`Search ${dataIndex}`}
+          placeholder={t('tables.searchColumn', { column: t(`tables.${dataIndex}`, dataIndex), defaultValue: `Search ${dataIndex}` })}
           value={selectedKeys[0]}
           onChange={(e) => setSelectedKeys(e.target.value ? [e.target.value] : [])}
           onPressEnter={() => confirm()}
@@ -110,10 +111,10 @@ const EnvelopeType = () => {
             size="small"
             style={{ width: 90 }}
           >
-            Search
+            {t('common.actions.search', 'Search')}
           </Button>
           <Button onClick={() => clearFilters()} size="small" style={{ width: 90 }}>
-            Reset
+            {t('common.actions.reset', 'Reset')}
           </Button>
         </Space>
       </div>
@@ -141,14 +142,14 @@ const EnvelopeType = () => {
       ...getColumnSearchProps('capacity'),
     },
     {
-      title: t('tables.actions', 'Actions'),
+      title: t('common.labels.actions', 'Actions'),
       key: 'actions',
       render: (_, record) => (
         <Space>
           {canEdit ? (
             <Button type="link" icon={<EditOutlined />} onClick={() => handleEdit(record)} />
           ) : (
-            <Tooltip title="View-only access: Editing is disabled">
+            <Tooltip title={t('common.actions.viewOnlyEditDisabled', 'View-only access: Editing is disabled')}>
               <span><Button type="link" icon={<EditOutlined />} disabled /></span>
             </Tooltip>
           )}
@@ -175,7 +176,7 @@ const EnvelopeType = () => {
             {t('common.actions.add', 'Add')}
           </Button>
         ) : (
-          <Tooltip title="View-only access: Creating new items is disabled">
+          <Tooltip title={t('common.actions.viewOnlyAddDisabled', 'View-only access: Creating new items is disabled')}>
             <span>
               <Button type="primary" disabled style={{ marginBottom: 16 }}>
                 {t('common.actions.add', 'Add')}
@@ -202,12 +203,12 @@ const EnvelopeType = () => {
       >
 
         <Input
-          placeholder="Envelope name"
+          placeholder={t('masters.envelopeType.envelopeName', 'Envelope name')}
           value={envelopeName}
           onChange={(e) => setEnvelopeName(e.target.value)}
         />
         <InputNumber
-          placeholder="Capacity"
+          placeholder={t('masters.envelopeType.enterCapacity', 'Capacity')}
           value={capacity}
           min={1} // ✅ prevents entering negative or zero values
           onChange={(value) => {

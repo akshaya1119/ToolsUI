@@ -1626,8 +1626,8 @@ const DataImport = () => {
               onConfirm={async () => {
                 await handleDeleteRow(record);
               }}
-              okText={t('popconfirm.yes', 'Yes')}
-              cancelText={t('popconfirm.no', 'No')}
+              okText={t('common.labels.yes', 'Yes')}
+              cancelText={t('common.labels.no', 'No')}
               okButtonProps={{ danger: true }}
             >
               <Button
@@ -2361,7 +2361,7 @@ const DataImport = () => {
     <div style={{ padding: 0 }}>
       {/* === PAGE HEADER === */}
       <Typography.Title level={3} style={{ marginBottom: 8 }}>
-        Data Import
+        {t("pipeline.dataImport")}
       </Typography.Title>
 
       {/* === DATA IMPORT SECTION (collapsible) === */}
@@ -2371,361 +2371,361 @@ const DataImport = () => {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3 }}
         >
-        <Card
-          title={
-            <div
-              style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", userSelect: "none" }}
-              onClick={() => setUploadSectionCollapsed(prev => !prev)}
-            >
-              <ToolOutlined style={iconStyle} />
-              <span>Data Import</span>
-              {!uploadSectionCollapsed && (
-                <Text type="secondary" style={{ fontWeight: 400, fontSize: 13, marginLeft: 4 }}>
-                  — Upload and map your data files here
-                </Text>
-              )}
-            </div>
-          }
-          extra={
-            <Space size={6} onClick={e => e.stopPropagation()}>
-              <Tooltip title={isLotDispatched(selectedLot) ? `Lot ${selectedLot} is dispatched (read-only)` : ""}>
-                <Button
-                  type="primary"
-                  size="small"
-                  icon={<PlusOutlined />}
-                  disabled={isLotDispatched(selectedLot)}
-                  style={{ minWidth: 110, height: 28, fontSize: 12 }}
-                  onClick={() => setAddRowOpen((prev) => !prev)}
-                >
-                  Add Data
-                </Button>
-              </Tooltip>
-
-              <Button
-                size="small"
-                icon={<TriangleAlert size={14} />}
-                style={{
-                  minWidth: 110,
-                  height: 28,
-                  fontSize: 12,
-                  backgroundColor: "#f0dc24ff",
-                  borderColor: "#d4bc00",
-                  color: "#000",
-                }}
-                onClick={fetchConflictReport}
+          <Card
+            title={
+              <div
+                style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", userSelect: "none" }}
+                onClick={() => setUploadSectionCollapsed(prev => !prev)}
               >
-                Load Conflict
-              </Button>
+                <ToolOutlined style={iconStyle} />
+                <span>{t("pipeline.dataImport", "Data Import")}</span>
+                {!uploadSectionCollapsed && (
+                  <Text type="secondary" style={{ fontWeight: 400, fontSize: 13, marginLeft: 4 }}>
+                    — {t("dataImport.uploadAndMapDesc", "Upload and map your data files here")}
+                  </Text>
+                )}
+              </div>
+            }
+            extra={
+              <Space size={6} onClick={e => e.stopPropagation()}>
+                <Tooltip title={isLotDispatched(selectedLot) ? `${t('common.labels.lot', 'Lot')} ${selectedLot} ${t('dataImport.isDispatchedReadOnly', 'is dispatched (read-only)')}` : ""}>
+                  <Button
+                    type="primary"
+                    size="small"
+                    icon={<PlusOutlined />}
+                    disabled={isLotDispatched(selectedLot)}
+                    style={{ minWidth: 110, height: 28, fontSize: 12 }}
+                    onClick={() => setAddRowOpen((prev) => !prev)}
+                  >
+                    {t("pipeline.addData", "Add Data")}
+                  </Button>
+                </Tooltip>
 
-              <Tooltip title={!canDeleteAllNr ? "Special action permission required: Delete All NR Data" : isLotDispatched(selectedLot) ? `Lot ${selectedLot} is dispatched (read-only)` : ""}>
                 <Button
-                  danger
                   size="small"
-                  disabled={!canDeleteAllNr || isLotDispatched(selectedLot)}
-                  icon={<Trash2 size={14} />}
+                  icon={<TriangleAlert size={14} />}
                   style={{
                     minWidth: 110,
                     height: 28,
                     fontSize: 12,
-                    backgroundColor: (!canDeleteAllNr || isLotDispatched(selectedLot)) ? undefined : "#ff4d4f",
-                    borderColor: (!canDeleteAllNr || isLotDispatched(selectedLot)) ? undefined : "#ff4d4f",
-                    color: (!canDeleteAllNr || isLotDispatched(selectedLot)) ? undefined : "#fff",
+                    backgroundColor: "#f0dc24ff",
+                    borderColor: "#d4bc00",
+                    color: "#000",
                   }}
-                  onClick={async () => {
-                    if (!canDeleteAllNr) {
-                      showToast("Access Denied: You do not have permission for special action 'Delete All NR Data'.", "error");
-                      return;
-                    }
-                    if (isLotDispatched(selectedLot)) {
-                      showToast(`Lot ${selectedLot} is dispatched and cannot be deleted`, "error");
-                      return;
-                    }
-                    const confirmed = await MessageService.confirm(
-                      "Are you sure you want to delete NR data for this project?",
-                      {
-                        title: "Confirm Deletion",
-                        confirmText: "Yes, Delete",
-                        cancelText: "Cancel",
-                        type: 'error',
-                      }
-                    );
-                    if (confirmed) await deleteNRData();
-                  }}
+                  onClick={fetchConflictReport}
                 >
-                  Delete NR Data
+                  {t("pipeline.loadConflict", "Load Conflict")}
                 </Button>
-              </Tooltip>
-            </Space>
-          }
-          bordered={true}
-          styles={{ body: { paddingTop: uploadSectionCollapsed ? 0 : 12, paddingBottom: uploadSectionCollapsed ? 0 : 12, overflow: 'hidden', transition: 'all 0.3s ease' } }}
-          style={{
-            width: "100%",
-            boxShadow: "0 4px 8px rgba(0,0,0,0.1)",
-            marginBottom: 2,
-            paddingBottom: 0,
-            backgroundColor: "#f5f5f5"
-          }}
-        >
-          {!uploadSectionCollapsed && (
-            <>
-              <Row gutter={[16, 16]}>
-                <Col xs={24} md={12}>
-                  <div style={{ padding: 12, border: "1px solid #d9d9d9", borderRadius: 10, background: "#fff" }}>
-                    <Space direction="vertical" size={10} style={{ width: "100%" }}>
-                      <div>
-                        <Text strong>File Upload</Text>
-                        <Text type="secondary" style={{ display: "block", fontSize: 12, lineHeight: 1.3 }}>
-                          Upload a corrected NRData report if you have already fixed your source file.
-                        </Text>
-                      </div>
-                      <Upload.Dragger
-                        name="file"
-                        accept=".xls,.xlsx,.csv"
-                        fileList={fileList}
-                        beforeUpload={beforeUpload}
-                        onRemove={handleRemove}
-                        maxCount={1}
-                      >
-                        {/* <p className="ant-upload-drag-icon">📤</p> */}
-                        <p className="ant-upload-text">{t("pipeline.uploadFile", "Upload Excel or CSV file")}</p>
-                        <Text type="secondary" style={{ display: "block" }}>
-                          Drag and drop or click to choose a file.
-                        </Text>
-                        <Button icon={<UploadOutlined />}>{t("pipeline.chooseFile", "Choose File")}</Button>
-                      </Upload.Dragger>
-                    </Space>
-                  </div>
-                </Col>
 
-                <Col xs={24} md={12}>
-                  <div style={{ padding: 12, border: "1px solid #d9d9d9", borderRadius: 10, background: "#fff" }}>
-
-
-                    <Space direction="vertical" size={10} style={{ width: "100%", marginTop: 16 }}>
-                      <div>
-                        <Text strong>Zero Quantity Handling</Text>
-                        <Text type="secondary" style={{ display: "block", fontSize: 12, lineHeight: 1.3 }}>
-                          Choose how to handle rows where NRQuantity is 0 before upload.
-                        </Text>
-                      </div>
-
-                      <Checkbox
-                        checked={keepZeroQuantity}
-                        onChange={handleKeepZeroQuantityChange}
-                      >
-                        Keep items with 0 quantity and change their quantity
-                      </Checkbox>
-
-                      {keepZeroQuantity && (
-                        <Input
-                          type="number"
-                          value={quantity}
-                          onChange={handleQuantityChange}
-                          placeholder="Enter quantity to replace 0"
-                          min={0}
-                        />
-                      )}
-
-                      <Checkbox
-                        checked={skipItems}
-                        onChange={handleSkipItemsChange}
-                      >
-                        Skip items with 0 quantity
-                      </Checkbox>
-                    </Space>
-                  </div>
-                </Col>
-              </Row>
-
-              {/* === FIELD MAPPING SECTION === */}
-              {fileHeaders.length > 0 && (
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  whileHover={{
-                    scale: 1.01,
-                    boxShadow: "0 10px 20px rgba(0, 0, 0, 0.1)",
-                  }}
-                  transition={{ duration: 0.3 }}
-                >
-                  <Card
-                    title="Field Mapping"
-                    extra={
-                      getRemainingFields().length > 0 && (
-                        <Select
-                          style={{ width: 200 }}
-                          placeholder="+ Add Field to Map"
-                          value={null}
-                          showSearch
-                          filterOption={(input, option) =>
-                            (option?.children ?? '').toLowerCase().includes(input.toLowerCase())
-                          }
-                          onChange={(value) => {
-                            if (value) {
-                              setAddedFieldIds(prev => [...prev, value]);
-                            }
-                          }}
-                        >
-                          {getRemainingFields().map(f => (
-                            <Select.Option key={f.fieldId} value={f.fieldId}>
-                              {f.name}
-                            </Select.Option>
-                          ))}
-                        </Select>
-                      )
-                    }
-                    styles={{ body: { paddingTop: 12, paddingBottom: 12 } }}
+                <Tooltip title={!canDeleteAllNr ? t("dataImport.specialActionDeleteRequired", "Special action permission required: Delete All NR Data") : isLotDispatched(selectedLot) ? `${t('common.labels.lot', 'Lot')} ${selectedLot} ${t('dataImport.isDispatchedReadOnly', 'is dispatched (read-only)')}` : ""}>
+                  <Button
+                    danger
+                    size="small"
+                    disabled={!canDeleteAllNr || isLotDispatched(selectedLot)}
+                    icon={<Trash2 size={14} />}
                     style={{
-                      border: "1px solid #d9d9d9",
-                      boxShadow: "0 4px 8px rgba(0,0,0,0.1)",
+                      minWidth: 110,
+                      height: 28,
+                      fontSize: 12,
+                      backgroundColor: (!canDeleteAllNr || isLotDispatched(selectedLot)) ? undefined : "#ff4d4f",
+                      borderColor: (!canDeleteAllNr || isLotDispatched(selectedLot)) ? undefined : "#ff4d4f",
+                      color: (!canDeleteAllNr || isLotDispatched(selectedLot)) ? undefined : "#fff",
+                    }}
+                    onClick={async () => {
+                      if (!canDeleteAllNr) {
+                        showToast("Access Denied: You do not have permission for special action 'Delete All NR Data'.", "error");
+                        return;
+                      }
+                      if (isLotDispatched(selectedLot)) {
+                        showToast(`Lot ${selectedLot} is dispatched and cannot be deleted`, "error");
+                        return;
+                      }
+                      const confirmed = await MessageService.confirm(
+                        "Are you sure you want to delete NR data for this project?",
+                        {
+                          title: "Confirm Deletion",
+                          confirmText: "Yes, Delete",
+                          cancelText: "Cancel",
+                          type: 'error',
+                        }
+                      );
+                      if (confirmed) await deleteNRData();
                     }}
                   >
-                    <Text
-                      type="secondary"
-                      style={{ display: "block", marginBottom: 16 }}
-                    >
-                      Map fields from your file to expected fields (Required fields are shown by default)
-                    </Text>
+                    {t("pipeline.deleteNRData", "Delete NR Data")}
+                  </Button>
+                </Tooltip>
+              </Space>
+            }
+            bordered={true}
+            styles={{ body: { paddingTop: uploadSectionCollapsed ? 0 : 12, paddingBottom: uploadSectionCollapsed ? 0 : 12, overflow: 'hidden', transition: 'all 0.3s ease' } }}
+            style={{
+              width: "100%",
+              boxShadow: "0 4px 8px rgba(0,0,0,0.1)",
+              marginBottom: 2,
+              paddingBottom: 0,
+              backgroundColor: "#f5f5f5"
+            }}
+          >
+            {!uploadSectionCollapsed && (
+              <>
+                <Row gutter={[16, 16]}>
+                  <Col xs={24} md={12}>
+                    <div style={{ padding: 12, border: "1px solid #d9d9d9", borderRadius: 10, background: "#fff" }}>
+                      <Space direction="vertical" size={10} style={{ width: "100%" }}>
+                        <div>
+                          <Text strong>{t("dataImport.fileUploadTitle", "File Upload")}</Text>
+                          <Text type="secondary" style={{ display: "block", fontSize: 12, lineHeight: 1.3 }}>
+                            {t("dataImport.fileUploadDesc", "Upload a corrected NRData report if you have already fixed your source file.")}
+                          </Text>
+                        </div>
+                        <Upload.Dragger
+                          name="file"
+                          accept=".xls,.xlsx,.csv"
+                          fileList={fileList}
+                          beforeUpload={beforeUpload}
+                          onRemove={handleRemove}
+                          maxCount={1}
+                        >
+                          {/* <p className="ant-upload-drag-icon">📤</p> */}
+                          <p className="ant-upload-text">{t("common.actions.uploadExcelCsv", "Upload Excel or CSV file")}</p>
+                          <Text type="secondary" style={{ display: "block" }}>
+                            {t("dataImport.dragAndDrop", "Drag and drop or click to choose a file.")}
+                          </Text>
+                          <Button icon={<UploadOutlined />}>{t("pipeline.chooseFile", "Choose File")}</Button>
+                        </Upload.Dragger>
+                      </Space>
+                    </div>
+                  </Col>
 
-                    <Row gutter={[16, 16]}>
-                      {[...getMappedFieldsToDisplay()]
-                        .sort((a, b) => {
-                          const aReq = requiredFieldNames.includes(a.name);
-                          const bReq = requiredFieldNames.includes(b.name);
-                          if (aReq && !bReq) return -1;
-                          if (!aReq && bReq) return 1;
-                          return 0;
-                        })
-                        .map((expectedField) => {
-                          return (
-                            <Col key={expectedField.fieldId} xs={24} md={8}>
-                              <div style={{ marginBottom: 12 }}>
-                                <div style={{ display: "flex", alignItems: "center" }}>
-                                  <Text
+                  <Col xs={24} md={12}>
+                    <div style={{ padding: 12, border: "1px solid #d9d9d9", borderRadius: 10, background: "#fff" }}>
+
+
+                      <Space direction="vertical" size={10} style={{ width: "100%", marginTop: 16 }}>
+                        <div>
+                          <Text strong>{t("pipeline.zeroQuantityHandling", "Zero Quantity Handling")}</Text>
+                          <Text type="secondary" style={{ display: "block", fontSize: 12, lineHeight: 1.3 }}>
+                            {t("dataImport.zeroQuantityDesc", "Choose how to handle rows where NRQuantity is 0 before upload.")}
+                          </Text>
+                        </div>
+
+                        <Checkbox
+                          checked={keepZeroQuantity}
+                          onChange={handleKeepZeroQuantityChange}
+                        >
+                          {t("pipeline.keepZero", "Keep items with 0 quantity and change their quantity")}
+                        </Checkbox>
+
+                        {keepZeroQuantity && (
+                          <Input
+                            type="number"
+                            value={quantity}
+                            onChange={handleQuantityChange}
+                            placeholder={t("dataImport.enterQuantityPlaceholder", "Enter quantity to replace 0")}
+                            min={0}
+                          />
+                        )}
+
+                        <Checkbox
+                          checked={skipItems}
+                          onChange={handleSkipItemsChange}
+                        >
+                          {t("pipeline.skipZero", "Skip items with 0 quantity")}
+                        </Checkbox>
+                      </Space>
+                    </div>
+                  </Col>
+                </Row>
+
+                {/* === FIELD MAPPING SECTION === */}
+                {fileHeaders.length > 0 && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    whileHover={{
+                      scale: 1.01,
+                      boxShadow: "0 10px 20px rgba(0, 0, 0, 0.1)",
+                    }}
+                    transition={{ duration: 0.3 }}
+                  >
+                    <Card
+                      title={t("dataImport.fieldMappingTitle", "Field Mapping")}
+                      extra={
+                        getRemainingFields().length > 0 && (
+                          <Select
+                            style={{ width: 200 }}
+                            placeholder={t("dataImport.addFieldToMapPlaceholder", "+ Add Field to Map")}
+                            value={null}
+                            showSearch
+                            filterOption={(input, option) =>
+                              (option?.children ?? '').toLowerCase().includes(input.toLowerCase())
+                            }
+                            onChange={(value) => {
+                              if (value) {
+                                setAddedFieldIds(prev => [...prev, value]);
+                              }
+                            }}
+                          >
+                            {getRemainingFields().map(f => (
+                              <Select.Option key={f.fieldId} value={f.fieldId}>
+                                {f.name}
+                              </Select.Option>
+                            ))}
+                          </Select>
+                        )
+                      }
+                      styles={{ body: { paddingTop: 12, paddingBottom: 12 } }}
+                      style={{
+                        border: "1px solid #d9d9d9",
+                        boxShadow: "0 4px 8px rgba(0,0,0,0.1)",
+                      }}
+                    >
+                      <Text
+                        type="secondary"
+                        style={{ display: "block", marginBottom: 16 }}
+                      >
+                        {t("dataImport.fieldMappingDesc", "Map fields from your file to expected fields (Required fields are shown by default)")}
+                      </Text>
+
+                      <Row gutter={[16, 16]}>
+                        {[...getMappedFieldsToDisplay()]
+                          .sort((a, b) => {
+                            const aReq = requiredFieldNames.includes(a.name);
+                            const bReq = requiredFieldNames.includes(b.name);
+                            if (aReq && !bReq) return -1;
+                            if (!aReq && bReq) return 1;
+                            return 0;
+                          })
+                          .map((expectedField) => {
+                            return (
+                              <Col key={expectedField.fieldId} xs={24} md={8}>
+                                <div style={{ marginBottom: 12 }}>
+                                  <div style={{ display: "flex", alignItems: "center" }}>
+                                    <Text
+                                      style={{
+                                        marginRight: 8,
+                                        color: fieldMappings[expectedField.fieldId]
+                                          ? "#006400"
+                                          : "inherit",
+                                      }}
+                                    >
+                                      {expectedField.name}
+                                      {requiredFieldNames.includes(expectedField.name) && (
+                                        <span style={{ color: "#ff4d4f", marginLeft: 2 }}>*</span>
+                                      )}
+                                    </Text>
+                                    {fieldMappings[expectedField.fieldId] && (
+                                      <CheckCircleOutlined
+                                        style={{ color: "#006400", fontSize: 16 }}
+                                      />
+                                    )}
+                                  </div>
+                                  <Select
                                     style={{
-                                      marginRight: 8,
-                                      color: fieldMappings[expectedField.fieldId]
+                                      width: "100%",
+                                      borderColor: fieldMappings[expectedField.fieldId]
                                         ? "#006400"
-                                        : "inherit",
+                                        : undefined,
+                                      boxShadow: fieldMappings[expectedField.fieldId]
+                                        ? "0 0 5px #006400"
+                                        : undefined,
+                                    }}
+                                    placeholder="Select matching column from file"
+                                    showSearch
+                                    filterOption={(input, option) =>
+                                      (option?.children ?? "")
+                                        .toString()
+                                        .toLowerCase()
+                                        .includes(input.toLowerCase())
+                                    }
+                                    value={
+                                      fieldMappings[expectedField.fieldId]
+                                    }
+                                    onChange={(value) => {
+                                      setFieldMappings((prev) => ({
+                                        ...prev,
+                                        [expectedField.fieldId]: value,
+                                      }));
+                                    }}
+                                    allowClear
+                                    onClear={() => {
+                                      setFieldMappings((prev) => {
+                                        const updated = { ...prev };
+                                        delete updated[expectedField.fieldId];
+                                        return updated;
+                                      });
+                                      if (!requiredFieldNames.includes(expectedField.name)) {
+                                        setAddedFieldIds(prev => prev.filter(id => id !== expectedField.fieldId));
+                                      }
                                     }}
                                   >
-                                    {expectedField.name}
-                                    {requiredFieldNames.includes(expectedField.name) && (
-                                      <span style={{ color: "#ff4d4f", marginLeft: 2 }}>*</span>
-                                    )}
-                                  </Text>
-                                  {fieldMappings[expectedField.fieldId] && (
-                                    <CheckCircleOutlined
-                                      style={{ color: "#006400", fontSize: 16 }}
-                                    />
-                                  )}
+                                    {fileHeaders
+                                      .filter(
+                                        (header) =>
+                                          !Object.values(fieldMappings).includes(header) ||
+                                          fieldMappings[expectedField.fieldId] === header
+                                      )
+                                      .map((header, index) => (
+                                        <Select.Option
+                                          key={`${header}-${index}`}
+                                          value={header}
+                                        >
+                                          {header}
+                                        </Select.Option>
+                                      ))}
+                                  </Select>
                                 </div>
-                                <Select
-                                  style={{
-                                    width: "100%",
-                                    borderColor: fieldMappings[expectedField.fieldId]
-                                      ? "#006400"
-                                      : undefined,
-                                    boxShadow: fieldMappings[expectedField.fieldId]
-                                      ? "0 0 5px #006400"
-                                      : undefined,
-                                  }}
-                                  placeholder="Select matching column from file"
-                                  showSearch
-                                  filterOption={(input, option) =>
-                                    (option?.children ?? "")
-                                      .toString()
-                                      .toLowerCase()
-                                      .includes(input.toLowerCase())
-                                  }
-                                  value={
-                                    fieldMappings[expectedField.fieldId]
-                                  }
-                                  onChange={(value) => {
-                                    setFieldMappings((prev) => ({
-                                      ...prev,
-                                      [expectedField.fieldId]: value,
-                                    }));
-                                  }}
-                                  allowClear
-                                  onClear={() => {
-                                    setFieldMappings((prev) => {
-                                      const updated = { ...prev };
-                                      delete updated[expectedField.fieldId];
-                                      return updated;
-                                    });
-                                    if (!requiredFieldNames.includes(expectedField.name)) {
-                                      setAddedFieldIds(prev => prev.filter(id => id !== expectedField.fieldId));
-                                    }
-                                  }}
-                                >
-                                  {fileHeaders
-                                    .filter(
-                                      (header) =>
-                                        !Object.values(fieldMappings).includes(header) ||
-                                        fieldMappings[expectedField.fieldId] === header
-                                    )
-                                    .map((header, index) => (
-                                      <Select.Option
-                                        key={`${header}-${index}`}
-                                        value={header}
-                                      >
-                                        {header}
-                                      </Select.Option>
-                                    ))}
-                                </Select>
-                              </div>
-                            </Col>
-                          );
-                        })}
-                    </Row>
+                              </Col>
+                            );
+                          })}
+                      </Row>
 
-                    {isAnyFieldMapped() && (
-                      <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 16 }}>
-                        <div style={{ padding: 12, border: "1px solid #d9d9d9", borderRadius: 10, background: "#fafafa" }}>
-                          <Space direction="vertical" size={10} style={{ width: "100%" }}>
-                            <div>
-                              <Text strong>Changed NR Data</Text>
-                              <Text type="secondary" style={{ display: "block", fontSize: 12, lineHeight: 1.3 }}>
-                                Enable this if you're uploading changed NR data to remove duplicates automatically.
-                              </Text>
-                            </div>
-                            <Checkbox
-                              checked={isChangedNR}
-                              onChange={(e) => setIsChangedNR(e.target.checked)}
+                      {isAnyFieldMapped() && (
+                        <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 16 }}>
+                          <div style={{ padding: 12, border: "1px solid #d9d9d9", borderRadius: 10, background: "#fafafa" }}>
+                            <Space direction="vertical" size={10} style={{ width: "100%" }}>
+                              <div>
+                                <Text strong>Changed NR Data</Text>
+                                <Text type="secondary" style={{ display: "block", fontSize: 12, lineHeight: 1.3 }}>
+                                  Enable this if you're uploading changed NR data to remove duplicates automatically.
+                                </Text>
+                              </div>
+                              <Checkbox
+                                checked={isChangedNR}
+                                onChange={(e) => setIsChangedNR(e.target.checked)}
+                              >
+                                This is a Changed NR upload
+                              </Checkbox>
+                            </Space>
+                          </div>
+                          <Space style={{ width: "100%", justifyContent: "space-between" }}>
+                            <Button
+                              type="primary"
+                              onClick={handleUpload}
+                              loading={uploading}
+                              disabled={uploading}
                             >
-                              This is a Changed NR upload
-                            </Checkbox>
+                              Upload Data
+                            </Button>
+                            {skippedRows.length > 0 && (
+                              <Button
+                                onClick={downloadSkippedRowsReport}
+                                style={{ backgroundColor: "#faad14", borderColor: "#faad14", color: "#000" }}
+                              >
+                                📥 Download Missing Data Report ({skippedRows.length})
+                              </Button>
+                            )}
                           </Space>
                         </div>
-                        <Space style={{ width: "100%", justifyContent: "space-between" }}>
-                          <Button
-                            type="primary"
-                            onClick={handleUpload}
-                            loading={uploading}
-                            disabled={uploading}
-                          >
-                            Upload Data
-                          </Button>
-                          {skippedRows.length > 0 && (
-                            <Button
-                              onClick={downloadSkippedRowsReport}
-                              style={{ backgroundColor: "#faad14", borderColor: "#faad14", color: "#000" }}
-                            >
-                              📥 Download Missing Data Report ({skippedRows.length})
-                            </Button>
-                          )}
-                        </Space>
-                      </div>
-                    )}
-                  </Card>
-                </motion.div>
-              )}
-            </>
-          )}
-        </Card>
-      </motion.div>
+                      )}
+                    </Card>
+                  </motion.div>
+                )}
+              </>
+            )}
+          </Card>
+        </motion.div>
       )}
 
       {/* === DATA AND CONFLICTS SECTION === */}
@@ -2741,7 +2741,7 @@ const DataImport = () => {
         >
           {/* Left side: Title */}
           <Typography.Title level={4} style={{ margin: 0 }}>
-            Data & Conflicts
+            {t('pipeline.dataAndConflicts')}
           </Typography.Title>
         </div>
 
@@ -3025,7 +3025,7 @@ const DataImport = () => {
                     onClick={() => setShowUploadedDisplayFieldsModal(true)}
                     disabled={!columns.length}
                   >
-                    Display Fields
+                    {t("pipeline.displayFields", "Display Fields")}
                   </Button>
                 ) : activeTab === "2" ? (
                   <Space size={8}>
@@ -3035,7 +3035,7 @@ const DataImport = () => {
                       onClick={downloadConflictReport}
                       disabled={!conflicts || !(conflicts?.errors || conflicts?.Errors || []).length}
                     >
-                      Download Conflict Excel
+                      {t("dataImport.downloadConflictExcel", "Download Conflict Excel")}
                     </Button>
                     <Button
                       type="primary"
@@ -3044,35 +3044,35 @@ const DataImport = () => {
                       disabled={!conflicts || !(conflicts?.errors || conflicts?.Errors || []).length}
                       style={{ backgroundColor: "#52c41a", borderColor: "#52c41a" }}
                     >
-                      Download Conflict PDF
+                      {t("dataImport.downloadConflictPdf", "Download Conflict PDF")}
                     </Button>
                   </Space>
                 ) : activeTab === "4" ? (
-                  <Tooltip title={isLotDispatched(selectedLot) ? `Lot ${selectedLot} is dispatched and cannot be bifurcated` : ""}>
+                  <Tooltip title={isLotDispatched(selectedLot) ? `${t('common.labels.lot', 'Lot')} ${selectedLot} ${t('dataImport.isDispatchedCannotBifurcate', 'is dispatched and cannot be bifurcated')}` : ""}>
                     <Button
                       type="primary"
                       size="small"
                       disabled={isLotDispatched(selectedLot)}
                       onClick={() => lotBifurcationRef.current?.openBifurcationModal?.()}
                     >
-                      Bifurcate Lots
+                      {t("dataImport.bifurcateLots", "Bifurcate Lots")}
                     </Button>
                   </Tooltip>
                 ) : activeTab === "5" ? (
-                  <Tooltip title={isLotDispatched(selectedLot) ? `Lot ${selectedLot} is dispatched and cannot be modified` : ""}>
+                  <Tooltip title={isLotDispatched(selectedLot) ? `${t('common.labels.lot', 'Lot')} ${selectedLot} ${t('dataImport.isDispatchedCannotModify', 'is dispatched and cannot be modified')}` : ""}>
                     <Button
                       size="small"
                       disabled={mergeSelectionCount < 2 || isLotDispatched(selectedLot)}
                       onClick={() => mergeCatchRef.current?.openMergeModal?.()}
                     >
-                      Merge Selected
+                      {t("dataImport.mergeSelected", "Merge Selected")}
                     </Button>
                   </Tooltip>
                 ) : null
               }
             >
               {canUploadedData && (
-                <TabPane tab={t("pipeline.uploadedData", "Uploaded Data")} key="1">
+                <TabPane tab={t("common.labels.uploadedData", "Uploaded Data")} key="1">
                   <Space direction="vertical" size={12} style={{ width: "100%" }}>
                     <Space wrap size={8} style={{ width: "100%", justifyContent: "space-between" }}>
                       <Space size={8}>
@@ -3103,7 +3103,7 @@ const DataImport = () => {
                               setPagination((prev) => ({ ...prev, current: 1 }));
                             }}
                           >
-                            Reset Filters
+                            {t("common.actions.resetFilters", "Reset Filters")}
                           </Button>
                         )}
                       </Space>
@@ -3122,7 +3122,7 @@ const DataImport = () => {
                           emptyText: (
                             <div style={{ padding: '24px 0', textAlign: 'center' }}>
                               <Text type="secondary" style={{ display: 'block', marginBottom: 12, fontSize: '15px' }}>
-                                No data available matching your search criteria.
+                                {t("dataImport.noDataMatchingCriteria", "No data available matching your search criteria.")}
                               </Text>
                               {(globalSearchText || Object.keys(columnFilters).length > 0) && (
                                 <Button
@@ -3133,7 +3133,7 @@ const DataImport = () => {
                                     setPagination((prev) => ({ ...prev, current: 1 }));
                                   }}
                                 >
-                                  Clear Search & Filters
+                                  {t("dataImport.clearSearchAndFilters", "Clear Search & Filters")}
                                 </Button>
                               )}
                             </div>

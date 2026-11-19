@@ -79,11 +79,13 @@ const usePermissionsStore = create((set, get) => ({
     // Known special action mapping: actionCode -> { parentModule, requiredStandardAction }
     const SPECIAL_ACTION_MAP = {
       'ACTION_DELETE_ALL_NR_DATA': { parentModule: 'UPLOADED_DATA', requiredStandardAction: 'Delete' },
-      'ACTION_BULK_UPDATE_NR_DATA': { parentModule: 'UPLOADED_DATA', requiredStandardAction: 'Edit' },
       'ACTION_BULK_VERIFY_CATCHES': { parentModule: 'HEADER_VERIFICATION', requiredStandardAction: 'Edit' },
-      'ACTION_APPLY_CHANGED_NR': { parentModule: 'CHANGED_NR', requiredStandardAction: 'Execute' },
-      'ACTION_PUSH_NODAL_TO_NR': { parentModule: 'NODAL_CATCH', requiredStandardAction: 'Execute' },
+      'ACTION_APPLY_CHANGED_NR': { parentModule: 'CHANGED_NR', requiredStandardAction: 'Edit' },
+      'ACTION_PUSH_NODAL_TO_NR': { parentModule: 'NODAL_CATCH', requiredStandardAction: 'Edit' },
       'ACTION_PURGE_REPORT_RECORD': { parentModule: 'REPORT_TEMPLATE_MANAGEMENT', requiredStandardAction: 'Delete' },
+      'ACTION_UPLOAD_RPT_TEMPLATE': { parentModule: 'REPORT_TEMPLATE_MANAGEMENT', requiredStandardAction: 'Create' },
+      'ACTION_MAP_RPT_TEMPLATE': { parentModule: 'REPORT_TEMPLATE_MANAGEMENT', requiredStandardAction: 'Edit' },
+      'ACTION_SEND_TO_ERP': { parentModule: 'PROCESSING_PIPELINE', requiredStandardAction: 'Edit' },
     };
 
     const mapping = SPECIAL_ACTION_MAP[actionCode];

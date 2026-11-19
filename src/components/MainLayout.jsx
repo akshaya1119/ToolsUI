@@ -1,10 +1,12 @@
 import { useState, cloneElement, isValidElement } from "react";
+import { useTranslation } from "react-i18next";
 import Navbar from "./Navbar";
 import Sidebar from "./Sidebar";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useUserTokenActions } from "../stores/UserToken";
 
 export default function MainLayout({ children }) {
+  const { t } = useTranslation();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [dashboardSearchQuery, setDashboardSearchQuery] = useState("");
   const [dashboardView, setDashboardView] = useState("groups");
@@ -38,8 +40,8 @@ export default function MainLayout({ children }) {
   
   // Dynamic placeholder - always allow searching groups
   const searchPlaceholder = isDashboardPage 
-    ? "Search groups or projects..." 
-    : "Search...";
+    ? t("navbar.searchGroupsOrProjects", "Search groups or projects...") 
+    : t("common.placeholders.search", "Search...");
 
   // Clone children and pass search props if it's Dashboard component
   const enhancedChildren = isValidElement(children) && isDashboardPage
@@ -57,7 +59,7 @@ export default function MainLayout({ children }) {
         onLogout={handleLogout}
         searchQuery={isDashboardPage ? dashboardSearchQuery : generalSearchQuery}
         onSearchChange={isDashboardPage ? setDashboardSearchQuery : setGeneralSearchQuery}
-        searchPlaceholder={isDashboardPage ? searchPlaceholder : "Search..."}
+        searchPlaceholder={searchPlaceholder}
       />
 
       {/* Body layout: Sidebar + Content */}

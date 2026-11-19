@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from "react";
 import * as XLSX from "xlsx";
+import { useTranslation } from "react-i18next";
 import API from "../hooks/api";
 import useStore from "../stores/ProjectData";
 
 const HToV = () => {
+    const { t } = useTranslation();
     const [headers, setHeaders] = useState([]);
     const [fixedHeaders, setFixedHeaders] = useState([]);
     const [file, setFile] = useState(null);
@@ -115,7 +117,7 @@ const HToV = () => {
             }}
         >
             <p style={{ textAlign: "center", color: "#666", marginBottom: "30px" }}>
-                Upload file and select fixed headers.
+                {t('htov.instructions', 'Upload file and select fixed headers.')}
             </p>
 
             {/* File Upload Section */}
@@ -143,7 +145,7 @@ const HToV = () => {
                         <strong>📄 {fileName}</strong>
                     ) : (
                         <>
-                            <strong>Click to Upload</strong> or drag & drop your Excel file
+                            <strong>{t('htov.clickToUpload', 'Click to Upload')}</strong> {t('htov.orDragDrop', 'or drag & drop your Excel file')}
                         </>
                     )}
                 </div>
@@ -153,7 +155,7 @@ const HToV = () => {
             {headers.length > 0 && (
                 <div style={{ marginTop: "40px" }}>
                     <h3 style={{ marginBottom: "10px", textAlign: "center" }}>
-                        Headers Found
+                        {t('htov.headersFound', 'Headers Found')}
                     </h3>
                     <div
                         style={{
@@ -209,7 +211,7 @@ const HToV = () => {
                             transition: "0.3s",
                         }}
                     >
-                        {isUploading ? "Uploading..." : "Upload File"}
+                        {isUploading ? t('htov.uploading', 'Uploading...') : t('htov.uploadFile', 'Upload File')}
                     </button>
 
                     {uploadMessage && (
@@ -232,7 +234,7 @@ const HToV = () => {
                                         cursor: "pointer",
                                     }}
                                 >
-                                    ⬇️ Download Processed File
+                                    ⬇️ {t('htov.downloadProcessedFile', 'Download Processed File')}
                                 </button>
                             </a>
                         </div>

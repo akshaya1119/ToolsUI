@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import axios from 'axios';
 import { Filter, FileEdit, Check, X } from 'lucide-react';
 import { Table, Input, Space, Button, Tag } from 'antd';
@@ -11,9 +12,10 @@ import SummaryCardsHV from './components/HeaderVerification/SummaryCardsHV';
 import SearchBarHV from './components/HeaderVerification/SearchBarHV';
 import StatusBadgeHV from './components/HeaderVerification/StatusBadgeHV';
 import PrintPreviewHV from './components/HeaderVerification/PrintPreviewHV';
-import { normalizeStatus, statusLabels, statusDropdownOptions } from './components/HeaderVerification/statusUtils';
+import { normalizeStatus, statusLabels, statusDropdownOptions, getStatusDropdownOptions, getStatusLabel } from './components/HeaderVerification/statusUtils';
 import { getCurrentUserId, getCurrentUserRoleId } from '../hooks/useUserMap';
 import usePermissionsStore from '../stores/UserPermissions';
+import message from '../utils/appMessage';
 
 const customTableStyles = `
   .header-verification-table tbody tr:hover td {
@@ -22,6 +24,7 @@ const customTableStyles = `
 `;
 
 const HeaderVerification = () => {
+  const { t } = useTranslation();
   const projectId = useStore((state) => state.projectId);
   const setHeaderCorrectionCount = useStore((state) => state.setHeaderCorrectionCount);
   const [records, setRecords] = useState([]);
@@ -419,7 +422,7 @@ const HeaderVerification = () => {
       <div style={{ padding: 8, width: 220 }}>
         <Input
           autoFocus
-          placeholder={`Search ${dataIndex}`}
+          placeholder={`${t('common.actions.search', 'Search')} ${dataIndex}`}
           value={selectedKeys[0] || ''}
           onChange={(e) => {
             const value = e.target.value;
@@ -443,7 +446,7 @@ const HeaderVerification = () => {
               handleColumnSearch(selectedKeys, confirm, dataIndex);
             }}
           >
-            Search
+            {t('common.actions.search', 'Search')}
           </Button>
 
           <Button
@@ -452,7 +455,7 @@ const HeaderVerification = () => {
               handleColumnReset(clearFilters, dataIndex);
             }}
           >
-            Reset
+            {t('common.actions.reset', 'Reset')}
           </Button>
         </Space>
       </div>
@@ -484,7 +487,7 @@ const HeaderVerification = () => {
 
   const tableColumns = useMemo(() => [
     {
-      title: 'Catch No.',
+      title: t('headerVerification.catchNo', 'Catch No.'),
       dataIndex: 'catchNo',
       key: 'catchNo',
       fixed: 'left',
@@ -495,7 +498,7 @@ const HeaderVerification = () => {
       render: (value) => <span className="text-sm text-gray-900">{value}</span>,
     },
     {
-      title: 'Lot',
+      title: t('common.labels.lot', 'Lot'),
       dataIndex: 'lotNo',
       key: 'lotNo',
       width: 100,
@@ -505,7 +508,7 @@ const HeaderVerification = () => {
       render: (value) => <span className="text-sm text-gray-600">{value}</span>,
     },
     {
-      title: 'Batch',
+      title: t('common.labels.batch', 'Batch'),
       key: 'batch',
       width: 110,
       sorter: (a, b) => {
@@ -517,8 +520,8 @@ const HeaderVerification = () => {
       render: (_, record) => {
         const envLotNo = catchEnvLotMap[(record.catchNo ?? '').toString().trim()];
         return envLotNo
-          ? <Tag color="blue" style={{ fontWeight: 500 }}>Batch {envLotNo}</Tag>
-          : <span style={{ color: '#94a3b8', fontSize: 12, fontStyle: 'italic' }}>Not allotted</span>;
+          ? <Tag color="blue" style={{ fontWeight: 500 }}>{t('common.labels.batch', 'Batch')} {envLotNo}</Tag>
+          : <span style={{ color: '#94a3b8', fontSize: 12, fontStyle: 'italic' }}>{t('headerVerification.notAllotted', 'Not allotted')}</span>;
       },
     },
     ...headerFields.map(fieldName => ({
@@ -551,7 +554,7 @@ const HeaderVerification = () => {
       },
     })),
     {
-      title: 'Remark',
+      title: t('headerVerification.colRemark', 'Remark'),
       dataIndex: 'remark',
       key: 'remark',
       width: 140,
@@ -563,7 +566,7 @@ const HeaderVerification = () => {
           <textarea
             className="w-full px-2 py-1 text-sm border border-amber-400 rounded focus:outline-none resize-none overflow-hidden"
             value={editFormData.remark || ''}
-            placeholder="Enter remark..."
+            placeholder={t('headerVerification.enterRemarkPlaceholder', 'Enter remark...')}
             rows={Math.max(2, Math.ceil((editFormData.remark || '').length / 30))}
             onChange={(e) => setEditFormData({ ...editFormData, remark: e.target.value })}
             onClick={(e) => e.stopPropagation()}
@@ -574,7 +577,7 @@ const HeaderVerification = () => {
       ),
     },
     {
-      title: 'Exam Date',
+      title: t('headerVerification.colExamDate', 'Exam Date'),
       dataIndex: 'date',
       key: 'date',
       width: 140,
@@ -586,7 +589,7 @@ const HeaderVerification = () => {
       ),
     },
     {
-      title: 'Exam Time',
+      title: t('headerVerification.colExamTime', 'Exam Time'),
       dataIndex: 'time',
       key: 'time',
       width: 200,
@@ -598,17 +601,17 @@ const HeaderVerification = () => {
       ),
     },
     {
-      title: 'Status',
+      title: t('common.labels.status', 'Status'),
       dataIndex: 'status',
       key: 'status',
       width: 140,
       filterDropdown: ({ confirm }) => {
         // Maps display label → selectedStatus API key
         const options = [
-          { label: 'All', value: 'ALL' },
-          { label: 'Not Verified', value: 'NOT_VERIFIED' },
-          { label: 'Verified', value: 'VERIFIED' },
-          { label: 'Needs Review', value: 'UNCLEAR' },
+          { label: t('headerVerification.filterAll', 'All'), value: 'ALL' },
+          { label: t('headerVerification.notVerified', 'Not Verified'), value: 'NOT_VERIFIED' },
+          { label: t('headerVerification.verified', 'Verified'), value: 'VERIFIED' },
+          { label: t('headerVerification.needsReview', 'Needs Review'), value: 'UNCLEAR' },
         ];
         return (
           <div style={{ padding: 8, minWidth: 160 }}>
@@ -652,7 +655,7 @@ const HeaderVerification = () => {
               onChange={(e) => setEditFormData({ ...editFormData, status: Number(e.target.value) })}
               onClick={(e) => e.stopPropagation()}
             >
-              {statusDropdownOptions.map((option) => (
+              {getStatusDropdownOptions().map((option) => (
                 <option key={option.value} value={option.value}>{option.label}</option>
               ))}
             </select>
@@ -663,8 +666,8 @@ const HeaderVerification = () => {
             <StatusBadgeHV status={value} />
             {record.verifiedBy && record.verifiedBy !== 0 && record.verifiedOn && (
               <div className="text-xs text-gray-600 whitespace-nowrap">
-                <div>Updated by: {getUserFirstName(record.verifiedBy)}</div>
-                <div>Updated at: {record.verifiedOn}</div>
+                <div>{t('headerVerification.updatedBy', 'Updated by')}: {getUserFirstName(record.verifiedBy)}</div>
+                <div>{t('headerVerification.updatedAt', 'Updated at')}: {record.verifiedOn}</div>
               </div>
             )}
           </div>
@@ -672,7 +675,7 @@ const HeaderVerification = () => {
       },
     },
     {
-      title: 'Actions',
+      title: t('common.labels.actions', 'Actions'),
       key: 'actions',
       width: 100,
       fixed: 'right',
@@ -683,14 +686,14 @@ const HeaderVerification = () => {
               <button
                 onClick={(e) => handleSaveRow(e, record.id)}
                 className="p-1 px-1.5 bg-green-500 text-white rounded shadow-sm hover:bg-green-600"
-                title="Save"
+                title={t('common.actions.save', 'Save')}
               >
                 <Check className="w-3.5 h-3.5" />
               </button>
               <button
                 onClick={handleCancelEdit}
                 className="p-1 px-1.5 bg-gray-200 text-gray-700 rounded shadow-sm hover:bg-gray-300"
-                title="Cancel"
+                title={t('common.actions.cancel', 'Cancel')}
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -699,7 +702,7 @@ const HeaderVerification = () => {
             <button
               onClick={(e) => handleEditRowClick(e, record)}
               className="p-1.5 rounded-md transition-colors text-blue-600 hover:bg-blue-50"
-              title="Edit row inline"
+              title={t('common.actions.editRowInline', 'Edit row inline')}
             >
               <FileEdit className="w-4 h-4" />
             </button>
@@ -707,7 +710,7 @@ const HeaderVerification = () => {
         </div>
       ),
     },
-  ], [columnFilters, editFormData, editingRowId, tableSorter, selectedStatus, catchEnvLotMap, isRoleAuthorized, headerFields]);
+  ], [columnFilters, editFormData, editingRowId, tableSorter, selectedStatus, catchEnvLotMap, isRoleAuthorized, headerFields, t]);
 
   const handleColumnToggle = useCallback((colKey) => {
     if (ALWAYS_VISIBLE.includes(colKey)) return;
@@ -946,8 +949,8 @@ const HeaderVerification = () => {
         <style>{customTableStyles}</style>
         <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 flex-shrink-0 px-6 pt-6">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Paper Header Verification</h1>
-            <p className="text-sm text-gray-500 mt-1">Search, filter, edit, and verify academic papers</p>
+            <h1 className="text-2xl font-bold text-gray-900">{t('headerVerification.title', 'Paper Header Verification')}</h1>
+            <p className="text-sm text-gray-500 mt-1">{t('headerVerification.subtitle', 'Search, filter, edit, and verify academic papers')}</p>
           </div>
           <div className="flex items-center gap-3">
             {isRoleAuthorized && hasSpecialAction('ACTION_BULK_VERIFY_CATCHES') && (() => {
@@ -960,10 +963,10 @@ const HeaderVerification = () => {
                     ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                     : 'bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer'
                     }`}
-                  title={allVerified ? 'All catches are already verified' : 'Bulk verify all catches in this project'}
+                  title={allVerified ? t('headerVerification.allVerifiedTooltip', 'All catches are already verified') : t('headerVerification.bulkVerifyTooltip', 'Bulk verify all catches in this project')}
                 >
                   <Check className="w-4 h-4" />
-                  Verify All
+                  {t('headerVerification.verifyAll', 'Verify All')}
                 </button>
               );
             })()}
@@ -1029,8 +1032,8 @@ const HeaderVerification = () => {
                 ) : displayedTotalRecords === 0 ? (
                   <div className="flex flex-col items-center justify-center p-12 text-center text-gray-500 h-full">
                     <Filter className="w-12 h-12 mb-4 text-gray-300" />
-                    <p className="text-lg font-medium text-gray-900">No records found</p>
-                    <p className="text-sm mt-1">Try adjusting your search or filters.</p>
+                    <p className="text-lg font-medium text-gray-900">{t('headerVerification.noRecordsFound', 'No records found')}</p>
+                    <p className="text-sm mt-1">{t('headerVerification.adjustSearchFilter', 'Try adjusting your search or filters.')}</p>
                   </div>
                 ) : (
                   <div id="table-scroll-container" className="max-h-full overflow-auto">
@@ -1051,8 +1054,8 @@ const HeaderVerification = () => {
                         emptyText: (
                           <div className="p-12 text-center text-gray-500">
                             <Filter className="mx-auto mb-4 w-12 h-12 text-gray-300" />
-                            <p className="text-lg font-medium text-gray-900">No records found</p>
-                            <p className="text-sm mt-1">Try adjusting your search or filters.</p>
+                            <p className="text-lg font-medium text-gray-900">{t('headerVerification.noRecordsFound', 'No records found')}</p>
+                            <p className="text-sm mt-1">{t('headerVerification.adjustSearchFilter', 'Try adjusting your search or filters.')}</p>
                           </div>
                         ),
                       }}
@@ -1089,10 +1092,10 @@ const HeaderVerification = () => {
               <div className="border-t border-gray-200 bg-white px-4 py-3 flex items-center justify-between flex-wrap gap-2 flex-shrink-0">
                 <span className="text-sm text-gray-600">
                   {loading
-                    ? 'Loading...'
+                    ? t('common.feedback.loading', 'Loading...')
                     : displayedTotalRecords > 0
-                      ? `${(currentPage - 1) * pageSize + 1}–${Math.min(currentPage * pageSize, displayedTotalRecords)} of ${displayedTotalRecords} records`
-                      : '0 records'
+                      ? `${(currentPage - 1) * pageSize + 1}–${Math.min(currentPage * pageSize, displayedTotalRecords)} ${t('common.actions.of', 'of')} ${displayedTotalRecords} ${t('headerVerification.recordsSuffix', 'records')}`
+                      : `0 ${t('headerVerification.recordsSuffix', 'records')}`
                   }
                 </span>
                 <div className="flex items-center gap-2">
@@ -1101,11 +1104,11 @@ const HeaderVerification = () => {
                     disabled={loading || currentPage === 1}
                     onClick={() => setCurrentPage(currentPage - 1)}
                   >
-                    Previous
+                    {t('common.actions.previous', 'Previous')}
                   </Button>
                   <span className="text-sm">
-                    {loading ? 'Loading…' : (
-                      <>Page <Input
+                    {loading ? t('common.feedback.loading', 'Loading…') : (
+                      <>{t('common.actions.page', 'Page')} <Input
                         type="number"
                         min={1}
                         max={displayedTotalPages}
@@ -1116,7 +1119,7 @@ const HeaderVerification = () => {
                         }}
                         style={{ width: 50 }}
                         size="small"
-                      /> of {displayedTotalPages}</>
+                      /> {t('common.actions.of', 'of')} {displayedTotalPages}</>
                     )}
                   </span>
                   <Button
@@ -1124,7 +1127,7 @@ const HeaderVerification = () => {
                     disabled={currentPage >= displayedTotalPages}
                     onClick={() => setCurrentPage(currentPage + 1)}
                   >
-                    Next
+                    {t('common.actions.next', 'Next')}
                   </Button>
                   <select
                     value={pageSize}
@@ -1134,10 +1137,10 @@ const HeaderVerification = () => {
                     }}
                     style={{ padding: '4px 8px', borderRadius: '2px', border: '1px solid #d9d9d9' }}
                   >
-                    <option value={10}>10 / page</option>
-                    <option value={20}>20 / page</option>
-                    <option value={50}>50 / page</option>
-                    <option value={100}>100 / page</option>
+                    <option value={10}>10 / {t('common.actions.page', 'page')}</option>
+                    <option value={20}>20 / {t('common.actions.page', 'page')}</option>
+                    <option value={50}>50 / {t('common.actions.page', 'page')}</option>
+                    <option value={100}>100 / {t('common.actions.page', 'page')}</option>
                   </select>
                 </div>
               </div>
@@ -1191,15 +1194,15 @@ const HeaderVerification = () => {
             </div>
 
             {/* Title */}
-            <h2 className="text-xl font-bold text-gray-900 text-center mb-2">Verify All Catches</h2>
+            <h2 className="text-xl font-bold text-gray-900 text-center mb-2">{t('headerVerification.verifyAllModalTitle', 'Verify All Catches')}</h2>
             <p className="text-sm text-gray-500 text-center mb-6">
-              Does this project have <span className="font-semibold text-gray-700">ABCD data</span>?
+              {t('headerVerification.verifyAllModalQuestion', 'Does this project have')} <span className="font-semibold text-gray-700">{t('headerVerification.abcdData', 'ABCD data')}</span>?
             </p>
 
             {/* Info box */}
             <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 mb-6 text-sm text-amber-800">
-              <strong>If No:</strong> All catches in this project will be marked as{' '}
-              <span className="font-semibold text-emerald-700">Verified</span> regardless of ABCD fields.
+              <strong>{t('headerVerification.ifNoLabel', 'If No:')}</strong> {t('headerVerification.ifNoDesc', 'All catches in this project will be marked as')}{' '}
+              <span className="font-semibold text-emerald-700">{t('headerVerification.verified', 'Verified')}</span> {t('headerVerification.ifNoDescSuffix', 'regardless of ABCD fields.')}
             </div>
 
             {/* Action buttons */}
@@ -1209,7 +1212,7 @@ const HeaderVerification = () => {
                 onClick={() => setShowBulkVerifyModal(false)}
                 className="flex-1 py-2.5 rounded-lg border border-gray-300 bg-white text-gray-700 text-sm font-medium hover:bg-gray-50 transition-colors disabled:opacity-50"
               >
-                Yes, has ABCD
+                {t('headerVerification.yesHasAbcd', 'Yes, has ABCD')}
               </button>
               <button
                 disabled={bulkVerifyLoading}
@@ -1219,10 +1222,10 @@ const HeaderVerification = () => {
                 {bulkVerifyLoading ? (
                   <>
                     <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    Verifying…
+                    {t('headerVerification.verifying', 'Verifying…')}
                   </>
                 ) : (
-                  'No, verify all'
+                  t('headerVerification.noVerifyAll', 'No, verify all')
                 )}
               </button>
             </div>

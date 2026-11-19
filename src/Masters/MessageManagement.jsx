@@ -28,12 +28,29 @@ const MessageManagement = () => {
   const [moduleFilter, setModuleFilter] = useState('');
   const [missingHindiOnly, setMissingHindiOnly] = useState(false);
 
+  // Column-specific search states
+  const [columnFilters, setColumnFilters] = useState({
+    messageKey: '',
+    englishText: '',
+    hindiText: ''
+  });
+
+  // Sorting state (backend sorting)
+  const [sortField, setSortField] = useState('');
+  const [sortOrder, setSortOrder] = useState('');
+
   const [modalVisible, setModalVisible] = useState(false);
   const [editingRecord, setEditingRecord] = useState(null);
   const [form] = Form.useForm();
   const [submitting, setSubmitting] = useState(false);
 
-  const fetchMessages = async (currentPage = page, currentPageSize = pageSize) => {
+  const fetchMessages = async (
+    currentPage = page,
+    currentPageSize = pageSize,
+    currentColFilters = columnFilters,
+    currentSortField = sortField,
+    currentSortOrder = sortOrder
+  ) => {
     setLoading(true);
     try {
       const params = {
@@ -41,7 +58,12 @@ const MessageManagement = () => {
         pageSize: currentPageSize,
         module: moduleFilter || undefined,
         search: search || undefined,
-        missingHindiOnly: missingHindiOnly ? true : undefined
+        missingHindiOnly: missingHindiOnly ? true : undefined,
+        keySearch: currentColFilters.messageKey || undefined,
+        englishSearch: currentColFilters.englishText || undefined,
+        hindiSearch: currentColFilters.hindiText || undefined,
+        sortBy: currentSortField || undefined,
+        sortOrder: currentSortOrder || undefined
       };
       const res = await axios.get(`${API_BASE_URL}/MessageManagement`, { params });
       setMessages(res.data.items || []);
@@ -63,6 +85,77 @@ const MessageManagement = () => {
     fetchMessages(1, pageSize);
     setPage(1);
   };
+
+  const handleTableChange = (pagination, filters, sorter) => {
+    const newPage = pagination.current;
+    const newPageSize = pagination.pageSize;
+    const newSortField = sorter.field || '';
+    const newSortOrder = sorter.order || '';
+
+    setPage(newPage);
+    setPageSize(newPageSize);
+    setSortField(newSortField);
+    setSortOrder(newSortOrder);
+
+    fetchMessages(newPage, newPageSize, columnFilters, newSortField, newSortOrder);
+  };
+
+  const getColumnSearchProps = (dataIndex, label) => ({
+    filterDropdown: ({ setSelectedKeys, selectedKeys, confirm, clearFilters }) => (
+      <div style={{ padding: 8 }} onKeyDown={(e) => e.stopPropagation()}>
+        <Input
+          placeholder={t('tables.searchColumn', { column: label, defaultValue: `Search ${label}` })}
+          value={selectedKeys[0] !== undefined ? selectedKeys[0] : (columnFilters[dataIndex] || '')}
+          onChange={(e) => setSelectedKeys(e.target.value ? [e.target.value] : [])}
+          onPressEnter={() => {
+            const val = selectedKeys[0] || '';
+            const updated = { ...columnFilters, [dataIndex]: val };
+            setColumnFilters(updated);
+            confirm();
+            setPage(1);
+            fetchMessages(1, pageSize, updated, sortField, sortOrder);
+          }}
+          style={{ marginBottom: 8, display: 'block' }}
+        />
+        <Space>
+          <Button
+            type="primary"
+            onClick={() => {
+              const val = selectedKeys[0] || '';
+              const updated = { ...columnFilters, [dataIndex]: val };
+              setColumnFilters(updated);
+              confirm();
+              setPage(1);
+              fetchMessages(1, pageSize, updated, sortField, sortOrder);
+            }}
+            icon={<SearchOutlined />}
+            size="small"
+            style={{ width: 90 }}
+          >
+            {t('common.actions.search', 'Search')}
+          </Button>
+          <Button
+            onClick={() => {
+              clearFilters && clearFilters();
+              setSelectedKeys([]);
+              const updated = { ...columnFilters, [dataIndex]: '' };
+              setColumnFilters(updated);
+              confirm();
+              setPage(1);
+              fetchMessages(1, pageSize, updated, sortField, sortOrder);
+            }}
+            size="small"
+            style={{ width: 90 }}
+          >
+            {t('common.actions.reset', 'Reset')}
+          </Button>
+        </Space>
+      </div>
+    ),
+    filterIcon: (filtered) => (
+      <SearchOutlined style={{ color: columnFilters[dataIndex] || filtered ? '#1890ff' : undefined }} />
+    ),
+  });
 
   const handleOpenAdd = () => {
     setEditingRecord(null);
@@ -138,33 +231,59 @@ const MessageManagement = () => {
       dataIndex: 'messageKey',
       key: 'messageKey',
       width: 220,
-      render: (text) => <Text code strong>{text}</Text>
+      sorter: true,
+      sortOrder: sortField === 'messageKey' ? sortOrder : false,
+      ...getColumnSearchProps('messageKey', t('messages.messageKey', 'Message Key')),
+      render: (text) => (
+        <span style={{ wordBreak: 'break-all', display: 'inline-block' }}>
+          <Text code strong>{text}</Text>
+        </span>
+      )
     },
     {
-      title: t('messages.module', 'Module'),
+      title: t('common.labels.module', 'Module'),
       dataIndex: 'module',
       key: 'module',
       width: 130,
+      sorter: true,
+      sortOrder: sortField === 'module' ? sortOrder : false,
       render: (mod) => <Tag color="blue">{mod}</Tag>
     },
     {
       title: t('messages.englishText', 'English Text'),
       dataIndex: 'englishText',
       key: 'englishText',
-      ellipsis: true
+      width: 370,
+      sorter: true,
+      sortOrder: sortField === 'englishText' ? sortOrder : false,
+      ...getColumnSearchProps('englishText', t('messages.englishText', 'English Text')),
+      render: (text) => (
+        <div style={{ wordBreak: 'break-word', whiteSpace: 'normal', overflowWrap: 'break-word' }}>
+          {text}
+        </div>
+      )
     },
     {
       title: t('messages.hindiText', 'Hindi Text'),
       dataIndex: 'hindiText',
       key: 'hindiText',
-      ellipsis: true,
-      render: (text) => text ? <span>{text}</span> : <Tag color="warning">Missing</Tag>
+      width: 370,
+      sorter: true,
+      sortOrder: sortField === 'hindiText' ? sortOrder : false,
+      ...getColumnSearchProps('hindiText', t('messages.hindiText', 'Hindi Text')),
+      render: (text) => text ? (
+        <div style={{ wordBreak: 'break-word', whiteSpace: 'normal', overflowWrap: 'break-word' }}>
+          {text}
+        </div>
+      ) : <Tag color="warning">Missing</Tag>
     },
     {
-      title: t('common.status.status', 'Status'),
+      title: t('common.labels.status', 'Status'),
       dataIndex: 'isActive',
       key: 'isActive',
-      width: 90,
+      width: 100,
+      sorter: true,
+      sortOrder: sortField === 'isActive' ? sortOrder : false,
       render: (isActive, record) => (
         <Switch
           checked={isActive}
@@ -175,9 +294,9 @@ const MessageManagement = () => {
       )
     },
     {
-      title: t('common.actions.actions', 'Actions'),
+      title: t('common.labels.actions', 'Actions'),
       key: 'actions',
-      width: 90,
+      width: 80,
       render: (_, record) => (
         <Button
           type="text"
@@ -254,16 +373,15 @@ const MessageManagement = () => {
           dataSource={messages}
           rowKey="id"
           loading={loading}
+          scroll={{ x: 1300 }}
+          onChange={handleTableChange}
           pagination={{
             current: page,
             pageSize: pageSize,
             total: total,
             showSizeChanger: true,
-            onChange: (p, ps) => {
-              setPage(p);
-              setPageSize(ps);
-              fetchMessages(p, ps);
-            }
+            pageSizeOptions: ['10', '20', '50', '100'],
+            showTotal: (totalCount, range) => `${range[0]}-${range[1]} / ${totalCount}`
           }}
         />
       </Card>
@@ -289,7 +407,7 @@ const MessageManagement = () => {
 
           <Form.Item
             name="module"
-            label={t('messages.module', 'Module')}
+            label={t('common.labels.module', 'Module')}
             rules={[{ required: true, message: 'Module is required' }]}
           >
             <Select disabled={!!editingRecord}>
@@ -328,7 +446,7 @@ const MessageManagement = () => {
           {editingRecord && (
             <Form.Item
               name="isActive"
-              label={t('common.status.status', 'Status')}
+              label={t('common.labels.status', 'Status')}
               valuePropName="checked"
             >
               <Switch checkedChildren={t('common.status.active', 'Active')} unCheckedChildren={t('common.status.inactive', 'Inactive')} />

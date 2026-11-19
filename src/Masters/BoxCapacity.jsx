@@ -20,7 +20,7 @@ const BoxCapacity = () => {
             const res = await API.get('/BoxCapacities');
             setBoxCapacities(res.data);
         } catch (err) {
-            message.error('Failed to fetch box capacities');
+            message.error(t('masters.boxCapacity.fetchFailed', 'Failed to fetch box capacities'));
         } finally {
             setLoading(false);
         }
@@ -46,7 +46,7 @@ const BoxCapacity = () => {
 
     const handleSave = async () => {
         if (!capacity) {
-            message.warning('Capacity is required');
+            message.warning(t('masters.boxCapacity.capacityRequired', 'Capacity is required'));
             return;
         }
 
@@ -57,7 +57,7 @@ const BoxCapacity = () => {
         );
 
         if (isDuplicate) {
-            message.warning('This capacity already exists');
+            message.warning(t('masters.boxCapacity.capacityExists', 'This capacity already exists'));
             return;
         }
 
@@ -67,18 +67,18 @@ const BoxCapacity = () => {
                     boxCapacityId: editingItem.boxCapacityId,
                     capacity
                 });
-                message.success('Updated successfully');
+                message.success(t('common.feedback.updateSuccess', 'Updated successfully'));
             } else {
                 await API.post('/BoxCapacities', {
                     capacity
                 });
-                message.success('Added successfully');
+                message.success(t('common.feedback.addSuccess', 'Added successfully'));
             }
 
             setModalVisible(false);
             fetchBoxCapacities();
         } catch {
-            message.error('Save failed');
+            message.error(t('common.feedback.saveFailed', 'Save failed'));
         }
     };
 
@@ -86,7 +86,7 @@ const BoxCapacity = () => {
         filterDropdown: ({ setSelectedKeys, selectedKeys, confirm, clearFilters }) => (
             <div style={{ padding: 8 }}>
                 <Input
-                    placeholder={`Search ${dataIndex}`}
+                    placeholder={t('tables.searchColumn', { column: t(`tables.${dataIndex}`, dataIndex), defaultValue: `Search ${dataIndex}` })}
                     value={selectedKeys[0]}
                     onChange={(e) => setSelectedKeys(e.target.value ? [e.target.value] : [])}
                     onPressEnter={() => confirm()}
@@ -100,10 +100,10 @@ const BoxCapacity = () => {
                         size="small"
                         style={{ width: 90 }}
                     >
-                        Search
+                        {t('common.actions.search', 'Search')}
                     </Button>
                     <Button onClick={() => clearFilters()} size="small" style={{ width: 90 }}>
-                        Reset
+                        {t('common.actions.reset', 'Reset')}
                     </Button>
                 </Space>
             </div>
@@ -124,13 +124,13 @@ const BoxCapacity = () => {
             ...getColumnSearchProps('capacity'),
         },
         {
-            title: t('tables.actions', 'Actions'),
+            title: t('common.labels.actions', 'Actions'),
             render: (_, record) => (
                 <Space>
                     {canEdit ? (
                         <Button type="link" icon={<EditOutlined />} onClick={() => handleEdit(record)} />
                     ) : (
-                        <Tooltip title="View-only access: Editing is disabled">
+                        <Tooltip title={t('common.actions.viewOnlyEditDisabled', 'View-only access: Editing is disabled')}>
                             <span><Button type="link" icon={<EditOutlined />} disabled /></span>
                         </Tooltip>
                     )}
@@ -157,7 +157,7 @@ const BoxCapacity = () => {
                         {t('common.actions.add', 'Add')}
                     </Button>
                 ) : (
-                    <Tooltip title="View-only access: Creating new items is disabled">
+                    <Tooltip title={t('common.actions.viewOnlyAddDisabled', 'View-only access: Creating new items is disabled')}>
                         <span>
                             <Button type="primary" disabled>
                                 {t('common.actions.add', 'Add')}
@@ -184,7 +184,7 @@ const BoxCapacity = () => {
                 <Input
                     value={capacity}
                     onChange={(e) => setCapacity(e.target.value)}
-                    placeholder="Enter capacity"
+                    placeholder={t('masters.boxCapacity.enterCapacity', 'Enter capacity')}
                 />
             </Modal>
         </div>

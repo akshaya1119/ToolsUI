@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 
-import { Row, Col, Typography, message, Card, Select, Space, Button, Popconfirm } from "antd";
+import { Row, Col, Typography, Card, Select, Space, Button, Popconfirm } from "antd";
+import message from "../utils/appMessage";
 import { ReloadOutlined, DeleteOutlined } from "@ant-design/icons";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
@@ -27,6 +29,7 @@ import useMasterAuth from "../hooks/useMasterAuth";
 import usePermissionsStore from "../stores/UserPermissions";
 
 const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, selectedGroup = null, onTypeChange = null, onGroupChange = null, typeOptions: propTypeOptions = [], groupOptions: propGroupOptions = [], onReset = null, onResetAll = null }) => {
+  const { t } = useTranslation();
   const { showToast } = useToast();
   const navigate = useNavigate();
   const projectId = useStore((state) => state.projectId);
@@ -1416,13 +1419,13 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
       {/* === PAGE HEADER WITH TYPE/GROUP SELECTION (Master Config Mode) === */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px', gap: 16 }}>
         <Typography.Title level={3} style={{ margin: 0, minWidth: 'fit-content' }}>
-          {isMasterConfig ? 'Master Configuration' : 'Project Configuration'}</Typography.Title>
+          {isMasterConfig ? t('projectConfig.masterConfigTitle', 'Master Configuration') : t('projectConfig.projectConfigTitle', 'Project Configuration')}</Typography.Title>
 
         {isMasterConfig && (
           <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', flex: 1, maxWidth: 500 }}>
             <div style={{ flex: 1, minWidth: 0 }}>
               <Select
-                placeholder="Select Group"
+                placeholder={t('common.placeholders.selectGroup', 'Select Group')}
                 value={selectedGroup}
                 onChange={onGroupChange}
                 options={groupOptions}
@@ -1435,13 +1438,13 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
               />
               {!selectedGroup && (
                 <Typography.Text type="danger" style={{ fontSize: 11, display: 'block', marginTop: 2 }}>
-                  Please select a group
+                  {t('common.validation.pleaseSelectGroup', 'Please select a group')}
                 </Typography.Text>
               )}
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <Select
-                placeholder="Select Type"
+                placeholder={t('common.placeholders.selectType', 'Select Type')}
                 value={selectedType}
                 onChange={onTypeChange}
                 options={typeOptions}
@@ -1454,7 +1457,7 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
               />
               {!selectedType && (
                 <Typography.Text type="danger" style={{ fontSize: 11, display: 'block', marginTop: 2 }}>
-                  Please select a type
+                  {t('common.validation.pleaseSelectType', 'Please select a type')}
                 </Typography.Text>
               )}
             </div>
@@ -1465,16 +1468,16 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
           <Space>
             {canDeleteConfig && (
               <Popconfirm
-                title="Clear all configuration?"
-                description="This will wipe all current settings locally. Changes are not permanent until you save."
+                title={t('projectConfig.clearAllTitle', 'Clear all configuration?')}
+                description={t('projectConfig.clearAllDesc', 'This will wipe all current settings locally. Changes are not permanent until you save.')}
                 onConfirm={handleClearAll}
-                okText="Yes, Clear"
-                cancelText="No"
+                okText={t('projectConfig.yesClear', 'Yes, Clear')}
+                cancelText={t('common.actions.cancel', 'No')}
                 okButtonProps={{ danger: true }}
                 overlayInnerStyle={{ width: 350 }}
               >
                 <Button icon={<DeleteOutlined />} danger>
-                  Clear All
+                  {t('common.actions.clearAll', 'Clear All')}
                 </Button>
               </Popconfirm>
             )}

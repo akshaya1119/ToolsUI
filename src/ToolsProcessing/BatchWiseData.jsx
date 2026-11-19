@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Table, Input, Select, Typography, message, Button, Space, Modal, Checkbox } from "antd";
 import { SearchOutlined } from '@ant-design/icons';
+import { useTranslation } from "react-i18next";
 import API from "../hooks/api";
 import useStore from "../stores/ProjectData";
 
@@ -9,6 +10,7 @@ const { Search } = Input;
 const { Option } = Select;
 
 const BatchWiseData = () => {
+  const { t } = useTranslation();
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(false);
   const [totalCount, setTotalCount] = useState(0);
@@ -242,7 +244,7 @@ const BatchWiseData = () => {
     <div className="p-4 md:p-6 min-h-screen">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
         <Title level={3} style={{ margin: 0 }}>
-          Batch Wise Data
+          {t('batchData.title', 'Batch Wise Data')}
         </Title>
         <div className="flex flex-wrap items-center gap-4">
           <Select
@@ -253,12 +255,12 @@ const BatchWiseData = () => {
             }}
             style={{ width: 150 }}
             loading={batchesLoading}
-            placeholder="Select Batch"
+            placeholder={t('common.placeholders.selectBatch', 'Select Batch')}
             allowClear
-            options={batches.map((b) => ({ label: `Batch ${b}`, value: b }))}
+            options={batches.map((b) => ({ label: `${t('common.labels.batch', 'Batch')} ${b}`, value: b }))}
           />
           <Search
-            placeholder="Search by CatchNo, Center, Subject..."
+            placeholder={t('batchData.searchPlaceholder', 'Search by CatchNo, Center, Subject...')}
             allowClear
             onSearch={handleSearch}
             style={{ width: 300 }}
@@ -267,7 +269,7 @@ const BatchWiseData = () => {
             onClick={() => setShowUploadedDisplayFieldsModal(true)}
             disabled={!columns.length}
           >
-            Display Fields
+            {t('batchData.displayFields', 'Display Fields')}
           </Button>
         </div>
       </div>
@@ -293,7 +295,7 @@ const BatchWiseData = () => {
       </div>
 
       <Modal
-        title="Batch Data - Display Fields"
+        title={t('batchData.modalTitle', 'Batch Data - Display Fields')}
         open={showUploadedDisplayFieldsModal}
         onCancel={() => setShowUploadedDisplayFieldsModal(false)}
         footer={[
@@ -308,7 +310,7 @@ const BatchWiseData = () => {
             }}
             disabled={columns.length === 0}
           >
-            Select All
+            {t('common.actions.selectAll', 'Select All')}
           </Button>,
           <Button
             key="clearAll"
@@ -321,20 +323,20 @@ const BatchWiseData = () => {
             }}
             disabled={uploadedDisplayFields.length === lockedUploadedFields.length}
           >
-            Clear All
+            {t('common.actions.clearAll', 'Clear All')}
           </Button>,
           <Button
             key="ok"
             type="primary"
             onClick={() => setShowUploadedDisplayFieldsModal(false)}
           >
-            OK
+            {t('common.actions.ok', 'OK')}
           </Button>,
         ]}
       >
         <div style={{ marginBottom: 16 }}>
           <Typography.Text type="secondary">
-            Select fields from the table to show or hide columns.
+            {t('batchData.modalSubtitle', 'Select fields from the table to show or hide columns.')}
           </Typography.Text>
         </div>
         <Checkbox.Group
@@ -355,7 +357,7 @@ const BatchWiseData = () => {
               value={field}
               disabled={lockedUploadedFields.includes(field)}
             >
-              {field} {lockedUploadedFields.includes(field) && "(Required)"}
+              {field} {lockedUploadedFields.includes(field) && t('batchData.required', '(Required)')}
             </Checkbox>
           ))}
         </Checkbox.Group>
