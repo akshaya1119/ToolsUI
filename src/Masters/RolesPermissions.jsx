@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import {
   Alert, Tabs, Table, Checkbox, Button, Select, Card, Tag, Space, message,
   Modal, Input, Typography, Tooltip, Popconfirm, Divider, Row, Col, Badge,
-  Dropdown
+  Dropdown, Avatar
 } from 'antd';
 import {
   SafetyCertificateOutlined, TeamOutlined, ReloadOutlined,
@@ -11,8 +11,10 @@ import {
   SearchOutlined, CheckCircleFilled, CloseCircleFilled, FilterOutlined,
   AppstoreOutlined, EyeOutlined, CheckSquareOutlined, DownOutlined,
   ExclamationCircleOutlined, UndoOutlined, StopOutlined, CheckCircleOutlined,
-  MinusCircleOutlined, ThunderboltOutlined
+  MinusCircleOutlined, ThunderboltOutlined, UserOutlined
 } from '@ant-design/icons';
+import { FaPhoneAlt } from "react-icons/fa";
+import { MdLocationOn } from "react-icons/md";
 import API from '../hooks/api';
 import usePermissionsStore from '../stores/UserPermissions';
 import useModulePermission from '../hooks/useModulePermission';
@@ -30,7 +32,8 @@ const ACTION_COLUMNS = [
 const RolesPermissions = () => {
   const { t } = useTranslation();
   const { canView, canCreate, canEdit, canDelete } = useModulePermission('ROLES_PERMISSIONS');
-  // Tab 1: Roles Management (Default), Tab 2: Role Permissions
+
+  // Tab 1: Roles Management (Default), Tab 2: Role Permissions, Tab 3: User Role Assignment
   const [activeTab, setActiveTabState] = useState(() => {
     return sessionStorage.getItem('roles_permissions_active_tab') || '1';
   });
@@ -58,6 +61,10 @@ const RolesPermissions = () => {
   const isDeveloperRole = useMemo(() => {
     return selectedRole?.id === 1 || selectedRole?.roleName?.toLowerCase() === 'developer';
   }, [selectedRole]);
+  const isReadOnlyRole = useMemo(() => {
+    return selectedRole?.roleName?.toLowerCase() === 'read only';
+  }, [selectedRole]);
+
   const [rolePermissions, setRolePermissions] = useState([]);
   const [initialRolePermissions, setInitialRolePermissions] = useState([]);
   const [specialActions, setSpecialActions] = useState({});
@@ -70,12 +77,28 @@ const RolesPermissions = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
 
+  // --- TAB 3: User Role Assignment State ---
+  const [userAssignments, setUserAssignments] = useState([]);
+  const [allUsersList, setAllUsersList] = useState([]);
+  const [userTotalCount, setUserTotalCount] = useState(0);
+  const [loadingUserRoles, setLoadingUserRoles] = useState(false);
+  const [userSearchText, setUserSearchText] = useState('');
+  const [userRoleFilter, setUserRoleFilter] = useState('all');
+  const [userPagination, setUserPagination] = useState({ current: 1, pageSize: 15 });
+  const [userSort, setUserSort] = useState({ sortBy: 'userId', sortOrder: 'ascend' });
+  const [selectedUserIds, setSelectedUserIds] = useState([]);
+  const [isAssignModalVisible, setIsAssignModalVisible] = useState(false);
+  const [assignForm, setAssignForm] = useState({ userIds: [], roleId: null, isRowEdit: false });
+  const [savingAssignment, setSavingAssignment] = useState(false);
+
   // 1. Initial Load
   useEffect(() => {
     fetchRoles();
     fetchModules();
     fetchSpecialActionDefs();
   }, []);
+
+
 
   const fetchSpecialActionDefs = async () => {
     try {
@@ -105,15 +128,14 @@ const RolesPermissions = () => {
   const fetchModules = async () => {
     try {
       const res = await API.get('/Permissions/modules');
-      // Ensure Dashboard is not included in configurable modules
-      const list = (res.data || []).filter((m) => m.code !== 'DASHBOARD');
-      setModules(list);
+      const data = (res.data || []).filter((m) => m.code !== 'DASHBOARD');
+      setModules(data);
     } catch (err) {
-      console.warn('Failed to fetch modules list', err);
+      message.error('Failed to load system modules');
     }
   };
 
-  // 2. Fetch permissions when selected role changes
+  // Fetch Permissions for Selected Role
   useEffect(() => {
     if (selectedRoleId) {
       fetchRolePermissions(selectedRoleId);
@@ -138,10 +160,74 @@ const RolesPermissions = () => {
     }
   };
 
+  // Fetch User Role Assignments from Backend with Search, Filter, Sort & Pagination
+  const fetchUserRoles = async () => {
+    setLoadingUserRoles(true);
+    try {
+      const params = new URLSearchParams({
+        pageNumber: userPagination.current,
+        pageSize: userPagination.pageSize,
+        roleFilter: userRoleFilter || 'all',
+        sortBy: userSort.sortBy || 'userId',
+        sortOrder: userSort.sortOrder || 'ascend'
+      });
+      if (userSearchText && userSearchText.trim()) {
+        params.append('search', userSearchText.trim());
+      }
+
+      const res = await API.get(`/Permissions/user-roles?${params.toString()}`);
+      if (res.data?.items !== undefined) {
+        setUserAssignments(res.data.items || []);
+        setUserTotalCount(res.data.totalCount ?? (res.data.items || []).length);
+      } else if (Array.isArray(res.data)) {
+        setUserAssignments(res.data);
+        setUserTotalCount(res.data.length);
+      }
+    } catch (err) {
+      message.error('Failed to load user role assignments: ' + (err.response?.data?.message || err.message));
+    } finally {
+      setLoadingUserRoles(false);
+    }
+  };
+
+  // Keep a full list of all users for the multi-select bulk assignment modal dropdown
+  const fetchAllUsersForModal = async () => {
+    try {
+      const res = await API.get('/Permissions/user-roles?pageSize=1000');
+      const data = res.data?.items !== undefined ? res.data.items : (Array.isArray(res.data) ? res.data : []);
+      setAllUsersList(data);
+    } catch (err) {
+      console.warn('Failed to load all users list', err);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === '3') {
+      fetchUserRoles();
+      if (allUsersList.length === 0) {
+        fetchAllUsersForModal();
+      }
+    }
+  }, [activeTab, userPagination.current, userPagination.pageSize, userRoleFilter, userSort.sortBy, userSort.sortOrder]);
+
+  // Debounced search trigger for backend search
+  useEffect(() => {
+    if (activeTab === '3') {
+      const timer = setTimeout(() => {
+        fetchUserRoles();
+      }, 350);
+      return () => clearTimeout(timer);
+    }
+  }, [userSearchText]);
+
   // Permission Mutations for Role Permissions
   const handleRolePermissionChange = (moduleCode, actionKey, checked) => {
     if (!canEdit) {
       message.warning('You have view-only access. Modifying permissions is disabled.');
+      return;
+    }
+    if (isReadOnlyRole && (actionKey === 'canCreate' || actionKey === 'canEdit' || actionKey === 'canDelete')) {
+      message.warning('Mutating permissions cannot be granted to the Read Only role.');
       return;
     }
     setRolePermissions((prev) =>
@@ -156,6 +242,10 @@ const RolesPermissions = () => {
       message.warning('You have view-only access. Modifying permissions is disabled.');
       return;
     }
+    if (isReadOnlyRole && checked) {
+      message.warning('Special Actions cannot be granted to the Read Only role.');
+      return;
+    }
     setSpecialActions((prev) => ({
       ...prev,
       [actionCode]: checked
@@ -165,6 +255,10 @@ const RolesPermissions = () => {
   const handleApplyPreset = (moduleCode, preset) => {
     if (!canEdit) {
       message.warning('You have view-only access. Modifying permissions is disabled.');
+      return;
+    }
+    if (isReadOnlyRole && preset === 'full') {
+      message.warning('Full access preset cannot be applied to the Read Only role.');
       return;
     }
 
@@ -185,49 +279,60 @@ const RolesPermissions = () => {
     );
   };
 
-  const handleBulkPreset = (preset) => {
+  const handleBatchPreset = (preset) => {
     if (!canEdit) {
       message.warning('You have view-only access. Modifying permissions is disabled.');
       return;
     }
+    if (isReadOnlyRole && preset === 'full') {
+      message.warning('Full access preset cannot be applied to the Read Only role.');
+      return;
+    }
+
     setRolePermissions((prev) =>
       prev.map((item) => {
-        if (preset === 'grant_all') {
+        if (preset === 'full') {
           return { ...item, canView: true, canCreate: true, canEdit: true, canDelete: true };
         }
-        if (preset === 'readonly_all') {
+        if (preset === 'readonly') {
           return { ...item, canView: true, canCreate: false, canEdit: false, canDelete: false };
         }
-        if (preset === 'revoke_all') {
+        if (preset === 'none') {
           return { ...item, canView: false, canCreate: false, canEdit: false, canDelete: false };
         }
         return item;
       })
     );
-    if (preset === 'grant_all') message.success('Granted all permissions across all modules.');
-    if (preset === 'readonly_all') message.info('Applied Read-Only access across all modules.');
-    if (preset === 'revoke_all') message.warning('Revoked all permissions across all modules.');
   };
 
   const handleDiscardRoleChanges = () => {
     setRolePermissions(JSON.parse(JSON.stringify(initialRolePermissions)));
     setSpecialActions(JSON.parse(JSON.stringify(initialSpecialActions)));
-    message.info('Reverted unsaved role permission modifications.');
+    message.info('Unsaved changes discarded');
   };
 
   const handleSaveRolePermissions = async () => {
     if (!canEdit) {
-      message.warning('You have view-only access. Saving role permissions is disabled.');
+      message.warning('You have view-only access. Saving permissions is disabled.');
       return;
     }
     if (!selectedRoleId) return;
+
     setSavingRolePerms(true);
     try {
-      await API.put(`/Permissions/role/${selectedRoleId}`, {
-        permissions: rolePermissions,
-        specialActions: specialActions
-      });
-      message.success(`Permissions for role '${selectedRole?.roleName || selectedRoleId}' saved successfully!`);
+      const payload = {
+        permissions: rolePermissions.map((p) => ({
+          moduleCode: p.moduleCode,
+          canView: p.canView,
+          canCreate: p.canCreate,
+          canEdit: p.canEdit,
+          canDelete: p.canDelete,
+        })),
+        specialActions: specialActions,
+      };
+
+      await API.put(`/Permissions/role/${selectedRoleId}`, payload);
+      message.success('Role permissions saved successfully');
       setInitialRolePermissions(JSON.parse(JSON.stringify(rolePermissions)));
       setInitialSpecialActions(JSON.parse(JSON.stringify(specialActions)));
       refreshCurrentPermissions();
@@ -293,13 +398,97 @@ const RolesPermissions = () => {
     }
   };
 
+  // User Role Assignment Operations
+  const handleOpenAssignModal = (user = null) => {
+    if (!canEdit) {
+      message.warning('You have view-only access. Managing role assignments is disabled.');
+      return;
+    }
+    let initialUserIds = [];
+    let initialRoleId = roles.length > 0 ? roles[0].id : null;
+    let isRow = false;
+
+    if (user && user.userId) {
+      // Row edit action: applies strictly and ONLY to this single user
+      initialUserIds = [user.userId];
+      initialRoleId = user.roleId || initialRoleId;
+      isRow = true;
+    } else if (selectedUserIds.length > 0) {
+      // Bulk action from selection bar: applies to selected checkbox users
+      initialUserIds = [...selectedUserIds];
+      isRow = false;
+    } else {
+      return;
+    }
+
+    setAssignForm({
+      userIds: initialUserIds,
+      roleId: initialRoleId,
+      isRowEdit: isRow,
+      targetUser: user
+    });
+    setIsAssignModalVisible(true);
+  };
+
+  const handleSaveUserAssignment = async () => {
+    if (!canEdit) {
+      message.warning('You have view-only access. Managing role assignments is disabled.');
+      return;
+    }
+    if (!assignForm.userIds || assignForm.userIds.length === 0 || !assignForm.roleId) {
+      message.warning('Please select at least one User and a Tools Role.');
+      return;
+    }
+
+    setSavingAssignment(true);
+    try {
+      if (assignForm.userIds.length === 1) {
+        await API.post('/Permissions/user-roles', {
+          userId: assignForm.userIds[0],
+          roleId: assignForm.roleId
+        });
+        message.success('Tools role assigned successfully');
+      } else {
+        const res = await API.post('/Permissions/user-roles/bulk', {
+          userIds: assignForm.userIds,
+          roleId: assignForm.roleId
+        });
+        message.success(res.data?.message || `Tools role assigned to ${assignForm.userIds.length} users successfully`);
+      }
+
+      setIsAssignModalVisible(false);
+      setSelectedUserIds([]);
+      fetchUserRoles();
+      fetchRoles();
+    } catch (err) {
+      message.error(err.response?.data?.message || 'Failed to assign role');
+    } finally {
+      setSavingAssignment(false);
+    }
+  };
+
+  const handleRemoveUserAssignment = async (userId) => {
+    if (!canEdit) {
+      message.warning('You have view-only access. Managing role assignments is disabled.');
+      return;
+    }
+    try {
+      await API.delete(`/Permissions/user-roles/${userId}`);
+      message.success('Explicit assignment removed. User has reverted to Read Only.');
+      fetchUserRoles();
+      fetchRoles();
+    } catch (err) {
+      message.error(err.response?.data?.message || 'Failed to remove assignment');
+    }
+  };
+
   // --- TAB 2: Unsaved Changes Detection ---
   const modifiedRowsMap = useMemo(() => {
     const map = new Map();
     if (!initialRolePermissions.length) return map;
 
     rolePermissions.forEach((curr) => {
-      const orig = initialRolePermissions.find((x) => x.moduleCode === curr.moduleCode);
+      const orig = initialRolePermissions.find((p) => p.moduleCode === curr.moduleCode);
       if (!orig) return;
       const isChanged =
         curr.canView !== orig.canView ||
@@ -321,59 +510,57 @@ const RolesPermissions = () => {
 
   const hasUnsavedChanges = modifiedRowsMap.size > 0 || hasSpecialActionsChanged;
 
-  // --- TAB 2: Filtered Matrix Data ---
-  const filteredMatrixData = useMemo(() => {
+  // --- TAB 2: Filtered Matrix Rows ---
+  const filteredRolePermissions = useMemo(() => {
     return rolePermissions.filter((item) => {
       const mod = modules.find((m) => m.code === item.moduleCode);
-      const displayName = mod ? mod.displayName : item.moduleCode;
+      const displayName = mod?.displayName || item.moduleCode;
+      const matchesSearch =
+        displayName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        item.moduleCode.toLowerCase().includes(searchQuery.toLowerCase());
 
-      const query = searchQuery.trim().toLowerCase();
-      if (query) {
-        const matchesName = displayName.toLowerCase().includes(query);
-        const matchesCode = item.moduleCode.toLowerCase().includes(query);
-        if (!matchesName && !matchesCode) return false;
+      if (!matchesSearch) return false;
+
+      if (statusFilter === 'all') return true;
+      if (statusFilter === 'active') {
+        return item.canView || item.canCreate || item.canEdit || item.canDelete;
       }
-
-      const activeCount = [
-        item.canView, item.canCreate, item.canEdit, item.canDelete
-      ].filter(Boolean).length;
-
-      const modSupported = (mod?.supportedActions || ['View', 'Create', 'Edit', 'Delete'])
-        .filter(a => ['View', 'Create', 'Edit', 'Delete'].includes(a));
-      const totalPossible = modSupported.length;
-
-      if (statusFilter === 'configured') return activeCount > 0;
-      if (statusFilter === 'full') return activeCount >= totalPossible && totalPossible > 0;
-      if (statusFilter === 'none') return activeCount === 0;
-
+      if (statusFilter === 'inactive') {
+        return !item.canView && !item.canCreate && !item.canEdit && !item.canDelete;
+      }
+      if (statusFilter === 'modified') {
+        return modifiedRowsMap.has(item.moduleCode);
+      }
       return true;
     });
-  }, [rolePermissions, modules, searchQuery, statusFilter]);
+  }, [rolePermissions, modules, searchQuery, statusFilter, modifiedRowsMap]);
 
-  // Quick Action Menu Builder for a Row (Tab 2)
-  const getQuickActionMenu = (record) => ({
+
+
+  // Preset Actions for Row Menu
+  const getPresetMenuItems = (moduleCode) => ({
     items: [
       {
         key: 'full',
-        label: 'Full Access (All Permissions)',
-        icon: <CheckCircleFilled style={{ color: '#16a34a' }} />,
-        onClick: () => handleApplyPreset(record.moduleCode, 'full'),
+        label: t('rolesPermissions.grantAll', 'Grant Full Access'),
+        icon: <CheckCircleFilled style={{ color: '#10b981' }} />,
+        disabled: isReadOnlyRole,
+        onClick: () => handleApplyPreset(moduleCode, 'full'),
       },
       {
         key: 'readonly',
-        label: 'Read Only (View Only)',
+        label: t('rolesPermissions.grantViewOnly', 'View Only Access'),
         icon: <EyeOutlined style={{ color: '#2563eb' }} />,
-        onClick: () => handleApplyPreset(record.moduleCode, 'readonly'),
+        onClick: () => handleApplyPreset(moduleCode, 'readonly'),
       },
       {
         type: 'divider',
       },
       {
         key: 'none',
-        label: 'No Access (Clear All)',
-        icon: <CloseCircleFilled style={{ color: '#dc2626' }} />,
-        danger: true,
-        onClick: () => handleApplyPreset(record.moduleCode, 'none'),
+        label: t('rolesPermissions.revokeAll', 'Revoke All Access'),
+        icon: <CloseCircleFilled style={{ color: '#ef4444' }} />,
+        onClick: () => handleApplyPreset(moduleCode, 'none'),
       },
     ],
   });
@@ -395,120 +582,80 @@ const RolesPermissions = () => {
               <span
                 style={{
                   width: 4,
-                  height: 32,
-                  borderRadius: 2,
+                  height: 24,
                   backgroundColor: '#f59e0b',
-                  flexShrink: 0
+                  borderRadius: 2,
+                  display: 'inline-block',
                 }}
-                title="Modified in this session"
               />
             ) : (
-              <span style={{ width: 4, height: 32, flexShrink: 0 }} />
+              <span style={{ width: 4 }} />
             )}
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontWeight: 600, fontSize: 13.5, color: '#1e293b', lineHeight: 1.3 }}>
-                {mod ? mod.displayName : code}
+            <div>
+              <div style={{ fontWeight: 600, color: '#0f172a', fontSize: 13.5 }}>
+                {mod?.displayName || code}
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
-                <span style={{ fontSize: 11, fontFamily: 'monospace', color: '#64748b' }}>
-                  {code}
-                </span>
-                {isModified && (
-                  <Tag color="warning" style={{ fontSize: 10, padding: '0 4px', margin: 0, lineHeight: '16px' }}>
-                    Unsaved
-                  </Tag>
-                )}
+              <div style={{ fontSize: 11, color: '#94a3b8', fontFamily: 'monospace' }}>
+                {code}
               </div>
             </div>
           </div>
         );
-      }
+      },
     },
-    ...ACTION_COLUMNS.map((action) => ({
+    ...ACTION_COLUMNS.map((act) => ({
       title: (
-        <Tooltip title={action.tooltip}>
-          <span style={{ cursor: 'help', fontWeight: 600 }}>{action.label}</span>
+        <Tooltip title={act.tooltip}>
+          <span style={{ cursor: 'help' }}>{act.label}</span>
         </Tooltip>
       ),
-      dataIndex: action.key,
-      key: action.key,
+      dataIndex: act.key,
+      key: act.key,
+      width: 110,
       align: 'center',
-      width: 105,
-      render: (checked, record) => {
-        const mod = modules.find((m) => m.code === record.moduleCode);
-        const supported = mod?.supportedActions;
-        // Check if this action is supported for this module
-        const actionName = action.label; // 'View', 'Create', 'Edit', 'Delete', 'Execute', 'Export'
-        const isSupported = !supported || supported.includes(actionName);
-
-        if (!isSupported) {
-          return <span style={{ color: '#cbd5e1' }}>—</span>;
+      render: (checked, row) => {
+        const mod = modules.find((m) => m.code === row.moduleCode);
+        const supported = mod?.supportedActions ? mod.supportedActions.includes(act.label) : true;
+        if (!supported) {
+          return <span style={{ color: '#cbd5e1', fontSize: 18 }}>–</span>;
         }
 
-        return (
+        const isReadOnlyLocked = isReadOnlyRole && (act.key === 'canCreate' || act.key === 'canEdit' || act.key === 'canDelete');
+        const tooltipTitle = row.moduleCode === 'MASTER_PROJECT' && act.key === 'canDelete'
+          ? 'Controls Project Archive / Unarchive permission'
+          : undefined;
+
+        const checkboxElement = (
           <Checkbox
-            checked={checked}
-            disabled={!canEdit}
-            onChange={(e) => handleRolePermissionChange(record.moduleCode, action.key, e.target.checked)}
+            checked={!!checked}
+            disabled={!canEdit || isReadOnlyLocked}
+            onChange={(e) => handleRolePermissionChange(row.moduleCode, act.key, e.target.checked)}
           />
         );
-      }
+
+        return tooltipTitle ? (
+          <Tooltip title={tooltipTitle}>
+            <span>{checkboxElement}</span>
+          </Tooltip>
+        ) : (
+          checkboxElement
+        );
+      },
     })),
     {
-      title: 'Status',
-      key: 'summary',
+      title: 'Actions',
+      key: 'actions',
+      width: 110,
       align: 'center',
-      width: 150,
-      render: (_, record) => {
-        const mod = modules.find((m) => m.code === record.moduleCode);
-        // Only consider the 4 standard actions (View, Create, Edit, Delete)
-        const supported = (mod?.supportedActions || ['View', 'Create', 'Edit', 'Delete'])
-          .filter(a => ['View', 'Create', 'Edit', 'Delete'].includes(a));
-        const totalSupported = supported.length;
-
-        const count = [
-          supported.includes('View') && record.canView,
-          supported.includes('Create') && record.canCreate,
-          supported.includes('Edit') && record.canEdit,
-          supported.includes('Delete') && record.canDelete,
-        ].filter(Boolean).length;
-
-        let statusColor = 'default';
-        let statusText = 'No Access';
-        if (count === totalSupported && totalSupported > 0) {
-          statusColor = 'success';
-          statusText = 'Full Access';
-        } else if (count > 0) {
-          statusColor = 'processing';
-          statusText = `${count} of ${totalSupported} Allowed`;
-        }
-
-        return (
-          <Space size={6}>
-            <Tag color={statusColor} style={{ margin: 0, fontSize: 11, fontWeight: 500 }}>
-              {statusText}
-            </Tag>
-            <Dropdown menu={getQuickActionMenu(record)} trigger={['click']} disabled={!canEdit}>
-              <Button size="small" type="text" icon={<DownOutlined style={{ fontSize: 10 }} />} disabled={!canEdit} />
-            </Dropdown>
-          </Space>
-        );
-      }
-    }
+      render: (_, row) => (
+        <Dropdown menu={getPresetMenuItems(row.moduleCode)} trigger={['click']} disabled={!canEdit}>
+          <Button size="small" type="text" style={{ fontSize: 12 }}>
+            Preset <DownOutlined style={{ fontSize: 10 }} />
+          </Button>
+        </Dropdown>
+      ),
+    },
   ];
-
-  if (!canView) {
-    return (
-      <div style={{ padding: '32px 16px', maxWidth: 600, margin: '0 auto' }}>
-        <Alert
-          message="Access Restricted"
-          description="You do not have administrative permission to view Roles & Permissions."
-          type="error"
-          showIcon
-        />
-      </div>
-    );
-  }
 
   return (
     <div>
@@ -522,7 +669,7 @@ const RolesPermissions = () => {
         />
       )}
 
-      {/* NAVIGATION TABS (Tab 1: Roles Management, Tab 2: Role Permissions) */}
+      {/* NAVIGATION TABS (Tab 1: Roles, Tab 2: Role Permissions, Tab 3: User Role Assignment) */}
       <Tabs
         activeKey={activeTab}
         onChange={setActiveTab}
@@ -548,6 +695,15 @@ const RolesPermissions = () => {
               </span>
             ),
           },
+          {
+            key: '3',
+            label: (
+              <span>
+                <UserOutlined style={{ marginRight: 6 }} />
+                User Role Assignment
+              </span>
+            ),
+          },
         ]}
       />
 
@@ -564,9 +720,9 @@ const RolesPermissions = () => {
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
             <div>
-              <Title level={5} style={{ margin: 0, color: '#0f172a' }}>System & Custom Roles</Title>
+              <Title level={5} style={{ margin: 0, color: '#0f172a' }}>Tools Roles</Title>
               <Text type="secondary" style={{ fontSize: 13 }}>
-                Configure system roles or create custom organization roles for granular access control.
+                Configure application roles managed independently inside ERPTools.
               </Text>
             </div>
             <Tooltip title={!canCreate || !canEdit ? 'View-only: Creating roles is disabled' : ''}>
@@ -576,7 +732,11 @@ const RolesPermissions = () => {
                   icon={<PlusOutlined />}
                   disabled={!canCreate || !canEdit}
                   onClick={() => handleOpenRoleModal(null)}
-                  style={{ backgroundColor: '#2563eb', borderColor: '#2563eb' }}
+                  style={
+                    !canCreate || !canEdit
+                      ? {}
+                      : { backgroundColor: '#2563eb', borderColor: '#2563eb' }
+                  }
                 >
                   Create Custom Role
                 </Button>
@@ -595,25 +755,19 @@ const RolesPermissions = () => {
               {
                 title: 'Role Name',
                 dataIndex: 'roleName',
-                key: 'roleName',
-                render: (text, r) => (
-                  <Space>
-                    <span style={{ fontWeight: 600, color: '#0f172a' }}>{text}</span>
-                    {r.isSystemRole && <Tag color="blue">Built-in</Tag>}
-                  </Space>
-                )
+                key: 'roleName'
               },
               {
                 title: 'Assigned Members',
-                dataIndex: 'userCount',
-                key: 'userCount',
+                dataIndex: 'assignedUsersCount',
+                key: 'assignedUsersCount',
                 width: 160,
                 render: (cnt) => (
                   <Badge
                     count={cnt || 0}
                     showZero
                     overflowCount={999}
-                    style={{ backgroundColor: '#10b981' }}
+                    style={{ backgroundColor: cnt > 0 ? '#10b981' : '#94a3b8' }}
                   />
                 )
               },
@@ -622,11 +776,19 @@ const RolesPermissions = () => {
                 key: 'actions',
                 width: 160,
                 render: (_, r) => {
-                  const isBuiltInRole = r.isSystemRole || (r.id >= 1 && r.id <= 5);
-                  const isEditDisabled = !canEdit || isBuiltInRole;
-                  const editTooltip = isBuiltInRole
-                    ? 'Built-in system roles (IDs 1-5) cannot be renamed'
+                  const isProtected = r.isProtected || r.id === 1 || r.id === 2 || r.roleName === 'Read Only';
+                  const hasAssigned = (r.assignedUsersCount || 0) > 0;
+                  const isEditDisabled = !canEdit || isProtected;
+                  const editTooltip = isProtected
+                    ? 'Protected system roles cannot be renamed'
                     : (!canEdit ? 'View-only: Editing roles is disabled' : '');
+
+                  const isDeleteDisabled = !canDelete || isProtected || hasAssigned;
+                  const deleteTooltip = isProtected
+                    ? 'Protected system roles cannot be deleted'
+                    : (hasAssigned
+                      ? `Cannot delete role: assigned to ${r.assignedUsersCount} user(s). Reassign them first.`
+                      : (!canDelete ? 'View-only: Deleting roles is disabled' : ''));
 
                   return (
                     <Space size="small">
@@ -638,28 +800,29 @@ const RolesPermissions = () => {
                             disabled={isEditDisabled}
                             onClick={() => handleOpenRoleModal(r)}
                           >
-                            {t('common.actions.edit', 'Edit')}
                           </Button>
                         </span>
                       </Tooltip>
-                      {!isBuiltInRole && (
-                        <Popconfirm
-                          title={t('rolesPermissions.deleteRoleTitle', 'Delete Role')}
-                          description={t('rolesPermissions.deleteRoleConfirm', 'Are you sure you want to delete this custom role?')}
-                          onConfirm={() => handleDeleteRole(r.id)}
-                          okText={t('common.actions.yes', 'Yes')}
-                          cancelText={t('common.actions.no', 'No')}
-                          disabled={!canDelete}
-                        >
-                          <Tooltip title={!canDelete ? 'View-only: Deleting roles is disabled' : ''}>
-                            <span>
-                              <Button size="small" danger icon={<DeleteOutlined />} disabled={!canDelete}>
-                                {t('common.actions.delete', 'Delete')}
-                              </Button>
-                            </span>
-                          </Tooltip>
-                        </Popconfirm>
-                      )}
+                      <Tooltip title={deleteTooltip}>
+                        <span>
+                          <Popconfirm
+                            title={t('rolesPermissions.deleteRoleTitle', 'Delete Role')}
+                            description={t('rolesPermissions.deleteRoleConfirm', 'Are you sure you want to delete this custom role?')}
+                            onConfirm={() => handleDeleteRole(r.id)}
+                            disabled={isDeleteDisabled}
+                            okText={t('common.actions.yes', 'Yes')}
+                            cancelText={t('common.actions.no', 'No')}
+                          >
+                            <Button
+                              size="small"
+                              danger
+                              icon={<DeleteOutlined />}
+                              disabled={isDeleteDisabled}
+                            >
+                            </Button>
+                          </Popconfirm>
+                        </span>
+                      </Tooltip>
                     </Space>
                   );
                 }
@@ -679,165 +842,70 @@ const RolesPermissions = () => {
               boxShadow: '0 1px 3px rgba(15, 23, 42, 0.05)',
               borderColor: '#e2e8f0',
             }}
-            bodyStyle={{ padding: '16px 22px' }}
-          >
-            <Row gutter={[24, 16]} align="middle">
-              {/* Role Selection */}
-              <Col xs={24} sm={12} md={9} lg={9}>
-                <Space direction="vertical" size={5} style={{ width: '100%' }}>
-                  <Text style={{ fontSize: 12, fontWeight: 600, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                    Select Role to Configure
-                  </Text>
-                  <Select
-                    style={{ width: '100%' }}
-                    value={selectedRoleId}
-                    onChange={setSelectedRoleId}
-                    loading={loadingRoles}
-                    showSearch
-                    optionFilterProp="children"
-                  >
-                    {roles.map((r) => (
-                      <Option key={r.id} value={r.id}>
-                        {r.roleName} {r.isSystemRole && '(Built-in)'}
-                      </Option>
-                    ))}
-                  </Select>
-                </Space>
-              </Col>
-
-              {/* Role Metadata Display */}
-              {selectedRole && (
-                <Col xs={24} sm={12} md={7} lg={7}>
-                  <Space direction="vertical" size={5} style={{ width: '100%' }}>
-                    <Text style={{ fontSize: 12, fontWeight: 600, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                      Role Classification
-                    </Text>
-                    <div
-                      style={{
-                        height: 32,
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 8,
-                        padding: '0 12px',
-                        backgroundColor: '#f1f5f9',
-                        borderRadius: 6,
-                        border: '1px solid #e2e8f0'
-                      }}
-                    >
-                      <Tag
-                        color={selectedRole.isSystemRole ? 'blue' : 'purple'}
-                        style={{ margin: 0, borderRadius: 4, fontWeight: 500 }}
-                      >
-                        {selectedRole.isSystemRole ? 'System Built-in Role' : 'Custom Role'}
-                      </Tag>
-                    </div>
-                  </Space>
-                </Col>
-              )}
-
-              {/* Action Buttons */}
-              <Col xs={24} sm={24} md={selectedRole ? 8 : 15} lg={selectedRole ? 8 : 15} style={{ textAlign: 'right' }}>
-                <Space size={8} wrap style={{ marginTop: selectedRole ? 16 : 0 }}>
-                  <Button
-                    icon={<ReloadOutlined />}
-                    onClick={() => fetchRolePermissions(selectedRoleId)}
-                    loading={loadingRolePerms}
-                  >
-                    Refresh
-                  </Button>
-                  {hasUnsavedChanges && (
-                    <Button
-                      icon={<UndoOutlined />}
-                      onClick={handleDiscardRoleChanges}
-                    >
-                      Discard
-                    </Button>
-                  )}
-                  <Button
-                    type="primary"
-                    icon={<SaveOutlined />}
-                    loading={savingRolePerms}
-                    disabled={!hasUnsavedChanges || !canEdit}
-                    onClick={handleSaveRolePermissions}
-                    style={{
-                      ...(!hasUnsavedChanges || !canEdit
-                        ? { backgroundColor: '#f1f5f9', borderColor: '#cbd5e1', color: '#94a3b8' }
-                        : { backgroundColor: '#2563eb', borderColor: '#2563eb', color: '#ffffff' })
-                    }}
-                  >
-                    Save Changes
-                  </Button>
-                </Space>
-              </Col>
-            </Row>
-          </Card>
-
-          {/* Quick Presets & Filter Bar */}
-          <Card
-            bordered
-            style={{
-              borderRadius: 10,
-              boxShadow: '0 1px 3px rgba(15, 23, 42, 0.05)',
-              borderColor: '#e2e8f0',
-            }}
-            bodyStyle={{ padding: '14px 20px' }}
+            bodyStyle={{ padding: '16px 20px' }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
-              <Space size={12} wrap>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                <Text type="secondary" style={{ fontSize: 12, display: 'block' }}>
+                  Select Role to Configure
+                </Text>
+                <Select
+                  value={selectedRoleId}
+                  onChange={(val) => setSelectedRoleId(val)}
+                  style={{ width: 240, fontWeight: 600 }}
+                  size="middle"
+                >
+                  {roles.map((r) => (
+                    <Option key={r.id} value={r.id}>
+                      {r.roleName} {r.isProtected ? '(Protected)' : ''}
+                    </Option>
+                  ))}
+                </Select>
+              </div>
+
+              {/* Search & Status Filters */}
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
                 <Input
-                  placeholder="Search modules..."
+                  placeholder={t('rolesPermissions.searchModule', 'Search module...')}
                   prefix={<SearchOutlined style={{ color: '#94a3b8' }} />}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   style={{ width: 220 }}
                   allowClear
                 />
-                <Select
+                {/* <Select
                   value={statusFilter}
                   onChange={setStatusFilter}
-                  style={{ width: 170 }}
+                  style={{ width: 140 }}
                 >
-                  <Option value="all">All Modules</Option>
-                  <Option value="configured">Configured (Any Access)</Option>
-                  <Option value="full">Full Access (All Supported)</Option>
-                  <Option value="none">No Access</Option>
-                </Select>
-              </Space>
+                </Select> */}
 
-              <Space size={8} wrap>
-                <Text style={{ fontSize: 12, color: '#64748b', fontWeight: 500, marginRight: 4 }}>
-                  Batch Presets:
-                </Text>
+                {/* Top Save & Discard Buttons */}
                 <Button
-                  size="small"
-                  icon={<CheckSquareOutlined />}
-                  disabled={!canEdit}
-                  onClick={() => handleBulkPreset('grant_all')}
+                  onClick={handleDiscardRoleChanges}
+                  disabled={!hasUnsavedChanges || !canEdit}
                 >
-                  Grant All
+                  {t('common.actions.discard', 'Discard')}
                 </Button>
                 <Button
-                  size="small"
-                  icon={<EyeOutlined />}
-                  disabled={!canEdit}
-                  onClick={() => handleBulkPreset('readonly_all')}
+                  type="primary"
+                  icon={<SaveOutlined />}
+                  loading={savingRolePerms}
+                  disabled={!hasUnsavedChanges || !canEdit || isReadOnlyRole}
+                  onClick={handleSaveRolePermissions}
+                  style={
+                    !hasUnsavedChanges || !canEdit || isReadOnlyRole
+                      ? {}
+                      : { backgroundColor: '#2563eb', borderColor: '#2563eb' }
+                  }
                 >
-                  Read-Only All
+                  {t('rolesPermissions.saveRolePerms', 'Save Role Permissions')}
                 </Button>
-                <Button
-                  size="small"
-                  danger
-                  icon={<StopOutlined />}
-                  disabled={!canEdit}
-                  onClick={() => handleBulkPreset('revoke_all')}
-                >
-                  Revoke All
-                </Button>
-              </Space>
+              </div>
             </div>
           </Card>
 
-          {/* Role Permissions Matrix Table */}
+          {/* Module Permissions Matrix */}
           <Card
             bordered
             style={{
@@ -845,47 +913,20 @@ const RolesPermissions = () => {
               boxShadow: '0 1px 3px rgba(15, 23, 42, 0.05)',
               borderColor: '#e2e8f0',
             }}
-            bodyStyle={{ padding: 0 }}
+            bodyStyle={{ padding: '0px' }}
           >
-            <div style={{ padding: '14px 20px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <span style={{ fontWeight: 600, color: '#0f172a', fontSize: 14 }}>
-                  Role Access Matrix: {selectedRole?.roleName || 'Role'}
-                </span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                {hasUnsavedChanges && (
-                  <Tag color="warning" icon={<ExclamationCircleOutlined />}>
-                    {modifiedRowsMap.size} module(s) modified
-                  </Tag>
-                )}
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  Showing {filteredMatrixData.length} of {rolePermissions.length} modules
-                </Text>
-              </div>
-            </div>
-
             <Table
-              dataSource={filteredMatrixData}
-              columns={roleMatrixColumns}
+              dataSource={filteredRolePermissions}
               rowKey="moduleCode"
+              columns={roleMatrixColumns}
               loading={loadingRolePerms}
               pagination={false}
               size="middle"
-              scroll={{ x: 950, y: 560 }}
-              rowClassName={(record) => modifiedRowsMap.has(record.moduleCode) ? 'bg-amber-50/40' : ''}
-              locale={{
-                emptyText: (
-                  <div style={{ padding: '32px 0', textAlign: 'center' }}>
-                    <InfoCircleOutlined style={{ fontSize: 28, color: '#cbd5e1', marginBottom: 8 }} />
-                    <p style={{ color: '#64748b', margin: 0 }}>No modules match current search/filter.</p>
-                  </div>
-                )
-              }}
+              scroll={{ x: 750, y: 550 }}
             />
           </Card>
 
-          {/* SPECIAL ACTIONS SECTION */}
+          {/* Dedicated Special Actions */}
           <Card
             bordered
             style={{
@@ -893,11 +934,11 @@ const RolesPermissions = () => {
               boxShadow: '0 1px 3px rgba(15, 23, 42, 0.05)',
               borderColor: '#e2e8f0',
             }}
-            bodyStyle={{ padding: '20px 24px' }}
+            bodyStyle={{ padding: '20px' }}
           >
             <div style={{ marginBottom: 16 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <ThunderboltOutlined style={{ color: '#d97706', fontSize: 18 }} />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                <ThunderboltOutlined style={{ color: '#f59e0b', fontSize: 18 }} />
                 <Title level={5} style={{ margin: 0, color: '#0f172a' }}>
                   {t('rolesPermissions.specialActionsTitle', 'Dedicated Special Actions')}
                 </Title>
@@ -924,9 +965,6 @@ const RolesPermissions = () => {
                         <span style={{ fontWeight: 600, color: '#0f172a', fontSize: 13.5 }}>
                           {sa.displayName}
                         </span>
-                        <Tag color="blue" style={{ fontFamily: 'monospace', fontSize: 10, margin: 0 }}>
-                          {sa.code}
-                        </Tag>
                       </div>
                       <div style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>
                         {sa.description}
@@ -941,12 +979,7 @@ const RolesPermissions = () => {
                   render: (_, sa) => {
                     const parentMod = modules.find((m) => m.code === sa.parentModule);
                     const ACTION_ENUM_MAP = {
-                      0: 'View',
-                      1: 'Create',
-                      2: 'Edit',
-                      3: 'Delete',
-                      4: 'Execute',
-                      5: 'Export'
+                      0: 'View', 1: 'Create', 2: 'Edit', 3: 'Delete', 4: 'Execute', 5: 'Export'
                     };
                     const actionName = typeof sa.requiredStandardAction === 'number'
                       ? ACTION_ENUM_MAP[sa.requiredStandardAction] || 'Edit'
@@ -980,12 +1013,7 @@ const RolesPermissions = () => {
                     const roleModPerm = rolePermissions.find((p) => p.moduleCode === sa.parentModule);
                     const hasParentView = !!roleModPerm?.canView;
                     const ACTION_ENUM_MAP = {
-                      0: 'View',
-                      1: 'Create',
-                      2: 'Edit',
-                      3: 'Delete',
-                      4: 'Execute',
-                      5: 'Export'
+                      0: 'View', 1: 'Create', 2: 'Edit', 3: 'Delete', 4: 'Execute', 5: 'Export'
                     };
                     const actionName = typeof sa.requiredStandardAction === 'number'
                       ? ACTION_ENUM_MAP[sa.requiredStandardAction] || 'Edit'
@@ -1020,7 +1048,7 @@ const RolesPermissions = () => {
                     return (
                       <Checkbox
                         checked={isChecked}
-                        disabled={!canEdit}
+                        disabled={!canEdit || isReadOnlyRole}
                         onChange={(e) => handleSpecialActionChange(sa.code, e.target.checked)}
                       />
                     );
@@ -1044,13 +1072,13 @@ const RolesPermissions = () => {
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
-                zIndex: 10
+                zIndex: 10,
               }}
             >
               <Space>
-                <ExclamationCircleOutlined style={{ color: '#f59e0b', fontSize: 16 }} />
-                <span style={{ fontWeight: 500, color: '#1e293b' }}>
-                  You have unsaved changes in {modifiedRowsMap.size} module(s) for role <strong>{selectedRole?.roleName}</strong>.
+                <Badge dot status="warning" />
+                <span style={{ fontSize: 13.5, fontWeight: 500, color: '#0f172a' }}>
+                  {t('rolesPermissions.unsavedChangesDetected', 'Unsaved permission changes detected for this role')}
                 </span>
               </Space>
               <Space>
@@ -1072,6 +1100,211 @@ const RolesPermissions = () => {
         </Space>
       )}
 
+      {/* TAB 3: USER ROLE ASSIGNMENT */}
+      {activeTab === '3' && (
+        <Space direction="vertical" size={16} style={{ width: '100%' }}>
+          <Card
+            bordered
+            style={{
+              borderRadius: 10,
+              boxShadow: '0 1px 3px rgba(15, 23, 42, 0.05)',
+              borderColor: '#e2e8f0',
+            }}
+            bodyStyle={{ padding: '16px 20px' }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+              <div>
+                <Title level={5} style={{ margin: 0, color: '#0f172a' }}>User Tools Role Assignments</Title>
+                <Text type="secondary" style={{ fontSize: 13 }}>
+                  Assign Tools roles to authenticated ERP users independently of their external ERP roles.
+                </Text>
+              </div>
+
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                <Input
+                  placeholder="Search user name, phone, address..."
+                  prefix={<SearchOutlined style={{ color: '#94a3b8' }} />}
+                  value={userSearchText}
+                  onChange={(e) => {
+                    setUserSearchText(e.target.value);
+                    setUserPagination((prev) => ({ ...prev, current: 1 }));
+                  }}
+                  style={{ width: 240 }}
+                  allowClear
+                />
+                <Select
+                  value={userRoleFilter}
+                  onChange={(val) => {
+                    setUserRoleFilter(val);
+                    setUserPagination((prev) => ({ ...prev, current: 1 }));
+                  }}
+                  style={{ width: 180 }}
+                >
+                  <Option value="all">All Roles</Option>
+                  {roles.map((r) => (
+                    <Option key={r.id} value={String(r.id)}>{r.roleName}</Option>
+                  ))}
+                </Select>
+              </div>
+            </div>
+          </Card>
+
+          <Card
+            bordered
+            style={{
+              borderRadius: 10,
+              boxShadow: '0 1px 3px rgba(15, 23, 42, 0.05)',
+              borderColor: '#e2e8f0',
+            }}
+            bodyStyle={{ padding: '0px' }}
+          >
+            {selectedUserIds.length > 0 && (
+              <div style={{ padding: '10px 16px', background: '#eff6ff', borderBottom: '1px solid #bfdbfe', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: 13, color: '#1e40af', fontWeight: 500 }}>
+                  {selectedUserIds.length} user{selectedUserIds.length > 1 ? 's' : ''} selected across table
+                </span>
+                <Space>
+                  <Button size="small" type="primary" onClick={() => handleOpenAssignModal(null)}>
+                    Assign Tools Role to Selected ({selectedUserIds.length})
+                  </Button>
+                  <Button size="small" onClick={() => setSelectedUserIds([])}>
+                    Clear Selection
+                  </Button>
+                </Space>
+              </div>
+            )}
+            <Table
+              dataSource={userAssignments}
+              rowKey="userId"
+              loading={loadingUserRoles}
+              rowSelection={{
+                selectedRowKeys: selectedUserIds,
+                onChange: (keys) => setSelectedUserIds(keys),
+                preserveSelectedRowKeys: true,
+              }}
+              pagination={{
+                current: userPagination.current,
+                pageSize: userPagination.pageSize,
+                total: userTotalCount,
+                pageSizeOptions: ['10', '15', '20', '50', '100'],
+                showSizeChanger: true,
+                showTotal: (total, range) => `${range[0]}-${range[1]} of ${total} users`,
+                onChange: (page, pageSize) => {
+                  setUserPagination({ current: page, pageSize });
+                },
+                onShowSizeChange: (current, size) => {
+                  setUserPagination({ current: 1, pageSize: size });
+                },
+              }}
+              onChange={(pagination, filters, sorter) => {
+                if (sorter && sorter.field) {
+                  const sortField = sorter.field === 'userName' ? 'username' : sorter.field === 'roleName' ? 'rolename' : 'userId';
+                  const sortDirection = sorter.order || 'ascend';
+                  setUserSort({ sortBy: sortField, sortOrder: sortDirection });
+                }
+              }}
+              size="small"
+              scroll={{ x: 650 }}
+              columns={[
+                {
+                  title: 'S.No.',
+                  key: 'sno',
+                  width: 65,
+                  align: 'center',
+                  render: (_, __, index) => (userPagination.current - 1) * userPagination.pageSize + index + 1,
+                },
+                {
+                  title: 'User Name',
+                  dataIndex: 'userName',
+                  key: 'userName',
+                  sorter: true,
+                  render: (text, u) => {
+                    const fullName = u.firstName || u.lastName ? `${u.firstName || ''} ${u.lastName || ''}`.trim() : text;
+                    return (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <Avatar
+                          src={u.profilePicturePath || undefined}
+                          icon={!u.profilePicturePath ? <UserOutlined /> : undefined}
+                          style={{ backgroundColor: '#e2e8f0', color: '#475569', flexShrink: 0 }}
+                          size={28}
+                        />
+                        <div style={{ lineHeight: 1.2 }}>
+                          <span style={{ fontWeight: 600, color: '#0f172a', fontSize: 13 }}>{fullName}</span>
+                          {u.userName && u.userName !== fullName && (
+                            <span style={{ color: '#64748b', fontSize: 11, marginLeft: 6 }}>@{u.userName}</span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  }
+                },
+                {
+                  title: 'Contact Details',
+                  key: 'contact',
+                  width: 200,
+                  render: (_, u) => (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: 12 }}>
+                      {u.mobileNo ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#334155' }}>
+                          <FaPhoneAlt style={{ color: '#10b981', fontSize: 11 }} />
+                          <span>{u.mobileNo}</span>
+                        </div>
+                      ) : null}
+                      {u.address ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#64748b' }}>
+                          <MdLocationOn style={{ color: '#ef4444', fontSize: 12 }} />
+                          <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 170 }} title={u.address}>
+                            {u.address}
+                          </span>
+                        </div>
+                      ) : null}
+                      {!u.mobileNo && !u.address && (
+                        <span style={{ color: '#cbd5e1' }}>–</span>
+                      )}
+                    </div>
+                  )
+                },
+                {
+                  title: 'Assigned Tools Role',
+                  dataIndex: 'roleName',
+                  key: 'roleName',
+                  width: 160,
+                  sorter: true,
+                  render: (text, u) => {
+                    const color = u.roleName === 'Developer' ? 'gold'
+                      : u.roleName === 'Admin' ? 'red'
+                        : u.roleName === 'Head' ? 'geekblue'
+                          : u.roleName === 'Manager' ? 'blue'
+                            : u.roleName === 'Operator' ? 'green'
+                              : u.roleName === 'Data Reviewer' ? 'cyan'
+                                : 'default';
+                    return (
+                      <Tag color={color} style={{ fontSize: 12, padding: '1px 6px', margin: 0 }}>
+                        {text}
+                      </Tag>
+                    );
+                  }
+                },
+                {
+                  title: 'Actions',
+                  key: 'actions',
+                  width: 80,
+                  align: 'center',
+                  render: (_, u) => (
+                    <Button
+                      size="small"
+                      icon={<EditOutlined />}
+                      disabled={!canEdit}
+                      onClick={() => handleOpenAssignModal(u)}
+                    />
+                  )
+                }
+              ]}
+            />
+          </Card>
+        </Space>
+      )}
+
       {/* Role Create/Edit Modal */}
       <Modal
         title={editingRole ? t('rolesPermissions.editRoleTitle', 'Edit Role') : t('rolesPermissions.createRoleTitle', 'Create Custom Role')}
@@ -1085,11 +1318,108 @@ const RolesPermissions = () => {
         <div style={{ marginTop: 12 }}>
           <label style={{ display: 'block', marginBottom: 6, fontWeight: 500, color: '#334155' }}>Role Name</label>
           <Input
-            placeholder="e.g. Quality Assurance, Data Reviewer"
+            placeholder="e.g. Quality Assurance, Field Auditor"
             value={roleForm.roleName}
-            disabled={editingRole?.isSystemRole}
+            disabled={editingRole?.isProtected}
             onChange={(e) => setRoleForm({ roleName: e.target.value })}
           />
+        </div>
+      </Modal>
+
+      {/* User Role Assignment Modal */}
+      <Modal
+        title={
+          assignForm.isRowEdit
+            ? `Edit Tools Role for ${assignForm.targetUser?.firstName || assignForm.targetUser?.lastName ? `${assignForm.targetUser?.firstName || ''} ${assignForm.targetUser?.lastName || ''}`.trim() : (assignForm.targetUser?.userName || `User #${assignForm.userIds?.[0]}`)}`
+            : `Assign Tools Role to ${assignForm.userIds?.length || 0} Selected Users`
+        }
+        open={isAssignModalVisible}
+        onCancel={() => setIsAssignModalVisible(false)}
+        onOk={handleSaveUserAssignment}
+        confirmLoading={savingAssignment}
+        okText={assignForm.isRowEdit ? "Save Role Assignment" : `Assign to ${assignForm.userIds?.length || 0} Users`}
+        cancelText="Cancel"
+      >
+        <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {assignForm.isRowEdit ? (
+            <div style={{ background: '#f8fafc', padding: '12px 16px', borderRadius: 8, border: '1px solid #e2e8f0' }}>
+              <div style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>Assigning role for user:</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <Avatar
+                  src={assignForm.targetUser?.profilePicturePath || undefined}
+                  icon={!assignForm.targetUser?.profilePicturePath ? <UserOutlined /> : undefined}
+                  style={{ backgroundColor: '#e2e8f0', color: '#475569' }}
+                  size={32}
+                />
+                <div>
+                  <div style={{ fontWeight: 600, color: '#0f172a', fontSize: 14 }}>
+                    {assignForm.targetUser?.firstName || assignForm.targetUser?.lastName
+                      ? `${assignForm.targetUser?.firstName || ''} ${assignForm.targetUser?.lastName || ''}`.trim()
+                      : (assignForm.targetUser?.userName || `User #${assignForm.userIds?.[0]}`)}
+                  </div>
+                  {assignForm.targetUser?.userName && (
+                    <div style={{ fontSize: 12, color: '#64748b' }}>@{assignForm.targetUser.userName}</div>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                <label style={{ fontWeight: 500, color: '#334155' }}>
+                  Selected Users <span style={{ color: '#2563eb' }}>({assignForm.userIds?.length || 0} selected)</span>
+                </label>
+                {(allUsersList.length > 0 || userAssignments.length > 0) && (
+                  <Space size="small">
+                    <a
+                      style={{ fontSize: 12, color: '#2563eb' }}
+                      onClick={() => setAssignForm((prev) => ({ ...prev, userIds: (allUsersList.length ? allUsersList : userAssignments).map((u) => u.userId) }))}
+                    >
+                      Select All ({(allUsersList.length ? allUsersList : userAssignments).length})
+                    </a>
+                    <span style={{ color: '#cbd5e1' }}>|</span>
+                    <a
+                      style={{ fontSize: 12, color: '#64748b' }}
+                      onClick={() => setAssignForm((prev) => ({ ...prev, userIds: [] }))}
+                    >
+                      Clear
+                    </a>
+                  </Space>
+                )}
+              </div>
+              <Select
+                mode="multiple"
+                showSearch
+                placeholder="Search and select one or more users"
+                value={assignForm.userIds}
+                onChange={(val) => setAssignForm((prev) => ({ ...prev, userIds: val }))}
+                style={{ width: '100%' }}
+                loading={loadingUserRoles}
+                maxTagCount="responsive"
+                filterOption={(input, option) =>
+                  (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                }
+                options={(allUsersList.length ? allUsersList : userAssignments).map((u) => ({
+                  value: u.userId,
+                  label: `${u.firstName || u.lastName ? `${u.firstName || ''} ${u.lastName || ''}`.trim() : (u.userName || `User #${u.userId}`)}${u.userName ? ` (@${u.userName})` : ''} ${u.mobileNo ? `(${u.mobileNo})` : ''} ${u.address ? `- ${u.address}` : ''}`.trim()
+                }))}
+              />
+            </div>
+          )}
+
+          <div>
+            <label style={{ display: 'block', marginBottom: 6, fontWeight: 500, color: '#334155' }}>Select Tools Role</label>
+            <Select
+              placeholder="Select Tools Role"
+              value={assignForm.roleId}
+              onChange={(val) => setAssignForm((prev) => ({ ...prev, roleId: val }))}
+              style={{ width: '100%' }}
+              options={roles.map((r) => ({
+                value: r.id,
+                label: `${r.roleName} ${r.isProtected ? '(Protected)' : ''}`
+              }))}
+            />
+          </div>
         </div>
       </Modal>
     </div>
