@@ -6,7 +6,6 @@ import API from "../hooks/api";
 import { useToast } from "../hooks/useToast";
 import useStore from "../stores/ProjectData";
 import DataImportConflictReport from "../components/DataImportConflictReport";
-import useModulePermission from "../hooks/useModulePermission";
 
 const { Title, Text } = Typography;
 const { TabPane } = Tabs;
@@ -41,7 +40,6 @@ const EditableCell = ({
 export default function NodalCenterList() {
   const { showToast } = useToast();
   const projectId = useStore((state) => state.projectId);
-  const { canView, canCreate, canEdit, canDelete, canExecute } = useModulePermission('NODAL_CATCH');
 
   const [activeTab, setActiveTab] = useState("1");
   const [availableDbFields, setAvailableDbFields] = useState([]);
@@ -1191,29 +1189,22 @@ export default function NodalCenterList() {
       ) : (
         <Space size="middle">
           <Typography.Link
-            disabled={!canEdit || editingKey !== '' || tempData.length > 0}
-            onClick={() => {
-              if (!canEdit) return;
-              edit(record);
-            }}
-            title={!canEdit ? "You do not have permission to edit records" : (tempData.length > 0 ? "Edit in Merge Preview instead" : "")}
+            disabled={editingKey !== '' || tempData.length > 0}
+            onClick={() => edit(record)}
+            title={tempData.length > 0 ? "Edit in Merge Preview instead" : ""}
           >
             Edit
           </Typography.Link>
           <Popconfirm
             title="Are you sure you want to delete this record?"
-            onConfirm={() => {
-              if (!canDelete) return;
-              handleDelete(recId);
-            }}
+            onConfirm={() => handleDelete(recId)}
             okText="Yes"
             cancelText="No"
-            disabled={!canDelete || editingKey !== '' || tempData.length > 0}
+            disabled={editingKey !== '' || tempData.length > 0}
           >
             <Typography.Link
               type="danger"
-              disabled={!canDelete || editingKey !== '' || tempData.length > 0}
-              title={!canDelete ? "You do not have permission to delete records" : ""}
+              disabled={editingKey !== '' || tempData.length > 0}
             >
               Delete
             </Typography.Link>
@@ -1457,21 +1448,13 @@ export default function NodalCenterList() {
               allowClear
             />
             {!isUploadSectionVisible && (
-              <Tooltip title={!canCreate ? "View-only: Uploading records is disabled" : ""}>
-                <span>
-                  <Button type="primary" onClick={() => setIsUploadSectionVisible(true)} disabled={!canCreate || tempData.length > 0}>
-                    {title}
-                  </Button>
-                </span>
-              </Tooltip>
+              <Button type="primary" onClick={() => setIsUploadSectionVisible(true)} disabled={tempData.length > 0}>
+                {title}
+              </Button>
             )}
-            <Tooltip title={!canCreate ? "View-only: Adding records is disabled" : ""}>
-              <span>
-                <Button onClick={() => setIsAddModalVisible(true)} disabled={!canCreate || tempData.length > 0}>
-                  + Add Record
-                </Button>
-              </span>
-            </Tooltip>
+            <Button onClick={() => setIsAddModalVisible(true)} disabled={tempData.length > 0}>
+              + Add Record
+            </Button>
             {selectedRowKeys.length > 0 && (
               <Popconfirm
                 title={`Are you sure you want to delete ${selectedRowKeys.length} selected record(s)?`}
@@ -1479,15 +1462,10 @@ export default function NodalCenterList() {
                 okText="Yes, Delete"
                 cancelText="Cancel"
                 okButtonProps={{ danger: true }}
-                disabled={!canDelete}
               >
-                <Tooltip title={!canDelete ? "View-only: Deleting records is disabled" : ""}>
-                  <span>
-                    <Button danger icon={<DeleteOutlined />} disabled={!canDelete}>
-                      Delete Selected ({selectedRowKeys.length})
-                    </Button>
-                  </span>
-                </Tooltip>
+                <Button danger icon={<DeleteOutlined />}>
+                  Delete Selected ({selectedRowKeys.length})
+                </Button>
               </Popconfirm>
             )}
             {pagination.total > 0 && (
@@ -1497,15 +1475,10 @@ export default function NodalCenterList() {
                 okText="Yes, Delete All"
                 cancelText="Cancel"
                 okButtonProps={{ danger: true }}
-                disabled={!canDelete}
               >
-                <Tooltip title={!canDelete ? "View-only: Deleting all records is disabled" : ""}>
-                  <span>
-                    <Button danger type="primary" icon={<DeleteOutlined />} disabled={!canDelete}>
-                      Delete All
-                    </Button>
-                  </span>
-                </Tooltip>
+                <Button danger type="primary" icon={<DeleteOutlined />}>
+                  Delete All
+                </Button>
               </Popconfirm>
             )}
             <Popover content={columnVisibilityContent} title="Column Visibility" trigger="click" placement="bottomRight">
@@ -1673,19 +1646,19 @@ export default function NodalCenterList() {
           </Space>
         ) : (
           <Space size="middle">
-            <Typography.Link disabled={!canEdit || editingKey !== ''} onClick={() => canEdit && edit(record)}>
+            <Typography.Link disabled={editingKey !== ''} onClick={() => edit(record)}>
               Edit
             </Typography.Link>
             <Popconfirm
               title="Are you sure you want to delete this record?"
-              onConfirm={() => canDelete && handleDelete(recId)}
+              onConfirm={() => handleDelete(recId)}
               okText="Yes"
               cancelText="No"
-              disabled={!canDelete || editingKey !== ''}
+              disabled={editingKey !== ''}
             >
               <Typography.Link
                 type="danger"
-                disabled={!canDelete || editingKey !== ''}
+                disabled={editingKey !== ''}
               >
                 Delete
               </Typography.Link>
@@ -1754,9 +1727,9 @@ export default function NodalCenterList() {
                 />
               </div>
 
-              <Tooltip title={!canExecute ? "You do not have permission to execute preview/merge" : reports?.dynamicConflicts?.length > 0 ? "Resolve all dynamic conflicts before generating a preview" : ""}>
+              <Tooltip title={reports?.dynamicConflicts?.length > 0 ? "Resolve all dynamic conflicts before generating a preview" : ""}>
                 <span>
-                  <Button type="primary" onClick={handleMergePreview} loading={merging} disabled={!canExecute || (!isDirty && tempData.length > 0) || (reports?.dynamicConflicts?.length > 0)}>
+                  <Button type="primary" onClick={handleMergePreview} loading={merging} disabled={(!isDirty && tempData.length > 0) || (reports?.dynamicConflicts?.length > 0)}>
                     {tempData.length > 0 ? "Regenerate Preview" : "Generate Preview"}
                   </Button>
                 </span>
@@ -1795,15 +1768,10 @@ export default function NodalCenterList() {
                   okText="Yes, Delete"
                   cancelText="Cancel"
                   okButtonProps={{ danger: true }}
-                  disabled={!canDelete}
                 >
-                  <Tooltip title={!canDelete ? "View-only: Deleting records is disabled" : ""}>
-                    <span>
-                      <Button danger icon={<DeleteOutlined />} disabled={!canDelete}>
-                        Delete Selected ({selectedRowKeys.length})
-                      </Button>
-                    </span>
-                  </Tooltip>
+                  <Button danger icon={<DeleteOutlined />}>
+                    Delete Selected ({selectedRowKeys.length})
+                  </Button>
                 </Popconfirm>
               )}
               {tempPagination.total > 0 && (
@@ -1813,29 +1781,20 @@ export default function NodalCenterList() {
                   okText="Yes, Delete All"
                   cancelText="Cancel"
                   okButtonProps={{ danger: true }}
-                  disabled={!canDelete}
                 >
-                  <Tooltip title={!canDelete ? "View-only: Deleting all records is disabled" : ""}>
-                    <span>
-                      <Button danger type="primary" icon={<DeleteOutlined />} disabled={!canDelete}>
-                        Delete All
-                      </Button>
-                    </span>
-                  </Tooltip>
+                  <Button danger type="primary" icon={<DeleteOutlined />}>
+                    Delete All
+                  </Button>
                 </Popconfirm>
               )}
-              <Tooltip title={!canExecute ? "View-only: Pushing records to Main is disabled" : ""}>
-                <span>
-                  <Button
-                    type="primary"
-                    onClick={confirmPushToMain}
-                    loading={pushingToMain}
-                    disabled={!canExecute || tempData.length === 0}
-                  >
-                    Push into main NR Data
-                  </Button>
-                </span>
-              </Tooltip>
+              <Button
+                type="primary"
+                onClick={confirmPushToMain}
+                loading={pushingToMain}
+                disabled={tempData.length === 0}
+              >
+                Push into main NR Data
+              </Button>
             </div>
           </div>
           <Form form={form} component={false}>
@@ -2446,31 +2405,9 @@ export default function NodalCenterList() {
     );
   };
 
-  if (!canView) {
-    return (
-      <div className="p-6">
-        <Alert
-          message="Access Denied"
-          description="You do not have permission to view Nodal Center List."
-          type="error"
-          showIcon
-        />
-      </div>
-    );
-  }
-
   return (
     <div className="p-6">
-      <Title level={4} className="mb-4">Nodal Center List</Title>
-
-      {!canEdit && !canCreate && (
-        <div style={{ marginBottom: 16, padding: '10px 14px', background: '#fffbe6', border: '1px solid #ffe58f', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span style={{ color: '#d46b08', fontSize: 13 }}>
-            <strong>View-Only Access:</strong> You have view-only permission for Nodal Center List. Adding, editing, uploading, deleting, or merging records is disabled for your role.
-          </span>
-          <Tag color="orange">Read Only</Tag>
-        </div>
-      )}
+      <Title level={4} className="mb-6">Nodal Center List</Title>
 
       <Tabs
         activeKey={activeTab}

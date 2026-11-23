@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 
-import { Row, Col, Typography, message, Card, Select, Space, Button, Popconfirm, Alert, Tooltip } from "antd";
+import { Row, Col, Typography, message, Card, Select, Space, Button, Popconfirm } from "antd";
 import { ReloadOutlined, DeleteOutlined } from "@ant-design/icons";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
@@ -24,11 +24,8 @@ import ImportConfig from "./components/ImportConfig";
 import { importTemplatesFromGroup } from "../services/rptTemplatesService";
 import { normalizeId } from "../utils/rptTemplateUtils";
 import useMasterAuth from "../hooks/useMasterAuth";
-import useModulePermission from "../hooks/useModulePermission";
 
 const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, selectedGroup = null, onTypeChange = null, onGroupChange = null, typeOptions: propTypeOptions = [], groupOptions: propGroupOptions = [], onReset = null, onResetAll = null }) => {
-  const moduleCode = isMasterConfig ? 'MASTER_CONFIG' : 'PROJECT_CONFIG';
-  const { canView, canEdit, canCreate, canDelete } = useModulePermission(moduleCode);
   const { showToast } = useToast();
   const navigate = useNavigate();
   const projectId = useStore((state) => state.projectId);
@@ -350,14 +347,10 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
 
       const envelopeParsed = JSON.parse(projectConfig.envelope || "{}");
       const parsedInnerEnvelopes = envelopeParsed.Inner
-        ? (Array.isArray(envelopeParsed.Inner)
-            ? envelopeParsed.Inner
-            : envelopeParsed.Inner.split(',').map(s => s.trim()).filter(Boolean))
+        ? [envelopeParsed.Inner]
         : [];
       const parsedOuterEnvelopes = envelopeParsed.Outer
-        ? (Array.isArray(envelopeParsed.Outer)
-            ? envelopeParsed.Outer
-            : envelopeParsed.Outer.split(',').map(s => s.trim()).filter(Boolean))
+        ? [envelopeParsed.Outer]
         : [];
       const parsedBoxFields = (projectConfig.boxBreakingCriteria || [])
         .filter((fieldId) => fields.some((f) => f.fieldId === fieldId))
@@ -526,8 +519,8 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
 
       let config = {
         envelopeType: {
-          inner: env.Inner ? (Array.isArray(env.Inner) ? env.Inner : env.Inner.split(',').map(s => s.trim()).filter(Boolean)) : [],
-          outer: env.Outer ? (Array.isArray(env.Outer) ? env.Outer : env.Outer.split(',').map(s => s.trim()).filter(Boolean)) : [],
+          inner: env.Inner ? [env.Inner] : [],
+          outer: env.Outer ? [env.Outer] : [],
         },
         fixedQty: item.mode === "Fixed" ? parseFloat(item.value) : 0,
         percentage: item.mode === "Percentage" ? parseFloat(item.value) : 0,
@@ -718,14 +711,10 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
 
           const envelopeParsed = JSON.parse(projectConfig.envelope || "{}");
           const parsedInnerEnvelopes = envelopeParsed.Inner
-            ? (Array.isArray(envelopeParsed.Inner)
-                ? envelopeParsed.Inner
-                : envelopeParsed.Inner.split(',').map(s => s.trim()).filter(Boolean))
+            ? [envelopeParsed.Inner]
             : [];
           const parsedOuterEnvelopes = envelopeParsed.Outer
-            ? (Array.isArray(envelopeParsed.Outer)
-                ? envelopeParsed.Outer
-                : envelopeParsed.Outer.split(',').map(s => s.trim()).filter(Boolean))
+            ? [envelopeParsed.Outer]
             : [];
           const parsedBoxFields = (projectConfig.boxBreakingCriteria || [])
             .filter((fieldId) => fields.some((f) => f.fieldId === fieldId))
@@ -828,8 +817,8 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
 
           let config = {
             envelopeType: {
-              inner: env.Inner ? (Array.isArray(env.Inner) ? env.Inner : env.Inner.split(',').map(s => s.trim()).filter(Boolean)) : [],
-              outer: env.Outer ? (Array.isArray(env.Outer) ? env.Outer : env.Outer.split(',').map(s => s.trim()).filter(Boolean)) : [],
+              inner: env.Inner ? [env.Inner] : [],
+              outer: env.Outer ? [env.Outer] : [],
             },
             fixedQty: item.mode === "Fixed" ? parseFloat(item.value) : 0,
             percentage: item.mode === "Percentage" ? parseFloat(item.value) : 0,
@@ -1308,9 +1297,6 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
       // In master config mode, fetch when type and group are selected
       if (selectedType && selectedGroup) {
         fetchProjectConfigData(null, selectedType, selectedGroup);
-      } else {
-        resetForm();
-        setConfigExists(false);
       }
     } else {
       // In project config mode, fetch when projectId and toolModules are available
@@ -1435,19 +1421,6 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
 
   const effectiveTypeId = selectedType ?? localStorage.getItem("selectedType");
 
-  if (!canView) {
-    return (
-      <div style={{ padding: 16 }}>
-        <Alert
-          type="error"
-          showIcon
-          message="Access Denied"
-          description={`You do not have permission to view ${isMasterConfig ? "Master Configuration" : "Project Configuration"}.`}
-        />
-      </div>
-    );
-  }
-
   return (
     <div style={{ padding: 16 }}>
 
@@ -1459,50 +1432,6 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
         onCancel={handleCancelModal}
         loading={isRerunning}
       />
-
-      {/* === READ-ONLY PERMISSION BANNER === */}
-      {!canEdit && (
-        <Alert
-          type="warning"
-          showIcon
-          message="View-Only Access"
-          description="You have view-only permission for this module. You can inspect the current configuration, but modifying, clearing, importing, or saving configuration changes is disabled."
-          style={{ marginBottom: 16 }}
-        />
-      )}
-
-      {/* === MASTER CONFIGURATION STATUS BANNER === */}
-      {isMasterConfig && selectedGroup && selectedType && (
-        configExists ? (
-          <Alert
-            type="success"
-            showIcon
-            message="Master Configuration Loaded"
-            description={`Active Master Configuration loaded for "${groupLabel || 'selected group'}" (${typeLabel || 'selected type'}). You can modify the parameters below and click Save.`}
-            style={{ marginBottom: 16 }}
-          />
-        ) : (
-          <Alert
-            type="info"
-            showIcon
-            message="No Existing Master Configuration Found"
-            description={
-              <div>
-                <div>
-                  No configuration is currently saved in the database for <strong>"{groupLabel || 'selected group'}"</strong> and <strong>"{typeLabel || 'selected type'}"</strong>.
-                </div>
-                <div style={{ marginTop: 6 }}>
-                  • To create a new master configuration: enable modules in <strong>Module Selection</strong> below, configure their parameters, and click <strong>Save</strong> in Configuration Summary.
-                </div>
-                <div style={{ marginTop: 4 }}>
-                  • Or click <strong>Import Configuration</strong> in the top-right to copy all settings from another configured group (such as Group "O") and apply them here.
-                </div>
-              </div>
-            }
-            style={{ marginBottom: 16 }}
-          />
-        )
-      )}
 
       {/* === PAGE HEADER WITH TYPE/GROUP SELECTION (Master Config Mode) === */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px', gap: 16 }}>
@@ -1552,16 +1481,8 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
           </div>
         )}
 
-        <Space>
-          {!canEdit || !canDelete ? (
-            <Tooltip title={!canEdit ? "View-only access: Clearing configuration is disabled" : "Delete permission required: Clearing configuration is disabled"}>
-              <span>
-                <Button icon={<DeleteOutlined />} danger disabled>
-                  Clear All
-                </Button>
-              </span>
-            </Tooltip>
-          ) : (
+        {!isMasterConfig && (
+          <Space>
             <Popconfirm
               title="Clear all configuration?"
               description="This will wipe all current settings locally. Changes are not permanent until you save."
@@ -1575,23 +1496,9 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
                 Clear All
               </Button>
             </Popconfirm>
-          )}
-          {!canEdit ? (
-            <Tooltip title="View-only access: Importing configuration is disabled">
-              <span>
-                <Button type="primary" disabled>
-                  Import Configuration
-                </Button>
-              </span>
-            </Tooltip>
-          ) : (
-            <ImportConfig
-              onImport={handleImport}
-              disabled={isMasterConfig ? (!selectedType || !selectedGroup) : false}
-              isMasterConfig={isMasterConfig}
-            />
-          )}
-        </Space>
+            <ImportConfig onImport={handleImport} disabled={configExists} />
+          </Space>
+        )}
       </div>
 
       <Row gutter={16} align="top">
@@ -1604,7 +1511,6 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
             onReset={resetModuleSelection}
             onClear={clearModuleSelection}
             importedSnapshot={importedSnapshot}
-            canEdit={canEdit}
           />
           <DuplicateTool
             isEnabled={isEnabled}
@@ -1613,8 +1519,6 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
             onReset={resetDuplicateTool}
             onClear={clearDuplicateTool}
             importedSnapshot={importedSnapshot}
-            fields={fields}
-            canEdit={canEdit}
           />
           <EnvelopeSetupCard
             isEnabled={isEnabled}
@@ -1628,7 +1532,6 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
             importedSnapshot={importedSnapshot}
             duplicateConfig={duplicateConfig}
             setDuplicateConfig={setDuplicateConfig}
-            canEdit={canEdit}
           />
 
           <ExtraProcessingCard
@@ -1644,7 +1547,6 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
             onReset={resetExtraProcessing}
             onClear={clearExtraProcessing}
             importedSnapshot={importedSnapshot}
-            canEdit={canEdit}
           />
 
           <HeaderVerificationCard
@@ -1655,7 +1557,6 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
             onReset={resetHeaderVerification}
             onClear={clearHeaderVerification}
             importedSnapshot={importedSnapshot}
-            canEdit={canEdit}
           />
         </Col>
 
@@ -1690,7 +1591,6 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
             customCatchSerials={customCatchSerials}
             setCustomCatchSerials={setCustomCatchSerials}
             projectId={projectId}
-            canEdit={canEdit}
           />
           <BoxBreakingCard
             isEnabled={isEnabled}
@@ -1725,7 +1625,6 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
             onReset={resetBoxBreaking}
             onClear={clearBoxBreaking}
             importedSnapshot={importedSnapshot}
-            canEdit={canEdit}
           />
 
           <ConfigSummaryCard
@@ -1739,7 +1638,6 @@ const ProjectConfiguration = ({ isMasterConfig = false, selectedType = null, sel
             isMasterConfig={isMasterConfig}
             selectedType={selectedType}
             selectedGroup={selectedGroup}
-            canEdit={canEdit}
           />
         </Col>
       </Row>

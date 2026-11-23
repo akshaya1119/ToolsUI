@@ -1,5 +1,5 @@
 import React from "react";
-import { Button, Card, Empty, Space, Table, Tag, Tooltip, Typography } from "antd";
+import { Button, Card, Empty, Space, Table, Tag, Typography } from "antd";
 import { CopyOutlined, PlusOutlined, ReloadOutlined } from "@ant-design/icons";
 
 const TemplatesCard = ({
@@ -20,7 +20,6 @@ const TemplatesCard = ({
   onSaveAsMaster,
   isSavingMaster,
   rowSelection,
-  canCreate = true,
 }) => {
   const visibleTags = tags.filter(Boolean);
   return (
@@ -40,28 +39,22 @@ const TemplatesCard = ({
         <Space>
           <Button title=" Refresh" icon={<ReloadOutlined />} onClick={onRefresh} disabled={!selectionReady} />
           {onSaveAsMaster && (
-            <Tooltip title={!canCreate ? "View-only: Save as Master disabled" : ""}>
-              <Button
-                icon={<CopyOutlined />}
-                onClick={onSaveAsMaster}
-                disabled={!canCreate || !rowSelection || !rowSelection.selectedRowKeys || rowSelection.selectedRowKeys.length === 0}
-                loading={isSavingMaster}
-              >
-                Save as Master
-              </Button>
-            </Tooltip>
-          )}
-          <Tooltip title={!canCreate ? "View-only: Add disabled" : ""}>
-            <Button type="primary" icon={<PlusOutlined />} onClick={onAdd} disabled={disableAdd || !canCreate}>
-              Add
+            <Button
+              icon={<CopyOutlined />}
+              onClick={onSaveAsMaster}
+              disabled={!rowSelection || !rowSelection.selectedRowKeys || rowSelection.selectedRowKeys.length === 0}
+              loading={isSavingMaster}
+            >
+              Save as Master
             </Button>
-          </Tooltip>
+          )}
+          <Button type="primary" icon={<PlusOutlined />} onClick={onAdd} disabled={disableAdd}>
+            Add
+          </Button>
           {showImportAction && (
-            <Tooltip title={!canCreate ? "View-only: Import disabled" : ""}>
-              <Button icon={<CopyOutlined />} onClick={onImport} disabled={disableImport || !canCreate}>
-                Import
-              </Button>
-            </Tooltip>
+            <Button icon={<CopyOutlined />} onClick={onImport} disabled={disableImport}>
+              Import
+            </Button>
           )}
         </Space>
       }
@@ -82,17 +75,13 @@ const TemplatesCard = ({
           }
         >
           <Space>
-            <Tooltip title={!canCreate ? "View-only: Add disabled" : ""}>
-              <Button type="primary" icon={<PlusOutlined />} onClick={onAdd} disabled={!canCreate}>
-                Add Template
-              </Button>
-            </Tooltip>
+            <Button type="primary" icon={<PlusOutlined />} onClick={onAdd}>
+              Add Template
+            </Button>
             {showImportAction && (
-              <Tooltip title={!canCreate ? "View-only: Import disabled" : ""}>
-                <Button icon={<CopyOutlined />} onClick={onImport} disabled={disableImport || !canCreate}>
-                  Import Templates
-                </Button>
-              </Tooltip>
+              <Button icon={<CopyOutlined />} onClick={onImport} disabled={disableImport}>
+                Import Templates
+              </Button>
             )}
           </Space>
         </Empty>

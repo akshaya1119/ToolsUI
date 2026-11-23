@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
-  Alert,
   Button,
   Card,
   Empty,
@@ -35,7 +34,6 @@ import {
 import axios from "axios";
 import useStore from "../stores/ProjectData";
 import useMasterAuth from "../hooks/useMasterAuth";
-import useModulePermission from "../hooks/useModulePermission";
 import {
   extractParsedFields,
   buildReportFileName,
@@ -84,7 +82,6 @@ import TemplatesMappingPanel from "../components/rpt/TemplatesMappingPanel";
 import TemplatesVersionsModal from "../components/rpt/TemplatesVersionsModal";
 
 const ProjectTemplates = () => {
-  const { canView, canCreate, canEdit, canDelete } = useModulePermission("MASTER_RPT");
   const url = import.meta.env.VITE_API_BASE_URL;
   const APIURL = import.meta.env.VITE_API_URL;
   const rptApiUrl = import.meta.env.VITE_RPT_API_URL;
@@ -690,10 +687,6 @@ const ProjectTemplates = () => {
   };
 
   const handleSaveAsMaster = async () => {
-    if (!canCreate) {
-      message.warning("You have view-only access. Saving as Master is disabled.");
-      return;
-    }
     if (!selectedRowKeys.length) return;
 
     requireAuth(
@@ -725,10 +718,6 @@ const ProjectTemplates = () => {
   };
 
   const handleAddSubmit = async () => {
-    if (!canCreate) {
-      message.warning("You have view-only access. Creating templates is disabled.");
-      return;
-    }
     try {
       const values = await addForm.validateFields();
       if (!addFileList || addFileList.length === 0) {
@@ -770,10 +759,6 @@ const ProjectTemplates = () => {
   };
 
   const handleImportTemplates = async () => {
-    if (!canCreate) {
-      message.warning("You have view-only access. Importing templates is disabled.");
-      return;
-    }
     if (!selectionReady) {
       message.warning("Select a project with group and type first.");
       return;
@@ -945,10 +930,6 @@ const ProjectTemplates = () => {
   };
 
   const handleSaveMapping = async () => {
-    if (!canEdit) {
-      message.warning("You have view-only access. Saving mapping is disabled.");
-      return;
-    }
     if (!mappingTemplate?.templateId) return;
     setSavingMapping(true);
     try {
@@ -1100,10 +1081,6 @@ const ProjectTemplates = () => {
   };
 
   const confirmActivateVersion = async (record) => {
-    if (!canEdit) {
-      message.warning("You have view-only access. Activating template versions is disabled.");
-      return;
-    }
     const scopeLabel = getScopeLabel(record);
     const confirmed = await MessageService.confirm(
       `This will make v${record?.version} the active template for the ${scopeLabel.toLowerCase()} scope. All projects using this template in that scope will use this version.`,
@@ -1148,10 +1125,6 @@ const ProjectTemplates = () => {
   };
 
   const startInlineEdit = (template) => {
-    if (!canEdit) {
-      message.warning("You have view-only access. Editing templates is disabled.");
-      return;
-    }
     setEditingTemplateId(template?.templateId ?? null);
     setEditingTemplateName(template?.templateName || "");
     setEditingModuleIds(
@@ -1175,10 +1148,6 @@ const ProjectTemplates = () => {
   };
 
   const saveInlineEdit = async () => {
-    if (!canEdit) {
-      message.warning("You have view-only access. Editing templates is disabled.");
-      return;
-    }
     if (!editingTemplateId) return;
     const name = editingTemplateName.trim();
     if (!name) {
@@ -1211,10 +1180,6 @@ const ProjectTemplates = () => {
   };
 
   const handleRemoveTemplate = (record) => {
-    if (!canDelete) {
-      message.warning("You have view-only access. Deleting/restoring templates is disabled.");
-      return;
-    }
     const scope = record?.projectId ? "project" : record?.groupId ? "group" : "standard";
 
     if (record?.isDeleted) {
@@ -1440,9 +1405,6 @@ const ProjectTemplates = () => {
         cancelInlineEdit,
         inlineEditSaving,
         onRemove: handleRemoveTemplate,
-        canEdit,
-        canDelete,
-        canCreate,
       }),
     [
       userMap,
@@ -1467,9 +1429,6 @@ const ProjectTemplates = () => {
       startInlineEdit,
       saveInlineEdit,
       cancelInlineEdit,
-      canEdit,
-      canDelete,
-      canCreate,
     ],
   );
 
@@ -1481,14 +1440,12 @@ const ProjectTemplates = () => {
         confirmActivateVersion,
         handleDownload,
         // onGenerate: handleGenerateReportFromVersion,
-        canEdit,
       }),
     [
       userMap,
       activatingVersionId,
       confirmActivateVersion,
       handleDownload,
-      canEdit,
       // handleGenerateReportFromVersion,
     ],
   );
@@ -1620,15 +1577,6 @@ const ProjectTemplates = () => {
     <div className="rpt-templates">
       {authModalComponent}
       <style>{rptTemplatesStyles}</style>
-      {!canEdit && !canCreate && (
-        <Alert
-          message="Read Only Mode"
-          description="You have view-only permissions for Templates. Creating, editing, mapping, activating, or deleting templates is disabled."
-          type="info"
-          showIcon
-          style={{ marginBottom: 16 }}
-        />
-      )}
       <ProjectTemplatesHeader
         projectLoading={projectLoading}
         projectLabel={projectLabel}
@@ -1647,7 +1595,6 @@ const ProjectTemplates = () => {
           }`}
       >
         <TemplatesCard
-          canCreate={canCreate}
           selectionReady={selectionReady}
           tags={["Project", groupLabel, typeLabel]}
           data={availableRPTFiles}
@@ -1802,7 +1749,6 @@ const ProjectTemplates = () => {
           setUseBoxLabelSP={setUseBoxLabelSP}
           inExcel={inExcel}
           setInExcel={setInExcel}
-          canEdit={canEdit}
         />
       </div>
 

@@ -1,15 +1,13 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Card, Select, Button, Space, message, Row, Col, Typography, Tooltip, Alert } from 'antd';
+import { Card, Select, Button, Space, message, Row, Col, Typography } from 'antd';
 import { DownloadOutlined, EyeOutlined, FileTextOutlined, ReloadOutlined, TeamOutlined, FileOutlined, FormOutlined } from '@ant-design/icons';
 import { downloadReport, previewReport } from './hooks/reportApi';
-import useModulePermission from '../hooks/useModulePermission';
 
 const { Option } = Select;
 const { Text } = Typography;
 
 const CrystalReports = () => {
-  const { canView, canExport } = useModulePermission('MASTER_CRYSTAL');
   const url = import.meta.env.VITE_API_BASE_URL;
 
   const [groups, setGroup] = useState([]);
@@ -140,19 +138,6 @@ const CrystalReports = () => {
 
   // Check if all fields are selected
   const isFormValid = selectedGroup && selectedType && selectedTemplate;
-
-  if (!canView) {
-    return (
-      <div style={{ padding: '24px 16px' }}>
-        <Alert
-          message="Access Denied"
-          description="You do not have permission to view Crystal Reports."
-          type="error"
-          showIcon
-        />
-      </div>
-    );
-  }
 
   return (
     <div style={{ 
@@ -347,20 +332,16 @@ const CrystalReports = () => {
               Preview
             </Button>
 
-            <Tooltip title={!canExport ? "View-only: Downloading crystal reports is disabled" : ""}>
-              <span>
-                <Button
-                  className="report-btn"
-                  type="primary"
-                  icon={<DownloadOutlined />}
-                  onClick={handleDownload}
-                  loading={downloading}
-                  disabled={!isFormValid || !canExport}
-                >
-                  Download
-                </Button>
-              </span>
-            </Tooltip>
+            <Button
+              className="report-btn"
+              type="primary"
+              icon={<DownloadOutlined />}
+              onClick={handleDownload}
+              loading={downloading}
+              disabled={!isFormValid}
+            >
+              Download
+            </Button>
           </Space>
         </div>
       </Card>

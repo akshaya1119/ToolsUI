@@ -1,19 +1,17 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+﻿import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import API from "../../hooks/api";
 import axios from "axios";
-import { Table, Select, Input, Tag, Empty, Dropdown, Button, Tooltip, Alert } from "antd";
+import { Table, Select, Input, Tag, Empty, Dropdown, Button } from "antd";
 import { SearchOutlined, DownloadOutlined } from "@ant-design/icons";
 import { Columns } from "lucide-react";
 import jsPDF from "jspdf";
 import "jspdf-autotable";
 import * as XLSX from "xlsx";
-import useModulePermission from "../../hooks/useModulePermission";
 
 const { Option } = Select;
 
 export default function MasterConfigReport() {
   const url = import.meta.env.VITE_API_BASE_URL;
-  const { canView, canExport } = useModulePermission('REPORTS');
 
   const [data, setData] = useState([]);
   const [groups, setGroups] = useState([]);
@@ -702,19 +700,6 @@ export default function MasterConfigReport() {
     [allColumns, visibleColumns]
   );
 
-  if (!canView) {
-    return (
-      <div style={{ padding: "24px" }}>
-        <Alert
-          message="Access Denied"
-          description="You do not have permission to view Master Configuration Report."
-          type="error"
-          showIcon
-        />
-      </div>
-    );
-  }
-
   return (
     <div style={{ padding: "24px", height: "100vh", display: "flex", flexDirection: "column", overflow: "hidden", gap: "16px" }}>
       <h1 style={{ fontSize: 32, fontWeight: 700, margin: "0 0 8px 0", color: "#1f2937", flexShrink: 0 }}>
@@ -841,7 +826,6 @@ export default function MasterConfigReport() {
 
         {/* Download Button */}
         <Dropdown
-          disabled={!canExport}
           menu={{
             items: [
               {
@@ -857,18 +841,13 @@ export default function MasterConfigReport() {
             ],
           }}
         >
-          <Tooltip title={!canExport ? "View-only: Exporting reports is disabled" : ""}>
-            <span>
-              <Button
-                type="primary"
-                icon={<DownloadOutlined />}
-                disabled={!canExport}
-                style={{ display: "flex", alignItems: "center", gap: "6px" }}
-              >
-                Download
-              </Button>
-            </span>
-          </Tooltip>
+          <Button
+            type="primary"
+            icon={<DownloadOutlined />}
+            style={{ display: "flex", alignItems: "center", gap: "6px" }}
+          >
+            Download
+          </Button>
         </Dropdown>
 
         <div style={{ marginLeft: "auto", color: "#6b7280", fontSize: 13 }}>

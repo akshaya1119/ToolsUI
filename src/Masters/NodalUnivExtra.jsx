@@ -1,10 +1,8 @@
 import React, { useEffect, useState } from "react";
-import { Table, Button, Modal, Form, Input, InputNumber, Space, message, Tooltip } from "antd";
+import { Table, Button, Modal, Form, Input, InputNumber, Space, message } from "antd";
 import API from "../hooks/api";
-import useModulePermission from "../hooks/useModulePermission";
 
 const NodalUnivExtra = () => {
-  const { canView, canCreate, canEdit } = useModulePermission('MASTER_NODAL_EXTRA');
   const [extras, setExtras] = useState([]);
   const [loading, setLoading] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -26,10 +24,8 @@ const NodalUnivExtra = () => {
   };
 
   useEffect(() => {
-    if (canView) {
-      fetchExtras();
-    }
-  }, [canView]);
+    fetchExtras();
+  }, []);
 
   // Open modal for Add/Edit
   const openModal = (record = null) => {
@@ -88,51 +84,20 @@ const NodalUnivExtra = () => {
       key: "actions",
       render: (_, record) => (
         <Space>
-          {canEdit ? (
-            <Button type="link" onClick={() => openModal(record)}>
-              Edit
-            </Button>
-          ) : (
-            <Tooltip title="View-only access: Editing is disabled">
-              <span>
-                <Button type="link" disabled>
-                  Edit
-                </Button>
-              </span>
-            </Tooltip>
-          )}
+          <Button type="link" onClick={() => openModal(record)}>
+            Edit
+          </Button>
         </Space>
       ),
     },
   ];
 
-  if (!canView) {
-    return (
-      <div style={{ padding: 24, background: '#fff', borderRadius: 8, border: '1px solid #ffd591' }}>
-        <p style={{ color: '#d46b08', margin: 0, fontWeight: 500 }}>
-          Access Denied: You do not have permission to view Nodal Univ Extra Master.
-        </p>
-      </div>
-    );
-  }
-
   return (
     <div >
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
-        {canCreate ? (
-          <Button type="primary" onClick={() => openModal()}>
-            Add Extra
-          </Button>
-        ) : (
-          <Tooltip title="View-only access: Creating new items is disabled">
-            <span>
-              <Button type="primary" disabled>
-                Add Extra
-              </Button>
-            </span>
-          </Tooltip>
-        )}
-      </div>
+      
+      <Button type="primary" style={{display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }} onClick={() => openModal()}>
+        Add Extra
+      </Button>
 
       <Table
         columns={columns}
@@ -148,7 +113,6 @@ const NodalUnivExtra = () => {
         onOk={handleSave}
         onCancel={() => setIsModalOpen(false)}
         okText="Save"
-        okButtonProps={{ disabled: editingExtra ? !canEdit : !canCreate }}
       >
         <Form form={form} layout="vertical">
           <Form.Item

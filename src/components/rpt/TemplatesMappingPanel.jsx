@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Button, Card, Checkbox, Input, InputNumber, Select, Space, Switch, Table, Tooltip, Typography } from "antd";
+import { Button, Card, Checkbox, Input, InputNumber, Select, Space, Switch, Table, Typography } from "antd";
 import { CloseOutlined, DeleteOutlined, PlusOutlined, ReloadOutlined } from "@ant-design/icons";
 
 // Map raw SQL expressions or calc: values to friendly display labels
@@ -59,7 +59,6 @@ const TemplatesMappingPanel = ({
   parsedFieldsLoading,
   mappingLoading,
   closeMappingPanel,
-  canEdit = true,
 }) => {
   if (!showMappingPanel) return null;
 
@@ -142,19 +141,15 @@ const TemplatesMappingPanel = ({
                   style={{ width: 60 }}
                   size="small"
                 />
-                <Tooltip title={!canEdit ? "View-only: Mapping save disabled" : ""}>
-                  <span>
-                    <Button
-                      type="primary"
-                      onClick={handleSaveMapping}
-                      htmlType="button"
-                      loading={savingMapping}
-                      disabled={!mappingTemplate?.templateId || !canEdit}
-                    >
-                      Save Mapping
-                    </Button>
-                  </span>
-                </Tooltip>
+                <Button
+                  type="primary"
+                  onClick={handleSaveMapping}
+                  htmlType="button"
+                  loading={savingMapping}
+                  disabled={!mappingTemplate?.templateId}
+                >
+                  Save Mapping
+                </Button>
               </Space>
             </Space>
             <Typography.Text type="secondary" style={{ fontSize: 11, display: "block" }}>

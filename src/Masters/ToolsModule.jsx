@@ -1,13 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { Table, Button, Modal, Input, Space, message, Select, Tooltip } from 'antd';
+import { Table, Button, Modal, Input, Space, message, Select } from 'antd';
 import { EditOutlined, SearchOutlined } from '@ant-design/icons';
 import API from '../hooks/api';
-import useModulePermission from '../hooks/useModulePermission';
 
 const { Option } = Select;
 
 const ToolModule = () => {
-    const { canView, canCreate, canEdit } = useModulePermission('MASTER_MODULES');
     const [modules, setModules] = useState([]);
     const [loading, setLoading] = useState(false);
     const [modalVisible, setModalVisible] = useState(false);
@@ -28,10 +26,8 @@ const ToolModule = () => {
     };
 
     useEffect(() => {
-        if (canView) {
-            fetchModules();
-        }
-    }, [canView]);
+        fetchModules();
+    }, []);
 
     const handleAdd = () => {
         setEditingItem(null);
@@ -149,44 +145,18 @@ const ToolModule = () => {
             key: 'actions',
             render: (_, record) => (
                 <Space>
-                    {canEdit ? (
-                        <Button type="link" icon={<EditOutlined />} onClick={() => handleEdit(record)} />
-                    ) : (
-                        <Tooltip title="View-only access: Editing is disabled">
-                            <span><Button type="link" icon={<EditOutlined />} disabled /></span>
-                        </Tooltip>
-                    )}
+                    <Button type="link" icon={<EditOutlined />} onClick={() => handleEdit(record)} />
                 </Space>
             ),
         },
     ];
 
-    if (!canView) {
-        return (
-            <div style={{ padding: 24, background: '#fff', borderRadius: 8, border: '1px solid #ffd591' }}>
-                <p style={{ color: '#d46b08', margin: 0, fontWeight: 500 }}>
-                    Access Denied: You do not have permission to view Tools Module Master.
-                </p>
-            </div>
-        );
-    }
-
     return (
         <div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
-                {canCreate ? (
-                    <Button type="primary" onClick={handleAdd}>
-                        Add Module
-                    </Button>
-                ) : (
-                    <Tooltip title="View-only access: Creating new items is disabled">
-                        <span>
-                            <Button type="primary" disabled>
-                                Add Module
-                            </Button>
-                        </span>
-                    </Tooltip>
-                )}
+                <Button type="primary" onClick={handleAdd}>
+                    Add Module
+                </Button>
             </div>
             <Table
                 dataSource={modules}
@@ -200,7 +170,6 @@ const ToolModule = () => {
                 onOk={handleSave}
                 onCancel={() => setModalVisible(false)}
                 okText="Save"
-                okButtonProps={{ disabled: editingItem ? !canEdit : !canCreate }}
             >
                 <Input
                     value={name}

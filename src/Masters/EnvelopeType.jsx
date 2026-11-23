@@ -1,11 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { Table, Button, Modal, Input, InputNumber, Space, message, Tooltip } from 'antd';
+import { Table, Button, Modal, Input, InputNumber, Space, message } from 'antd';
 import { EditOutlined, SearchOutlined } from '@ant-design/icons';
 import API from '../hooks/api';
-import useModulePermission from '../hooks/useModulePermission';
 
 const EnvelopeType = () => {
-  const { canView, canCreate, canEdit } = useModulePermission('MASTER_ENVELOPE');
   const [envelopes, setEnvelopes] = useState([]);
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
@@ -26,10 +24,8 @@ const EnvelopeType = () => {
   };
 
   useEffect(() => {
-    if (canView) {
-      fetchEnvelopes();
-    }
-  }, [canView]);
+    fetchEnvelopes();
+  }, []);
 
   const handleAdd = () => {
     setEditingItem(null);
@@ -143,44 +139,18 @@ const EnvelopeType = () => {
       key: 'actions',
       render: (_, record) => (
         <Space>
-          {canEdit ? (
-            <Button type="link" icon={<EditOutlined />} onClick={() => handleEdit(record)} />
-          ) : (
-            <Tooltip title="View-only access: Editing is disabled">
-              <span><Button type="link" icon={<EditOutlined />} disabled /></span>
-            </Tooltip>
-          )}
+          <Button type="link" icon={<EditOutlined />} onClick={() => handleEdit(record)} />
         </Space>
       )
     }
   ];
 
-  if (!canView) {
-    return (
-      <div style={{ padding: 24, background: '#fff', borderRadius: 8, border: '1px solid #ffd591' }}>
-        <p style={{ color: '#d46b08', margin: 0, fontWeight: 500 }}>
-          Access Denied: You do not have permission to view Envelope Type Master.
-        </p>
-      </div>
-    );
-  }
-
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
-        {canCreate ? (
-          <Button type="primary" onClick={handleAdd} style={{ marginBottom: 16 }}>
-            Add
-          </Button>
-        ) : (
-          <Tooltip title="View-only access: Creating new items is disabled">
-            <span>
-              <Button type="primary" disabled style={{ marginBottom: 16 }}>
-                Add
-              </Button>
-            </span>
-          </Tooltip>
-        )}
+        <Button type="primary" onClick={handleAdd} style={{ marginBottom: 16 }}>
+          Add
+        </Button>
       </div>
 
       <Table
@@ -195,7 +165,6 @@ const EnvelopeType = () => {
         onOk={handleSave}
         onCancel={() => setModalVisible(false)}
         okText="Save"
-        okButtonProps={{ disabled: editingItem ? !canEdit : !canCreate }}
       >
 
         <Input

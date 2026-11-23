@@ -29,8 +29,6 @@ import ChangedNRUpload from "./ToolsProcessing/ChangedNRUpload";
 import BatchWiseData from "./ToolsProcessing/BatchWiseData";
 import NodalCenterList from "./ToolsProcessing/NodalCenterList";
 import MasterConfigReport from "./pages/Reports/MasterConfigReport";
-import usePermissionsStore from "./stores/UserPermissions";
-import PermissionRoute from "./routes/PermissionRoute";
 
 
 function isTokenExpired(token) {
@@ -79,10 +77,8 @@ export default function App() {
   useEffect(() => {
     if (token) {
       axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
-      usePermissionsStore.getState().fetchPermissions();
     } else {
       delete axios.defaults.headers.common["Authorization"];
-      usePermissionsStore.getState().clearPermissions();
     }
   }, [token]);
 
@@ -173,9 +169,7 @@ export default function App() {
                 element={
                   <ProtectedRoute token={token}>
                     <MainLayout >
-                      <PermissionRoute moduleCode="HTOV_TOOL">
-                        <HToV />
-                      </PermissionRoute>
+                      <HToV />
                     </MainLayout></ProtectedRoute>
                 }
               />

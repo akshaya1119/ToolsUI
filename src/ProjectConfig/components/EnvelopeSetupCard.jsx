@@ -19,7 +19,6 @@ const EnvelopeSetupCard = ({
   importedSnapshot,
   duplicateConfig,
   setDuplicateConfig,
-  canEdit = true,
 }) => {
   const isDirty = (current, snapshotVal) => {
     if (!importedSnapshot || importedSnapshot === "pending") return false;
@@ -30,7 +29,7 @@ const EnvelopeSetupCard = ({
   const envelopeModuleEnabled = isEnabled("Envelope Setup and Enhancement");
 
   const enhancementValue = duplicateConfig?.enhancement ?? 0;
-  const enhancementLocked = !canEdit || !envelopeModuleEnabled;
+  const enhancementLocked = !envelopeModuleEnabled;
 
   const handleEnhancementToggle = (checked) => {
     setDuplicateConfig((prev) => ({
@@ -73,8 +72,7 @@ const EnvelopeSetupCard = ({
                   size="small"
                   icon={<UndoOutlined />}
                   onClick={onReset}
-                  disabled={!canEdit}
-                  style={{ color: canEdit ? PRIMARY_COLOR : undefined }}
+                  style={{ color: PRIMARY_COLOR }}
                 >
                   Reset
                 </Button>
@@ -83,15 +81,14 @@ const EnvelopeSetupCard = ({
                   size="small"
                   icon={<DeleteOutlined />}
                   onClick={onClear}
-                  disabled={!canEdit}
-                  style={{ color: canEdit ? "#ff4d4f" : undefined }}
+                  style={{ color: "#ff4d4f" }}
                 >
                   Clear
                 </Button>
               </>
             )}
             {!envelopeModuleEnabled && (
-              <Tag color="default">Not Enabled</Tag>
+              <Tag icon={<LockFilled style={{ color: PRIMARY_COLOR }} />}>Disabled</Tag>
             )}
           </div>
         }
@@ -131,7 +128,7 @@ const EnvelopeSetupCard = ({
               <Text strong>Inner Envelopes</Text>
               <Select
                 mode="multiple"
-                disabled={!envelopeModuleEnabled || !canEdit}
+                disabled={!envelopeModuleEnabled}
                 value={innerEnvelopes}
                 onChange={setInnerEnvelopes}
                 style={{ width: "100%", marginTop: 4 }}
@@ -155,7 +152,7 @@ const EnvelopeSetupCard = ({
               <Text strong>Outer Envelopes</Text>
               <Select
                 mode="multiple"
-                disabled={!envelopeModuleEnabled || !canEdit}
+                disabled={!envelopeModuleEnabled}
                 value={outerEnvelopes}
                 onChange={setOuterEnvelopes}
                 style={{ width: "100%", marginTop: 4 }}

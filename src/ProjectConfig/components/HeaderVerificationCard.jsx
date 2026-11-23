@@ -1,6 +1,6 @@
 import React from "react";
 import { Card, Select, Typography, Tag, Button } from "antd";
-import { TableOutlined, UndoOutlined, DeleteOutlined } from "@ant-design/icons";
+import { TableOutlined, LockFilled, UndoOutlined, DeleteOutlined } from "@ant-design/icons";
 import AnimatedCard from "./AnimatedCard";
 import { cardStyle, iconStyle, PRIMARY_COLOR } from "./constants";
 
@@ -17,8 +17,7 @@ const HeaderVerificationCard = ({
   setSelectedHeaderVerificationFields,
   onReset,
   onClear,
-  importedSnapshot,
-  canEdit = true,
+  importedSnapshot
 }) => {
   const isDirty = (current, snapshotVal) => {
     if (!importedSnapshot || importedSnapshot === "pending") return false;
@@ -56,8 +55,7 @@ const HeaderVerificationCard = ({
                   size="small"
                   icon={<UndoOutlined />}
                   onClick={onReset}
-                  disabled={!canEdit}
-                  style={{ color: canEdit ? PRIMARY_COLOR : undefined }}
+                  style={{ color: PRIMARY_COLOR }}
                 >
                   Reset
                 </Button>
@@ -66,14 +64,17 @@ const HeaderVerificationCard = ({
                   size="small"
                   icon={<DeleteOutlined />}
                   onClick={onClear}
-                  disabled={!canEdit}
-                  style={{ color: canEdit ? "#ff4d4f" : undefined }}
+                  style={{ color: "#ff4d4f" }}
                 >
                   Clear
                 </Button>
               </>
             )}
-            {!isEnabled && <Tag color="default">Not Enabled</Tag>}
+            {!isEnabled && (
+              <Tag icon={<LockFilled style={{ color: PRIMARY_COLOR }} />}>
+                Disabled
+              </Tag>
+            )}
           </div>
         }
       >
@@ -82,7 +83,7 @@ const HeaderVerificationCard = ({
             <Text strong>Select Display Fields</Text>
             <Select
               mode="multiple"
-              disabled={!isEnabled || !canEdit}
+              disabled={!isEnabled}
               allowClear
               showSearch
               style={{ width: "100%", marginTop: 4 }}

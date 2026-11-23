@@ -2,15 +2,15 @@ import React, { useEffect, useState } from "react";
 import { Card, Select, Typography, Tag, Button } from "antd";
 import API from "./../hooks/api";
 import useStore from "./../stores/ProjectData";
-import { CopyFilled, UndoOutlined, DeleteOutlined } from "@ant-design/icons";
+import { CopyFilled, LockFilled, UndoOutlined, DeleteOutlined } from "@ant-design/icons";
 import { iconStyle, PRIMARY_COLOR } from "../ProjectConfig/components/constants";
 
 const { Text } = Typography;
 const { Option } = Select;
 
-const DuplicateTool = ({ isEnabled, duplicateConfig = {}, setDuplicateConfig, onReset, onClear, importedSnapshot, fields: propFields = [], canEdit = true }) => {
+const DuplicateTool = ({ isEnabled, duplicateConfig = {}, setDuplicateConfig, onReset, onClear, importedSnapshot }) => {
   const projectId = useStore((state) => state.projectId);
-  const [fields, setFields] = useState(propFields || []);
+  const [fields, setFields] = useState([]);
 
   const isDirty = (current, snapshotVal) => {
     if (!importedSnapshot || importedSnapshot === "pending") return false;
@@ -19,14 +19,11 @@ const DuplicateTool = ({ isEnabled, duplicateConfig = {}, setDuplicateConfig, on
   const DIRTY_STYLE = { borderLeft: "3px solid #faad14", paddingLeft: 6, borderRadius: 2 };
 
   useEffect(() => {
-    if (propFields && propFields.length > 0) {
-      setFields(propFields);
-      return;
-    }
+    if (!projectId) return;
     API.get(`/Fields`)
       .then((res) => setFields(res.data || []))
       .catch((err) => console.error("Failed to fetch fields", err));
-  }, [propFields]);
+  }, [projectId]);
 
   const enabled = isEnabled("Duplicate Tool");
 
@@ -56,8 +53,7 @@ const DuplicateTool = ({ isEnabled, duplicateConfig = {}, setDuplicateConfig, on
                 size="small"
                 icon={<UndoOutlined />}
                 onClick={onReset}
-                disabled={!canEdit}
-                style={{ color: canEdit ? PRIMARY_COLOR : undefined }}
+                style={{ color: PRIMARY_COLOR }}
               >
                 Reset
               </Button>
@@ -66,15 +62,14 @@ const DuplicateTool = ({ isEnabled, duplicateConfig = {}, setDuplicateConfig, on
                 size="small"
                 icon={<DeleteOutlined />}
                 onClick={onClear}
-                disabled={!canEdit}
-                style={{ color: canEdit ? "#ff4d4f" : undefined }}
+                style={{ color: "#ff4d4f" }}
               >
                 Clear
               </Button>
             </>
           )}
           {!enabled && (
-            <Tag color="default">Not Enabled</Tag>
+            <Tag icon={<LockFilled style={{ color: PRIMARY_COLOR }} />}>Disabled</Tag>
           )}
         </div>
       }
@@ -87,7 +82,7 @@ const DuplicateTool = ({ isEnabled, duplicateConfig = {}, setDuplicateConfig, on
           mode="multiple"
           allowClear
           showSearch
-          disabled={!enabled || !canEdit}
+          disabled={!enabled}
           style={{ width: "100%", marginTop: 4 }}
           placeholder="Select one or more fields"
           value={duplicateConfig?.duplicateCriteria || []}

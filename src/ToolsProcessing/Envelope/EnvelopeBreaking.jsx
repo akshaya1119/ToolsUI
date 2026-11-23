@@ -13,7 +13,6 @@ import {
 import { useLocation } from "react-router-dom";
 import axios from "axios";
 import { motion } from "framer-motion";
-import useModulePermission from "../../hooks/useModulePermission";
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -23,7 +22,6 @@ const url = import.meta.env.VITE_API_BASE_URL;
 const EnvelopeBreaking = () => {
   const location = useLocation();
   const initialProjectId = location?.state?.projectId ?? null;
-  const { canView, canExecute } = useModulePermission('PROCESSING_PIPELINE');
 
   const [project, setProject] = useState(initialProjectId);
   const [projects, setProjects] = useState([]);
@@ -46,10 +44,6 @@ const EnvelopeBreaking = () => {
 
   // Run envelope breaking logic (POST request)
   const runEnvelopeBreaking = async () => {
-    if (!canExecute) {
-      message.error("You do not have permission to execute envelope breaking");
-      return;
-    }
     if (!project) {
       message.warning("Please select a project");
       return;
@@ -132,14 +126,6 @@ const EnvelopeBreaking = () => {
           <Text type="secondary">
             Project is auto-selected from Duplicate Tool when navigated here.
           </Text>
-          {!canExecute && (
-            <div style={{ marginTop: 12, padding: '10px 14px', background: '#fffbe6', border: '1px solid #ffe58f', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ color: '#d46b08', fontSize: 13 }}>
-                <strong>View-Only Access:</strong> You do not have permission to execute envelope breaking. Run button is disabled.
-              </span>
-              <span style={{ padding: '2px 8px', fontSize: 12, fontWeight: 600, background: '#ffe58f', color: '#d46b08', borderRadius: 4 }}>Read Only</span>
-            </div>
-          )}
         </Col>
 
         <Col xs={24} md={12}>
@@ -172,8 +158,7 @@ const EnvelopeBreaking = () => {
                   type="primary"
                   onClick={runEnvelopeBreaking}
                   loading={loading}
-                  disabled={!project || !canExecute}
-                  title={!canExecute ? "You do not have permission to run envelope breaking" : ""}
+                  disabled={!project}
                 >
                   Run Envelope Breaking
                 </Button>

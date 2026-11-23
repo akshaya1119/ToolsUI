@@ -21,8 +21,7 @@ const BatchComparisonTable = ({
   selectedLot,
   selectedProcess,
   processes = [],
-  additionalFields = [],
-  canExecute = true,
+  additionalFields = []
 }) => {
   const { showToast } = useToast();
   const [searchText, setSearchText] = useState('');
@@ -839,26 +838,22 @@ const BatchComparisonTable = ({
               )}
 
               {onPushChanges && (
-                <Tooltip title={!canExecute ? "You do not have permission to push changes to Base Batch" : (selectedCount === 0 ? "Select rows to push changes" : "")}>
-                  <span>
-                    <Button
-                      type="primary"
-                      icon={<CloudUploadOutlined />}
-                      loading={pushLoading}
-                      disabled={!canExecute || selectedCount === 0}
-                      onClick={handlePush}
-                      style={{
-                        fontWeight: 500,
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: 6,
-                        backgroundColor: (!canExecute || selectedCount === 0) ? undefined : '#1890ff'
-                      }}
-                    >
-                      {selectedCount > 0 ? `Push Changes (${selectedCount})` : 'Push Changes'}
-                    </Button>
-                  </span>
-                </Tooltip>
+                <Button
+                  type="primary"
+                  icon={<CloudUploadOutlined />}
+                  loading={pushLoading}
+                  disabled={selectedCount === 0}
+                  onClick={handlePush}
+                  style={{
+                    fontWeight: 500,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    backgroundColor: selectedCount === 0 ? undefined : '#1890ff'
+                  }}
+                >
+                  {selectedCount > 0 ? `Push Changes (${selectedCount})` : 'Push Changes'}
+                </Button>
               )}
             </Space>
           </div>
