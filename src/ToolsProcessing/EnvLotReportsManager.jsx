@@ -55,18 +55,33 @@ const EnvLotReportsManager = ({
     return `Batches - ${envLotNumbers.join(', ')}`;
   };
 
+  const parseToUtcDate = (val) => {
+    if (!val) return null;
+    let s = String(val);
+    if (!s.endsWith('Z') && !s.includes('+') && !s.match(/-\d{2}:\d{2}$/)) {
+      if (s.includes(' ') && !s.includes('T')) s = s.replace(' ', 'T');
+      s += 'Z';
+    }
+    const d = new Date(s);
+    return isNaN(d.getTime()) ? null : d;
+  };
+
   const formatDateTime = (isoString) => {
-    const date = new Date(isoString);
-    return date.toLocaleString('en-US', {
+    const date = parseToUtcDate(isoString);
+    if (!date) return '-';
+    return date.toLocaleString('en-IN', {
+      timeZone: 'Asia/Kolkata',
       month: 'short',
       day: 'numeric',
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
+      hour12: true
     });
   };
 
   const formatRelativeTime = (isoString) => {
-    const date = new Date(isoString);
+    const date = parseToUtcDate(isoString);
+    if (!date) return '-';
     const now = new Date();
     const diffMs = now - date;
     const diffMins = Math.floor(diffMs / (1000 * 60));

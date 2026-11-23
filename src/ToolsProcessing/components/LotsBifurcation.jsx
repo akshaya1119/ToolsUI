@@ -226,7 +226,9 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted, defaultOpenBifurcation }, 
         pageNo: page,
       };
 
-      if (lotTab !== "all") {
+      if (selectedLot) {
+        params.lotNo = selectedLot;
+      } else if (lotTab !== "all") {
         const lotValue = Number(lotTab);
         // For lot 0 tab: filter by lotNo=0 (rows explicitly assigned to lot 0)
         params.lotNo = lotValue;
@@ -236,10 +238,6 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted, defaultOpenBifurcation }, 
         } else if (lotFilter === "unassigned") {
           params.assigned = false;
         }
-      }
-
-      if (selectedLot) {
-        params.lotNo = selectedLot;
       }
 
       if (sField && sOrder) {
@@ -361,6 +359,7 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted, defaultOpenBifurcation }, 
 
   useEffect(() => {
     setActiveLotTab(selectedLot ? String(selectedLot) : "all");
+    setCurrentPage(1);
   }, [selectedLot]);
 
   useEffect(() => {
@@ -384,6 +383,9 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted, defaultOpenBifurcation }, 
   }, [bifurcationModalOpen, bifurcateRows, lotNumber, startTouched]);
 
   const lotTabs = useMemo(() => {
+    if (selectedLot) {
+      return [String(selectedLot)];
+    }
     const allLotNos = projectLots.map((lot) => coerceNumber(lot.lotNo ?? lot.LotNo, -1));
     const hasLotZero = allLotNos.includes(0);
     const uniqueLots = Array.from(
@@ -391,7 +393,7 @@ const LotsBifurcation = forwardRef(({ onCatchDeleted, defaultOpenBifurcation }, 
     ).filter(lot => lot > 0).sort((a, b) => a - b);
     // Include "0" tab only when there are actual rows with lot number 0
     return ["all", ...(hasLotZero ? ["0"] : []), ...uniqueLots.map((lot) => String(lot))];
-  }, [projectLots]);
+  }, [projectLots, selectedLot]);
 
   const filteredRows = rows;
 
