@@ -1851,15 +1851,15 @@ const loadGeneratedTemplateReports = async () => {
       }
     }
 
-    // Resolve project lot number for envelope-dependent templates if not explicitly selected in dropdown
+    // Resolve project lot number(s) for envelope-dependent templates
     let resolvedLotNo = null;
-    if (selectedDropdownLot !== "all" && selectedDropdownLot !== null && selectedDropdownLot !== undefined && selectedDropdownLot !== "") {
-      resolvedLotNo = String(selectedDropdownLot);
-    } else if (isEnvelopeDependent && !isQS && !isComposite && (envLotNumbers.length > 0 || assignedCatchNos.length > 0)) {
+    if (isEnvelopeDependent && !isQS && !isComposite && (envLotNumbers.length > 0 || assignedCatchNos.length > 0)) {
       try {
         const lotsRes = await API.get(`/NRDataLots/GetByProjectId/${projectId}`);
         const projectLots = (lotsRes.data || []).map(l => Number(l.lotNo)).filter(l => l > 0);
-        for (const pLot of projectLots) {
+        const matchingLots = new Set();
+
+        await Promise.all(projectLots.map(async (pLot) => {
           try {
             const assignedRes = await API.get(`/NRDataLots/GetAssignedEnvLotCatches/${projectId}?lotNo=${pLot}`);
             const rows = assignedRes.data || [];
@@ -1868,13 +1868,14 @@ const loadGeneratedTemplateReports = async () => {
               (assignedCatchNos.length > 0 && assignedCatchNos.includes(String(r.catchNo ?? r.CatchNo).trim()))
             );
             if (match) {
-              resolvedLotNo = String(pLot);
-              break;
+              matchingLots.add(pLot);
             }
           } catch (_) {}
-        }
-        if (!resolvedLotNo && assignedCatchNos.length > 0) {
-          for (const pLot of projectLots) {
+        }));
+
+        if (assignedCatchNos.length > 0) {
+          await Promise.all(projectLots.map(async (pLot) => {
+            if (matchingLots.has(pLot)) return;
             try {
               const missingRes = await API.get(`/NRDataLots/GetMissingEnvLotCatches/${projectId}?lotNo=${pLot}`);
               const rows = missingRes.data || [];
@@ -1882,15 +1883,22 @@ const loadGeneratedTemplateReports = async () => {
                 assignedCatchNos.includes(String(r.catchNo ?? r.CatchNo).trim())
               );
               if (match) {
-                resolvedLotNo = String(pLot);
-                break;
+                matchingLots.add(pLot);
               }
             } catch (_) {}
-          }
+          }));
+        }
+
+        if (matchingLots.size > 0) {
+          resolvedLotNo = Array.from(matchingLots).sort((a, b) => a - b).join(',');
         }
       } catch (err) {
-        console.warn('Failed to resolve project lot for envelope batch:', err);
+        console.warn('Failed to resolve project lots for envelope batches:', err);
       }
+    }
+
+    if (!resolvedLotNo && selectedDropdownLot !== "all" && selectedDropdownLot !== null && selectedDropdownLot !== undefined && selectedDropdownLot !== "") {
+      resolvedLotNo = String(selectedDropdownLot);
     }
 
     // For quantity sheet, generate one template per lot
@@ -1915,12 +1923,17 @@ const loadGeneratedTemplateReports = async () => {
         ? assignedCatchNos.join(',')
         : null;
 
+      const effectiveEnvLotNos = !isQS && envLotNumbers && envLotNumbers.length > 0
+        ? envLotNumbers.join(',')
+        : null;
+
       const payload = {
         projectId: Number(projectId),
         templateId: Number(templateId),
         ...(Object.keys(staticVariables).length > 0 ? { staticVariables } : {}),
         ...(effectiveLotNos ? { LotNos: effectiveLotNos, lotNumber: Number(effectiveLotNos.split(',')[0]), lotNo: effectiveLotNos } : {}),
         ...(effectiveCatchNos ? { CatchNos: effectiveCatchNos, catchNo: effectiveCatchNos.split(',')[0] } : {}),
+        ...(effectiveEnvLotNos ? { EnvLotNos: effectiveEnvLotNos, envLotNo: Number(effectiveEnvLotNos.split(',')[0]) } : {}),
       };
       const messageKey = `generate-report-${payload.templateId}-${Date.now()}`;
       setGeneratingTemplates((prev) => ({ ...prev, [templateId]: true }));
@@ -1995,7 +2008,7 @@ const loadGeneratedTemplateReports = async () => {
               : (isBoxBreakingDependent && currentLot
                 ? Number(currentLot)
                 : (resolvedLotNo
-                  ? Number(resolvedLotNo)
+                  ? Number(String(resolvedLotNo).split(',')[0])
                   : (selectedDropdownLot !== "all" && selectedDropdownLot !== null && selectedDropdownLot !== undefined && selectedDropdownLot !== ""
                     ? Number(selectedDropdownLot)
                     : 0))),
