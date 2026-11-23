@@ -20,13 +20,29 @@ import useStore from '../../stores/ProjectData';
 const formatDateTimeToIST = (dateVal) => {
   if (!dateVal) return '-';
   try {
-    let s = String(dateVal);
-    if (s.includes(' ') && !s.includes('T')) s = s.replace(' ', 'T');
-    const d = new Date(s);
+    let dateStr = String(dateVal);
+    // If it doesn't end with Z and doesn't contain a timezone offset, and is in ISO-like format, append 'Z'
+    if (
+      !dateStr.endsWith('Z') &&
+      !dateStr.includes('+') &&
+      !dateStr.match(/-\d{2}:\d{2}$/)
+    ) {
+      if (dateStr.includes(' ') && !dateStr.includes('T')) {
+        dateStr = dateStr.replace(' ', 'T');
+      }
+      dateStr = `${dateStr}Z`;
+    }
+    const d = new Date(dateStr);
     if (isNaN(d.getTime())) return '-';
     return d.toLocaleString('en-IN', {
-      day: '2-digit', month: '2-digit', year: 'numeric',
-      hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true,
+      timeZone: 'Asia/Kolkata',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: true,
     });
   } catch { return '-'; }
 };
